@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowPathIcon, FilmIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { VideoAbierto } from '../media/video'
 import Compatibilidad from './compatibilidad'
 import ElegirOrientacion from './ElegirOrientacion'
-import Visor from './Visor'
+// El visor (con la gráfica y uPlot) solo se descarga al abrir un vídeo.
+const Visor = lazy(() => import('./Visor'))
 
 type Estado =
   | { fase: 'inicio'; error?: string }
@@ -88,7 +89,11 @@ export default function App() {
         </div>
       )}
 
-      {estado.fase === 'visor' && <Visor key={estado.video.info.nombre} video={estado.video} orientacion={estado.orientacion} />}
+      {estado.fase === 'visor' && (
+        <Suspense fallback={<p className="text-texto-2">Cargando el visor…</p>}>
+          <Visor key={estado.video.info.nombre} video={estado.video} orientacion={estado.orientacion} />
+        </Suspense>
+      )}
 
       <footer className="mt-auto font-mono text-xs text-texto-2">
         {__RAMA__} · {__COMMIT__}
