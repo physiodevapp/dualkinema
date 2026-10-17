@@ -4,7 +4,7 @@ Análisis cinemático diferido a partir de vídeo, siguiendo marcadores colocado
 
 **Todo el procesamiento ocurre en el navegador**: los vídeos y los datos nunca salen del dispositivo.
 
-Estado: fase 1 (base y prototipo) en curso. Plan en [`docs/plan-fase-1.md`](docs/plan-fase-1.md).
+Estado: fase 1 (base y prototipo) en curso. Plan en [`docs/plan-fase-1.md`](docs/plan-fase-1.md). Cómo grabar y colocar los gomets: [`docs/grabacion.md`](docs/grabacion.md).
 
 ## Desarrollo
 

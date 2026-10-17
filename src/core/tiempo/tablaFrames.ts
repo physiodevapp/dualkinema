@@ -32,6 +32,19 @@ export function indiceEnTiempo(tabla: TablaFrames, t: number): number {
   return lo
 }
 
+/**
+ * Índice del frame cuyo tiempo está más cerca de t (para tocar una gráfica:
+ * el frame más próximo al punto, no el último anterior). Con la tabla vacía, −1.
+ */
+export function indiceMasCercano(tabla: TablaFrames, t: number): number {
+  const i = indiceEnTiempo(tabla, t)
+  if (i < 0) return -1
+  const ts = tabla.tiempos
+  const siguiente = ts[i + 1]
+  if (siguiente === undefined) return i
+  return t - ts[i]! <= siguiente - t ? i : i + 1
+}
+
 /** Lleva un índice al rango válido de la tabla. */
 export function limitarIndice(tabla: TablaFrames, i: number): number {
   return Math.min(Math.max(Math.round(i), 0), Math.max(tabla.tiempos.length - 1, 0))

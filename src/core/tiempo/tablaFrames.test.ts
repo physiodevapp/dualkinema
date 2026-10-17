@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { crearTablaFrames, estadisticas, indiceEnTiempo, limitarIndice } from './tablaFrames'
+import { crearTablaFrames, estadisticas, indiceEnTiempo, indiceMasCercano, limitarIndice } from './tablaFrames'
 
 describe('crearTablaFrames', () => {
   it('ordena los pts (frames B llegan desordenados) y quita duplicados y no finitos', () => {
@@ -30,6 +30,26 @@ describe('indiceEnTiempo', () => {
   it('es exacto con muchos frames', () => {
     const t = crearTablaFrames(Array.from({ length: 10_000 }, (_, i) => i / 30))
     for (const i of [0, 1, 4999, 9998, 9999]) expect(indiceEnTiempo(t, i / 30)).toBe(i)
+  })
+})
+
+describe('indiceMasCercano', () => {
+  const tabla = crearTablaFrames([0, 0.1, 0.3, 0.4])
+
+  it.each([
+    [-1, 0],
+    [0.04, 0],
+    [0.06, 1],
+    [0.19, 1],
+    [0.21, 2],
+    [0.38, 3],
+    [9, 3],
+  ])('t = %d s → frame %d', (t, i) => {
+    expect(indiceMasCercano(tabla, t)).toBe(i)
+  })
+
+  it('con la tabla vacía devuelve −1', () => {
+    expect(indiceMasCercano(crearTablaFrames([]), 1)).toBe(-1)
   })
 })
 

@@ -1,6 +1,6 @@
 # Plan de la fase 1: base y prototipo
 
-Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). Pasos 1 (esqueleto), 2 (núcleo de ángulos) y 3 (visor frame a frame) fusionados. En curso: paso 4 (marcado y seguimiento por color).
+Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). Pasos 1 (esqueleto), 2 (núcleo de ángulos), 3 (visor frame a frame) y 4 (marcado y seguimiento por color) fusionados. En curso: paso 5 (gráfica y cursor sincronizado).
 
 Objetivo de la fase (CLAUDE.md): estructura del proyecto, despliegue con previsualizaciones, carga de un vídeo, avance frame a frame, marcar 3 gomets, seguimiento por color, ángulo articular con la definición declarativa nueva y gráfica en segundos.
 
@@ -206,13 +206,17 @@ Tests que fijan la convención (casos de valor conocido): rodilla extendida = 0�
 
 En la fase 1 el modelo de marcadores viene **predefinido** (rodilla sagital con 3 marcadores, derecha o izquierda); el editor de modelos llegará cuando haga falta.
 
-## 8. Gráfica
+## 8. Gráfica (implementada en el paso 5)
 
-Revisión de `components/AngleGraph` y `KinematicsReview`: búfer fijo de 300 puntos con eje X por índice, eje Y recortado a [0, máx] (la hiperextensión, negativa, desaparece) y colores por hash del nombre (cambian si cambia el identificador y no se garantiza contraste). Se reutiliza el estilo visual (fuentes, cuadrícula discreta).
+Revisión de `components/AngleGraph` y `KinematicsReview` de physiq-kinematics: búfer fijo de 300 puntos con eje X por índice, eje Y recortado a [0, máx] (la hiperextensión, negativa, desaparecía) y colores por hash del nombre (cambian si cambia el identificador y no se garantiza contraste). Se reutiliza el estilo visual (fuentes, cuadrícula discreta).
 
-Nueva: eje X en segundos de vídeo, eje Y automático con margen e incluyendo negativos, varias series, cursor vertical sincronizado con el frame actual (tocar la gráfica lleva el vídeo a ese instante), frames perdidos como huecos (nunca interpolados en silencio), paleta fija accesible (Okabe-Ito) asignada por orden en el modelo.
-
-Librería: **uPlot** (~50 KB, MIT, muy rápida con muchos puntos y táctil). Alternativa: canvas propio como en physiq-kinematics. Recomiendo uPlot por ahorro de trabajo en zoom y escalas.
+Nueva (`src/ui/visor/GraficaAngulo.tsx`, con **uPlot**, ~35 kB comprimidos, cargada junto con el visor):
+- **Eje X en segundos de vídeo**, siempre del primer al último frame, aunque el seguimiento no haya terminado.
+- **Eje Y automático** que abarca los datos y el 0, con un 10 % de margen y un mínimo de 20° de alto (`core/graficas/rango.ts`, con tests): incluye valores negativos.
+- **Huecos como cortes:** un marcador ausente o perdido da un instante sin valor y la línea se corta. Nunca se une ni se rellena. Es la misma regla que el valor en directo (`serieAngular`).
+- **Cursor sincronizado:** una línea vertical y un punto marcan el frame actual. Tocar o arrastrar la gráfica salta al frame más cercano a ese instante (`indiceMasCercano`), con el mismo pintado «el último gana» del visor. El gesto vertical sigue desplazando la página.
+- Máximo y mínimo (con su instante) y número de instantes sin valor, bajo la gráfica.
+- Una sola serie (rodilla) por ahora. Varias series y vistas, con paleta accesible y estable, llegan con las dos vistas (fase 3); la paleta Okabe-Ito ya está en `ui/marcadores.ts`.
 
 ## 9. Interfaz (mínima, móvil primero)
 
