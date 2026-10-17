@@ -1,6 +1,6 @@
 # Plan de la fase 1: base y prototipo
 
-Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17), tal como se proponen. En curso: paso 1 (esqueleto).
+Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). Paso 1 (esqueleto) fusionado. En curso: paso 2 (núcleo de ángulos).
 
 Objetivo de la fase (CLAUDE.md): estructura del proyecto, despliegue con previsualizaciones, carga de un vídeo, avance frame a frame, marcar 3 gomets, seguimiento por color, ángulo articular con la definición declarativa nueva y gráfica en segundos.
 
@@ -130,35 +130,39 @@ Qué hace (`public/workers/jointWorker.js`, `utils/joint.ts`, `utils/pose.ts`):
 - Media móvil de N frames y `timestamp: Date.now()`. **Se descarta** (suavizado: Butterworth en la fase 2; tiempo: siempre del vídeo).
 - Worker para unas pocas operaciones por frame. **Se descarta**: en diferido el ángulo de todo el vídeo se calcula en milisegundos en el hilo principal. El worker se reserva para decodificar y seguir.
 
-### Diseño nuevo
+### Diseño nuevo (implementado en el paso 2: `src/core/articulaciones`, `src/core/geometria`)
 
 ```ts
 interface DefinicionArticulacion {
-  id: 'rodilla_der';
-  nombre: 'Rodilla derecha';
-  // Cada segmento va del vértice hacia fuera.
-  proximal: [IdMarcador, IdMarcador];   // p. ej. [rodilla, cadera]  → muslo
-  distal:   [IdMarcador, IdMarcador];   // p. ej. [rodilla, tobillo] → pierna
-  plano: 'sagital' | 'frontal' | 'transversal';
-  cero: 'alineados' | 'perpendiculares' | { desplazamiento: number };  // posición anatómica = 0°
-  positivo: 'flexion' | 'extension' | 'abduccion' | …;                // nombre del sentido positivo
-  sentido: 1 | -1;                     // qué giro (antihorario/horario visto desde +normal) es el positivo
+  id: 'rodilla_sagital_der'
+  nombre: 'Rodilla derecha (flexo-extensión)'
+  plano: 'sagital' | 'frontal' | 'transversal'
+  // Los dos segmentos se orientan en sentido distal: alineados = 0°.
+  proximal: { desde: 'trocanter_der', hasta: 'epicondilo_femoral_der' }   // muslo
+  distal:   { desde: 'epicondilo_femoral_der', hasta: 'maleolo_der' }     // pierna
+  signo: -1          // +1 si el sentido positivo es antihorario alrededor del eje del plano
+  cero: 0            // valor de signo·θ en la posición anatómica (tobillo: 90)
+  positivo: 'flexión'
+  negativo: 'hiperextensión'
 }
 ```
 
 Cálculo, igual en 2D y 3D:
 
 ```
-anguloConSigno(u, v, n) = atan2( (u × v) · n , u · v )     // u, v: segmentos; n: normal del plano
-valor = sentido · (anguloConSigno(prolongación del proximal, distal, n)) − cero
+θ     = anguloConSigno(proximal, distal, n)   // atan2((u×v)·n, u·v) tras proyectar u y v en el plano ⟂ n
+valor = signo · θ − cero                      // en (−180°, 180°], y la serie se desenrolla en el tiempo
 ```
 
-- En 3D, `n` saldrá del sistema de referencia anatómico del segmento (fase 5).
-- En 2D, los puntos se elevan a z = 0 y `n` es el eje de la cámara, ±z, **según la orientación de la vista**. Por eso cada vista lleva `orientacion` explícita: para una vista sagital, *hacia qué lado de la imagen mira la persona*; para una frontal, *si la cámara la ve de frente o de espaldas*. Se elige una vez al crear la vista (con un dibujo), no se infiere.
-- Coordenadas de imagen (y hacia abajo) se pasan a y hacia arriba dentro del núcleo, en un único sitio.
-- Rango de salida continuo (sin saltos de 360°): el ángulo se "desenrolla" a lo largo del tiempo para que una curva que pasa de 179° a −179° no salte.
-
-El cálculo solo recibe puntos con tiempo; le da igual si vienen de gomets o de MediaPipe (requisito de CLAUDE.md).
+- **Marco canónico** (`geometria/canonico.ts`, único sitio donde se cambia de convención): las coordenadas de imagen (y hacia abajo) se pasan a un marco donde el eje del plano es siempre +z.
+  - Sagital: x = hacia delante de la persona, y = arriba (si mira a la izquierda de la imagen, se refleja x).
+  - Frontal: x = hacia la izquierda de la persona, y = arriba (si la cámara la ve de espaldas, se refleja x).
+  - Así el mismo movimiento da el mismo ángulo grabado desde un lado o desde el otro, sin cambios de signo por orientación dentro del cálculo.
+- **Orientación de la vista** explícita: `{ plano: 'sagital', mira: 'izquierda' | 'derecha' }` o `{ plano: 'frontal', ve: 'delante' | 'detras' }`. Se elige al crear la vista; nunca se infiere.
+- **3D** (fase 5): los mismos puntos en 3D y `n` = eje del sistema anatómico. Un test comprueba que girar juntos puntos y normal da el mismo valor.
+- **Huecos**: marcador ausente o con calidad < 0,5 → NaN en ese instante, nunca 0 ni interpolado.
+- **Catálogo** (`articulaciones/catalogo.ts`): cadera, rodilla, tobillo, hombro y codo en sagital y abducción de cadera en frontal, por lado. Signos y ceros comentados en el archivo. El modelo de la fase 1 es `modeloRodilla3(lado)`: trocánter mayor, epicóndilo femoral lateral y maléolo lateral.
+- El plano transversal queda declarado pero sin vista 2D que lo mida (necesitaría una cámara cenital); llegará con el 3D.
 
 Tests que fijan la convención (casos de valor conocido): rodilla extendida = 0°, a 90° de flexión = +90°, hiperextensión = negativo; el mismo movimiento grabado mirando a la izquierda y a la derecha da la misma curva; cadera, tobillo (cero = perpendiculares) y codo; punto ausente → sin valor (nunca 0).
 
