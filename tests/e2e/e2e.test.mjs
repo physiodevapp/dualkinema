@@ -408,6 +408,29 @@ describe('persistencia: marcar, seguir, recargar y recuperar', () => {
   })
 })
 
+describe('persistencia: recuperar a medio marcar', () => {
+  it('elige el primer marcador que falta, como al marcar', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      const [cadera] = videos.verde.verdad[0].ps
+      await tocarVideo(p, cadera.x, cadera.y)
+      await esperarGuardado(p, 1)
+      await p.reload()
+      await elegirArchivoDesde(p, p.getByRole('button', { name: 'Continuar' }), videos.verde.ruta)
+      await esperarQuieto(p)
+      assert.equal(await p.getByRole('radio', { name: /Trocánter/ }).getAttribute('aria-checked'), 'false')
+      assert.equal(await p.getByRole('radio', { name: /Epicóndilo/ }).getAttribute('aria-checked'), 'true')
+      // Y se puede seguir marcando sin elegirlo antes.
+      const [, rodilla] = videos.verde.verdad[0].ps
+      await tocarVideo(p, rodilla.x, rodilla.y)
+      assert.equal(await p.getByRole('radio', { name: /Maléolo/ }).getAttribute('aria-checked'), 'true')
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('escritorio', () => {
   it('a 1280 px la gráfica y los controles caben sin desbordar la página', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 1280 })

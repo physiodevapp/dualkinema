@@ -134,7 +134,11 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
   const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string } | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
-  const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(inicial ? null : (ids[0] ?? null))
+  // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
+  // si están todos, ninguno, para no mover uno sin querer con el primer toque.
+  const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
+    inicial ? (ids.find((id) => !valida(inicial.get(id)?.[0])) ?? null) : (ids[0] ?? null),
+  )
   const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
   const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
   const huella = useMemo(() => huellaDe(video), [video])
