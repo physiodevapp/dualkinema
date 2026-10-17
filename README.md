@@ -17,6 +17,7 @@ npm test           # Vitest (núcleo)
 npm run lint
 npm run typecheck
 npm run build      # genera dist/
+npm run test:e2e   # pruebas en navegador (necesita build, ffmpeg y Chromium de Playwright; ver tests/e2e/LEEME.md)
 ```
 
 `src/core/` es el núcleo de cálculo: TypeScript puro, sin React ni DOM, con tests. ESLint y `tsconfig.core.json` impiden que dependa del resto de la app.

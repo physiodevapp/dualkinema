@@ -82,6 +82,7 @@ export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo,
       <div className="relative mx-auto w-fit">
         <canvas
           ref={lienzo}
+          data-testid="lienzo"
           width={ancho}
           height={alto}
           className="block max-h-[60dvh] max-w-full"
@@ -89,6 +90,7 @@ export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo,
         />
         <canvas
           ref={capa}
+          data-testid="capa"
           width={ancho}
           height={alto}
           className="absolute inset-0 h-full w-full"

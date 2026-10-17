@@ -395,19 +395,24 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
               Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
             </p>
           )}
-          {errorToque && (
-            <button
-              type="button"
-              onClick={() => setErrorToque(null)}
-              className="absolute inset-x-2 bottom-2 rounded-md border border-red-400/60 bg-fondo/90 p-2 text-left text-sm text-red-200"
-            >
-              {errorToque.texto} <span className="text-texto-2">(toca para cerrar)</span>
-              {errorToque.detalle && <span className="mt-1 block font-mono text-xs text-texto-2">{errorToque.detalle}</span>}
-            </button>
-          )}
         </div>
 
-        <div className="flex items-baseline justify-between font-mono text-sm">
+        {errorToque && (
+          // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
+          // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
+          // gomet) caía en el mensaje en vez de marcar.
+          <button
+            type="button"
+            data-testid="error-toque"
+            onClick={() => setErrorToque(null)}
+            className="rounded-md border border-red-400/60 bg-fondo p-2 text-left text-sm text-red-200"
+          >
+            {errorToque.texto} <span className="text-texto-2">(toca para cerrar)</span>
+            {errorToque.detalle && <span className="mt-1 block font-mono text-xs text-texto-2">{errorToque.detalle}</span>}
+          </button>
+        )}
+
+        <div className="flex items-baseline justify-between font-mono text-sm" data-testid="posicion">
           <span>
             t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
           </span>
@@ -458,7 +463,7 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
             tActual={deseado < total ? tabla.tiempos[deseado]! : null}
             onBuscar={buscarEnTiempo}
           />
-          <p className="mt-1 px-1 font-mono text-xs text-texto-2">
+          <p className="mt-1 px-1 font-mono text-xs text-texto-2" data-testid="resumen-grafica">
             {resumen.max && resumen.min ? (
               <>
                 <span className="whitespace-nowrap">
@@ -549,7 +554,7 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
 
           {aviso && (
             <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
-              <p>{aviso.texto}</p>
+              <p data-testid="aviso">{aviso.texto}</p>
               {aviso.detalle && (
                 <details className="text-texto-2">
                   <summary className="cursor-pointer">Por qué (para diagnosticar)</summary>
@@ -566,7 +571,7 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
 
           <div className="flex items-baseline justify-between border-t border-borde pt-3">
             <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>
-            <span className="font-mono text-2xl">
+            <span className="font-mono text-2xl" data-testid="angulo">
               {Number.isNaN(angulo) ? '—' : `${grados(angulo)}°`}
               {anguloRedondeado !== 0 && !Number.isNaN(angulo) && (
                 <span className="ml-2 text-sm text-texto-2">{anguloRedondeado > 0 ? articulacion.positivo : articulacion.negativo}</span>

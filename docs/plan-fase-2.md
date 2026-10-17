@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **propuesta, pendiente de confirmar por el usuario.** Nada de código hasta cerrar las decisiones marcadas con **[D]**.
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Paso 1 (pruebas e2e) hecho; siguiente: paso 2 (persistencia).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -106,15 +106,15 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 
 **[D7]** ¿Formato para Excel en español (separador `;` y coma decimal) o el internacional (`,` y punto)? Propongo el de Excel en español por defecto y el otro como opción.
 
-## 8. Pruebas en navegador en el repositorio [D8]
+## 8. Pruebas en navegador en el repositorio [D8] — hecho (paso 1)
 
-Las pruebas de punta a punta de la fase 1 se hicieron en la sesión, fuera del repo (limitación 12). **Propuesta:** `tests/e2e/` con:
-- el generador de vídeos sintéticos (Node + ffmpeg);
-- los guiones de Playwright: frame exacto, seguimiento y ángulo frente a la verdad, gomet tapado, gráfica.
-
-Además, un trabajo de CI que las ejecute en cada PR. GitHub Actions puede instalar ffmpeg y Chromium.
-
-**[D8]** ¿Las metemos en la CI o solo como herramienta local para las sesiones? Recomiendo la CI: tarda unos minutos y evita regresiones como el umbral incoherente que encontró la revisión.
+`tests/e2e/` (con su `LEEME.md`) y un trabajo `e2e` en la CI, en paralelo a `comprobar`:
+- Generador de vídeos sintéticos con Node + ffmpeg. El de «frame exacto» codifica el número de frame en bloques blancos y negros, así que no depende de ninguna fuente del sistema.
+- 20 pruebas: frame exacto con fps variable y fotogramas clave, teclado, marcado, seguimiento con gomets verdes y rojos (ángulo medido frente al real, tolerancia 0,5°), gráfica, huecos, escritorio y consola sin errores.
+- Dos roturas hechas a propósito (signo de la rodilla invertido; la gráfica salta 5 frames de más) son detectadas.
+- Se localizan los elementos por rol, texto o `data-testid`.
+- **Fallo real encontrado al escribirlas:** el mensaje de error de marcado salía superpuesto al vídeo y en un móvil tapaba casi toda la imagen; el siguiente toque, aunque fuera sobre el gomet, caía en el mensaje en vez de marcar. Ahora sale debajo del vídeo y una prueba comprueba que no se solapen.
+- Límite: el Chromium de Playwright no decodifica H.264/HEVC, así que los vídeos de móvil reales siguen probándose a mano.
 
 ---
 
@@ -134,14 +134,14 @@ Además, un trabajo de CI que las ejecute en cada PR. GitHub Actions puede insta
 
 Las pruebas e2e van primero para que cada paso siguiente quede cubierto. La persistencia va antes que los cálculos porque probar los filtros con vídeos reales sin guardar el marcado obliga a repetirlo cada vez.
 
-## Resumen de decisiones pendientes
+## Resumen de decisiones (aceptadas)
 
 | | Decisión | Propuesta |
 |---|---|---|
 | D1 | Qué se filtra | Las coordenadas de los marcadores; ángulos y derivadas se calculan después |
 | D2 | Frecuencia de corte | 6 Hz por defecto, ajustable de 2 a 15 Hz |
 | D3 | Cero de referencia | Media de un tramo estático elegido; mostrar crudo y relativo |
-| D4 | Objeto de calibración | El que tengas: cinta, palo o regla en el plano del movimiento |
+| D4 | Objeto de calibración | El que haya: cinta, palo o regla en el plano del movimiento (la app no impone uno) |
 | D5 | Interpolar huecos cortos | Solo a petición, ≤ 0,2 s, siempre marcado como interpolado |
 | D6 | Persistencia | IndexedDB sin el vídeo; al reabrir el mismo archivo, recuperar el trabajo |
 | D7 | Formato CSV | `;` y coma decimal por defecto; el internacional como opción |
