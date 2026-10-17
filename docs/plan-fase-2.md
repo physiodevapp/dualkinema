@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **propuesta, pendiente de confirmar por el usuario.** Nada de código hasta cerrar las decisiones marcadas con **[D]**.
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pendiente de empezar: paso 1 (pruebas e2e).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -134,14 +134,14 @@ Además, un trabajo de CI que las ejecute en cada PR. GitHub Actions puede insta
 
 Las pruebas e2e van primero para que cada paso siguiente quede cubierto. La persistencia va antes que los cálculos porque probar los filtros con vídeos reales sin guardar el marcado obliga a repetirlo cada vez.
 
-## Resumen de decisiones pendientes
+## Resumen de decisiones (aceptadas)
 
 | | Decisión | Propuesta |
 |---|---|---|
 | D1 | Qué se filtra | Las coordenadas de los marcadores; ángulos y derivadas se calculan después |
 | D2 | Frecuencia de corte | 6 Hz por defecto, ajustable de 2 a 15 Hz |
 | D3 | Cero de referencia | Media de un tramo estático elegido; mostrar crudo y relativo |
-| D4 | Objeto de calibración | El que tengas: cinta, palo o regla en el plano del movimiento |
+| D4 | Objeto de calibración | El que haya: cinta, palo o regla en el plano del movimiento (la app no impone uno) |
 | D5 | Interpolar huecos cortos | Solo a petición, ≤ 0,2 s, siempre marcado como interpolado |
 | D6 | Persistencia | IndexedDB sin el vídeo; al reabrir el mismo archivo, recuperar el trabajo |
 | D7 | Formato CSV | `;` y coma decimal por defecto; el internacional como opción |

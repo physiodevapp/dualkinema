@@ -131,7 +131,7 @@ Si durante el trabajo detectas otras mejoras de arquitectura o de análisis (en 
 
 Trabaja **una fase cada vez**. No adelantes funcionalidad de fases futuras salvo lo necesario para no bloquearlas.
 
-**Estado:** fase 1 **cerrada** (revisión de código, decisiones y limitaciones conocidas en `docs/plan-fase-1.md`, §12). Fase 2: propuesta en `docs/plan-fase-2.md`, pendiente de que el usuario decida D1–D8 antes de escribir código.
+**Estado:** fase 1 **cerrada** (revisión de código, decisiones y limitaciones conocidas en `docs/plan-fase-1.md`, §12). Fase 2: plan en `docs/plan-fase-2.md`, con las decisiones D1–D8 aceptadas; se trabaja paso a paso en el orden de su tabla (cada paso indica el modelo).
 
 ## Forma de trabajar
 - Al terminar cada tarea probable, indica la URL de previsualización y **qué debe probar el usuario** (lista corta y concreta: qué vídeo grabar, qué tocar, qué debería ver).
