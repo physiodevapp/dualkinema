@@ -119,9 +119,10 @@ Algoritmo, por marcador y frame:
   - `seguidor.ts`: aprender un gomet a partir de un toque, y seguirlo.
   - `multiple.ts`: varios marcadores a la vez.
 - **Aprender un gomet:**
-  - Toma el color bajo el dedo, busca la mancha que lo contiene y aprende su color real.
-  - El marcador queda en el centro del gomet aunque el toque se desvíe unos px.
-  - Si no hay un color definido o la mancha es demasiado grande (ropa o fondo del mismo color), lo dice.
+  - Toma el color bajo el dedo y prueba tolerancias de menor a mayor. Se queda con la mayor que aún da una mancha con forma de gomet: compacta, no muy alargada y sin tocar el borde de la zona de búsqueda.
+  - Después aprende su color real y deja el marcador en su centro.
+  - La tolerancia fija de la primera versión fallaba con gomets rojos sobre piel: la piel entraba en la mancha. Lo detectó el usuario en su móvil; ahora hay tests con rojo, rojo oscuro y naranja sobre piel.
+  - Si no hay un gomet suelto bajo el dedo, lo dice **encima del vídeo**, que es donde se mira al marcar.
 - **Seguir:**
   - Busca en una ventana alrededor de la posición prevista, a velocidad constante en tiempo.
   - Solo acepta manchas de tamaño plausible: entre 0,25× y 1,8× el gomet.

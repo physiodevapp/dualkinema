@@ -40,13 +40,30 @@ export class ErrorMarcado extends Error {}
 export const radioDe = (area: number) => Math.sqrt(area / Math.PI)
 
 /**
+ * ¿Parece un gomet? Compacta (llena al menos el 55 % de su rectángulo, un
+ * círculo llena el 79 %), no muy alargada y sin tocar el borde de la zona de
+ * búsqueda (si lo toca, se ha «escapado» por la piel, la ropa o el fondo).
+ */
+function pareceGomet(m: Mancha, anchoImg: number, altoImg: number): boolean {
+  const [x0, y0, x1, y1] = m.caja
+  const w = x1 - x0 + 1
+  const h = y1 - y0 + 1
+  const tocaBorde = x0 === 0 || y0 === 0 || x1 === anchoImg - 1 || y1 === altoImg - 1
+  return !tocaBorde && m.area / (w * h) >= 0.55 && Math.max(w, h) / Math.min(w, h) <= 2.5
+}
+
+/** Tolerancias que se prueban al aprender un gomet, de estricta a amplia. */
+const ESCALAS = [1, 1.5, 2, 3, 4] as const
+
+/**
  * Aprende un gomet a partir de un toque en (x, y) en el instante t.
  *
- * 1. Toma el color de los píxeles bajo el dedo (3 × 3) con una tolerancia amplia.
- * 2. Busca la mancha que contiene el toque (o la más cercana a pocos px).
- * 3. Aprende el color real con todos sus píxeles, vuelve a segmentar y devuelve
- *    el centro de la mancha: el marcador queda en el centro del gomet aunque el
- *    toque no fuera exacto.
+ * 1. Toma el color de los píxeles bajo el dedo (3 × 3).
+ * 2. Prueba tolerancias de color de menor a mayor y se queda con la mayor que
+ *    aún da una mancha con forma de gomet alrededor del toque. Con una
+ *    tolerancia fija, un gomet rojo sobre piel se «escapaba» por la piel.
+ * 3. Aprende el color real con los píxeles de esa mancha y devuelve su centro:
+ *    el marcador queda en el centro del gomet aunque el toque no fuera exacto.
  */
 export function aprenderMarcador(
   leer: LeerVentana,
@@ -62,9 +79,8 @@ export function aprenderMarcador(
   for (let k = 0; k < semilla.datos.length; k += 4) {
     colores.push(rgbAHsv(semilla.datos[k]!, semilla.datos[k + 1]!, semilla.datos[k + 2]!))
   }
-  const media = aprenderColor(colores)
-  if (media.s < 0.2) throw new ErrorMarcado('Ahí no hay un color definido: toca justo encima del gomet.')
-  const tolerante: ModeloColor = { ...media, dh: Math.max(media.dh, 18), ds: Math.max(media.ds, 0.18), dv: Math.max(media.dv, 0.3) }
+  const base = aprenderColor(colores)
+  if (base.s < 0.2) throw new ErrorMarcado('Ahí no hay un color definido: toca justo encima del gomet.')
 
   const img = leer(ventanaAlrededor(x, y, radioBusqueda, ancho, alto))
   const cerca = (ms: readonly Mancha[]) =>
@@ -72,19 +88,36 @@ export function aprenderMarcador(
       .map((m) => ({ m, d: Math.hypot(m.x - x, m.y - y) }))
       .filter(({ m, d }) => d <= radioDe(m.area) + 4)
       .sort((a, b) => a.d - b.d)[0]?.m
-  const primera = cerca(buscarManchas(img, tolerante))
-  if (!primera) throw new ErrorMarcado('No encuentro un gomet aquí: toca justo encima.')
 
-  const modelo = aprenderColor(primera.colores)
-  const refinada = cerca(buscarManchas(img, modelo)) ?? primera
-  if (refinada.area > (Math.PI * radioBusqueda * radioBusqueda) / 2) {
-    throw new ErrorMarcado('La zona de ese color es demasiado grande para ser un gomet (¿ropa o fondo del mismo color?).')
+  let elegida: Mancha | undefined
+  let seEscapa = false
+  for (const k of ESCALAS) {
+    const modelo: ModeloColor = { ...base, dh: base.dh * k, ds: base.ds * k, dv: base.dv * k }
+    const m = cerca(buscarManchas(img, modelo))
+    if (!m) continue
+    if (!pareceGomet(m, img.ancho, img.alto)) {
+      seEscapa = true
+      break
+    }
+    elegida = m
   }
+  if (!elegida) {
+    throw new ErrorMarcado(
+      seEscapa
+        ? 'Aquí no veo un gomet suelto: o el toque ha caído fuera, o su color se confunde con lo que lo rodea (piel, ropa o fondo). Toca justo encima; si se repite, prueba gomets de otro color (verde o azul suelen ir mejor).'
+        : 'No encuentro un gomet aquí: toca justo encima.',
+    )
+  }
+
+  // Segmentación final con el color aprendido del propio gomet.
+  const modelo = aprenderColor(elegida.colores)
+  const refinada = cerca(buscarManchas(img, modelo))
+  const final = refinada && pareceGomet(refinada, img.ancho, img.alto) ? refinada : elegida
   return {
-    x: refinada.x,
-    y: refinada.y,
+    x: final.x,
+    y: final.y,
     calidad: 1,
-    estado: { modelo: aprenderColor(refinada.colores), area: refinada.area, ultimas: [{ t, x: refinada.x, y: refinada.y }], perdidos: 0 },
+    estado: { modelo: aprenderColor(final.colores), area: final.area, ultimas: [{ t, x: final.x, y: final.y }], perdidos: 0 },
   }
 }
 

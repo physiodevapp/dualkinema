@@ -52,7 +52,30 @@ describe('aprenderMarcador', () => {
 
   it('avisa si la zona de ese color es demasiado grande para ser un gomet', () => {
     const grande = dibujarFrame(W, H, [{ x: 150, y: 120, r: 80, rgb: AZUL }])
-    expect(() => aprenderMarcador(lector(grande), W, H, 0, 150, 120)).toThrow(/demasiado grande/)
+    expect(() => aprenderMarcador(lector(grande), W, H, 0, 150, 120)).toThrow(/se confunde con lo que lo rodea/)
+  })
+
+  // Caso real del usuario: con una tolerancia fija, la piel entraba en la mancha.
+  it.each([
+    ['rojo', [210, 45, 55]],
+    ['rojo oscuro', [170, 30, 40]],
+    ['naranja', [235, 110, 40]],
+  ] as const)('gomet %s sobre piel: lo separa de la piel', (_, rgb) => {
+    const piel = dibujarFrame(W, H, [{ x: 150.5, y: 120.5, r: 9, rgb }], { fondo: [205, 160, 135] })
+    const r = aprenderMarcador(lector(piel), W, H, 0, 152, 119)
+    expect(Math.hypot(r.x - 150.5, r.y - 120.5)).toBeLessThan(0.5)
+    expect(r.estado.area).toBeLessThan(Math.PI * 11 * 11)
+  })
+
+  it('gomet rojo sobre piel: se sigue sin escaparse a la piel', () => {
+    const pos = (t: number): Disco[] => [{ x: 120 + 60 * t, y: 120 + 20 * t, r: 9, rgb: [210, 45, 55] }]
+    let e = aprenderMarcador(lector(dibujarFrame(W, H, pos(0), { fondo: [205, 160, 135] })), W, H, 0, 120, 120).estado
+    for (let i = 1; i < 30; i++) {
+      const t = i / 30
+      const r = seguir(e, lector(dibujarFrame(W, H, pos(t), { fondo: [205, 160, 135], semilla: i })), W, H, t)
+      e = r.estado
+      expect(Math.hypot(r.x - pos(t)[0]!.x, r.y - pos(t)[0]!.y)).toBeLessThan(0.5)
+    }
   })
 })
 

@@ -12,6 +12,8 @@ export interface Mancha {
   readonly distanciaMedia: number
   /** Colores de sus píxeles, para readaptar el modelo. */
   readonly colores: readonly Hsv[]
+  /** Rectángulo que la contiene, en px de la imagen (no del frame): [x0, y0, x1, y1] inclusive. */
+  readonly caja: readonly [number, number, number, number]
 }
 
 /** Umbral de distancia de color: un píxel es «del gomet» por debajo de esto. */
@@ -44,6 +46,10 @@ export function buscarManchas(img: Imagen, modelo: ModeloColor, umbral = UMBRAL_
     let sx = 0
     let sy = 0
     let sd = 0
+    let cx0 = ancho
+    let cy0 = alto
+    let cx1 = 0
+    let cy1 = 0
     const colores: Hsv[] = []
     while (tope > 0) {
       const i = pila[--tope]!
@@ -53,6 +59,10 @@ export function buscarManchas(img: Imagen, modelo: ModeloColor, umbral = UMBRAL_
       // Peso 1 en el núcleo y decreciente hacia el borde (píxeles mezclados con el fondo).
       const w = d < umbral / 2 ? 1 : 2 - (2 * d) / umbral
       area++
+      if (px < cx0) cx0 = px
+      if (px > cx1) cx1 = px
+      if (py < cy0) cy0 = py
+      if (py > cy1) cy1 = py
       sw += w
       sx += w * px
       sy += w * py
@@ -75,7 +85,7 @@ export function buscarManchas(img: Imagen, modelo: ModeloColor, umbral = UMBRAL_
     }
     if (area < AREA_MINIMA) continue
     // +0,5: centro del píxel, para que el centroide sea subpíxel sin sesgo.
-    resultado.push({ area, x: img.x0 + sx / sw + 0.5, y: img.y0 + sy / sw + 0.5, distanciaMedia: sd / area, colores })
+    resultado.push({ area, x: img.x0 + sx / sw + 0.5, y: img.y0 + sy / sw + 0.5, distanciaMedia: sd / area, colores, caja: [cx0, cy0, cx1, cy1] })
   }
   return resultado
 }

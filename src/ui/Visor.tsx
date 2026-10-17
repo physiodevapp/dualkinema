@@ -76,6 +76,8 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
   const [mostrado, setMostrado] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<{ texto: string; irA?: number } | null>(null)
+  // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
+  const [errorToque, setErrorToque] = useState<string | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(ids[0] ?? null)
   const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
@@ -213,12 +215,13 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
       const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, t, x, y)
       trayectorias.current.get(seleccionado)![mostrado] = { t, x: r.x, y: r.y, calidad: 1, editadoManual: true }
       setAviso(null)
+      setErrorToque(null)
       setVersion((v) => v + 1)
       // Siguiente marcador que falte en este frame.
       const falta = ids.find((id) => id !== seleccionado && !valida(muestra(id, mostrado)))
       setSeleccionado(falta ?? null)
     } catch (e) {
-      setAviso({ texto: e instanceof ErrorMarcado ? e.message : `No se ha podido marcar: ${String(e)}` })
+      setErrorToque(e instanceof ErrorMarcado ? e.message : `No se ha podido marcar: ${String(e)}`)
     }
   }
 
@@ -316,6 +319,9 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
     return anguloArticular(articulacion, puntos)
   }, [version, mostrado, ids, muestra, orientacion, articulacion])
 
+  // Redondeado a la décima que se muestra (+ 0 evita «−0,0»), para que la etiqueta
+  // (flexión / hiperextensión) concuerde con el número visible.
+  const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
   const est = useMemo(() => estadisticas(tabla), [tabla])
   const t = mostrado === null ? null : tabla.tiempos[mostrado]!
   const siguiendo = seguimiento.estado === 'siguiendo'
@@ -334,6 +340,24 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
           />
           {mostrado === null && !error && (
             <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
+          )}
+          {seleccionado && !siguiendo && (
+            <p className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-fondo/85 px-2 py-1 text-sm">
+              <span
+                className="size-3 rounded-full"
+                style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
+              />
+              Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
+            </p>
+          )}
+          {errorToque && (
+            <button
+              type="button"
+              onClick={() => setErrorToque(null)}
+              className="absolute inset-x-2 bottom-2 rounded-md border border-red-400/60 bg-fondo/90 p-2 text-left text-sm text-red-200"
+            >
+              {errorToque} <span className="text-texto-2">(toca para cerrar)</span>
+            </button>
           )}
         </div>
 
@@ -460,9 +484,9 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
           <div className="flex items-baseline justify-between border-t border-borde pt-3">
             <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>
             <span className="font-mono text-2xl">
-              {Number.isNaN(angulo) ? '—' : `${fmt(angulo, 1)}°`}
-              {!Number.isNaN(angulo) && (
-                <span className="ml-2 text-sm text-texto-2">{angulo >= 0 ? articulacion.positivo : articulacion.negativo}</span>
+              {Number.isNaN(angulo) ? '—' : `${fmt(anguloRedondeado, 1)}°`}
+              {anguloRedondeado !== 0 && !Number.isNaN(angulo) && (
+                <span className="ml-2 text-sm text-texto-2">{anguloRedondeado > 0 ? articulacion.positivo : articulacion.negativo}</span>
               )}
             </span>
           </div>
