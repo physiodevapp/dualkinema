@@ -1,0 +1,124 @@
+# CLAUDE.md — dualkinema
+
+Guía para Claude Code al trabajar en este repositorio.
+
+## Qué es
+**dualkinema** es una web app standalone para análisis cinemático diferido a partir de vídeo, siguiendo marcadores colocados sobre la persona (gomets de colores o bolitas reflectantes). Admite una o dos vistas sincronizadas (frontal y lateral) y, en fases avanzadas, reconstrucción 3D. Uso clínico, docente y de investigación en fisioterapia.
+
+Es un proyecto independiente de PhysiQ, aunque comparte autor, sistema de diseño y parte del conocimiento de **physiq-kinematics** (medición en directo sin marcadores, integrada en el hub de PhysiQ). Ver "Código de partida" más abajo.
+
+## Usuario y entorno
+- El usuario (Edu, fisioterapeuta y desarrollador web) trabaja **solo desde un móvil Android** con pantalla y teclado externos. No tiene entorno de desarrollo local.
+- Toda prueba se hace en **Chrome para Android** sobre una versión desplegada. Cada cambio que deba probarse tiene que quedar desplegado y con la URL indicada.
+- La interfaz debe funcionar bien con táctil a ancho de móvil y también en pantalla externa.
+
+## Modelo recomendado por tipo de tarea
+
+Antes de empezar cada tarea:
+1. Clasifícala según la tabla.
+2. Compara con el modelo con el que estás funcionando.
+3. **Si no coincide, no empieces.** Indica el tipo de tarea y el modelo recomendado, y espera a que el usuario cambie de modelo con `/model` o confirme que quiere seguir con el actual.
+4. Si coincide, empieza sin preguntar.
+
+Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
+
+| Tipo de tarea | Modelo |
+|---|---|
+| Arquitectura, modelo de datos, plan de una fase | Opus 5.5 (o Fable 5.1) |
+| Revisión de código heredado de physiq-kinematics antes de incorporarlo | Opus 5.5 (o Fable 5.1) |
+| Algoritmo de seguimiento de marcadores | Opus 5.5 (o Fable 5.1) |
+| Cálculo numérico: filtros, derivadas, ángulos, calibración | Opus 5.5 (o Fable 5.1) |
+| Sincronización de relojes, alineación por audio, DLT/3D, corrección de lente | Opus 5.5 (o Fable 5.1) |
+| Depurar un fallo que no se resuelve en un intento | Opus 5.5 (o Fable 5.1) |
+| Revisión del código al cerrar cada fase | Opus 5.5 (o Fable 5.1) |
+| Interfaz, estilos, maquetación | Sonnet 5.5 |
+| Exportación (CSV, imágenes), ajustes menores, textos | Sonnet 5.5 |
+| Correcciones pequeñas y bien localizadas, documentación | Sonnet 5.5 |
+
+## Restricciones no negociables
+- **Todo el procesamiento ocurre en el navegador.** Los vídeos y datos de pacientes nunca salen del dispositivo (RGPD). Nada de subir vídeos a servidores ni APIs externas.
+- El único backend permitido es para **emparejar móviles** (señalización en tiempo real: Supabase Realtime o WebRTC). Por ese canal solo viajan mensajes de control y marcas de tiempo, nunca vídeo ni datos clínicos.
+- Cargar librerías o binarios WASM desde una CDN está permitido (no envía datos), pero valora alojarlos en el propio sitio si se busca funcionamiento sin conexión.
+- Solo recursos gratuitos.
+
+## Stack
+- **Vite + React + TypeScript**. React solo para la interfaz.
+- **Núcleo de procesamiento en módulos TypeScript puros, sin dependencias de React ni del DOM** (`src/core/`): seguimiento, calibración, filtros, ángulos, sincronización, DLT. Debe poder probarse de forma aislada y reutilizarse en otros proyectos (por ejemplo, importarlo algún día desde physiq-kinematics).
+- **Web Workers** para el trabajo pesado por frame (seguimiento sobre píxeles), no para cálculos triviales.
+- OpenCV.js para seguimiento y calibración de cámara, cargado de forma diferida (es pesado).
+- MediaPipe Tasks Vision (PoseLandmarker) como modo opcional sin marcadores.
+- Vitest para el núcleo: todo cálculo numérico lleva tests con casos de valor conocido.
+- Persistencia local en IndexedDB, con esquema propio de dualkinema (no el de PhysiQ).
+- Estas decisiones pueden revisarse en la fase 1 si hay buenos motivos; si cambian, actualiza este archivo.
+
+## Despliegue
+- Producción: GitHub Pages desde `main` mediante GitHub Actions (`base: '/dualkinema/'` en Vite).
+- Como nunca se trabaja directamente en `main`, el usuario necesita probar las ramas antes de fusionar. En la fase 1, configura **despliegues de previsualización por rama o PR** con un servicio gratuito (por ejemplo, Cloudflare Pages) e indica siempre la URL de previsualización.
+
+## Convenciones de Git (las mismas que en los demás repos del usuario)
+- Todo cambio en una rama `feat/<descripción>` o `fix/<descripción>` y se fusiona mediante PR. **Nunca hacer push directo a `main`.**
+- Formato de commit:
+  ```
+  git commit -m "título corto en imperativo" -m "descripción si hace falta"
+  ```
+  Título de unas 72 letras como máximo; cuerpo solo cuando aporte contexto.
+- **No añadir líneas de coautoría** en los commits.
+- Commits pequeños y descriptivos.
+
+## Sistema de diseño (familia PhysiQ)
+- Fuentes: Outfit (texto), DM Serif Display (marca y títulos), DM Mono (etiquetas y valores numéricos).
+- Iconos: `@heroicons/react/24/outline`, nunca sólidos.
+- Bordes: `rounded-2xl` en paneles, `rounded-md` en botones.
+- Modo oscuro por defecto.
+- Color de acento propio de dualkinema, a definir en la fase 1 (distinto del `#5dadec` de physiq-kinematics).
+
+## Modelo de datos (pensado para 3D desde el principio)
+- Una **sesión** contiene una o más **vistas** (vídeos) con su desfase temporal respecto a la referencia.
+- Un **modelo de marcadores** define qué marcadores existen (identificador, nombre anatómico, color esperado) y qué **articulaciones** se calculan a partir de ellos. Es configurable, no está fijado en el código.
+- Cada **marcador** tiene un identificador común a todas las vistas.
+- Cada vista guarda, por marcador, una trayectoria 2D: lista de `{t (s), x, y (px), calidad, editadoManual}`.
+- Todo cálculo trabaja con **tiempo en segundos** (tiempo del vídeo), no con número de frame ni con `Date.now()`: los móviles graban con fps variable.
+- La calibración (escala 2D, DLT o parámetros de lente) se guarda por vista.
+- El cálculo de ángulos no depende del origen de los puntos: debe aceptar igual marcadores seguidos que puntos de MediaPipe.
+
+## Código de partida: physiq-kinematics
+
+Repo: `physiodevapp/physiq-kinematics`. Contiene piezas útiles, pero **no se copian tal cual**. Este proyecto es la ocasión de revisar la arquitectura y el análisis. Cada vez que una fase necesite una pieza de allí:
+
+1. Lee el código original y entiende qué resuelve.
+2. Evalúa si su diseño sirve para un análisis diferido, con marcadores, varias vistas y 3D futuro, o si responde a supuestos del modo en directo.
+3. Propón al usuario qué se conserva, qué se rediseña y por qué, **antes de escribir la versión nueva**.
+4. Escribe la versión nueva en el núcleo, con tests.
+
+Piezas reutilizables y puntos ya detectados para revisar:
+
+- **Cálculo de ángulos** (`public/workers/jointWorker.js`, `utils/joint.ts`, `utils/pose.ts`):
+  - La convención clínica de cada ángulo está repartida en banderas `invert`, cambios de signo según orientación y articulación (p. ej. la rodilla) y un ajuste de +360° al cruzar la vertical. Debería ser una **definición declarativa por articulación** (segmentos, plano, cero anatómico, sentido positivo) con tests que la fijen.
+  - Solo contempla 2D; diseñar la interfaz para que el mismo cálculo admita 3D.
+  - Las articulaciones están ligadas a los nombres de puntos de MediaPipe; aquí deben salir del modelo de marcadores.
+  - Usa un Web Worker para unas pocas operaciones por frame: en análisis diferido probablemente no compensa.
+- **Suavizado**: media móvil de N frames. Depende de los fps, introduce retraso y no es apropiada para derivar velocidades y aceleraciones. Sustituir por un **Butterworth paso bajo de fase cero** (filtrado ida y vuelta) con frecuencia de corte en Hz.
+- **Marcas de tiempo**: se generan con `Date.now()` al calcular. Aquí, siempre tiempo del vídeo.
+- **Gráfica** (`components/AngleGraph`): pensada para directo (búfer fijo de 300 puntos, eje X por índice, rango Y fijo en grados, colores derivados de un hash del nombre). Reutilizar ideas visuales, pero con eje X en segundos, varias series y vistas, cursor sincronizado con el vídeo y una paleta accesible y estable.
+- **Proveedor de MediaPipe** (`providers/PoseDetector.tsx`): reutilizable para el modo sin marcadores, desacoplado del contexto de cámara en directo y aplicado sobre frames de vídeo.
+- **Documentación**: en physiq-kinematics el README y el CLAUDE.md siguen hablando de TensorFlow.js aunque el código ya usa MediaPipe Tasks. Aquí, mantener este archivo y el README al día en el mismo PR que el cambio.
+
+Lo que **no** se trae: integración con el hub (`postMessage`, `BroadcastChannel`), el esquema de sesión compartido de PhysiQ en IndexedDB, rutas fijadas como `/physiq/kinematics` ni la interfaz centrada en la cámara en directo.
+
+Si durante el trabajo detectas otras mejoras de arquitectura o de análisis (en el código heredado o en el propio dualkinema), propónlas de forma explícita en el momento en que la fase las toque, en lugar de arrastrar el diseño existente por inercia.
+
+## Plan por fases
+1. **Base y prototipo**: estructura del proyecto, despliegue con previsualizaciones, carga de un vídeo, avance frame a frame, marcar 3 gomets, seguimiento por color, ángulo articular con la nueva definición declarativa y gráfica en segundos.
+2. **Calibración y cálculos**: escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos, exportación CSV.
+3. **Dos vistas**: carga de dos vídeos, sincronización por evento visual o por audio, línea de tiempo y cursor comunes, gráficas superpuestas.
+4. **Grabación con dos móviles**: emparejamiento por código/QR, sincronización de relojes, inicio programado, pitido de referencia y ajuste fino por audio.
+5. **3D**: calibración DLT con objeto de puntos conocidos, reconstrucción 3D y ángulos articulares reales.
+6. **Corrección de lente, modo sin marcadores comparativo y validación**.
+
+Trabaja **una fase cada vez**. No adelantes funcionalidad de fases futuras salvo lo necesario para no bloquearlas.
+
+## Forma de trabajar
+- Al terminar cada tarea probable, indica la URL de previsualización y **qué debe probar el usuario** (lista corta y concreta: qué vídeo grabar, qué tocar, qué debería ver).
+- El ajuste de umbrales y la robustez del seguimiento dependen de vídeos reales del usuario: pide ejemplos cuando haga falta en lugar de suponer.
+- Al cerrar una fase: revisión de código, actualización de este archivo con lo decidido y lista de limitaciones conocidas.
+- Explica las decisiones técnicas brevemente; el usuario sabe programar, pero los conceptos de biomecánica computacional pueden necesitar contexto.
