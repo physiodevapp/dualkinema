@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pendiente de empezar: paso 1 (pruebas e2e).
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Paso 1 (pruebas e2e) hecho; siguiente: paso 2 (persistencia).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -106,15 +106,15 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 
 **[D7]** ¿Formato para Excel en español (separador `;` y coma decimal) o el internacional (`,` y punto)? Propongo el de Excel en español por defecto y el otro como opción.
 
-## 8. Pruebas en navegador en el repositorio [D8]
+## 8. Pruebas en navegador en el repositorio [D8] — hecho (paso 1)
 
-Las pruebas de punta a punta de la fase 1 se hicieron en la sesión, fuera del repo (limitación 12). **Propuesta:** `tests/e2e/` con:
-- el generador de vídeos sintéticos (Node + ffmpeg);
-- los guiones de Playwright: frame exacto, seguimiento y ángulo frente a la verdad, gomet tapado, gráfica.
-
-Además, un trabajo de CI que las ejecute en cada PR. GitHub Actions puede instalar ffmpeg y Chromium.
-
-**[D8]** ¿Las metemos en la CI o solo como herramienta local para las sesiones? Recomiendo la CI: tarda unos minutos y evita regresiones como el umbral incoherente que encontró la revisión.
+`tests/e2e/` (con su `LEEME.md`) y un trabajo `e2e` en la CI, en paralelo a `comprobar`:
+- Generador de vídeos sintéticos con Node + ffmpeg. El de «frame exacto» codifica el número de frame en bloques blancos y negros, así que no depende de ninguna fuente del sistema.
+- 20 pruebas: frame exacto con fps variable y fotogramas clave, teclado, marcado, seguimiento con gomets verdes y rojos (ángulo medido frente al real, tolerancia 0,5°), gráfica, huecos, escritorio y consola sin errores.
+- Dos roturas hechas a propósito (signo de la rodilla invertido; la gráfica salta 5 frames de más) son detectadas.
+- Se localizan los elementos por rol, texto o `data-testid`.
+- **Fallo real encontrado al escribirlas:** el mensaje de error de marcado salía superpuesto al vídeo y en un móvil tapaba casi toda la imagen; el siguiente toque, aunque fuera sobre el gomet, caía en el mensaje en vez de marcar. Ahora sale debajo del vídeo y una prueba comprueba que no se solapen.
+- Límite: el Chromium de Playwright no decodifica H.264/HEVC, así que los vídeos de móvil reales siguen probándose a mano.
 
 ---
 

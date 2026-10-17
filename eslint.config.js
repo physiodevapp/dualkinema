@@ -29,6 +29,12 @@ export default tseslint.config(
     },
   },
   {
+    // Pruebas en navegador: Node (servidor, ffmpeg) y, dentro de page.evaluate, el navegador.
+    files: ['tests/**/*.mjs'],
+    extends: [js.configs.recommended],
+    languageOptions: { ecmaVersion: 2023, globals: { ...globals.node, ...globals.browser } },
+  },
+  {
     files: ['vite.config.ts', 'eslint.config.js'],
     languageOptions: { globals: globals.node },
   },

@@ -54,7 +54,8 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 - MediaPipe Tasks Vision (PoseLandmarker) como modo opcional sin marcadores.
 - Vitest para el núcleo: todo cálculo numérico lleva tests con casos de valor conocido.
 - Frontera del núcleo vigilada en dos sitios: `tsconfig.core.json` compila `src/core` sin la librería DOM ni tipos de Node, y ESLint (`no-restricted-imports`) impide que importe React o algo de `ui/`, `media/` o `workers/`.
-- Comandos: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`. La CI (`.github/workflows/ci.yml`) los ejecuta en cada PR y en `main`.
+- Comandos: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run test:e2e`. La CI (`.github/workflows/ci.yml`) ejecuta los cuatro primeros (trabajo `comprobar`) y las pruebas en navegador (trabajo `e2e`) en cada PR y en `main`.
+- Pruebas en navegador (`tests/e2e/`, leer su `LEEME.md`): Playwright + Chromium con vídeos sintéticos generados con ffmpeg y verdad conocida (ángulo y posición de cada gomet en cada frame). Cubren lo que Vitest no ve: frame exacto, seguimiento de punta a punta, gráfica, huecos. **Toda tarea que toque el visor, el seguimiento, el worker o la gráfica ejecuta `npm run build && npm run test:e2e` antes de abrir el PR.** Los elementos se localizan por rol, texto o `data-testid`, nunca por clases de estilo; un resultado numérico se compara con la verdad del vídeo, no con un valor «que sale». H.264 y HEVC reales no se pueden probar ahí (el Chromium de Playwright no los trae): se prueban en el móvil del usuario.
 - Persistencia local en IndexedDB, con esquema propio de dualkinema (no el de PhysiQ).
 - Estas decisiones pueden revisarse en la fase 1 si hay buenos motivos; si cambian, actualiza este archivo.
 
