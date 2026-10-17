@@ -1,0 +1,29 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Outfit', system-ui, sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+  --font-mono: 'DM Mono', ui-monospace, monospace;
+
+  --color-fondo: #0f1115;
+  --color-panel: #181b21;
+  --color-borde: #2a2f38;
+  --color-texto: #e8e6e3;
+  --color-texto-2: #a3a7ae;
+  --color-acento: #f2a65a;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}

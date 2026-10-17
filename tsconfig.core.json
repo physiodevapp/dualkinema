@@ -1,0 +1,15 @@
+{
+  // Núcleo: sin DOM ni tipos de Node. Si algo de src/core usa window,
+  // document, HTMLVideoElement… la comprobación de tipos falla aquí.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "outDir": "node_modules/.tmp/core",
+    "tsBuildInfoFile": "node_modules/.tmp/core.tsbuildinfo",
+    "lib": ["ES2023"],
+    "types": []
+  },
+  "include": ["src/core"]
+}

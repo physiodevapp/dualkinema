@@ -1,0 +1,17 @@
+{
+  // Despliegue en Cloudflare Workers con archivos estáticos (sin código de servidor).
+  // Workers Builds: `main` → `npx wrangler deploy` (producción); el resto de
+  // ramas → `npx wrangler preview` (previsualización por rama).
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dualkinema",
+  "compatibility_date": "2026-10-13",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "workers_dev": true,
+  "preview_urls": true,
+  // Obligatorio para `wrangler preview` aunque vaya vacío: aquí irían variables
+  // o bindings propios de las previsualizaciones (no hay ninguno).
+  "previews": {}
+}

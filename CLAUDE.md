@@ -45,18 +45,28 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 - **Vite + React + TypeScript**. React solo para la interfaz.
 - **Núcleo de procesamiento en módulos TypeScript puros, sin dependencias de React ni del DOM** (`src/core/`): seguimiento, calibración, filtros, ángulos, sincronización, DLT. Debe poder probarse de forma aislada y reutilizarse en otros proyectos (por ejemplo, importarlo algún día desde physiq-kinematics).
 - **Web Workers** para el trabajo pesado por frame (seguimiento sobre píxeles), no para cálculos triviales.
-- OpenCV.js para seguimiento y calibración de cámara, cargado de forma diferida (es pesado).
+- Vídeo leído con **WebCodecs + Mediabunny** (demultiplexado MP4/MOV, tiempo real de cada frame, también el audio para la fase 3). Nunca `<video>.currentTime` como fuente de tiempos (decisión D3 de la fase 1).
+- Seguimiento de marcadores en **TypeScript puro** dentro de `src/core/tracking`, ejecutado en un worker. OpenCV.js no se usa en la fase 1 (8–10 MB que no aportan para umbralizar color en una ventana); queda para calibración de cámara y corrección de lente, cargado de forma diferida (decisión D5).
+- Gráficas con **uPlot**.
 - MediaPipe Tasks Vision (PoseLandmarker) como modo opcional sin marcadores.
 - Vitest para el núcleo: todo cálculo numérico lleva tests con casos de valor conocido.
+- Frontera del núcleo vigilada en dos sitios: `tsconfig.core.json` compila `src/core` sin la librería DOM ni tipos de Node, y ESLint (`no-restricted-imports`) impide que importe React o algo de `ui/`, `media/` o `workers/`.
+- Comandos: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`. La CI (`.github/workflows/ci.yml`) los ejecuta en cada PR y en `main`.
 - Persistencia local en IndexedDB, con esquema propio de dualkinema (no el de PhysiQ).
 - Estas decisiones pueden revisarse en la fase 1 si hay buenos motivos; si cambian, actualiza este archivo.
 
 ## Despliegue
-- Producción: GitHub Pages desde `main` mediante GitHub Actions (`base: '/dualkinema/'` en Vite).
-- Como nunca se trabaja directamente en `main`, el usuario necesita probar las ramas antes de fusionar. En la fase 1, configura **despliegues de previsualización por rama o PR** con un servicio gratuito (por ejemplo, Cloudflare Pages) e indica siempre la URL de previsualización.
+- **Cloudflare Workers con archivos estáticos** (Workers Builds conectado al repositorio, sin secretos en el repo), para producción y previsualizaciones. Decisión D2 de la fase 1, ajustada: Cloudflare Pages aparece como «legacy» en el panel, así que se usa su sustituto. Sin código de servidor: solo los archivos de `dist/`.
+  - Configuración en `wrangler.jsonc` (nombre `dualkinema`, `assets.directory: ./dist`, modo SPA, bloque `previews: {}`, que `wrangler preview` exige aunque vaya vacío). En Cloudflare: comando de build `npm run build`; despliegue `npx wrangler deploy`; previsualización `npx wrangler preview`; *Enable Preview Builds* activado. Base de Vite `/`.
+  - Direcciones públicas activadas a mano en el panel (*dualkinema → Domains → Worker URL*: interruptores **Production** y **Preview**). Sin ellas el build sale bien pero el PR dice «No Preview URL».
+  - Producción: `main` → `https://dualkinema.edu-gamboa-rodriguez.workers.dev`.
+  - Previsualización de cada rama: `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`, con la rama en minúsculas y los caracteres que no sean letras ni números cambiados por `-` (p. ej. `feat/visor` → `feat-visor-dualkinema.edu-gamboa-rodriguez.workers.dev`). Cloudflare la publica también como comentario en el PR. Indica siempre esta URL al terminar una tarea.
+  - La app muestra al pie la rama y el commit con que se construyó (`WORKERS_CI_BRANCH`, `WORKERS_CI_COMMIT_SHA`), para comprobar que la previsualización abierta es la última.
+  - Cabeceras en `public/_headers` (Workers las aplica a los archivos estáticos; permitirá COOP/COEP si algún día hace falta `SharedArrayBuffer`).
+  - Desde el entorno en la nube de Claude Code, `*.workers.dev` puede no ser accesible: la comprobación en el navegador la hace el usuario.
 
 ## Convenciones de Git (las mismas que en los demás repos del usuario)
-- Todo cambio en una rama `feat/<descripción>` o `fix/<descripción>` y se fusiona mediante PR. **Nunca hacer push directo a `main`.**
+- Todo cambio en una rama `feat/<descripción>` o `fix/<descripción>` (o la rama `claude/…` que asigne una sesión de Claude Code en la nube) y se fusiona mediante PR. **Nunca hacer push directo a `main`.** (Única excepción: el commit inicial que creó `main`, autorizado por el usuario).
 - Formato de commit:
   ```
   git commit -m "título corto en imperativo" -m "descripción si hace falta"
@@ -70,7 +80,7 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 - Iconos: `@heroicons/react/24/outline`, nunca sólidos.
 - Bordes: `rounded-2xl` en paneles, `rounded-md` en botones.
 - Modo oscuro por defecto.
-- Color de acento propio de dualkinema, a definir en la fase 1 (distinto del `#5dadec` de physiq-kinematics).
+- Color de acento de dualkinema: ámbar **`#f2a65a`** (decisión D6), distinto del `#5dadec` de physiq-kinematics y de los colores habituales de gomet. Tokens de color en `@theme` de `src/styles.css` (`fondo`, `panel`, `borde`, `texto`, `texto-2`, `acento`); usar esos, no colores sueltos.
 
 ## Modelo de datos (pensado para 3D desde el principio)
 - Una **sesión** contiene una o más **vistas** (vídeos) con su desfase temporal respecto a la referencia.
