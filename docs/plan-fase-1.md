@@ -1,6 +1,6 @@
 # Plan de la fase 1: base y prototipo
 
-Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). Pasos 1 (esqueleto), 2 (núcleo de ángulos), 3 (visor frame a frame) y 4 (marcado y seguimiento por color) fusionados. En curso: paso 5 (gráfica y cursor sincronizado).
+Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). **Fase 1 cerrada** (pasos 1–6). Limitaciones conocidas al final de este documento; siguiente fase en `docs/plan-fase-2.md`.
 
 Objetivo de la fase (CLAUDE.md): estructura del proyecto, despliegue con previsualizaciones, carga de un vídeo, avance frame a frame, marcar 3 gomets, seguimiento por color, ángulo articular con la definición declarativa nueva y gráfica en segundos.
 
@@ -259,3 +259,51 @@ Modelos (tabla de CLAUDE.md): pasos 2, 3, 4 y 6 → Opus; paso 5 mixto (la sincr
 | D4 | Persistencia | Fuera de la fase 1 (sesión en memoria) |
 | D5 | Seguimiento | TypeScript puro sin OpenCV en la fase 1; OpenCV para calibración más adelante (cambio de stack respecto a CLAUDE.md) |
 | D6 | Color de acento | Ámbar `#f2a65a` |
+
+---
+
+## 12. Cierre de la fase 1
+
+### Revisión de código (paso 6)
+
+Revisado todo `src/`, unas 2.900 líneas. Fallos encontrados y corregidos:
+
+- **Umbral de calidad incoherente (fallo real).** El seguidor acepta detecciones con calidad entre 0,3 y 0,5 para no perder la continuidad, pero el análisis (ángulos, franja y gráfica) solo usa las de 0,5 o más. Esos frames salían en rojo y sin ángulo mientras el resumen decía «sin huecos». Ahora el recuento de huecos (`core/seguimiento/huecos.ts`, con tests) usa el mismo criterio que el análisis y los llama «detección dudosa, descartada».
+- **Clave del visor por nombre de archivo.** Reabrir un archivo con el mismo nombre reutilizaba el estado anterior. Ahora cada apertura tiene su identificador.
+- **Frames anteriores al de partida en el worker.** Si el decodificador devolvía alguno anterior, no se descartaba, y aprender el gomet en otro frame daría posiciones falsas. Ahora se descarta, como ya hacía el visor.
+- **`interest-cohort` en `public/_headers`.** Directiva retirada que Chrome marca como error en la consola. Quitada.
+- Un comentario desfasado en `aprenderMarcador`.
+
+### Qué se ha comprobado con vídeos reales
+
+Vídeos del usuario, H.264 desde un Android, en Chrome/Brave para Android:
+
+- **Visor:** 4–6 ms por frame hacia delante y unos 270 ms al saltar.
+- **Seguimiento con gomets verdes:** 603 frames sin huecos, unos 86–88° de flexión en sentadilla y −4,7° de pie.
+- **Gráfica:** arrastre suave en ambos sentidos.
+- **Gomets rojos sobre piel con camiseta salmón:** fallaban. Llevó a separar la piel del gomet y a recomendar verde o azul (`docs/grabacion.md`).
+
+### Limitaciones conocidas
+
+1. **Sin persistencia.** Recargar la página pierde el marcado y el seguimiento (D4 dejó la persistencia para la fase 2).
+2. **Sin exportación.** Los datos solo se ven en pantalla.
+3. **Un solo modelo:** rodilla sagital con 3 gomets.
+   - No hay editor de modelos.
+   - La vista frontal existe en el núcleo (con tests) pero no en la interfaz.
+4. **Ángulo sin filtrar.** El ruido del seguimiento pasa tal cual: no hay Butterworth, ni velocidades, ni aceleraciones.
+5. **El cero depende de dónde estén los gomets.** De pie salió −4,7°, y −7,9° entre repeticiones: los gomets no caen sobre los ejes articulares, y la piel se mueve sobre el hueso.
+6. **Sin calibración.** Los ángulos se miden en el plano de la imagen:
+   - Si la persona no está de perfil puro a la cámara, hay error de proyección.
+   - No hay escala en metros ni corrección de lente.
+7. **Retroceder frame a frame es lento** (200–400 ms): cada paso atrás decodifica desde el fotograma clave anterior.
+8. **Corrección manual mínima:**
+   - Colocar un gomet a mano en un frame no corrige los siguientes, y el seguidor no lo usa como ancla.
+   - «Seguir desde aquí» descarta lo seguido después de ese frame (lo marcado a mano se conserva).
+9. **Color de los gomets.**
+   - Rojos y naranjas sobre piel fallan.
+   - Gomets del mismo color que se tocan quedan sin posición mientras se tocan.
+   - Las bolitas reflectantes no están ajustadas.
+10. **Rendimiento con vídeos grandes sin probar.** Los frames se decodifican a resolución completa; con 4K o vídeos largos no se han medido ni el tiempo ni la memoria.
+11. **HEVC según el navegador.** Si el códec no se puede decodificar, se avisa con un mensaje.
+12. **Las pruebas en navegador no están en el repositorio.** Las pruebas de punta a punta con Playwright y los vídeos sintéticos generados con ffmpeg se hicieron en la sesión, fuera del repo. La CI solo ejecuta lint, tipos, tests unitarios y build.
+13. **Pocas pruebas reales:** 2–3 vídeos de un mismo usuario, un solo móvil Android y ningún iPhone.

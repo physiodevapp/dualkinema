@@ -79,7 +79,7 @@ const ESCALAS = [1, 1.5, 2, 3, 4] as const
 /**
  * Aprende un gomet a partir de un toque en (x, y) en el instante t.
  *
- * 1. Toma el color de los píxeles bajo el dedo (3 × 3).
+ * 1. Toma como color de partida el de los píxeles más saturados cerca del toque.
  * 2. Prueba tolerancias de color de menor a mayor y se queda con la mayor que
  *    aún da una mancha con forma de gomet alrededor del toque. Con una
  *    tolerancia fija, un gomet rojo sobre piel se «escapaba» por la piel.

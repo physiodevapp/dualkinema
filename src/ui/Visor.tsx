@@ -13,7 +13,8 @@ import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
 import type { Vec3 } from '../core/geometria/vector'
 import type { IdMarcador, Muestra2D } from '../core/modelo/tipos'
 import type { LeerVentana } from '../core/seguimiento/imagen'
-import { aprenderMarcador, ErrorMarcado, type MotivoPerdido } from '../core/seguimiento/seguidor'
+import type { MotivoHueco } from '../core/seguimiento/huecos'
+import { aprenderMarcador, ErrorMarcado } from '../core/seguimiento/seguidor'
 import { resumirSerie } from '../core/graficas/rango'
 import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
@@ -56,16 +57,17 @@ function lectorDeCanvas(c: HTMLCanvasElement | OffscreenCanvas): LeerVentana {
   }
 }
 
-const NOMBRE_MOTIVO: Record<MotivoPerdido, string> = {
+const NOMBRE_MOTIVO: Record<MotivoHueco, string> = {
   sinColor: 'sin su color en la zona',
   tamano: 'mancha de tamaño distinto',
   calidad: 'lejos de lo esperado o ambiguo',
   conflicto: 'junto a otro gomet',
+  dudoso: 'detección dudosa, descartada',
 }
 
 function describirMotivos(h: Hueco): string {
   const fmt = (n: number) => n.toFixed(1).replace('.', ',')
-  return (Object.entries(h.motivos) as [MotivoPerdido, number][])
+  return (Object.entries(h.motivos) as [MotivoHueco, number][])
     .sort((a, b) => b[1] - a[1])
     .map(([m, n]) => {
       const area = m === 'tamano' && h.areaMin !== undefined ? ` (área ${fmt(h.areaMin)}–${fmt(h.areaMax!)}× la del gomet)` : ''
@@ -190,7 +192,7 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
           setAviso({
             texto:
               `${m.motivo === 'final' ? 'Seguimiento completado' : 'Seguimiento parado'}, con huecos: ` +
-              m.huecos.map((h) => `${nombre(h.id)} no se encontró en ${h.frames} frame${h.frames === 1 ? '' : 's'}`).join('; ') +
+              m.huecos.map((h) => `${nombre(h.id)} no tiene posición fiable en ${h.frames} frame${h.frames === 1 ? '' : 's'}`).join('; ') +
               '. Son los frames en rojo de la franja y no se rellenan. Si en alguno sí se ve el gomet, tócalo ahí y pulsa «Seguir desde aquí».',
             detalle: m.huecos.map((h) => `${nombre(h.id)}: ${describirMotivos(h)}`).join('\n'),
             irA: primero,

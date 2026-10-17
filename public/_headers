@@ -1,7 +1,7 @@
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
-  Permissions-Policy: camera=(self), microphone=(self), geolocation=(), interest-cohort=()
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=()
 
 # Vite pone un hash en el nombre de estos archivos: si cambian, cambia el nombre.
 /assets/*
