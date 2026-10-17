@@ -1,0 +1,81 @@
+import { describe, expect, it } from 'vitest'
+import { anguloConSigno, desenrollar, normalizarGrados } from './angulo'
+import { vec3 } from './vector'
+
+const Z = vec3(0, 0, 1)
+
+describe('anguloConSigno', () => {
+  it('es positivo en sentido antihorario alrededor de la normal', () => {
+    expect(anguloConSigno(vec3(1, 0), vec3(0, 1), Z)).toBeCloseTo(90)
+    expect(anguloConSigno(vec3(1, 0), vec3(0, -1), Z)).toBeCloseTo(-90)
+  })
+
+  it('cambia de signo si se invierte la normal', () => {
+    expect(anguloConSigno(vec3(1, 0), vec3(0, 1), vec3(0, 0, -1))).toBeCloseTo(-90)
+  })
+
+  it('da 0 con vectores alineados y 180 con opuestos', () => {
+    expect(anguloConSigno(vec3(2, 3), vec3(4, 6), Z)).toBeCloseTo(0)
+    expect(anguloConSigno(vec3(1, 0), vec3(-1, 0), Z)).toBeCloseTo(180)
+  })
+
+  it('no depende de la longitud de los vectores', () => {
+    expect(anguloConSigno(vec3(0.001, 0), vec3(500, 500), Z)).toBeCloseTo(45)
+  })
+
+  it('ignora la componente paralela a la normal (proyecta en el plano)', () => {
+    expect(anguloConSigno(vec3(1, 0, 7), vec3(0, 1, -3), Z)).toBeCloseTo(90)
+  })
+
+  it('devuelve NaN, nunca 0, si el ángulo no está definido', () => {
+    expect(anguloConSigno(vec3(0, 0), vec3(1, 0), Z)).toBeNaN()
+    expect(anguloConSigno(vec3(1, 0), vec3(0, 0), Z)).toBeNaN()
+    expect(anguloConSigno(vec3(0, 0, 1), vec3(1, 0), Z)).toBeNaN()
+  })
+})
+
+describe('normalizarGrados', () => {
+  it.each([
+    [0, 0],
+    [180, 180],
+    [-180, 180],
+    [190, -170],
+    [-190, 170],
+    [540, 180],
+    [-721, -1],
+  ])('%d° → %d°', (entrada, salida) => {
+    expect(normalizarGrados(entrada)).toBeCloseTo(salida)
+  })
+})
+
+describe('desenrollar', () => {
+  it('quita el salto al cruzar ±180°', () => {
+    expect(desenrollar([170, 179, -179, -170])).toEqual([170, 179, 181, 190])
+  })
+
+  it('funciona también al bajar', () => {
+    expect(desenrollar([-170, -179, 179])).toEqual([-170, -179, -181])
+  })
+
+  it('conserva los huecos sin perder la continuidad', () => {
+    const r = desenrollar([170, NaN, -175])
+    expect(r[0]).toBe(170)
+    expect(r[1]).toBeNaN()
+    expect(r[2]).toBe(185)
+  })
+
+  it('no toca una serie sin saltos', () => {
+    expect(desenrollar([0, 10, 20, 10])).toEqual([0, 10, 20, 10])
+  })
+})
+
+describe('anguloConSigno con una normal cualquiera', () => {
+  it('mide en el plano perpendicular a la normal, aunque no sea el plano xy', () => {
+    // Plano yz (normal = +x): de +y a +z es +90°.
+    expect(anguloConSigno(vec3(5, 1, 0), vec3(-2, 0, 1), vec3(3, 0, 0))).toBeCloseTo(90)
+  })
+
+  it('no devuelve −0', () => {
+    expect(Object.is(anguloConSigno(vec3(0, -1), vec3(0, -2), vec3(0, 0, 1)), -0)).toBe(false)
+  })
+})

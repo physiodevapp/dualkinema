@@ -90,6 +90,7 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 - Todo cálculo trabaja con **tiempo en segundos** (tiempo del vídeo), no con número de frame ni con `Date.now()`: los móviles graban con fps variable.
 - La calibración (escala 2D, DLT o parámetros de lente) se guarda por vista.
 - El cálculo de ángulos no depende del origen de los puntos: debe aceptar igual marcadores seguidos que puntos de MediaPipe.
+- Implementación (`src/core`): tipos en `modelo/tipos.ts`; ángulo con signo, normalización y desenrollado en `geometria/angulo.ts`; paso de imagen al marco canónico de la vista en `geometria/canonico.ts` (único sitio donde se cambia de convención); definición declarativa, cálculo y catálogo de articulaciones en `articulaciones/`. La convención de cada articulación (segmentos en sentido distal, `signo`, `cero`) está comentada en `articulaciones/catalogo.ts` y fijada por `catalogo.test.ts`: cualquier cambio de convención debe cambiar ese test a propósito. Detalle en `docs/plan-fase-1.md`, §7.
 
 ## Código de partida: physiq-kinematics
 
