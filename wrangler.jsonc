@@ -10,5 +10,8 @@
     "not_found_handling": "single-page-application"
   },
   "workers_dev": true,
-  "preview_urls": true
+  "preview_urls": true,
+  // Obligatorio para `wrangler preview` aunque vaya vacío: aquí irían variables
+  // o bindings propios de las previsualizaciones (no hay ninguno).
+  "previews": {}
 }

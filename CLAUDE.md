@@ -57,7 +57,7 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 
 ## Despliegue
 - **Cloudflare Workers con archivos estáticos** (Workers Builds conectado al repositorio, sin secretos en el repo), para producción y previsualizaciones. Decisión D2 de la fase 1, ajustada: Cloudflare Pages aparece como «legacy» en el panel, así que se usa su sustituto. Sin código de servidor: solo los archivos de `dist/`.
-  - Configuración en `wrangler.jsonc` (nombre `dualkinema`, `assets.directory: ./dist`, modo SPA). En Cloudflare: comando de build `npm run build`; despliegue `npx wrangler deploy`; previsualización `npx wrangler preview`; *Enable Preview Builds* activado. Base de Vite `/`.
+  - Configuración en `wrangler.jsonc` (nombre `dualkinema`, `assets.directory: ./dist`, modo SPA, bloque `previews: {}`, que `wrangler preview` exige aunque vaya vacío). En Cloudflare: comando de build `npm run build`; despliegue `npx wrangler deploy`; previsualización `npx wrangler preview`; *Enable Preview Builds* activado. Base de Vite `/`.
   - Producción: `main` → `https://dualkinema.edu-gamboa-rodriguez.workers.dev`.
   - Previsualización de cada rama: `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`, con la rama en minúsculas y los caracteres que no sean letras ni números cambiados por `-` (p. ej. `feat/visor` → `feat-visor-dualkinema.edu-gamboa-rodriguez.workers.dev`). Cloudflare la publica también como comentario en el PR. Indica siempre esta URL al terminar una tarea.
   - La app muestra al pie la rama y el commit con que se construyó (`WORKERS_CI_BRANCH`, `WORKERS_CI_COMMIT_SHA`), para comprobar que la previsualización abierta es la última.
