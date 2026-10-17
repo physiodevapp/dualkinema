@@ -4,6 +4,8 @@ import {
   ChevronDoubleRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CheckIcon,
+  ExclamationTriangleIcon,
   PlayIcon,
   StopIcon,
 } from '@heroicons/react/24/outline'
@@ -11,7 +13,7 @@ import { anguloArticular, CALIDAD_MINIMA, serieAngular } from '../core/articulac
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
 import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
 import type { Vec3 } from '../core/geometria/vector'
-import type { IdMarcador, Muestra2D } from '../core/modelo/tipos'
+import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import type { LeerVentana } from '../core/seguimiento/imagen'
 import type { MotivoHueco } from '../core/seguimiento/huecos'
 import { aprenderMarcador, ErrorMarcado } from '../core/seguimiento/seguidor'
@@ -20,10 +22,12 @@ import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/ta
 import type { VideoAbierto } from '../media/video'
 import type { AlWorker, DelWorker, Hueco } from '../workers/protocolo'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
+import { huellaDe } from './sesion'
 import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import GraficaAngulo from './visor/GraficaAngulo'
 import LienzoVideo from './visor/LienzoVideo'
+import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
 const SALTO = 10
 const ESTELA = 20 // frames de trayectoria dibujados hacia atrás
@@ -78,14 +82,40 @@ function describirMotivos(h: Hueco): string {
 
 type Seguimiento = { estado: 'parado' } | { estado: 'siguiendo'; progreso: number }
 
-export default function Visor({ video, orientacion }: { video: VideoAbierto; orientacion: OrientacionVista }) {
+const hora = (d: Date) => d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+function TextoGuardado({ g }: { g: EstadoGuardado }) {
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-texto-2" data-testid="guardado" aria-live="polite">
+      {g.estado === 'guardado' && <CheckIcon className="size-4 text-acento" />}
+      {g.estado === 'error' && <ExclamationTriangleIcon className="size-4 text-red-300" />}
+      {g.estado === 'nada' && 'Se guarda solo en este dispositivo en cuanto marques algo.'}
+      {g.estado === 'pendiente' && 'Guardando en este dispositivo…'}
+      {g.estado === 'guardado' && `Guardado en este dispositivo a las ${hora(g.hora)}`}
+      {g.estado === 'error' && <span className="text-red-300">No se ha podido guardar: {g.mensaje}</span>}
+    </p>
+  )
+}
+
+interface Props {
+  video: VideoAbierto
+  orientacion: OrientacionVista
+  sesion: SesionAbierta
+  /** Al recuperar una sesión: su modelo y sus trayectorias, tal como se guardaron. */
+  modelo?: ModeloMarcadores
+  inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
+  avisoInicial?: string
+}
+
+export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, avisoInicial }: Props) {
   const lienzo = useRef<HTMLCanvasElement>(null)
   const { info, tabla } = video
   const total = tabla.tiempos.length
 
   // Modelo de la fase 1: rodilla con 3 gomets en la pierna que ve la cámara.
+  // Una sesión recuperada usa el que se guardó con ella.
   const lado = orientacion.plano === 'sagital' ? ladoVisible(orientacion) : 'izq'
-  const modelo = useMemo(() => modeloRodilla3(lado), [lado])
+  const modelo = useMemo(() => modeloGuardado ?? modeloRodilla3(lado), [modeloGuardado, lado])
   const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
   const articulacion = modelo.articulaciones[0]!
 
@@ -93,19 +123,21 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
   // sitio y `version` avisa a React de que hay que repintar.
   const trayectorias = useRef<Map<IdMarcador, (Muestra2D | undefined)[]>>(new Map())
   const [version, setVersion] = useState(0)
-  if (trayectorias.current.size === 0) for (const id of ids) trayectorias.current.set(id, new Array(total))
+  if (trayectorias.current.size === 0) for (const id of ids) trayectorias.current.set(id, inicial?.get(id) ?? new Array(total))
   const muestra = useCallback((id: IdMarcador, i: number) => trayectorias.current.get(id)?.[i], [])
 
   const [deseado, setDeseado] = useState(0)
   const [mostrado, setMostrado] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(null)
+  const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(avisoInicial ? { texto: avisoInicial } : null)
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
   const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string } | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
-  const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(ids[0] ?? null)
+  const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(inicial ? null : (ids[0] ?? null))
   const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
   const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
+  const huella = useMemo(() => huellaDe(video), [video])
+  const guardado = useGuardado({ sesion, huella, orientacion, modelo, trayectorias, version })
 
   // Pintado «el último gana».
   const pedido = useRef(0)
@@ -450,6 +482,8 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
             <ChevronDoubleRightIcon className="size-6" />
           </BotonPaso>
         </div>
+
+        <TextoGuardado g={guardado} />
 
         <section className="rounded-2xl border border-borde bg-panel p-3">
           <div className="mb-1 flex items-baseline justify-between gap-2 px-1">

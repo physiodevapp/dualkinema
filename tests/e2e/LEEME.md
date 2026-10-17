@@ -29,12 +29,14 @@ Cada vídeo de rodilla va con un `.json` con la verdad: tiempo, flexión real y 
 - **Seguimiento:** sin huecos; ángulo medido frente al real (tolerancia 0,5°; lo medido en la fase 1 fue ≤ 0,1°), en varios frames, también tras los huecos de fps.
 - **Gráfica:** máximo y mínimo; tocar y arrastrar salta al frame más cercano (±1).
 - **Huecos:** el aviso, la gráfica y el recuento coinciden con los frames realmente tapados; durante el hueco no hay ángulo; «Ir al primer frame con hueco».
+- **Persistencia:** marcar y seguir, recargar, ver la sesión en la lista, reabrir el mismo vídeo y recuperarla (mismo ángulo mostrado en cada frame comparado, mismo resumen de la gráfica, mismas marcas a mano); seguir trabajando actualiza la misma sesión; «Continuar» con otro vídeo lo rechaza y con el suyo recupera; el mismo vídeo con otro nombre se reconoce avisando; un cambio hecho justo antes de recargar no se pierde; «Empezar de cero» y borrar con confirmación.
 - **Escritorio** (1280 px): sin desbordes.
 - **Consola:** ninguna prueba produce errores de consola ni de página.
 
 ## Convenciones
 
-- Se localizan los elementos por rol, por texto o por `data-testid` (`lienzo`, `capa`, `posicion`, `angulo`, `aviso`, `error-toque`, `resumen-grafica`), nunca por clases de estilo.
+- Se localizan los elementos por rol, por texto o por `data-testid` (`lienzo`, `capa`, `posicion`, `angulo`, `aviso`, `error-toque`, `resumen-grafica`, `guardado`, `sesion-guardada`, `sesion-ilegible`, `candidata`), nunca por clases de estilo.
+- Cada página se abre en su propio contexto del navegador, así que empieza con IndexedDB vacío; recargar la misma página lo conserva. Para esperar a que algo esté guardado, `esperarGuardado()` mira IndexedDB y no solo el texto «Guardado…».
 - La página se abre con `locale: 'es-ES'` (uPlot falla con el idioma del Chromium de la nube, `en-US@posix`).
 - Una prueba nueva que dependa de un resultado numérico debe usar la verdad conocida del vídeo, no un valor «que sale».
 - Se han comprobado a propósito dos roturas (signo de la rodilla invertido; la gráfica salta 5 frames de más) y las pruebas las detectan.
