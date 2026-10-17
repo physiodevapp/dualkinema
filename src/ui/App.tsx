@@ -1,96 +1,94 @@
-import { useEffect, useState } from 'react'
-import { CheckCircleIcon, FilmIcon, QuestionMarkCircleIcon, XCircleIcon } from '@heroicons/react/24/outline'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowPathIcon, FilmIcon } from '@heroicons/react/24/outline'
+import type { OrientacionVista } from '../core/geometria/canonico'
+import type { VideoAbierto } from '../media/video'
+import Compatibilidad from './compatibilidad'
+import ElegirOrientacion from './ElegirOrientacion'
+import Visor from './Visor'
 
-type Estado = boolean | null // null = comprobando
-
-// Lo que necesitarán los próximos PR: decodificar vídeo frame a frame
-// (WebCodecs), dibujar fuera del hilo principal y workers de módulo.
-const comprobaciones: { nombre: string; ok: Estado }[] = [
-  { nombre: 'WebCodecs (VideoDecoder)', ok: typeof globalThis.VideoDecoder === 'function' },
-  { nombre: 'OffscreenCanvas', ok: typeof globalThis.OffscreenCanvas === 'function' },
-  { nombre: 'Web Workers', ok: typeof globalThis.Worker === 'function' },
-  { nombre: 'IndexedDB', ok: typeof globalThis.indexedDB === 'object' },
-]
-
-// Códecs habituales en vídeos de móvil. Las cadenas son perfiles típicos
-// (H.264 High 4.0, HEVC Main 4.0) a 1920×1080.
-const codecs = [
-  { nombre: 'Decodifica H.264 (la mayoría de Android)', codec: 'avc1.640028' },
-  { nombre: 'Decodifica HEVC / H.265 (iPhone y algunos Android)', codec: 'hvc1.1.6.L120.B0' },
-]
-
-async function decodifica(codec: string): Promise<boolean> {
-  if (typeof globalThis.VideoDecoder !== 'function') return false
-  try {
-    const r = await VideoDecoder.isConfigSupported({ codec, codedWidth: 1920, codedHeight: 1080 })
-    return r.supported === true
-  } catch {
-    return false
-  }
-}
-
-function Icono({ ok }: { ok: Estado }) {
-  if (ok === null) return <QuestionMarkCircleIcon className="size-5 shrink-0 text-texto-2" aria-label="comprobando" />
-  return ok ? (
-    <CheckCircleIcon className="size-5 shrink-0 text-emerald-400" aria-label="disponible" />
-  ) : (
-    <XCircleIcon className="size-5 shrink-0 text-red-400" aria-label="no disponible" />
-  )
-}
+type Estado =
+  | { fase: 'inicio'; error?: string }
+  | { fase: 'cargando'; nombre: string }
+  | { fase: 'orientacion'; video: VideoAbierto }
+  | { fase: 'visor'; video: VideoAbierto; orientacion: OrientacionVista }
 
 export default function App() {
-  const [codecsOk, setCodecsOk] = useState<Estado[]>(codecs.map(() => null))
+  const [estado, setEstado] = useState<Estado>({ fase: 'inicio' })
+  const selector = useRef<HTMLInputElement>(null)
+  const videoActual = estado.fase === 'orientacion' || estado.fase === 'visor' ? estado.video : null
 
+  // Cierra el vídeo anterior al cambiar de vídeo o al salir.
   useEffect(() => {
-    let vivo = true
-    Promise.all(codecs.map((c) => decodifica(c.codec))).then((r) => {
-      if (vivo) setCodecsOk(r)
-    })
-    return () => {
-      vivo = false
+    return () => void videoActual?.cerrar()
+  }, [videoActual])
+
+  const cargar = useCallback(async (archivo: File) => {
+    setEstado({ fase: 'cargando', nombre: archivo.name })
+    try {
+      // Mediabunny solo se descarga al abrir el primer vídeo: la portada carga rápido.
+      const { VideoAbierto } = await import('../media/video')
+      const video = await VideoAbierto.abrir(archivo)
+      setEstado({ fase: 'orientacion', video })
+    } catch (e) {
+      setEstado({ fase: 'inicio', error: e instanceof Error ? e.message : String(e) })
     }
   }, [])
 
-  const filas = [
-    ...comprobaciones,
-    ...codecs.map((c, i) => ({ nombre: c.nombre, ok: codecsOk[i] ?? null })),
-  ]
+  const botonCargar = (
+    <button
+      type="button"
+      onClick={() => selector.current?.click()}
+      disabled={estado.fase === 'cargando'}
+      className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
+    >
+      {videoActual ? <ArrowPathIcon className="size-5" /> : <FilmIcon className="size-5" />}
+      {videoActual ? 'Cambiar vídeo' : 'Cargar vídeo'}
+    </button>
+  )
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-6 px-4 py-8">
-      <header>
-        <h1 className="font-serif text-4xl">
+    <main className="mx-auto flex min-h-dvh max-w-6xl flex-col gap-6 px-4 py-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-serif text-3xl">
           dual<span className="text-acento">kinema</span>
         </h1>
-        <p className="mt-2 text-texto-2">
-          Análisis cinemático diferido a partir de vídeo con marcadores. Todo se procesa en este
-          dispositivo: los vídeos nunca salen de él.
-        </p>
+        {videoActual && botonCargar}
       </header>
 
-      <button
-        type="button"
-        disabled
-        className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
-      >
-        <FilmIcon className="size-5" />
-        Cargar vídeo
-        <span className="text-sm font-normal">(próximamente)</span>
-      </button>
+      <input
+        ref={selector}
+        type="file"
+        accept="video/*,.mp4,.mov,.m4v,.webm,.mkv"
+        className="hidden"
+        onChange={(e) => {
+          const archivo = e.target.files?.[0]
+          e.target.value = ''
+          if (archivo) void cargar(archivo)
+        }}
+      />
 
-      <section className="rounded-2xl border border-borde bg-panel p-4">
-        <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">
-          Compatibilidad de este navegador
-        </h2>
-        <ul className="mt-3 flex flex-col gap-2">
-          {filas.map(({ nombre, ok }) => (
-            <li key={nombre} className="flex items-start gap-2">
-              <Icono ok={ok} />
-              {nombre}
-            </li>
-          ))}
-        </ul>
-      </section>
+      {(estado.fase === 'inicio' || estado.fase === 'cargando') && (
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+          <p className="text-texto-2">
+            Análisis cinemático diferido a partir de vídeo con marcadores. Todo se procesa en este dispositivo: los
+            vídeos nunca salen de él.
+          </p>
+          {botonCargar}
+          {estado.fase === 'cargando' && <p className="text-texto-2">Leyendo «{estado.nombre}»…</p>}
+          {estado.fase === 'inicio' && estado.error && (
+            <p className="rounded-md border border-red-400/50 p-3 text-red-300">{estado.error}</p>
+          )}
+          <Compatibilidad />
+        </div>
+      )}
+
+      {estado.fase === 'orientacion' && (
+        <div className="mx-auto w-full max-w-xl">
+          <ElegirOrientacion onElegir={(orientacion) => setEstado({ fase: 'visor', video: estado.video, orientacion })} />
+        </div>
+      )}
+
+      {estado.fase === 'visor' && <Visor key={estado.video.info.nombre} video={estado.video} orientacion={estado.orientacion} />}
 
       <footer className="mt-auto font-mono text-xs text-texto-2">
         {__RAMA__} · {__COMMIT__}
