@@ -20,6 +20,8 @@ export interface SesionAbierta {
 
 export type EstadoGuardado =
   | { readonly estado: 'nada' }
+  /** Sesión recuperada y sin cambios desde entonces: ya está guardada. */
+  | { readonly estado: 'recuperado' }
   | { readonly estado: 'pendiente' }
   | { readonly estado: 'guardado'; readonly hora: Date }
   | { readonly estado: 'error'; readonly mensaje: string }
@@ -32,6 +34,8 @@ interface Opciones {
   readonly trayectorias: RefObject<Map<IdMarcador, (Muestra2D | undefined)[]>>
   /** Cambia con cada modificación de las trayectorias (el contador `version` del visor). */
   readonly version: number
+  /** La sesión viene de lo guardado (no es nueva). */
+  readonly recuperada: boolean
 }
 
 /**
@@ -40,8 +44,8 @@ interface Opciones {
  * seguida al ocultar la página (cambiar de app, apagar la pantalla) o al
  * cerrar el visor. No crea la sesión hasta que hay algo marcado.
  */
-export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias, version }: Opciones): EstadoGuardado {
-  const [estado, setEstado] = useState<EstadoGuardado>({ estado: 'nada' })
+export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias, version, recuperada }: Opciones): EstadoGuardado {
+  const [estado, setEstado] = useState<EstadoGuardado>({ estado: recuperada ? 'recuperado' : 'nada' })
   // La versión con que se montó ya está guardada (vacía o recuperada).
   const guardada = useRef(version)
   const actual = useRef(version)

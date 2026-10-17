@@ -87,9 +87,10 @@ const hora = (d: Date) => d.toLocaleTimeString('es-ES', { hour: '2-digit', minut
 function TextoGuardado({ g }: { g: EstadoGuardado }) {
   return (
     <p className="flex items-center gap-1.5 text-xs text-texto-2" data-testid="guardado" aria-live="polite">
-      {g.estado === 'guardado' && <CheckIcon className="size-4 text-acento" />}
+      {(g.estado === 'guardado' || g.estado === 'recuperado') && <CheckIcon className="size-4 text-acento" />}
       {g.estado === 'error' && <ExclamationTriangleIcon className="size-4 text-red-300" />}
       {g.estado === 'nada' && 'Se guarda solo en este dispositivo en cuanto marques algo.'}
+      {g.estado === 'recuperado' && 'Guardado en este dispositivo. Lo que cambies se guarda solo.'}
       {g.estado === 'pendiente' && 'Guardando en este dispositivo…'}
       {g.estado === 'guardado' && `Guardado en este dispositivo a las ${hora(g.hora)}`}
       {g.estado === 'error' && <span className="text-red-300">No se ha podido guardar: {g.mensaje}</span>}
@@ -137,7 +138,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
   const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
   const huella = useMemo(() => huellaDe(video), [video])
-  const guardado = useGuardado({ sesion, huella, orientacion, modelo, trayectorias, version })
+  const guardado = useGuardado({ sesion, huella, orientacion, modelo, trayectorias, version, recuperada: !!inicial })
 
   // Pintado «el último gana».
   const pedido = useRef(0)

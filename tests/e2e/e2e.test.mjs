@@ -317,6 +317,8 @@ describe('persistencia: marcar, seguir, recargar y recuperar', () => {
     await esperarQuieto(p)
     // Sin volver a preguntar la orientación: se guardó con la sesión.
     assert.match(await p.getByTestId('aviso').innerText(), /Trabajo recuperado/)
+    // Ya está guardado: no debe decir «en cuanto marques algo».
+    assert.match(await p.getByTestId('guardado').innerText(), /Guardado en este dispositivo\. Lo que cambies se guarda solo/)
     for (const [k, i] of FRAMES_A_COMPARAR.entries()) {
       await irAFrame(p, i)
       assert.equal(await p.getByTestId('angulo').innerText(), antes.angulos[k], `frame ${i + 1}`)
