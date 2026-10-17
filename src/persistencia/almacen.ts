@@ -22,6 +22,24 @@ let conexion: Promise<IDBDatabase> | null = null
 /** La base ya abierta, para crear transacciones sin esperar a ninguna promesa (ver guardarSesion). */
 let abierta: IDBDatabase | null = null
 
+function olvidar() {
+  conexion = null
+  abierta = null
+}
+
+/** Conexión cerrada por debajo: la operación se repite una vez con una nueva. */
+const esConexionCerrada = (e: unknown) => e instanceof DOMException && e.name === 'InvalidStateError'
+
+async function conBase<T>(operacion: (bd: IDBDatabase) => Promise<T>): Promise<T> {
+  try {
+    return await operacion(await abrir())
+  } catch (e) {
+    if (!esConexionCerrada(e)) throw e
+    olvidar()
+    return operacion(await abrir())
+  }
+}
+
 function abrir(): Promise<IDBDatabase> {
   conexion ??= new Promise<IDBDatabase>((resolver, rechazar) => {
     const peticion = indexedDB.open(NOMBRE_BD, VERSION_BD)
@@ -37,9 +55,11 @@ function abrir(): Promise<IDBDatabase> {
       // Otra pestaña con una versión más nueva de la app quiere actualizar la base.
       bd.onversionchange = () => {
         bd.close()
-        conexion = null
-        abierta = null
+        olvidar()
       }
+      // El navegador puede cerrar la conexión por su cuenta (en Android, con la
+      // app en segundo plano o al liberar almacenamiento): la siguiente operación abre otra.
+      bd.onclose = olvidar
       abierta = bd
       resolver(bd)
     }
@@ -75,8 +95,7 @@ export interface SesionIlegible {
 
 /** Todas las sesiones, la más reciente primero. Las que no se pueden leer van aparte, para poder borrarlas. */
 export async function listarSesiones(): Promise<{ sesiones: CabeceraSesion[]; ilegibles: SesionIlegible[] }> {
-  const bd = await abrir()
-  const todas = await resultado(bd.transaction(SESIONES).objectStore(SESIONES).getAll())
+  const todas = await conBase((bd) => resultado(bd.transaction(SESIONES).objectStore(SESIONES).getAll()))
   const sesiones: CabeceraSesion[] = []
   const ilegibles: SesionIlegible[] = []
   for (const registro of todas as unknown[]) {
@@ -98,9 +117,9 @@ export async function listarSesiones(): Promise<{ sesiones: CabeceraSesion[]; il
 
 /** Sesiones con alguna vista de este vídeo, la más reciente primero. */
 export async function buscarPorHuella(h: HuellaArchivo): Promise<{ cabecera: CabeceraSesion; coincidencia: Exclude<Coincidencia, 'distinta'> }[]> {
-  const bd = await abrir()
-  const indice = bd.transaction(SESIONES).objectStore(SESIONES).index(POR_CLAVE)
-  const registros = (await resultado(indice.getAll(claveHuella(h)))) as unknown[]
+  const registros = (await conBase((bd) =>
+    resultado(bd.transaction(SESIONES).objectStore(SESIONES).index(POR_CLAVE).getAll(claveHuella(h))),
+  )) as unknown[]
   const r: { cabecera: CabeceraSesion; coincidencia: Exclude<Coincidencia, 'distinta'> }[] = []
   for (const registro of registros) {
     const c = leerCabecera(registro)
@@ -114,12 +133,10 @@ export async function buscarPorHuella(h: HuellaArchivo): Promise<{ cabecera: Cab
 
 /** Cabecera y trayectorias de una sesión, validadas. */
 export async function leerSesion(id: string): Promise<{ cabecera: CabeceraSesion; datos: DatosSesion }> {
-  const bd = await abrir()
-  const tx = bd.transaction([SESIONES, TRAYECTORIAS])
-  const [c, d] = await Promise.all([
-    resultado(tx.objectStore(SESIONES).get(id)),
-    resultado(tx.objectStore(TRAYECTORIAS).get(id)),
-  ])
+  const [c, d] = await conBase((bd) => {
+    const tx = bd.transaction([SESIONES, TRAYECTORIAS])
+    return Promise.all([resultado(tx.objectStore(SESIONES).get(id)), resultado(tx.objectStore(TRAYECTORIAS).get(id))])
+  })
   if (c === undefined) throw new Error('La sesión ya no está guardada.')
   const cabecera = leerCabecera(c)
   if (!cabecera.ok) throw new Error(`No se puede abrir la sesión: ${cabecera.detalle}.`)
@@ -149,21 +166,26 @@ export function guardarSesion(cabecera: CabeceraSesion, datos: DatosSesion): Pro
       tx.commit()
       return terminada(tx)
     } catch (e) {
-      // Base cerrándose (otra pestaña la actualiza) o datos que no se pueden clonar.
-      abierta = null
-      conexion = null
       return Promise.reject(e)
     }
   }
-  return abierta ? escribir(abierta) : abrir().then(escribir)
+  if (!abierta) return abrir().then(escribir)
+  // Con la conexión cerrada por debajo, se reintenta con una nueva (ya sin la
+  // prisa de la página que se oculta: es lo más que se puede hacer).
+  return escribir(abierta).catch((e: unknown) => {
+    if (!esConexionCerrada(e)) throw e
+    olvidar()
+    return abrir().then(escribir)
+  })
 }
 
-export async function borrarSesion(id: string): Promise<void> {
-  const bd = await abrir()
-  const tx = bd.transaction([SESIONES, TRAYECTORIAS], 'readwrite')
-  tx.objectStore(SESIONES).delete(id)
-  tx.objectStore(TRAYECTORIAS).delete(id)
-  await terminada(tx)
+export function borrarSesion(id: string): Promise<void> {
+  return conBase((bd) => {
+    const tx = bd.transaction([SESIONES, TRAYECTORIAS], 'readwrite')
+    tx.objectStore(SESIONES).delete(id)
+    tx.objectStore(TRAYECTORIAS).delete(id)
+    return terminada(tx)
+  })
 }
 
 /**

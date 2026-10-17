@@ -20,7 +20,7 @@ type Estado =
   | { fase: 'inicio'; error?: string }
   | { fase: 'cargando'; nombre: string }
   | { fase: 'recuperar'; video: VideoAbierto; apertura: number; candidatas: Candidata[]; ocupado?: boolean; error?: string }
-  | { fase: 'orientacion'; video: VideoAbierto; apertura: number }
+  | { fase: 'orientacion'; video: VideoAbierto; apertura: number; aviso?: string }
   | {
       fase: 'visor'
       video: VideoAbierto
@@ -98,9 +98,16 @@ export default function App() {
         setEstado({ fase: 'visor', video, apertura, ...(await prepararRecuperacion(video, buscada)) })
         return
       }
-      // Si no se puede leer lo guardado, se abre igual: el vídeo no depende de ello.
-      const candidatas = await buscarPorHuella(huella).catch(() => [])
-      setEstado(candidatas.length ? { fase: 'recuperar', video, apertura, candidatas } : { fase: 'orientacion', video, apertura })
+      // Si no se puede leer lo guardado, se abre igual (el vídeo no depende de
+      // ello), pero se dice: si no, parece que no había nada y se empieza otra sesión sin saberlo.
+      let candidatas: Candidata[] = []
+      let aviso: string | undefined
+      try {
+        candidatas = await buscarPorHuella(huella)
+      } catch (e) {
+        aviso = `No se ha podido comprobar si hay trabajo guardado de este vídeo (${e instanceof Error ? e.message : String(e)}). Si lo había, vuelve a la portada y usa «Continuar» en la lista.`
+      }
+      setEstado(candidatas.length ? { fase: 'recuperar', video, apertura, candidatas } : { fase: 'orientacion', video, apertura, aviso })
     } catch (e) {
       void video?.cerrar()
       setEstado({ fase: 'inicio', error: e instanceof Error ? e.message : String(e) })
@@ -185,7 +192,8 @@ export default function App() {
       )}
 
       {estado.fase === 'orientacion' && (
-        <div className="mx-auto w-full max-w-xl">
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
+          {estado.aviso && <p className="rounded-md border border-red-400/50 p-3 text-sm text-red-300">{estado.aviso}</p>}
           <ElegirOrientacion
             onElegir={(orientacion) =>
               setEstado({ fase: 'visor', video: estado.video, apertura: estado.apertura, orientacion, sesion: sesionNueva(estado.video) })
