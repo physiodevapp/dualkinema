@@ -1,6 +1,6 @@
 # Plan de la fase 1: base y prototipo
 
-Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). Pasos 1 (esqueleto) y 2 (núcleo de ángulos) fusionados. En curso: paso 3 (visor frame a frame).
+Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). Pasos 1 (esqueleto), 2 (núcleo de ángulos) y 3 (visor frame a frame) fusionados. En curso: paso 4 (marcado y seguimiento por color).
 
 Objetivo de la fase (CLAUDE.md): estructura del proyecto, despliegue con previsualizaciones, carga de un vídeo, avance frame a frame, marcar 3 gomets, seguimiento por color, ángulo articular con la definición declarativa nueva y gráfica en segundos.
 
@@ -96,7 +96,7 @@ Persistencia (IndexedDB) **no entra en la fase 1**: la sesión vive en memoria y
 
 ## 6. Seguimiento por color [D5]
 
-CLAUDE.md prevé OpenCV.js. Para gomets de color en la fase 1 propongo **no cargar OpenCV todavía** y escribir el seguimiento en TypeScript puro dentro de `core/tracking`:
+CLAUDE.md prevé OpenCV.js. Para gomets de color en la fase 1 propongo **no cargar OpenCV todavía** y escribir el seguimiento en TypeScript puro dentro de `core/seguimiento`:
 
 - OpenCV.js pesa ~8–10 MB; para umbralizar color en una ventana pequeña y calcular un centroide no aporta nada y complica los tests.
 - En TypeScript puro se prueba con Vitest sobre imágenes sintéticas con el resultado exacto conocido.
@@ -111,7 +111,45 @@ Algoritmo, por marcador y frame:
 5. **Calidad (0–1):** combina parecido de color, tamaño y forma respecto al gomet inicial y distancia a la predicción. Por debajo de un umbral el frame queda marcado como *perdido* y no se inventa la posición.
 6. Si se pierde varios frames seguidos, se para y te pide que lo vuelvas a marcar a mano en ese frame; desde ahí sigue.
 
-Corrección manual: en cualquier frame puedes arrastrar un marcador; se guarda con `editadoManual: true` y el seguimiento puede relanzarse desde ahí. (La edición avanzada de trayectorias es de la fase 2; en la fase 1, lo mínimo para que el prototipo sea usable).
+### Cómo ha quedado (paso 4)
+
+- **Núcleo** (`src/core/seguimiento/`, puro y con tests sobre imágenes sintéticas con la posición real conocida):
+  - `color.ts`: HSV, distancia de color que pesa poco el brillo.
+  - `manchas.ts`: zonas conectadas y centroide subpíxel.
+  - `seguidor.ts`: aprender un gomet a partir de un toque, y seguirlo.
+  - `multiple.ts`: varios marcadores a la vez.
+- **Aprender un gomet:**
+  - Color de partida: los píxeles más saturados en un radio pequeño alrededor del toque. Así un toque en el borde del gomet, donde el color se mezcla con la piel (sobre todo con el 4:2:0 de los vídeos de móvil, que guarda el color a media resolución), no da un color a medias.
+  - Prueba tolerancias de menor a mayor y se queda con la mayor que aún da una mancha con forma de gomet. La forma se mide por momentos, sin depender del giro: alargamiento ≤ 2,5, relleno ≥ 0,75 y sin tocar el borde de la zona de búsqueda. Vale para gomets redondos y cuadrados girados.
+  - El color final se aprende con mediana y desviación absoluta mediana, para que el borde mezclado no lo ensanche.
+  - Si falla, el error sale **encima del vídeo** con un detalle técnico: color bajo el dedo y forma de la mancha.
+  - Historia: la primera versión fallaba con gomets rojos sobre piel en el móvil del usuario. Hay tests con rojo, rojo oscuro y naranja sobre piel, cuadrados girados, color 4:2:0 y toques en el borde.
+- **Seguir:**
+  - Busca en una ventana alrededor de la posición prevista, a velocidad constante en tiempo.
+  - Solo acepta manchas de tamaño plausible: entre 0,25× y 1,8× el gomet.
+  - La calidad combina distancia a la predicción, tamaño y color, y baja si hay otra candidata casi igual.
+  - El color y el tamaño se readaptan despacio con las buenas detecciones, para seguir los cambios de luz.
+- **Motivo de cada frame perdido** (diagnóstico sin ver el vídeo): sin su color en la zona, mancha de tamaño distinto (con el rango de área), lejos de lo esperado o ambiguo, o junto a otro gomet. El aviso final lo resume por marcador en «Por qué».
+- **Perdido:**
+  - Calidad 0 y posición NaN: nunca se inventa.
+  - No detiene el resto. Se sigue buscando, extrapolando la velocidad como mucho 0,3 s y con la ventana creciendo; si reaparece, se recupera.
+  - Los frames sin encontrar quedan como huecos en rojo en la franja, sin interpolar.
+- **Dos gomets del mismo color que se tocan** (misma mancha): ninguno tiene posición en esos frames, ni se duplica, ni se intercambian al separarse. Aun así, mejor gomets de colores distintos.
+- **Worker** (`src/workers/seguimiento.worker.ts`):
+  - Abre el mismo `File` con su propio Mediabunny, decodifica hacia delante desde el frame de partida y lee solo las ventanas de cada marcador.
+  - Al empezar vuelve a aprender cada gomet en ese frame, así que reanudar tras un cambio de luz parte de los colores actuales.
+  - Envía las muestras por lotes.
+- **Interfaz:**
+  - Un botón por marcador; tocar la imagen con una lupa sobre el dedo; «Seguir desde aquí», que descarta lo seguido después de ese frame salvo lo marcado a mano.
+  - Franja de estado por frame (seguido, a mano, hueco).
+  - Estela de los últimos frames y ángulo de la rodilla en directo.
+  - La pierna marcada sale de la orientación (mirando a la derecha → pierna izquierda).
+- **Corrección manual mínima:** elegir un marcador y tocar en cualquier frame lo coloca a mano (`editadoManual`). La edición avanzada de trayectorias es de la fase 2.
+- **Comprobado** con vídeos sintéticos codificados en VP9 (flexión de rodilla 0–90–0 con fps variable):
+  - Ángulo en pantalla frente al real: diferencia máxima de 0,06°.
+  - 120 frames seguidos en unos 2 s.
+  - Con un gomet tapado 8 frames, quedan exactamente esos 8 como huecos y se recupera solo.
+- **Pendiente para más adelante:** retroceder frame a frame es lento (se decodifica desde el fotograma clave anterior). Se arreglará con una caché de frames decodificados cuando la corrección manual lo necesite (fase 2), ajustando cuántos frames guardar según la memoria.
 
 Los umbrales iniciales serán una suposición; **necesitaré 2–3 vídeos reales tuyos** (ver §10) para ajustarlos.
 
@@ -199,7 +237,7 @@ Color de acento **[D6]**: propongo un ámbar `#f2a65a` (se distingue del azul de
 1. **Esqueleto**: Vite + React + TS + Tailwind, ESLint con la frontera de `core/`, Vitest, CI, deploy de producción, `_headers`, README. Página vacía con fuentes y tema. → primera URL de previsualización.
 2. **Núcleo de ángulos** (`geometry/`, `joints/`, `model/`) con tests. Sin interfaz.
 3. **Visor frame a frame** con WebCodecs: cargar vídeo, tabla de frames, avanzar/retroceder, tiempo exacto. → pruebas en tu móvil con varios vídeos (Android MP4, si puedes también un MOV de iPhone).
-4. **Seguimiento por color** (`core/tracking` con tests sintéticos + worker) y marcado de los 3 gomets.
+4. **Seguimiento por color** (`core/seguimiento` con tests sintéticos + worker) y marcado de los 3 gomets.
 5. **Gráfica y cursor sincronizado**; corrección manual mínima.
 6. **Cierre de fase**: revisión de código, CLAUDE.md actualizado con lo decidido, lista de limitaciones conocidas.
 

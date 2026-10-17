@@ -1,13 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
-import type { OrientacionVista } from '../core/geometria/canonico'
+import {
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PlayIcon,
+  StopIcon,
+} from '@heroicons/react/24/outline'
+import { anguloArticular, CALIDAD_MINIMA } from '../core/articulaciones/calculo'
+import { modeloRodilla3 } from '../core/articulaciones/catalogo'
+import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
+import type { Vec3 } from '../core/geometria/vector'
+import type { IdMarcador, Muestra2D } from '../core/modelo/tipos'
+import type { LeerVentana } from '../core/seguimiento/imagen'
+import { aprenderMarcador, ErrorMarcado, type MotivoPerdido } from '../core/seguimiento/seguidor'
 import { estadisticas, limitarIndice } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
+import type { AlWorker, DelWorker, Hueco } from '../workers/protocolo'
+import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { useRepetir } from './useRepetir'
+import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
+import LienzoVideo from './visor/LienzoVideo'
 
 const SALTO = 10
+const ESTELA = 20 // frames de trayectoria dibujados hacia atrás
 
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
+const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
 function BotonPaso({ etiqueta, accion, children }: { etiqueta: string; accion: () => void; children: React.ReactNode }) {
   const manejadores = useRepetir(accion)
@@ -24,19 +43,67 @@ function BotonPaso({ etiqueta, accion, children }: { etiqueta: string; accion: (
   )
 }
 
+function lectorDeCanvas(c: HTMLCanvasElement | OffscreenCanvas): LeerVentana {
+  const ctx = (c as HTMLCanvasElement).getContext('2d')
+  if (!ctx) throw new Error('No se pueden leer los píxeles del frame.')
+  return (v) => {
+    const d = ctx.getImageData(v.x, v.y, Math.max(1, v.ancho), Math.max(1, v.alto))
+    return { ancho: d.width, alto: d.height, datos: d.data, x0: v.x, y0: v.y }
+  }
+}
+
+const NOMBRE_MOTIVO: Record<MotivoPerdido, string> = {
+  sinColor: 'sin su color en la zona',
+  tamano: 'mancha de tamaño distinto',
+  calidad: 'lejos de lo esperado o ambiguo',
+  conflicto: 'junto a otro gomet',
+}
+
+function describirMotivos(h: Hueco): string {
+  const fmt = (n: number) => n.toFixed(1).replace('.', ',')
+  return (Object.entries(h.motivos) as [MotivoPerdido, number][])
+    .sort((a, b) => b[1] - a[1])
+    .map(([m, n]) => {
+      const area = m === 'tamano' && h.areaMin !== undefined ? ` (área ${fmt(h.areaMin)}–${fmt(h.areaMax!)}× la del gomet)` : ''
+      return `${n} ${NOMBRE_MOTIVO[m]}${area}`
+    })
+    .join(', ')
+}
+
+type Seguimiento = { estado: 'parado' } | { estado: 'siguiendo'; progreso: number }
+
 export default function Visor({ video, orientacion }: { video: VideoAbierto; orientacion: OrientacionVista }) {
   const lienzo = useRef<HTMLCanvasElement>(null)
-  const total = video.tabla.tiempos.length
+  const { info, tabla } = video
+  const total = tabla.tiempos.length
+
+  // Modelo de la fase 1: rodilla con 3 gomets en la pierna que ve la cámara.
+  const lado = orientacion.plano === 'sagital' ? ladoVisible(orientacion) : 'izq'
+  const modelo = useMemo(() => modeloRodilla3(lado), [lado])
+  const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
+  const articulacion = modelo.articulaciones[0]!
+
+  // Trayectorias: una posición (o nada) por frame y marcador. Se modifican en
+  // sitio y `version` avisa a React de que hay que repintar.
+  const trayectorias = useRef<Map<IdMarcador, (Muestra2D | undefined)[]>>(new Map())
+  const [version, setVersion] = useState(0)
+  if (trayectorias.current.size === 0) for (const id of ids) trayectorias.current.set(id, new Array(total))
+  const muestra = useCallback((id: IdMarcador, i: number) => trayectorias.current.get(id)?.[i], [])
+
   const [deseado, setDeseado] = useState(0)
   const [mostrado, setMostrado] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(null)
+  // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
+  const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string } | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
+  const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(ids[0] ?? null)
+  const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
+  const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
 
-  // Pintado «el último gana»: si llegan peticiones mientras se decodifica (botón
-  // mantenido, deslizador), se salta a la más reciente en vez de encolarlas.
+  // Pintado «el último gana».
   const pedido = useRef(0)
   const ocupado = useRef(false)
-
   const pintar = useCallback(async () => {
     if (ocupado.current) return
     ocupado.current = true
@@ -45,8 +112,8 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
         const i = pedido.current
         const inicio = performance.now()
         const frame = await video.frame(i)
-        const ctx = lienzo.current?.getContext('2d')
-        ctx?.drawImage(frame.canvas, 0, 0)
+        lienzo.current?.getContext('2d')?.drawImage(frame.canvas, 0, 0)
+        ultimoFrame.current = frame.canvas
         setMsDecodificar(performance.now() - inicio)
         setMostrado(i)
         setError(null)
@@ -66,11 +133,11 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
 
   const ir = useCallback(
     (i: number) => {
-      pedido.current = limitarIndice(video.tabla, i)
+      pedido.current = limitarIndice(tabla, i)
       setDeseado(pedido.current)
       void pintar()
     },
-    [video, pintar],
+    [tabla, pintar],
   )
   const mover = useCallback((d: number) => ir(pedido.current + d), [ir])
 
@@ -89,23 +156,230 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
     return () => window.removeEventListener('keydown', tecla)
   }, [mover, ir, total])
 
-  const est = useMemo(() => estadisticas(video.tabla), [video])
-  const { info } = video
-  const t = mostrado === null ? null : video.tabla.tiempos[mostrado]!
+  // ---- Worker de seguimiento ----
+  const worker = useRef<Worker | null>(null)
+  useEffect(() => {
+    const w = new Worker(new URL('../workers/seguimiento.worker.ts', import.meta.url), { type: 'module' })
+    worker.current = w
+    w.onmessage = (e: MessageEvent<DelWorker>) => {
+      const m = e.data
+      if (m.tipo === 'muestras') {
+        for (const f of m.lote) {
+          for (const mk of f.marcadores) {
+            const serie = trayectorias.current.get(mk.id)
+            if (!serie || serie[f.indice]?.editadoManual) continue
+            serie[f.indice] = { t: f.t, x: mk.x, y: mk.y, calidad: mk.calidad, editadoManual: false }
+          }
+        }
+        setSeguimiento({ estado: 'siguiendo', progreso: m.progreso })
+        setVersion((v) => v + 1)
+      } else if (m.tipo === 'fin') {
+        setSeguimiento({ estado: 'parado' })
+        const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((x) => x.id === id)?.nombre ?? id)
+        if (m.motivo === 'inicio') {
+          setAviso({
+            texto: `No reconozco ${m.sinReconocer.map(nombre).join(' ni ')} en este frame. Vuelve a tocarlo justo encima del gomet.`,
+          })
+          setSeleccionado(m.sinReconocer[0] ?? null)
+        } else if (m.huecos.length) {
+          const primero = Math.min(...m.huecos.map((h) => h.primero))
+          setAviso({
+            texto:
+              `${m.motivo === 'final' ? 'Seguimiento completado' : 'Seguimiento parado'}, con huecos: ` +
+              m.huecos.map((h) => `${nombre(h.id)} no se encontró en ${h.frames} frame${h.frames === 1 ? '' : 's'}`).join('; ') +
+              '. Son los frames en rojo de la franja y no se rellenan. Si en alguno sí se ve el gomet, tócalo ahí y pulsa «Seguir desde aquí».',
+            detalle: m.huecos.map((h) => `${nombre(h.id)}: ${describirMotivos(h)}`).join('\n'),
+            irA: primero,
+          })
+          setSeleccionado(m.huecos[0]!.id)
+        } else {
+          setAviso({ texto: m.motivo === 'final' ? 'Seguimiento completado hasta el final del vídeo, sin huecos.' : 'Seguimiento parado.' })
+        }
+      } else {
+        setSeguimiento({ estado: 'parado' })
+        setAviso({ texto: `Error en el seguimiento: ${m.mensaje}` })
+      }
+    }
+    return () => w.terminate()
+  }, [modelo, ir])
+
+  const posicionesEn = useCallback(
+    (i: number) => ids.map((id) => ({ id, m: muestra(id, i) })),
+    [ids, muestra],
+  )
+  const listoParaSeguir = mostrado !== null && posicionesEn(mostrado).every(({ m }) => valida(m))
+
+  const seguirDesdeAqui = () => {
+    if (mostrado === null || !listoParaSeguir) return
+    // Lo seguido antes a partir de aquí se descarta; lo marcado a mano se conserva.
+    for (const serie of trayectorias.current.values()) {
+      for (let i = mostrado + 1; i < total; i++) if (!serie[i]?.editadoManual) serie[i] = undefined
+    }
+    setVersion((v) => v + 1)
+    setAviso(null)
+    setSeguimiento({ estado: 'siguiendo', progreso: mostrado / Math.max(1, total - 1) })
+    const msg: AlWorker = {
+      tipo: 'seguir',
+      archivo: video.archivo,
+      desde: mostrado,
+      posiciones: posicionesEn(mostrado).map(({ id, m }) => ({ id, x: m!.x, y: m!.y })),
+    }
+    worker.current?.postMessage(msg)
+  }
+
+  const colocar = (x: number, y: number) => {
+    if (mostrado === null || !seleccionado || !ultimoFrame.current) return
+    const t = tabla.tiempos[mostrado]!
+    try {
+      const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, t, x, y)
+      trayectorias.current.get(seleccionado)![mostrado] = { t, x: r.x, y: r.y, calidad: 1, editadoManual: true }
+      setAviso(null)
+      setErrorToque(null)
+      setVersion((v) => v + 1)
+      // Siguiente marcador que falte en este frame.
+      const falta = ids.find((id) => id !== seleccionado && !valida(muestra(id, mostrado)))
+      setSeleccionado(falta ?? null)
+    } catch (e) {
+      setErrorToque(
+        e instanceof ErrorMarcado ? { texto: e.message, detalle: e.detalle } : { texto: `No se ha podido marcar: ${String(e)}` },
+      )
+    }
+  }
+
+  // ---- Capa de dibujo ----
+  const dibujar = useCallback(
+    (ctx: CanvasRenderingContext2D, escala: number) => {
+      void version
+      if (mostrado === null) return
+      const base = 2 * escala // 2 px de pantalla
+      // Segmentos de la articulación.
+      const p = (id: IdMarcador) => muestra(id, mostrado)
+      ctx.lineCap = 'round'
+      for (const s of [articulacion.proximal, articulacion.distal]) {
+        const a = p(s.desde)
+        const b = p(s.hasta)
+        if (!valida(a) || !valida(b)) continue
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+        ctx.lineWidth = base
+        ctx.beginPath()
+        ctx.moveTo(a.x, a.y)
+        ctx.lineTo(b.x, b.y)
+        ctx.stroke()
+      }
+      ids.forEach((id, k) => {
+        const color = COLORES_MARCADOR[k % COLORES_MARCADOR.length]!
+        // Estela de los últimos frames.
+        ctx.strokeStyle = color
+        ctx.lineWidth = base * 0.6
+        ctx.globalAlpha = 0.6
+        ctx.beginPath()
+        let empezado = false
+        for (let i = Math.max(0, mostrado - ESTELA); i <= mostrado; i++) {
+          const m = muestra(id, i)
+          if (!valida(m)) {
+            empezado = false
+            continue
+          }
+          if (empezado) ctx.lineTo(m.x, m.y)
+          else ctx.moveTo(m.x, m.y)
+          empezado = true
+        }
+        ctx.stroke()
+        ctx.globalAlpha = 1
+        const m = muestra(id, mostrado)
+        if (!valida(m)) return
+        ctx.lineWidth = base
+        ctx.strokeStyle = '#000'
+        ctx.beginPath()
+        ctx.arc(m.x, m.y, base * 4, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.strokeStyle = color
+        ctx.lineWidth = base * 0.7
+        ctx.beginPath()
+        ctx.arc(m.x, m.y, base * 4, 0, Math.PI * 2)
+        ctx.stroke()
+        if (m.editadoManual) {
+          ctx.fillStyle = color
+          ctx.beginPath()
+          ctx.arc(m.x, m.y, base * 1.2, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      })
+    },
+    [version, mostrado, ids, muestra, articulacion],
+  )
+
+  // ---- Estado por frame para la franja y ángulo actual ----
+  const estadosFrames = useMemo<EstadoFrame[]>(() => {
+    void version
+    const r: EstadoFrame[] = new Array(total)
+    for (let i = 0; i < total; i++) {
+      let hay = false
+      let perdido = false
+      let manual = false
+      for (const id of ids) {
+        const m = muestra(id, i)
+        if (!m) continue
+        hay = true
+        if (m.editadoManual) manual = true
+        else if (!valida(m)) perdido = true
+      }
+      r[i] = perdido ? 'perdido' : manual ? 'manual' : hay ? 'seguido' : 'vacio'
+    }
+    return r
+  }, [version, total, ids, muestra])
+
+  const angulo = useMemo(() => {
+    void version
+    if (mostrado === null) return NaN
+    const puntos = new Map<IdMarcador, Vec3>()
+    for (const id of ids) {
+      const m = muestra(id, mostrado)
+      if (valida(m)) puntos.set(id, aCanonico(m.x, m.y, orientacion))
+    }
+    return anguloArticular(articulacion, puntos)
+  }, [version, mostrado, ids, muestra, orientacion, articulacion])
+
+  // Redondeado a la décima que se muestra (+ 0 evita «−0,0»), para que la etiqueta
+  // (flexión / hiperextensión) concuerde con el número visible.
+  const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
+  const est = useMemo(() => estadisticas(tabla), [tabla])
+  const t = mostrado === null ? null : tabla.tiempos[mostrado]!
+  const siguiendo = seguimiento.estado === 'siguiendo'
 
   return (
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
       <div className="flex flex-col gap-3">
-        <div className="relative overflow-hidden rounded-2xl border border-borde bg-black">
-          <canvas
-            ref={lienzo}
-            width={info.ancho}
-            height={info.alto}
-            className="mx-auto block max-h-[60dvh] max-w-full"
-            style={{ aspectRatio: `${info.ancho} / ${info.alto}` }}
+        <div className="relative">
+          <LienzoVideo
+            ancho={info.ancho}
+            alto={info.alto}
+            lienzo={lienzo}
+            dibujar={dibujar}
+            interactivo={!!seleccionado && !siguiendo && mostrado === deseado}
+            onToque={colocar}
           />
           {mostrado === null && !error && (
             <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
+          )}
+          {seleccionado && !siguiendo && (
+            <p className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-fondo/85 px-2 py-1 text-sm">
+              <span
+                className="size-3 rounded-full"
+                style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
+              />
+              Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
+            </p>
+          )}
+          {errorToque && (
+            <button
+              type="button"
+              onClick={() => setErrorToque(null)}
+              className="absolute inset-x-2 bottom-2 rounded-md border border-red-400/60 bg-fondo/90 p-2 text-left text-sm text-red-200"
+            >
+              {errorToque.texto} <span className="text-texto-2">(toca para cerrar)</span>
+              {errorToque.detalle && <span className="mt-1 block font-mono text-xs text-texto-2">{errorToque.detalle}</span>}
+            </button>
           )}
         </div>
 
@@ -119,16 +393,19 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
           </span>
         </div>
 
-        <input
-          type="range"
-          min={0}
-          max={total - 1}
-          step={1}
-          value={deseado}
-          onChange={(e) => ir(Number(e.target.value))}
-          aria-label="Posición en el vídeo"
-          className="w-full accent-acento"
-        />
+        <div className="flex flex-col gap-1">
+          <input
+            type="range"
+            min={0}
+            max={total - 1}
+            step={1}
+            value={deseado}
+            onChange={(e) => ir(Number(e.target.value))}
+            aria-label="Posición en el vídeo"
+            className="w-full accent-acento"
+          />
+          <BandaFrames estados={estadosFrames} />
+        </div>
 
         <div className="flex gap-2">
           <BotonPaso etiqueta={`Retroceder ${SALTO} frames`} accion={() => mover(-SALTO)}>
@@ -144,39 +421,132 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
             <ChevronDoubleRightIcon className="size-6" />
           </BotonPaso>
         </div>
-        <p className="text-sm text-texto-2">
-          Mantén pulsado para avanzar seguido. Con teclado: ← → (Mayús: de {SALTO} en {SALTO}), Inicio, Fin.
-        </p>
 
         {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
       </div>
 
-      <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
-        <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
-        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-          <dt className="text-texto-2">Archivo</dt>
-          <dd className="truncate" title={info.nombre}>{info.nombre}</dd>
-          <dt className="text-texto-2">Formato</dt>
-          <dd>{info.formato} · {info.codec}</dd>
-          <dt className="text-texto-2">Tamaño</dt>
-          <dd>{info.ancho} × {info.alto} px{info.rotacion ? ` (girado ${info.rotacion}°)` : ''}</dd>
-          <dt className="text-texto-2">Duración</dt>
-          <dd>{fmt(info.duracion, 2)} s</dd>
-          <dt className="text-texto-2">Frames</dt>
-          <dd>{total}</dd>
-          <dt className="text-texto-2">fps medio</dt>
-          <dd>{Number.isNaN(est.fpsMedio) ? '—' : fmt(est.fpsMedio, 2)}</dd>
-          <dt className="text-texto-2">Entre frames</dt>
-          <dd>
-            {Number.isNaN(est.pasoMin) ? '—' : `${fmt(est.pasoMin * 1000, 1)}–${fmt(est.pasoMax * 1000, 1)} ms`}
-            {est.variable && <span className="text-acento"> · variable</span>}
-          </dd>
-          <dt className="text-texto-2">Persona</dt>
-          <dd>{orientacion.plano === 'sagital' ? `mira a la ${orientacion.mira}` : `vista desde ${orientacion.ve}`}</dd>
-          <dt className="text-texto-2">Decodificar</dt>
-          <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}</dd>
-        </dl>
-      </section>
+      <div className="flex flex-col gap-4">
+        <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Marcadores</h2>
+            <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
+            {modelo.marcadores.map((mk, k) => {
+              const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
+              const estado = valida(m) ? (m.editadoManual ? 'a mano' : 'seguido') : m ? 'perdido' : '—'
+              const activo = seleccionado === mk.id
+              return (
+                <button
+                  key={mk.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={activo}
+                  disabled={siguiendo}
+                  onClick={() => setSeleccionado(activo ? null : mk.id)}
+                  title={mk.nombre}
+                  className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
+                    {nombreCorto(mk.nombre)}
+                  </span>
+                  <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <p className="text-sm text-texto-2">
+            {siguiendo
+              ? 'Siguiendo los gomets…'
+              : seleccionado
+                ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa y suelta encima del gomet.`
+                : listoParaSeguir
+                  ? 'Los tres marcadores están en este frame: ya puedes seguir.'
+                  : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
+          </p>
+
+          {siguiendo ? (
+            <div className="flex flex-col gap-2">
+              <div className="h-2 overflow-hidden rounded-full bg-borde">
+                <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
+              </div>
+              <button
+                type="button"
+                onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
+                className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3"
+              >
+                <StopIcon className="size-5" /> Parar
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={seguirDesdeAqui}
+              disabled={!listoParaSeguir}
+              className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
+            >
+              <PlayIcon className="size-5" /> Seguir desde aquí
+            </button>
+          )}
+
+          {aviso && (
+            <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
+              <p>{aviso.texto}</p>
+              {aviso.detalle && (
+                <details className="text-texto-2">
+                  <summary className="cursor-pointer">Por qué (para diagnosticar)</summary>
+                  <pre className="mt-1 font-mono text-xs whitespace-pre-wrap">{aviso.detalle}</pre>
+                </details>
+              )}
+              {aviso.irA !== undefined && (
+                <button type="button" onClick={() => ir(aviso.irA!)} className="self-start rounded-md border border-borde px-3 py-2">
+                  Ir al primer frame con hueco ({aviso.irA + 1})
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-baseline justify-between border-t border-borde pt-3">
+            <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>
+            <span className="font-mono text-2xl">
+              {Number.isNaN(angulo) ? '—' : `${fmt(anguloRedondeado, 1)}°`}
+              {anguloRedondeado !== 0 && !Number.isNaN(angulo) && (
+                <span className="ml-2 text-sm text-texto-2">{anguloRedondeado > 0 ? articulacion.positivo : articulacion.negativo}</span>
+              )}
+            </span>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
+          <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
+          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt className="text-texto-2">Archivo</dt>
+            <dd className="truncate" title={info.nombre}>{info.nombre}</dd>
+            <dt className="text-texto-2">Formato</dt>
+            <dd>{info.formato} · {info.codec}</dd>
+            <dt className="text-texto-2">Tamaño</dt>
+            <dd>{info.ancho} × {info.alto} px{info.rotacion ? ` (girado ${info.rotacion}°)` : ''}</dd>
+            <dt className="text-texto-2">Duración</dt>
+            <dd>{fmt(info.duracion, 2)} s</dd>
+            <dt className="text-texto-2">Frames</dt>
+            <dd>{total}</dd>
+            <dt className="text-texto-2">fps medio</dt>
+            <dd>{Number.isNaN(est.fpsMedio) ? '—' : fmt(est.fpsMedio, 2)}</dd>
+            <dt className="text-texto-2">Entre frames</dt>
+            <dd>
+              {Number.isNaN(est.pasoMin) ? '—' : `${fmt(est.pasoMin * 1000, 1)}–${fmt(est.pasoMax * 1000, 1)} ms`}
+              {est.variable && <span className="text-acento"> · variable</span>}
+            </dd>
+            <dt className="text-texto-2">Persona</dt>
+            <dd>{orientacion.plano === 'sagital' ? `mira a la ${orientacion.mira}` : `vista desde ${orientacion.ve}`}</dd>
+            <dt className="text-texto-2">Decodificar</dt>
+            <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}</dd>
+          </dl>
+        </section>
+      </div>
     </div>
   )
 }
