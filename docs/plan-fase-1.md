@@ -1,6 +1,6 @@
 # Plan de la fase 1: base y prototipo
 
-Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). Paso 1 (esqueleto) fusionado. En curso: paso 2 (núcleo de ángulos).
+Estado: **decisiones D1–D6 aceptadas por el usuario** (2026-10-17). Pasos 1 (esqueleto) y 2 (núcleo de ángulos) fusionados. En curso: paso 3 (visor frame a frame).
 
 Objetivo de la fase (CLAUDE.md): estructura del proyecto, despliegue con previsualizaciones, carga de un vídeo, avance frame a frame, marcar 3 gomets, seguimiento por color, ángulo articular con la definición declarativa nueva y gráfica en segundos.
 
