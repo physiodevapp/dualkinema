@@ -6,9 +6,10 @@ import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'm
 import type { IdMarcador } from '../core/modelo/tipos'
 import type { Imagen, LeerVentana } from '../core/seguimiento/imagen'
 import { SeguidorMultiple } from '../core/seguimiento/multiple'
-import { aprenderMarcador, ErrorMarcado, type EstadoMarcador, type MotivoPerdido } from '../core/seguimiento/seguidor'
+import { RecuentoHuecos } from '../core/seguimiento/huecos'
+import { aprenderMarcador, ErrorMarcado, type EstadoMarcador } from '../core/seguimiento/seguidor'
 import { crearTablaFrames, indiceEnTiempo } from '../core/tiempo/tablaFrames'
-import type { AlWorker, DelWorker, Hueco, MuestraFrame } from './protocolo'
+import type { AlWorker, DelWorker, MuestraFrame } from './protocolo'
 
 declare const self: DedicatedWorkerGlobalScope
 
@@ -50,8 +51,7 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
     let seguidor: SeguidorMultiple | null = null
     let lote: MuestraFrame[] = []
     let ultimoEnvio = performance.now()
-    const huecos = new Map<IdMarcador, { primero: number; frames: number; motivos: Partial<Record<MotivoPerdido, number>>; areaMin?: number; areaMax?: number }>()
-    const resumen = (): Hueco[] => [...huecos].map(([id, h]) => ({ id, ...h }))
+    const huecos = new RecuentoHuecos()
     const vaciar = (indice: number) => {
       if (lote.length) enviar({ tipo: 'muestras', lote, progreso: indice / (tabla.tiempos.length - 1) })
       lote = []
@@ -59,6 +59,9 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
     }
 
     for await (const frame of sink.canvases(t0)) {
+      // Como en el visor: si el decodificador devolviera algún frame anterior al
+      // de partida, se descarta (aprender en otro frame daría posiciones falsas).
+      if (frame.timestamp < t0 - 1e-6) continue
       const indice = indiceEnTiempo(tabla, frame.timestamp)
       const leer = lectorDe(frame.canvas)
 
@@ -84,7 +87,7 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
 
       if (cancelado) {
         vaciar(indice)
-        enviar({ tipo: 'fin', motivo: 'cancelado', sinReconocer: [], huecos: resumen() })
+        enviar({ tipo: 'fin', motivo: 'cancelado', sinReconocer: [], huecos: huecos.resumen() })
         return
       }
 
@@ -92,18 +95,7 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
       // reaparece, se recupera. Sus frames sin encontrar quedan como huecos.
       const res = seguidor.procesar(frame.timestamp, leer)
       lote.push({ indice, t: frame.timestamp, marcadores: [...res].map(([id, r]) => ({ id, x: r.x, y: r.y, calidad: r.calidad })) })
-      for (const [id, r] of res) {
-        if (r.calidad > 0) continue
-        let h = huecos.get(id)
-        if (!h) huecos.set(id, (h = { primero: indice, frames: 0, motivos: {} }))
-        h.frames++
-        const motivo = r.motivo ?? 'calidad'
-        h.motivos[motivo] = (h.motivos[motivo] ?? 0) + 1
-        if (r.relacionArea !== undefined) {
-          h.areaMin = Math.min(h.areaMin ?? Infinity, r.relacionArea)
-          h.areaMax = Math.max(h.areaMax ?? 0, r.relacionArea)
-        }
-      }
+      for (const [id, r] of res) huecos.registrar(indice, id, r)
       if (performance.now() - ultimoEnvio > 150) {
         vaciar(indice)
         // Deja que llegue un posible «cancelar».
@@ -111,7 +103,7 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
       }
     }
     vaciar(tabla.tiempos.length - 1)
-    enviar({ tipo: 'fin', motivo: 'final', sinReconocer: [], huecos: resumen() })
+    enviar({ tipo: 'fin', motivo: 'final', sinReconocer: [], huecos: huecos.resumen() })
   } finally {
     entrada.dispose()
   }

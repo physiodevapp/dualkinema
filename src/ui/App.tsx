@@ -10,12 +10,15 @@ const Visor = lazy(() => import('./Visor'))
 type Estado =
   | { fase: 'inicio'; error?: string }
   | { fase: 'cargando'; nombre: string }
-  | { fase: 'orientacion'; video: VideoAbierto }
-  | { fase: 'visor'; video: VideoAbierto; orientacion: OrientacionVista }
+  | { fase: 'orientacion'; video: VideoAbierto; apertura: number }
+  | { fase: 'visor'; video: VideoAbierto; apertura: number; orientacion: OrientacionVista }
 
 export default function App() {
   const [estado, setEstado] = useState<Estado>({ fase: 'inicio' })
   const selector = useRef<HTMLInputElement>(null)
+  // Identifica cada apertura de un vídeo: el visor se monta de cero aunque se
+  // vuelva a abrir un archivo con el mismo nombre (antes la clave era el nombre).
+  const aperturas = useRef(0)
   const videoActual = estado.fase === 'orientacion' || estado.fase === 'visor' ? estado.video : null
 
   // Cierra el vídeo anterior al cambiar de vídeo o al salir.
@@ -29,7 +32,7 @@ export default function App() {
       // Mediabunny solo se descarga al abrir el primer vídeo: la portada carga rápido.
       const { VideoAbierto } = await import('../media/video')
       const video = await VideoAbierto.abrir(archivo)
-      setEstado({ fase: 'orientacion', video })
+      setEstado({ fase: 'orientacion', video, apertura: ++aperturas.current })
     } catch (e) {
       setEstado({ fase: 'inicio', error: e instanceof Error ? e.message : String(e) })
     }
@@ -85,13 +88,13 @@ export default function App() {
 
       {estado.fase === 'orientacion' && (
         <div className="mx-auto w-full max-w-xl">
-          <ElegirOrientacion onElegir={(orientacion) => setEstado({ fase: 'visor', video: estado.video, orientacion })} />
+          <ElegirOrientacion onElegir={(orientacion) => setEstado({ fase: 'visor', video: estado.video, apertura: estado.apertura, orientacion })} />
         </div>
       )}
 
       {estado.fase === 'visor' && (
         <Suspense fallback={<p className="text-texto-2">Cargando el visor…</p>}>
-          <Visor key={estado.video.info.nombre} video={estado.video} orientacion={estado.orientacion} />
+          <Visor key={estado.apertura} video={estado.video} orientacion={estado.orientacion} />
         </Suspense>
       )}
 
