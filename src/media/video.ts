@@ -39,6 +39,8 @@ export class VideoAbierto {
   private constructor(
     private readonly entrada: Input,
     private readonly sink: CanvasSink,
+    /** El archivo original, para que el worker de seguimiento lo abra por su cuenta. */
+    readonly archivo: File,
     readonly info: InfoVideo,
     readonly tabla: TablaFrames,
   ) {}
@@ -70,7 +72,7 @@ export class VideoAbierto {
         rotacion: pista.rotation,
         duracion: await pista.computeDuration(),
       }
-      return new VideoAbierto(entrada, new CanvasSink(pista), info, tabla)
+      return new VideoAbierto(entrada, new CanvasSink(pista), archivo, info, tabla)
     } catch (e) {
       entrada.dispose()
       if (e instanceof ErrorVideo) throw e

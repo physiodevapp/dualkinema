@@ -25,7 +25,8 @@ export default function ElegirOrientacion({ onElegir }: { onElegir: (o: Orientac
       <div>
         <h2 className="font-serif text-2xl">¿Hacia dónde mira la persona?</h2>
         <p className="mt-1 text-texto-2">
-          En el vídeo de perfil. Fija el signo de los ángulos (flexión positiva) sea cual sea el lado grabado.
+          En el vídeo de perfil. Fija el signo de los ángulos (flexión positiva) sea cual sea el lado grabado, y
+          qué pierna se marca: la que ve la cámara (si mira a la derecha, su pierna izquierda).
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
