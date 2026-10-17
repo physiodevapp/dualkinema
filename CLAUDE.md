@@ -56,11 +56,13 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 - Estas decisiones pueden revisarse en la fase 1 si hay buenos motivos; si cambian, actualiza este archivo.
 
 ## Despliegue
-- **Cloudflare Pages** conectado al repositorio (integración Git, sin secretos en el repo), para producción y previsualizaciones (decisión D2 de la fase 1; sustituye a GitHub Pages). Comando `npm run build`, carpeta `dist`, Node según `.node-version`. Base de Vite `/`.
-  - Producción: `main` → `https://dualkinema.pages.dev`.
-  - Previsualización de cada rama: `https://<rama>.dualkinema.pages.dev`, con la rama en minúsculas y los caracteres que no sean letras ni números cambiados por `-` (p. ej. `feat/visor` → `feat-visor.dualkinema.pages.dev`). Indica siempre esta URL al terminar una tarea.
-  - La app muestra al pie la rama y el commit con que se construyó (`CF_PAGES_BRANCH`, `CF_PAGES_COMMIT_SHA`), para comprobar que la previsualización abierta es la última.
-  - Cabeceras en `public/_headers` (Cloudflare las aplica; permitirá COOP/COEP si algún día hace falta `SharedArrayBuffer`).
+- **Cloudflare Workers con archivos estáticos** (Workers Builds conectado al repositorio, sin secretos en el repo), para producción y previsualizaciones. Decisión D2 de la fase 1, ajustada: Cloudflare Pages aparece como «legacy» en el panel, así que se usa su sustituto. Sin código de servidor: solo los archivos de `dist/`.
+  - Configuración en `wrangler.jsonc` (nombre `dualkinema`, `assets.directory: ./dist`, modo SPA). En Cloudflare: comando de build `npm run build`; despliegue `npx wrangler deploy`; previsualización `npx wrangler preview`; *Enable Preview Builds* activado. Base de Vite `/`.
+  - Producción: `main` → `https://dualkinema.edu-gamboa-rodriguez.workers.dev`.
+  - Previsualización de cada rama: `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`, con la rama en minúsculas y los caracteres que no sean letras ni números cambiados por `-` (p. ej. `feat/visor` → `feat-visor-dualkinema.edu-gamboa-rodriguez.workers.dev`). Cloudflare la publica también como comentario en el PR. Indica siempre esta URL al terminar una tarea.
+  - La app muestra al pie la rama y el commit con que se construyó (`WORKERS_CI_BRANCH`, `WORKERS_CI_COMMIT_SHA`), para comprobar que la previsualización abierta es la última.
+  - Cabeceras en `public/_headers` (Workers las aplica a los archivos estáticos; permitirá COOP/COEP si algún día hace falta `SharedArrayBuffer`).
+  - Desde el entorno en la nube de Claude Code, `*.workers.dev` puede no ser accesible: la comprobación en el navegador la hace el usuario.
 
 ## Convenciones de Git (las mismas que en los demás repos del usuario)
 - Todo cambio en una rama `feat/<descripción>` o `fix/<descripción>` (o la rama `claude/…` que asigne una sesión de Claude Code en la nube) y se fusiona mediante PR. **Nunca hacer push directo a `main`.** (Única excepción: el commit inicial que creó `main`, autorizado por el usuario).

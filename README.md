@@ -23,4 +23,4 @@ npm run build      # genera dist/
 
 ## Despliegue
 
-Cloudflare Pages, conectado al repositorio: `main` → https://dualkinema.pages.dev, y cada rama tiene su previsualización en `https://<rama>.dualkinema.pages.dev`. GitHub Actions solo comprueba (lint, tipos, tests y build) en cada PR.
+Cloudflare Workers con archivos estáticos (`wrangler.jsonc`), conectado al repositorio con Workers Builds: `main` → https://dualkinema.edu-gamboa-rodriguez.workers.dev, y cada rama tiene su previsualización en `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`. GitHub Actions solo comprueba (lint, tipos, tests y build) en cada PR.

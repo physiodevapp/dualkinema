@@ -19,10 +19,12 @@ Nombre de ramas: CLAUDE.md pide `feat/…`/`fix/…`; las sesiones de Claude Cod
 
 ## 2. Despliegue y previsualizaciones [D2]
 
-- **Producción:** Cloudflare Pages desde `main` (`https://dualkinema.pages.dev`), base de Vite `/`. Sustituye a GitHub Pages (D2).
-- **Previsualizaciones:** Cloudflare Pages conectado al repo (gratuito). Cada rama recibe una URL `https://<rama>.dualkinema.pages.dev` y cada PR un comentario con su URL, sin secretos en el repo.
-  - Lo tienes que conectar tú una vez desde el panel de Cloudflare (se puede desde Chrome en el móvil): *Workers & Pages → Create → Pages → Connect to Git → dualkinema*, comando `npm run build`, carpeta `dist`. Te dejo los pasos exactos en el PR.
-- Cabeceras: `public/_headers` con cabeceras básicas. (Para `SharedArrayBuffer`, que haría falta con OpenCV multihilo o FFmpeg.wasm, se necesitarían COOP/COEP, que GitHub Pages no permite y Cloudflare sí).
+Ajuste tras aceptar D2: al crear el proyecto, el panel de Cloudflare marca Pages como «legacy workflow», así que se usa su sustituto, **Workers con archivos estáticos + Workers Builds**. Mismo resultado (hosting estático gratuito con previsualización por rama y comentario en el PR), sin código de servidor.
+
+- **Producción:** `main` → `https://dualkinema.edu-gamboa-rodriguez.workers.dev`, base de Vite `/`.
+- **Previsualizaciones:** `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`.
+- Configuración en `wrangler.jsonc`. Conexión desde el panel: *Workers & Pages → Create application → Connect GitHub → dualkinema*; build `npm run build`, despliegue `npx wrangler deploy`, previsualización `npx wrangler preview`, *Enable Preview Builds*.
+- Cabeceras: `public/_headers` con cabeceras básicas. (Para `SharedArrayBuffer`, que haría falta con OpenCV multihilo o FFmpeg.wasm, se necesitarían COOP/COEP; Workers las permite con el mismo archivo).
 
 ## 3. Estructura
 
@@ -185,7 +187,7 @@ Color de acento **[D6]**: propongo un ámbar `#f2a65a` (se distingue del azul de
 ## 10. Qué necesito de ti
 
 - Decisiones D1–D6 (resumen al final).
-- Conectar Cloudflare Pages al repo cuando abra el primer PR.
+- Conectar Cloudflare (Workers Builds) al repo cuando abra el primer PR.
 - **Vídeos de prueba** (cuando el visor frame a frame esté desplegado, no antes): grabados con tu móvil en horizontal, 30 o 60 fps, 5–10 s, persona de perfil haciendo 3–4 flexiones de rodilla en bipedestación o sentado, gomets en trocánter, epicóndilo femoral lateral y maléolo lateral. Uno con buena luz y fondo liso, uno con fondo cargado o ropa de color parecido al gomet. Los uso solo en tu dispositivo a través de la previsualización; si quieres que los use para tests, haría falta subirlos al repo, cosa que **no** propongo por RGPD: en su lugar genero vídeos sintéticos para los tests.
 
 ## 11. Orden de trabajo (un PR por paso)
@@ -206,7 +208,7 @@ Modelos (tabla de CLAUDE.md): pasos 2, 3, 4 y 6 → Opus; paso 5 mixto (la sincr
 | | Decisión | Propuesta |
 |---|---|---|
 | D1 | Arranque del repo | Un push inicial a `main` con CLAUDE.md y este plan; después, todo por PR |
-| D2 | Hosting | Cloudflare Pages para previsualizaciones y producción |
+| D2 | Hosting | Cloudflare (Workers con archivos estáticos, porque Pages ha pasado a «legacy») para previsualizaciones y producción |
 | D3 | Lectura de vídeo | WebCodecs + Mediabunny, sin `<video>` como fuente de tiempos |
 | D4 | Persistencia | Fuera de la fase 1 (sesión en memoria) |
 | D5 | Seguimiento | TypeScript puro sin OpenCV en la fase 1; OpenCV para calibración más adelante (cambio de stack respecto a CLAUDE.md) |
