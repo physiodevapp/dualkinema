@@ -1,4 +1,16 @@
 import type { IdMarcador } from '../core/modelo/tipos'
+import type { MotivoPerdido } from '../core/seguimiento/seguidor'
+
+/** Frames sin encontrar un marcador, con el motivo de cada uno (diagnóstico). */
+export interface Hueco {
+  readonly id: IdMarcador
+  readonly primero: number
+  readonly frames: number
+  readonly motivos: Readonly<Partial<Record<MotivoPerdido, number>>>
+  /** Con motivo 'tamano': rango de área (mancha / gomet) observado. */
+  readonly areaMin?: number
+  readonly areaMax?: number
+}
 
 /** Mensajes del hilo principal al worker de seguimiento. */
 export type AlWorker =
@@ -31,6 +43,6 @@ export type DelWorker =
       /** Con 'inicio': marcadores que no se reconocen en el frame de partida. */
       readonly sinReconocer: readonly IdMarcador[]
       /** Frames sin encontrar cada marcador: primero y total. */
-      readonly huecos: readonly { readonly id: IdMarcador; readonly primero: number; readonly frames: number }[]
+      readonly huecos: readonly Hueco[]
     }
   | { readonly tipo: 'error'; readonly mensaje: string }

@@ -50,41 +50,46 @@ const DS_MIN = 0.08
 const DV_MIN = 0.12
 const PESO_V = 0.35
 
-/** Aprende el modelo a partir de los colores de un gomet. */
+const mediana = (xs: number[]): number => {
+  const o = [...xs].sort((a, b) => a - b)
+  const m = o.length >> 1
+  return o.length % 2 ? o[m]! : (o[m - 1]! + o[m]!) / 2
+}
+/** Factor que convierte la desviación absoluta mediana en desviación típica (normal). */
+const MAD_A_DT = 1.4826
+
+/**
+ * Aprende el modelo a partir de los colores de un gomet. Usa estadística
+ * robusta (mediana y desviación absoluta mediana): los píxeles del borde,
+ * mezclados con la piel o el fondo, no ensanchan el modelo.
+ */
 export function aprenderColor(muestras: readonly Hsv[]): ModeloColor {
   if (muestras.length === 0) throw new Error('No hay píxeles para aprender el color.')
-  // Media circular del tono.
+  // Tono: media circular como referencia y mediana de las desviaciones con signo.
   let sx = 0
   let sy = 0
-  let ss = 0
-  let sv = 0
   for (const m of muestras) {
     const r = (m.h * Math.PI) / 180
     sx += Math.cos(r)
     sy += Math.sin(r)
-    ss += m.s
-    sv += m.v
   }
-  const n = muestras.length
-  let h = (Math.atan2(sy, sx) * 180) / Math.PI
-  if (h < 0) h += 360
-  const s = ss / n
-  const v = sv / n
-  let vh = 0
-  let vs = 0
-  let vv = 0
-  for (const m of muestras) {
-    vh += difTono(m.h, h) ** 2
-    vs += (m.s - s) ** 2
-    vv += (m.v - v) ** 2
-  }
+  const h0 = (Math.atan2(sy, sx) * 180) / Math.PI
+  const desv = muestras.map((m) => {
+    let d = m.h - h0
+    d -= 360 * Math.round(d / 360)
+    return d
+  })
+  let h = h0 + mediana(desv)
+  h = ((h % 360) + 360) % 360
+  const s = mediana(muestras.map((m) => m.s))
+  const v = mediana(muestras.map((m) => m.v))
   return {
     h,
     s,
     v,
-    dh: Math.max(Math.sqrt(vh / n), DH_MIN),
-    ds: Math.max(Math.sqrt(vs / n), DS_MIN),
-    dv: Math.max(Math.sqrt(vv / n), DV_MIN),
+    dh: Math.max(MAD_A_DT * mediana(muestras.map((m) => difTono(m.h, h))), DH_MIN),
+    ds: Math.max(MAD_A_DT * mediana(muestras.map((m) => Math.abs(m.s - s))), DS_MIN),
+    dv: Math.max(MAD_A_DT * mediana(muestras.map((m) => Math.abs(m.v - v))), DV_MIN),
   }
 }
 

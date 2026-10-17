@@ -43,7 +43,7 @@ export class SeguidorMultiple {
     }
     for (const id of enConflicto) {
       const anterior = this.estados.get(id)!
-      res.set(id, { x: NaN, y: NaN, calidad: 0, estado: { ...anterior, perdidos: anterior.perdidos + 1 } })
+      res.set(id, { x: NaN, y: NaN, calidad: 0, estado: { ...anterior, perdidos: anterior.perdidos + 1 }, motivo: 'conflicto' })
     }
 
     for (const [id, r] of res) this.estados.set(id, r.estado)

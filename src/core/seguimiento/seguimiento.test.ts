@@ -36,6 +36,30 @@ describe('buscarManchas', () => {
   })
 })
 
+describe('forma de las manchas', () => {
+  const modelo = aprenderColor([rgbAHsv(...AZUL)])
+  it.each([
+    ['círculo', { cuadrado: false }],
+    ['cuadrado', { cuadrado: true, giro: 0 }],
+    ['cuadrado a 45°', { cuadrado: true, giro: Math.PI / 4 }],
+  ])('un %s es compacto y macizo', (_, forma) => {
+    const m = buscarManchas(dibujarFrame(W, H, [{ x: 150, y: 120, r: 9, rgb: AZUL, ...forma }]), modelo)[0]!
+    expect(m.alargamiento).toBeLessThan(1.1)
+    expect(m.relleno).toBeGreaterThan(0.9)
+  })
+
+  it('dos gomets pegados forman una mancha alargada', () => {
+    const m = buscarManchas(
+      dibujarFrame(W, H, [
+        { x: 150, y: 120, r: 9, rgb: AZUL },
+        { x: 165, y: 120, r: 9, rgb: AZUL },
+      ]),
+      modelo,
+    )[0]!
+    expect(m.alargamiento).toBeGreaterThan(1.4)
+  })
+})
+
 describe('aprenderMarcador', () => {
   const img = dibujarFrame(W, H, [{ x: 150.4, y: 120.6, r: 9, rgb: AZUL }])
 
@@ -65,6 +89,23 @@ describe('aprenderMarcador', () => {
     const r = aprenderMarcador(lector(piel), W, H, 0, 152, 119)
     expect(Math.hypot(r.x - 150.5, r.y - 120.5)).toBeLessThan(0.5)
     expect(r.estado.area).toBeLessThan(Math.PI * 11 * 11)
+  })
+
+  // Vídeo de móvil: color a media resolución (4:2:0). Toques hasta el borde del gomet.
+  it.each([0, 3, 6])('gomet rojo cuadrado con color 4:2:0, toque a %d px del centro', (d) => {
+    const img = dibujarFrame(W, H, [{ x: 150, y: 120, r: 6, rgb: [210, 45, 55], cuadrado: true, giro: 0.3 }], {
+      fondo: [205, 150, 125],
+      croma420: true,
+    })
+    const r = aprenderMarcador(lector(img), W, H, 0, 150 + d, 120)
+    expect(Math.hypot(r.x - 150, r.y - 120)).toBeLessThan(0.5)
+  })
+
+  it('el color aprendido no se ensancha por el borde mezclado con la piel', () => {
+    const img = dibujarFrame(W, H, [{ x: 150, y: 120, r: 6, rgb: [210, 45, 55] }], { fondo: [205, 150, 125], croma420: true })
+    const m = aprenderMarcador(lector(img), W, H, 0, 150, 120).estado.modelo
+    expect(m.dh).toBeLessThan(12)
+    expect(m.ds).toBeLessThan(0.15)
   })
 
   it('gomet rojo sobre piel: se sigue sin escaparse a la piel', () => {
@@ -177,6 +218,31 @@ describe('SeguidorMultiple', () => {
     serie.forEach((s, i) => (peor = Math.max(peor, Math.abs(s.valor - real[i]!))))
     expect(peor).toBeLessThan(1)
     expect(Math.max(...serie.map((s) => s.valor))).toBeGreaterThan(85)
+  })
+
+  it('rodilla con gomets rojos cuadrados sobre piel y color 4:2:0: ningún frame perdido', () => {
+    const fondo = [205, 150, 125] as const
+    const ancho = 340
+    const alto = 500
+    const discos = (t: number): Disco[] => {
+      const k = (((90 * (1 - Math.cos(Math.PI * t))) / 2) * Math.PI) / 180
+      const c = { x: 170, y: 60 }
+      const r = { x: 170 + 180 * Math.sin(0.1), y: 60 + 180 * Math.cos(0.1) }
+      const tb = { x: r.x - 170 * Math.sin(k - 0.1), y: r.y + 170 * Math.cos(k - 0.1) }
+      // Los gomets giran con su segmento.
+      return [c, r, tb].map((p, i) => ({ ...p, r: 6, rgb: [210, 45, 55] as const, cuadrado: true, giro: i === 2 ? -k : i === 1 ? -k / 2 : 0 }))
+    }
+    const op = (i: number) => ({ fondo, croma420: true, semilla: i, ruido: 8 })
+    const f0 = dibujarFrame(ancho, alto, discos(0), op(0))
+    const ini = new Map(discos(0).map((d, i) => [String(i), aprenderMarcador(lector(f0), ancho, alto, 0, d.x + 4, d.y - 3).estado]))
+    const s = new SeguidorMultiple(ini, ancho, alto)
+    for (let i = 1; i <= 60; i++) {
+      const t = i / 30
+      const ds = discos(t)
+      for (const [id, r] of s.procesar(t, lector(dibujarFrame(ancho, alto, ds, op(i))))) {
+        expect(Math.hypot(r.x - ds[+id]!.x, r.y - ds[+id]!.y)).toBeLessThan(0.6)
+      }
+    }
   })
 
   it('dos gomets del mismo color que se cruzan: ni duplica, ni inventa durante el cruce, ni se intercambian', () => {

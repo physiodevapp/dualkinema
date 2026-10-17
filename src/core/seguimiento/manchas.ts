@@ -14,6 +14,14 @@ export interface Mancha {
   readonly colores: readonly Hsv[]
   /** Rectángulo que la contiene, en px de la imagen (no del frame): [x0, y0, x1, y1] inclusive. */
   readonly caja: readonly [number, number, number, number]
+  /**
+   * Forma, a partir de los momentos de segundo orden (no depende del giro):
+   * alargamiento = eje mayor / eje menor de la elipse equivalente (1 = redonda
+   * o cuadrada); relleno = área / área de esa elipse (≈ 1 para un círculo o un
+   * cuadrado, menor para formas irregulares o con huecos).
+   */
+  readonly alargamiento: number
+  readonly relleno: number
 }
 
 /** Umbral de distancia de color: un píxel es «del gomet» por debajo de esto. */
@@ -46,6 +54,11 @@ export function buscarManchas(img: Imagen, modelo: ModeloColor, umbral = UMBRAL_
     let sx = 0
     let sy = 0
     let sd = 0
+    let mx = 0
+    let my = 0
+    let mxx = 0
+    let myy = 0
+    let mxy = 0
     let cx0 = ancho
     let cy0 = alto
     let cx1 = 0
@@ -59,6 +72,11 @@ export function buscarManchas(img: Imagen, modelo: ModeloColor, umbral = UMBRAL_
       // Peso 1 en el núcleo y decreciente hacia el borde (píxeles mezclados con el fondo).
       const w = d < umbral / 2 ? 1 : 2 - (2 * d) / umbral
       area++
+      mx += px
+      my += py
+      mxx += px * px
+      myy += py * py
+      mxy += px * py
       if (px < cx0) cx0 = px
       if (px > cx1) cx1 = px
       if (py < cy0) cy0 = py
@@ -84,8 +102,20 @@ export function buscarManchas(img: Imagen, modelo: ModeloColor, umbral = UMBRAL_
       }
     }
     if (area < AREA_MINIMA) continue
+    const ux = mx / area
+    const uy = my / area
+    // Covarianza de las coordenadas (+1/12: cada píxel es un cuadrado de lado 1, no un punto).
+    const cxx = mxx / area - ux * ux + 1 / 12
+    const cyy = myy / area - uy * uy + 1 / 12
+    const cxy = mxy / area - ux * uy
+    const tr = (cxx + cyy) / 2
+    const raiz = Math.sqrt(Math.max(0, tr * tr - (cxx * cyy - cxy * cxy)))
+    const l1 = tr + raiz
+    const l2 = Math.max(tr - raiz, 1e-9)
+    const alargamiento = Math.sqrt(l1 / l2)
+    const relleno = area / (4 * Math.PI * Math.sqrt(l1 * l2))
     // +0,5: centro del píxel, para que el centroide sea subpíxel sin sesgo.
-    resultado.push({ area, x: img.x0 + sx / sw + 0.5, y: img.y0 + sy / sw + 0.5, distanciaMedia: sd / area, colores, caja: [cx0, cy0, cx1, cy1] })
+    resultado.push({ area, x: img.x0 + sx / sw + 0.5, y: img.y0 + sy / sw + 0.5, distanciaMedia: sd / area, colores, caja: [cx0, cy0, cx1, cy1], alargamiento, relleno })
   }
   return resultado
 }

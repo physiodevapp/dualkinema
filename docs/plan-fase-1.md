@@ -119,15 +119,17 @@ Algoritmo, por marcador y frame:
   - `seguidor.ts`: aprender un gomet a partir de un toque, y seguirlo.
   - `multiple.ts`: varios marcadores a la vez.
 - **Aprender un gomet:**
-  - Toma el color bajo el dedo y prueba tolerancias de menor a mayor. Se queda con la mayor que aún da una mancha con forma de gomet: compacta, no muy alargada y sin tocar el borde de la zona de búsqueda.
-  - Después aprende su color real y deja el marcador en su centro.
-  - La tolerancia fija de la primera versión fallaba con gomets rojos sobre piel: la piel entraba en la mancha. Lo detectó el usuario en su móvil; ahora hay tests con rojo, rojo oscuro y naranja sobre piel.
-  - Si no hay un gomet suelto bajo el dedo, lo dice **encima del vídeo**, que es donde se mira al marcar.
+  - Color de partida: los píxeles más saturados en un radio pequeño alrededor del toque. Así un toque en el borde del gomet, donde el color se mezcla con la piel (sobre todo con el 4:2:0 de los vídeos de móvil, que guarda el color a media resolución), no da un color a medias.
+  - Prueba tolerancias de menor a mayor y se queda con la mayor que aún da una mancha con forma de gomet. La forma se mide por momentos, sin depender del giro: alargamiento ≤ 2,5, relleno ≥ 0,75 y sin tocar el borde de la zona de búsqueda. Vale para gomets redondos y cuadrados girados.
+  - El color final se aprende con mediana y desviación absoluta mediana, para que el borde mezclado no lo ensanche.
+  - Si falla, el error sale **encima del vídeo** con un detalle técnico: color bajo el dedo y forma de la mancha.
+  - Historia: la primera versión fallaba con gomets rojos sobre piel en el móvil del usuario. Hay tests con rojo, rojo oscuro y naranja sobre piel, cuadrados girados, color 4:2:0 y toques en el borde.
 - **Seguir:**
   - Busca en una ventana alrededor de la posición prevista, a velocidad constante en tiempo.
   - Solo acepta manchas de tamaño plausible: entre 0,25× y 1,8× el gomet.
   - La calidad combina distancia a la predicción, tamaño y color, y baja si hay otra candidata casi igual.
   - El color y el tamaño se readaptan despacio con las buenas detecciones, para seguir los cambios de luz.
+- **Motivo de cada frame perdido** (diagnóstico sin ver el vídeo): sin su color en la zona, mancha de tamaño distinto (con el rango de área), lejos de lo esperado o ambiguo, o junto a otro gomet. El aviso final lo resume por marcador en «Por qué».
 - **Perdido:**
   - Calidad 0 y posición NaN: nunca se inventa.
   - No detiene el resto. Se sigue buscando, extrapolando la velocidad como mucho 0,3 s y con la ventana creciendo; si reaparece, se recupera.

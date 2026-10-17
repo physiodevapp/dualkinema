@@ -13,10 +13,10 @@ import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
 import type { Vec3 } from '../core/geometria/vector'
 import type { IdMarcador, Muestra2D } from '../core/modelo/tipos'
 import type { LeerVentana } from '../core/seguimiento/imagen'
-import { aprenderMarcador, ErrorMarcado } from '../core/seguimiento/seguidor'
+import { aprenderMarcador, ErrorMarcado, type MotivoPerdido } from '../core/seguimiento/seguidor'
 import { estadisticas, limitarIndice } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
-import type { AlWorker, DelWorker } from '../workers/protocolo'
+import type { AlWorker, DelWorker, Hueco } from '../workers/protocolo'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
@@ -52,6 +52,24 @@ function lectorDeCanvas(c: HTMLCanvasElement | OffscreenCanvas): LeerVentana {
   }
 }
 
+const NOMBRE_MOTIVO: Record<MotivoPerdido, string> = {
+  sinColor: 'sin su color en la zona',
+  tamano: 'mancha de tamaño distinto',
+  calidad: 'lejos de lo esperado o ambiguo',
+  conflicto: 'junto a otro gomet',
+}
+
+function describirMotivos(h: Hueco): string {
+  const fmt = (n: number) => n.toFixed(1).replace('.', ',')
+  return (Object.entries(h.motivos) as [MotivoPerdido, number][])
+    .sort((a, b) => b[1] - a[1])
+    .map(([m, n]) => {
+      const area = m === 'tamano' && h.areaMin !== undefined ? ` (área ${fmt(h.areaMin)}–${fmt(h.areaMax!)}× la del gomet)` : ''
+      return `${n} ${NOMBRE_MOTIVO[m]}${area}`
+    })
+    .join(', ')
+}
+
 type Seguimiento = { estado: 'parado' } | { estado: 'siguiendo'; progreso: number }
 
 export default function Visor({ video, orientacion }: { video: VideoAbierto; orientacion: OrientacionVista }) {
@@ -75,9 +93,9 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
   const [deseado, setDeseado] = useState(0)
   const [mostrado, setMostrado] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [aviso, setAviso] = useState<{ texto: string; irA?: number } | null>(null)
+  const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(null)
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
-  const [errorToque, setErrorToque] = useState<string | null>(null)
+  const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string } | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(ids[0] ?? null)
   const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
@@ -170,6 +188,7 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
               `${m.motivo === 'final' ? 'Seguimiento completado' : 'Seguimiento parado'}, con huecos: ` +
               m.huecos.map((h) => `${nombre(h.id)} no se encontró en ${h.frames} frame${h.frames === 1 ? '' : 's'}`).join('; ') +
               '. Son los frames en rojo de la franja y no se rellenan. Si en alguno sí se ve el gomet, tócalo ahí y pulsa «Seguir desde aquí».',
+            detalle: m.huecos.map((h) => `${nombre(h.id)}: ${describirMotivos(h)}`).join('\n'),
             irA: primero,
           })
           setSeleccionado(m.huecos[0]!.id)
@@ -221,7 +240,9 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
       const falta = ids.find((id) => id !== seleccionado && !valida(muestra(id, mostrado)))
       setSeleccionado(falta ?? null)
     } catch (e) {
-      setErrorToque(e instanceof ErrorMarcado ? e.message : `No se ha podido marcar: ${String(e)}`)
+      setErrorToque(
+        e instanceof ErrorMarcado ? { texto: e.message, detalle: e.detalle } : { texto: `No se ha podido marcar: ${String(e)}` },
+      )
     }
   }
 
@@ -356,7 +377,8 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
               onClick={() => setErrorToque(null)}
               className="absolute inset-x-2 bottom-2 rounded-md border border-red-400/60 bg-fondo/90 p-2 text-left text-sm text-red-200"
             >
-              {errorToque} <span className="text-texto-2">(toca para cerrar)</span>
+              {errorToque.texto} <span className="text-texto-2">(toca para cerrar)</span>
+              {errorToque.detalle && <span className="mt-1 block font-mono text-xs text-texto-2">{errorToque.detalle}</span>}
             </button>
           )}
         </div>
@@ -473,6 +495,12 @@ export default function Visor({ video, orientacion }: { video: VideoAbierto; ori
           {aviso && (
             <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
               <p>{aviso.texto}</p>
+              {aviso.detalle && (
+                <details className="text-texto-2">
+                  <summary className="cursor-pointer">Por qué (para diagnosticar)</summary>
+                  <pre className="mt-1 font-mono text-xs whitespace-pre-wrap">{aviso.detalle}</pre>
+                </details>
+              )}
               {aviso.irA !== undefined && (
                 <button type="button" onClick={() => ir(aviso.irA!)} className="self-start rounded-md border border-borde px-3 py-2">
                   Ir al primer frame con hueco ({aviso.irA + 1})

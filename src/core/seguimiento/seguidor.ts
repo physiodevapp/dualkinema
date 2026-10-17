@@ -13,6 +13,17 @@ export interface EstadoMarcador {
   readonly perdidos: number
 }
 
+/**
+ * Por qué no se encontró un marcador en un frame (para diagnosticar con vídeos
+ * reales sin tener que verlos):
+ * - sinColor: ningún píxel de su color en la zona de búsqueda.
+ * - tamano: manchas de su color, pero de tamaño muy distinto al del gomet
+ *   (`area` = relación entre la más parecida y la del gomet).
+ * - calidad: la mejor candidata queda lejos de lo esperado o es ambigua.
+ * - conflicto: comparte mancha con otro marcador.
+ */
+export type MotivoPerdido = 'sinColor' | 'tamano' | 'calidad' | 'conflicto'
+
 export interface Resultado {
   /** Posición en px del frame, o NaN si se ha perdido (nunca se inventa). */
   readonly x: number
@@ -20,6 +31,9 @@ export interface Resultado {
   /** 0–1. Por debajo de CALIDAD_PERDIDO se considera perdido. */
   readonly calidad: number
   readonly estado: EstadoMarcador
+  readonly motivo?: MotivoPerdido
+  /** Con motivo 'tamano': área de la mancha más parecida / área del gomet. */
+  readonly relacionArea?: number
 }
 
 export const CALIDAD_PERDIDO = 0.3
@@ -34,22 +48,29 @@ export const AREA_MAX = 1.8
 /** Segundos que se extrapola la velocidad de un gomet perdido. */
 export const EXTRAPOLACION_MAX = 0.3
 
-export class ErrorMarcado extends Error {}
+export class ErrorMarcado extends Error {
+  /** Datos técnicos para diagnosticar (se muestran en pequeño). */
+  constructor(
+    mensaje: string,
+    readonly detalle?: string,
+  ) {
+    super(mensaje)
+  }
+}
 
 /** Radio aproximado del gomet, en px, a partir de su área. */
 export const radioDe = (area: number) => Math.sqrt(area / Math.PI)
 
 /**
- * ¿Parece un gomet? Compacta (llena al menos el 55 % de su rectángulo, un
- * círculo llena el 79 %), no muy alargada y sin tocar el borde de la zona de
- * búsqueda (si lo toca, se ha «escapado» por la piel, la ropa o el fondo).
+ * ¿Parece un gomet? Redondo o cuadrado en cualquier giro (alargamiento ≤ 2,5,
+ * que admite verlo algo de canto), macizo (relleno ≥ 0,75: un círculo o un
+ * cuadrado dan ≈ 1) y sin tocar el borde de la zona de búsqueda (si lo toca,
+ * se ha «escapado» por la piel, la ropa o el fondo).
  */
 function pareceGomet(m: Mancha, anchoImg: number, altoImg: number): boolean {
   const [x0, y0, x1, y1] = m.caja
-  const w = x1 - x0 + 1
-  const h = y1 - y0 + 1
   const tocaBorde = x0 === 0 || y0 === 0 || x1 === anchoImg - 1 || y1 === altoImg - 1
-  return !tocaBorde && m.area / (w * h) >= 0.55 && Math.max(w, h) / Math.min(w, h) <= 2.5
+  return !tocaBorde && m.alargamiento <= 2.5 && m.relleno >= 0.75
 }
 
 /** Tolerancias que se prueban al aprender un gomet, de estricta a amplia. */
@@ -74,38 +95,62 @@ export function aprenderMarcador(
   y: number,
   radioBusqueda = Math.max(24, Math.round(Math.min(ancho, alto) * 0.04)),
 ): Resultado {
-  const semilla = leer(ventanaAlrededor(x, y, 1.5, ancho, alto))
-  const colores: Hsv[] = []
-  for (let k = 0; k < semilla.datos.length; k += 4) {
-    colores.push(rgbAHsv(semilla.datos[k]!, semilla.datos[k + 1]!, semilla.datos[k + 2]!))
+  // Color de partida: los píxeles más saturados cerca del toque. Un gomet es
+  // lo más saturado de su entorno; así un toque en el borde (donde el color se
+  // mezcla con la piel, sobre todo con la compresión de vídeo del móvil, que
+  // guarda el color a media resolución) no da un color de partida a medias.
+  const radioSemilla = Math.max(4, Math.round(Math.min(ancho, alto) * 0.012))
+  const zona = leer(ventanaAlrededor(x, y, radioSemilla, ancho, alto))
+  const candidatos: Hsv[] = []
+  for (let k = 0; k < zona.datos.length; k += 4) {
+    const px = zona.x0 + ((k / 4) % zona.ancho) + 0.5
+    const py = zona.y0 + Math.floor(k / 4 / zona.ancho) + 0.5
+    if (Math.hypot(px - x, py - y) > radioSemilla) continue
+    candidatos.push(rgbAHsv(zona.datos[k]!, zona.datos[k + 1]!, zona.datos[k + 2]!))
   }
-  const base = aprenderColor(colores)
-  if (base.s < 0.2) throw new ErrorMarcado('Ahí no hay un color definido: toca justo encima del gomet.')
+  // Saturación, sin fiarse de la de los píxeles muy oscuros (ruido).
+  const viveza = (c: Hsv) => c.s * Math.min(1, c.v / 0.25)
+  candidatos.sort((a, b) => viveza(b) - viveza(a))
+  const base = aprenderColor(candidatos.slice(0, 9))
+  if (base.s < 0.2) {
+    throw new ErrorMarcado(
+      'Ahí no hay un color definido: toca justo encima del gomet.',
+      `saturación máxima cerca del toque: ${base.s.toFixed(2).replace('.', ',')}`,
+    )
+  }
 
   const img = leer(ventanaAlrededor(x, y, radioBusqueda, ancho, alto))
   const cerca = (ms: readonly Mancha[]) =>
     ms
       .map((m) => ({ m, d: Math.hypot(m.x - x, m.y - y) }))
-      .filter(({ m, d }) => d <= radioDe(m.area) + 4)
+      .filter(({ m, d }) => d <= radioDe(m.area) + radioSemilla)
       .sort((a, b) => a.d - b.d)[0]?.m
 
   let elegida: Mancha | undefined
-  let seEscapa = false
+  let seEscapa: Mancha | undefined
   for (const k of ESCALAS) {
     const modelo: ModeloColor = { ...base, dh: base.dh * k, ds: base.ds * k, dv: base.dv * k }
     const m = cerca(buscarManchas(img, modelo))
     if (!m) continue
     if (!pareceGomet(m, img.ancho, img.alto)) {
-      seEscapa = true
+      seEscapa = m
       break
     }
     elegida = m
   }
+  const fmt = (n: number, d = 2) => n.toFixed(d).replace('.', ',')
+  const detalle =
+    `color bajo el dedo: tono ${Math.round(base.h)}°, saturación ${fmt(base.s)}, brillo ${fmt(base.v)}` +
+    (seEscapa
+      ? `; mancha de ${seEscapa.area} px, alargamiento ${fmt(seEscapa.alargamiento, 1)}, relleno ${fmt(seEscapa.relleno)}` +
+        ` en una zona de ${img.ancho}×${img.alto}`
+      : '')
   if (!elegida) {
     throw new ErrorMarcado(
       seEscapa
         ? 'Aquí no veo un gomet suelto: o el toque ha caído fuera, o su color se confunde con lo que lo rodea (piel, ropa o fondo). Toca justo encima; si se repite, prueba gomets de otro color (verde o azul suelen ir mejor).'
         : 'No encuentro un gomet aquí: toca justo encima.',
+      detalle,
     )
   }
 
@@ -151,12 +196,23 @@ export function seguir(e: EstadoMarcador, leer: LeerVentana, ancho: number, alto
   const desplazamiento = Math.hypot(p.vx, p.vy) * dt
   const radio = Math.min((3 * r + 1.5 * desplazamiento + 8) * (1 + e.perdidos), Math.min(ancho, alto) * 0.25)
 
-  const perdido = (): Resultado => ({ x: NaN, y: NaN, calidad: 0, estado: { ...e, perdidos: e.perdidos + 1 } })
+  const perdido = (motivo: MotivoPerdido, relacionArea?: number): Resultado => ({
+    x: NaN,
+    y: NaN,
+    calidad: 0,
+    estado: { ...e, perdidos: e.perdidos + 1 },
+    motivo,
+    relacionArea,
+  })
 
-  const candidatas = buscarManchas(leer(ventanaAlrededor(p.x, p.y, radio, ancho, alto)), e.modelo).filter(
-    (m) => m.area >= e.area * AREA_MIN && m.area <= e.area * AREA_MAX,
-  )
-  if (candidatas.length === 0) return perdido()
+  const todas = buscarManchas(leer(ventanaAlrededor(p.x, p.y, radio, ancho, alto)), e.modelo)
+  if (todas.length === 0) return perdido('sinColor')
+  const candidatas = todas.filter((m) => m.area >= e.area * AREA_MIN && m.area <= e.area * AREA_MAX)
+  if (candidatas.length === 0) {
+    // La de tamaño más parecido, en escala logarítmica.
+    const rel = todas.map((m) => m.area / e.area).sort((a, b) => Math.abs(Math.log(a)) - Math.abs(Math.log(b)))[0]!
+    return perdido('tamano', rel)
+  }
 
   const puntuadas = candidatas
     .map((m) => {
@@ -174,7 +230,7 @@ export function seguir(e: EstadoMarcador, leer: LeerVentana, ancho: number, alto
   let calidad = Math.cbrt(qDist * qArea * qColor)
   const segunda = puntuadas[1]
   if (segunda && segunda.coste - puntuadas[0]!.coste < 0.15) calidad *= 0.6
-  if (calidad < CALIDAD_PERDIDO) return perdido()
+  if (calidad < CALIDAD_PERDIDO) return perdido('calidad')
 
   // Adaptación lenta a cambios de luz y de tamaño aparente, solo con buenas detecciones.
   const adaptar = calidad > 0.7
