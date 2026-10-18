@@ -31,6 +31,7 @@ Cada vídeo de rodilla va con un `.json` con la verdad: tiempo, flexión real y 
 - **Gráfica:** máximo y mínimo; tocar y arrastrar salta al frame más cercano (±1).
 - **Huecos:** el aviso, la gráfica y el recuento coinciden con los frames realmente tapados; durante el hueco no hay ángulo; «Ir al primer frame con hueco».
 - **Persistencia:** marcar y seguir, recargar, ver la sesión en la lista, reabrir el mismo vídeo y recuperarla (mismo ángulo mostrado en cada frame comparado, mismo resumen de la gráfica, mismas marcas a mano); seguir trabajando actualiza la misma sesión; «Continuar» con otro vídeo lo rechaza y con el suyo recupera; el mismo vídeo con otro nombre se reconoce avisando; un cambio hecho justo antes de recargar no se pierde; «Empezar de cero» y borrar con confirmación.
+- **Lupa:** a 54 px del gomet no hay anillo; a 14 px sí, y al soltar ahí los tres marcadores quedan en su centro (ángulo real).
 - **Corrección manual:** arrastrar con la lupa coloca el marcador en el gomet; con el gomet tapado se puede colocar a ojo; al volver a seguir, lo marcado a mano es un ancla (el recuento de huecos del worker lo excluye); una marca a mano se puede quitar.
 - **Huecos cortos:** un hueco de 0,3 s no se ofrece; uno de 0,1 s no se rellena hasta pedirlo y, rellenado, da el ángulo real (±1°), queda marcado, se guarda y se recupera como interpolado, y se puede quitar.
 - **Caché de frames:** retroceder frame a frame 25 frames, cruzando un fotograma clave, y volver a avanzar muestra siempre el frame pedido.
@@ -43,5 +44,5 @@ Cada vídeo de rodilla va con un `.json` con la verdad: tiempo, flexión real y 
 - Cada página se abre en su propio contexto del navegador, así que empieza con IndexedDB vacío; recargar la misma página lo conserva. Para esperar a que algo esté guardado, `esperarGuardado()` mira IndexedDB y no solo el texto «Guardado…».
 - La página se abre con `locale: 'es-ES'` (uPlot falla con el idioma del Chromium de la nube, `en-US@posix`).
 - Una prueba nueva que dependa de un resultado numérico debe usar la verdad conocida del vídeo, no un valor «que sale».
-- Se han comprobado a propósito varias roturas y las pruebas las detectan: signo de la rodilla invertido; la gráfica salta 5 frames de más; no guardar al ocultar la página; no enviar las anclas al worker; guardar en la caché cada frame con el índice desplazado en uno.
+- Se han comprobado a propósito varias roturas y las pruebas las detectan: signo de la rodilla invertido; la gráfica salta 5 frames de más; no guardar al ocultar la página; no enviar las anclas al worker; guardar en la caché cada frame con el índice desplazado en uno; colocar sin el radio de búsqueda de la lupa.
 - El límite de tiempo es de 10 min por archivo (`--test-timeout`): la primera vez, generar los vídeos tarda unos minutos.

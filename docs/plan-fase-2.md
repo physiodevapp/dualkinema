@@ -82,6 +82,10 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 
 **Cómo quedó (paso 3):**
 - **Corregir:** se elige el marcador y se arrastra con la lupa; al soltar, se ajusta al centro del gomet. Si ahí no se reconoce un gomet (tapado, movido), se ofrece «Colocarlo aquí a ojo», sin ajuste. Una marca a mano se puede quitar. Arrastrar un marcador sin elegirlo antes no se ha hecho: el vídeo tendría que bloquear el desplazamiento de la página con el dedo encima.
+- **Lupa** (pedido tras probarlo en el móvil: costaba fijar el centro del gomet): el problema no era solo el aumento. El gomet se buscaba a unos 13 px del vídeo del dedo, que en un vídeo 1080 en un móvil son 3–4 px de pantalla. Ahora:
+  - la lupa mide 160 px y abarca un 7,5 % del lado menor del vídeo (un gomet de 25 px pasa de unos 20 a unos 49 px en la lupa);
+  - el gomet se busca en todo lo que se ve en la lupa, y si hay dos, va al más cercano al dedo;
+  - mientras se arrastra, un anillo marca el gomet al que irá el marcador, y sin anillo la cruz sale roja.
 - **Anclas:** «Seguir desde aquí» envía al seguidor las marcas a mano posteriores. En cada una toma la posición como cierta y vuelve a aprender el gomet: color y tamaño, o solo la posición si se marcó a ojo. La velocidad previa solo se conserva si el ancla cae a menos de dos radios de lo previsto: si cae más lejos, lo seguido antes estaba mal y su velocidad también. Lo destapó la prueba unitaria del salto: con la velocidad del error, el seguidor se perdía justo después del ancla. Tras una corrección con datos detrás, el visor recuerda que se puede rehacer desde ahí.
 - **Huecos cortos:** botón «Rellenar N huecos cortos», solo si los hay: entre dos posiciones fiables, ≤ 0,2 s entre ellas, nunca en los extremos.
   - Método: cúbico de Hermite en el tiempo real de cada frame, con la pendiente de cada lado estimada con la parábola por tres posiciones (segundo orden, espaciado desigual). Exacto a velocidad constante; 0,31 px de error con un giro de 1 Hz y 100 px de radio (628 px/s). La pendiente con dos puntos daba 1,4 px.

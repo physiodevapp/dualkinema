@@ -169,6 +169,34 @@ describe('marcado: errores sobre el vídeo y siguiente marcador', () => {
   })
 })
 
+describe('lupa: anillo donde quedará el marcador', () => {
+  it('sin gomet en la lupa no hay anillo; con él dentro, sí, y al soltar va a su centro', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      const caja = await p.getByTestId('capa').boundingBox()
+      const enPantalla = (x, y) => [caja.x + (x / 640) * caja.width, caja.y + (y / 360) * caja.height]
+      const lupa = p.getByTestId('lupa')
+      const ps = videos.verde.verdad[0].ps
+      // En este vídeo (640 × 360 a 390 px de ancho) la lupa abarca 40 px del vídeo: busca a 20 del dedo.
+      for (const [k, q] of ps.entries()) {
+        await p.mouse.move(...enPantalla(q.x + 45, q.y + 30))
+        await p.mouse.down()
+        await lupa.waitFor()
+        assert.equal(await lupa.getAttribute('data-gomet'), 'no', 'a 54 px no debería encontrar el gomet')
+        await p.mouse.move(...enPantalla(q.x + 12, q.y - 8), { steps: 5 })
+        assert.equal(await lupa.getAttribute('data-gomet'), 'si', 'a 14 px debería encontrar el gomet')
+        await p.mouse.up()
+        assert.equal(await p.getByTestId('error-toque').count(), 0, `marcador ${k + 1}: error al soltar`)
+      }
+      // Soltando a 14 px de cada gomet, el ángulo es el real: los tres quedaron en su centro.
+      assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[0].flexion) < TOLERANCIA_GRADOS)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('seguimiento y gráfica con gomets verdes', () => {
   let p
   let aviso

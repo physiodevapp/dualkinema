@@ -70,6 +70,25 @@ describe('aprenderMarcador', () => {
     expect(r.estado.area).toBeGreaterThan(200)
   })
 
+  it('con un radio de semilla mayor (lo que se ve en la lupa) lo encuentra aunque el toque caiga lejos', () => {
+    const img = dibujarFrame(W, H, [{ x: 150, y: 120, r: 7, rgb: VERDE }])
+    // A 22 px del centro: con el radio por defecto (≈ 4 px aquí) no hay gomet bajo el dedo.
+    expect(() => aprenderMarcador(lector(img), W, H, 0, 172, 120)).toThrow(ErrorMarcado)
+    const r = aprenderMarcador(lector(img), W, H, 0, 172, 120, { radioSemilla: 24 })
+    expect(Math.hypot(r.x - 150, r.y - 120)).toBeLessThan(0.3)
+  })
+
+  it('con dos gomets dentro de ese radio elige el más cercano al dedo', () => {
+    const img = dibujarFrame(W, H, [
+      { x: 140, y: 120, r: 7, rgb: VERDE },
+      { x: 175, y: 120, r: 7, rgb: AZUL },
+    ])
+    for (const [x, esperado] of [[150, 140], [166, 175]] as const) {
+      const r = aprenderMarcador(lector(img), W, H, 0, x, 120, { radioSemilla: 30 })
+      expect(Math.abs(r.x - esperado)).toBeLessThan(0.3)
+    }
+  })
+
   it('avisa si el toque no cae sobre un gomet', () => {
     expect(() => aprenderMarcador(lector(img), W, H, 0, 40, 40)).toThrow(ErrorMarcado)
   })

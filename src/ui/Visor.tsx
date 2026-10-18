@@ -19,7 +19,7 @@ import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tip
 import type { LeerVentana } from '../core/seguimiento/imagen'
 import type { MotivoHueco } from '../core/seguimiento/huecos'
 import { huecosInterpolables, HUECO_MAX_S, interpolarHueco } from '../core/seguimiento/interpolar'
-import { aprenderMarcador, ErrorMarcado } from '../core/seguimiento/seguidor'
+import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
 import { resumirSerie } from '../core/graficas/rango'
 import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
@@ -29,7 +29,7 @@ import { huellaDe } from './sesion'
 import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import GraficaAngulo from './visor/GraficaAngulo'
-import LienzoVideo from './visor/LienzoVideo'
+import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
 const SALTO = 10
@@ -300,12 +300,26 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     )
   }
 
-  const colocar = (x: number, y: number) => {
+  /** Dónde quedaría el marcador si se suelta en (x, y): centro y radio del gomet, o null si no hay. */
+  const previsualizar = useCallback(
+    (x: number, y: number, radio: number): Previsualizacion => {
+      if (mostrado === null || !ultimoFrame.current) return null
+      try {
+        const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, tabla.tiempos[mostrado]!, x, y, { radioSemilla: radio })
+        return { x: r.x, y: r.y, r: radioDe(r.estado.area) }
+      } catch {
+        return null
+      }
+    },
+    [mostrado, info, tabla],
+  )
+
+  const colocar = (x: number, y: number, radio: number) => {
     if (mostrado === null || !seleccionado || !ultimoFrame.current) return
     const t = tabla.tiempos[mostrado]!
     try {
-      // Se lleva el marcador al centro del gomet que hay bajo el dedo.
-      const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, t, x, y)
+      // Se lleva el marcador al centro del gomet que se ve en la lupa (el mismo que marcaba el anillo).
+      const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, t, x, y, { radioSemilla: radio })
       ponerManual(seleccionado, mostrado, r.x, r.y)
     } catch (e) {
       setErrorToque(
@@ -495,6 +509,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             dibujar={dibujar}
             interactivo={!!seleccionado && !siguiendo && mostrado === deseado}
             onToque={colocar}
+            previsualizar={seleccionado ? previsualizar : undefined}
           />
           {mostrado === null && !error && (
             <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
@@ -656,7 +671,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             {siguiendo
               ? 'Siguiendo los gomets…'
               : seleccionado
-                ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa, arrástralo hasta el gomet y suelta.`
+                ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
                 : listoParaSeguir
                   ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
                   : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
