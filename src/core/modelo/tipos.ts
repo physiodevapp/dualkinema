@@ -1,5 +1,6 @@
 import type { OrientacionVista } from '../geometria/canonico'
 import type { DefinicionArticulacion } from '../articulaciones/definicion'
+import type { CalibracionVista } from '../calibracion/escala'
 
 /** Identificador de marcador, común a todas las vistas de una sesión. */
 export type IdMarcador = string
@@ -52,8 +53,8 @@ export interface Vista {
   /** Segundos respecto a la vista de referencia (0 en la fase 1). */
   readonly desfase: number
   readonly orientacion: OrientacionVista
-  /** Escala, DLT o lente: a partir de la fase 2. */
-  readonly calibracion: null
+  /** Escala en el plano (fase 2); DLT o lente más adelante. null = sin escala. */
+  readonly calibracion: CalibracionVista | null
   readonly trayectorias: Readonly<Record<IdMarcador, readonly Muestra2D[]>>
 }
 
