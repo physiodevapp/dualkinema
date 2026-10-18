@@ -35,6 +35,7 @@ Cada vídeo de rodilla va con un `.json` con la verdad: tiempo, flexión real y 
 - **Corrección manual:** arrastrar con la lupa coloca el marcador en el gomet; con el gomet tapado se puede colocar a ojo; al volver a seguir, lo marcado a mano es un ancla (el recuento de huecos del worker lo excluye); una marca a mano se puede quitar.
 - **Huecos cortos:** un hueco de 0,3 s no se ofrece; uno de 0,1 s no se rellena hasta pedirlo y, rellenado, da el ángulo real (±1°), queda marcado, se guarda y se recupera como interpolado, y se puede quitar.
 - **Filtro:** con fps variable, el ángulo filtrado a 6 Hz coincide con el real (0,5°); dentro de un hueco no hay ángulo filtrado y justo a sus lados sí (±1°, el filtro no lo cruza); el corte cambiado se guarda, se recupera y «Volver a 6 Hz» también se guarda.
+- **Lectura del vídeo:** retroceder del 70 al 45 solo decodifica una vez (al cruzar el fotograma clave del 50); el resto sale de la caché. Avanzar de 10 en 10 sigue con el decodificador dentro del grupo de imágenes y empieza en el fotograma clave al cruzarlo (lo dice el modo junto al número de frame, `data-testid="lectura"`).
 - **Caché de frames:** retroceder frame a frame 25 frames, cruzando un fotograma clave, y volver a avanzar muestra siempre el frame pedido.
 - **Escritorio** (1280 px): sin desbordes.
 - **Consola:** ninguna prueba produce errores de consola ni de página.

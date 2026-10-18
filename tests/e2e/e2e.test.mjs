@@ -639,19 +639,60 @@ describe('retroceder con la caché de frames', () => {
       const { bits, ladoBloque } = videos.numerado
       await irAFrame(p, 70)
       const anterior = p.getByRole('button', { name: 'Frame anterior' })
-      // Del 70 al 45: cruza el fotograma clave del 50 (uno cada 25 frames).
+      // El salto al 70 decodifica desde el fotograma clave del 50 y deja en la
+      // caché todo lo que entrega de paso (del 50 al 70).
+      assert.equal(await p.getByTestId('lectura').innerText(), 'clave')
+      // Del 70 al 45: cruza el fotograma clave del 50 (uno cada 25 frames). Solo
+      // el paso al 49 vuelve a decodificar (desde el 25); el resto sale de la caché.
+      const conClave = []
       for (let i = 69; i >= 45; i--) {
         await anterior.click()
         await esperarQuieto(p)
         assert.equal((await leerPosicion(p)).frame, i + 1)
         assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i, `el canvas no muestra el frame ${i + 1}`)
+        if ((await p.getByTestId('lectura').innerText()) !== 'caché') conClave.push(i)
       }
+      assert.deepEqual(conClave, [49])
       // Y hacia delante otra vez, saliendo de la caché.
       const siguiente = p.getByRole('button', { name: 'Frame siguiente' })
       for (let i = 46; i <= 52; i++) {
         await siguiente.click()
         await esperarQuieto(p)
         assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i)
+      }
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('avanzar saltando frames', () => {
+  it('dentro del mismo grupo de imágenes sigue con el decodificador; pasado un fotograma clave, empieza en él', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.numerado.ruta)
+      const { bits, ladoBloque } = videos.numerado
+      await irAFrame(p, 30)
+      const avanzar = p.getByRole('button', { name: 'Avanzar 10 frames' })
+      // 30 → 40: sin fotograma clave entre medias (son el 25 y el 50). Antes,
+      // cualquier salto hacia delante volvía al fotograma clave: al mantener
+      // pulsado y saltarse frames, el avance se atascaba.
+      await avanzar.click()
+      await esperarQuieto(p)
+      assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), 40)
+      assert.equal(await p.getByTestId('lectura').innerText(), 'seguido')
+      // 40 → 50 y 70 → 80 cruzan un fotograma clave (50, 75): empezar en él
+      // decodifica menos que seguir. 50 → 60 → 70, dentro del grupo, siguen.
+      for (const [i, modo] of [
+        [50, 'clave'],
+        [60, 'seguido'],
+        [70, 'seguido'],
+        [80, 'clave'],
+      ]) {
+        await avanzar.click()
+        await esperarQuieto(p)
+        assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i)
+        assert.equal(await p.getByTestId('lectura').innerText(), modo, `al frame ${i}`)
       }
     } finally {
       await p.close()
