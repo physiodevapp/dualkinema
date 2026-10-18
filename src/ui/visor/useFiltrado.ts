@@ -2,6 +2,7 @@ import { useMemo, useRef, type RefObject } from 'react'
 import { anguloArticular, serieAngular, type MuestraAngulo } from '../../core/articulaciones/calculo'
 import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
 import { corteEfectivo } from '../../core/filtros/butterworth'
+import { derivadasAngulares, velocidadMarcador, type Derivadas, type VelocidadMarcador } from '../../core/filtros/derivadas'
 import { comoMuestras, filtrarTrayectoria, type AjustesFiltro, type TrayectoriaFiltrada } from '../../core/filtros/tramos'
 import { aCanonico, type OrientacionVista } from '../../core/geometria/canonico'
 import type { Vec3 } from '../../core/geometria/vector'
@@ -37,10 +38,15 @@ export interface Filtrado {
   readonly tramosCortos: number
   /** Ángulo filtrado en el frame i (NaN si falta algún marcador). */
   readonly anguloEn: (i: number) => number
+  /** Velocidad (°/s) y aceleración (°/s²) angulares por frame (NaN = sin valor). */
+  readonly derivadas: Derivadas
+  /** Velocidad lineal de cada marcador por frame, en px/s hasta que haya escala (paso 6). */
+  readonly velocidades: ReadonlyMap<IdMarcador, VelocidadMarcador>
 }
 
 /**
- * Filtra las coordenadas de cada marcador y calcula con ellas el ángulo.
+ * Filtra las coordenadas de cada marcador y calcula con ellas el ángulo, sus
+ * derivadas y la velocidad de cada marcador.
  * Se rehace cuando cambian las trayectorias o el corte (salvo `congelado`);
  * es lineal en el número de frames: unos 8 ms por marcador con 3600 frames
  * (2 min a 30 fps) en un ordenador, varias veces más en un móvil.
@@ -72,7 +78,10 @@ export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articu
       }
       return anguloArticular(articulacion, puntos)
     }
-    return { porMarcador, serie, fs, corte: corteEfectivo(ajustes.corteHz, fs), tramosCortos, anguloEn }
+    const derivadas = derivadasAngulares(articulacion, porMarcador, orientacion, fs)
+    // Sin escala todavía: px/s. El paso 6 pasará aquí los m/px de la calibración.
+    const velocidades = new Map([...porMarcador].map(([id, f]) => [id, velocidadMarcador(f, null)]))
+    return { porMarcador, serie, fs, corte: corteEfectivo(ajustes.corteHz, fs), tramosCortos, anguloEn, derivadas, velocidades }
   }, [version, fs, ids, trayectorias, ajustes, articulacion, orientacion, congelado])
   ultimo.current = filtrado
   return filtrado

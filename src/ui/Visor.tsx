@@ -12,6 +12,7 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline'
 import { anguloArticular, CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
+import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
 import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
 import type { Vec3 } from '../core/geometria/vector'
@@ -31,6 +32,7 @@ import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import GraficaAngulo from './visor/GraficaAngulo'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
+import PanelCinematica from './visor/PanelCinematica'
 import PanelFiltro from './visor/PanelFiltro'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
@@ -113,10 +115,12 @@ interface Props {
   inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
   /** Al recuperar: el ajuste del filtro guardado (null = el de por defecto). */
   filtro?: AjustesFiltro | null
+  /** Al recuperar: el tramo estático del cero de referencia, por articulación. */
+  ceros?: Readonly<Record<string, TramoEstatico>>
   avisoInicial?: string
 }
 
-export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, avisoInicial }: Props) {
+export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, ceros: cerosGuardados, avisoInicial }: Props) {
   const lienzo = useRef<HTMLCanvasElement>(null)
   const { info, tabla } = video
   const total = tabla.tiempos.length
@@ -161,6 +165,22 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     setAjustes(a)
     setRevAjustes((r) => r + 1)
   }, [])
+  // Cero de referencia (paso 5): tramo estático por articulación; se guarda
+  // el tramo y la media se recalcula con lo filtrado.
+  const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>(cerosGuardados ?? {})
+  const [revCeros, setRevCeros] = useState(0)
+  const cambiarTramo = useCallback(
+    (tramo: TramoEstatico | null) => {
+      setCeros((c) => {
+        const r: Record<string, TramoEstatico> = { ...c }
+        if (tramo) r[articulacion.id] = tramo
+        else delete r[articulacion.id]
+        return r
+      })
+      setRevCeros((r) => r + 1)
+    },
+    [articulacion.id],
+  )
   const guardado = useGuardado({
     sesion,
     huella,
@@ -168,8 +188,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     modelo,
     trayectorias,
     filtro: ajustes,
-    // Los dos contadores solo crecen: su suma cambia con cualquiera de los dos.
-    version: version + revAjustes,
+    ceros,
+    // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
+    version: version + revAjustes + revCeros,
     recuperada: !!inicial,
   })
 
@@ -524,6 +545,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     congelado: seguimiento.estado === 'siguiendo',
   })
   const anguloFiltrado = mostrado === null ? NaN : filtrado.anguloEn(mostrado)
+  const tramoEstatico = ceros[articulacion.id] ?? null
+  const cero = useMemo(() => (tramoEstatico ? ceroDeReferencia(filtrado.serie, tramoEstatico) : null), [tramoEstatico, filtrado.serie])
   const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
     (t: number) => {
@@ -833,6 +856,31 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           fs={filtrado.fs}
           tramosCortos={filtrado.tramosCortos}
           anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
+          deshabilitado={siguiendo}
+        />
+
+        <PanelCinematica
+          angulo={anguloFiltrado}
+          relativo={cero ? relativoAlCero(anguloFiltrado, cero) : NaN}
+          velocidad={mostrado === null ? NaN : (filtrado.derivadas.velocidad[mostrado] ?? NaN)}
+          aceleracion={mostrado === null ? NaN : (filtrado.derivadas.aceleracion[mostrado] ?? NaN)}
+          marcadores={modelo.marcadores.map((mk, k) => {
+            const v = filtrado.velocidades.get(mk.id)
+            return {
+              id: mk.id,
+              nombre: nombreCorto(mk.nombre),
+              color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]!,
+              velocidad: mostrado === null || !v ? NaN : (v.modulo[mostrado] ?? NaN),
+              unidad: v?.unidad ?? 'px/s',
+            }
+          })}
+          tramo={tramoEstatico}
+          cero={cero}
+          t={t}
+          t0={tabla.tiempos[0] ?? 0}
+          tn={tabla.tiempos[total - 1] ?? 0}
+          onTramo={cambiarTramo}
+          onPrimeros={() => cambiarTramo(tramoInicial(tabla.tiempos))}
           deshabilitado={siguiendo}
         />
 

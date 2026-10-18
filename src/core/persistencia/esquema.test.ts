@@ -95,6 +95,33 @@ describe('esquema de la sesión', () => {
     expect(sinFiltro.ok && sinFiltro.valor.filtro).toBeNull()
   })
 
+  it('guarda el tramo estático del cero de referencia sin cambiar de versión; lo guardado sin él ({}) sigue valiendo', () => {
+    const art = modelo.articulaciones[0]!.id
+    const e = entrada()
+    const conCero = { ...e, vistas: [{ ...e.vistas[0]!, ceros: { [art]: { desde: 0, hasta: 2 } } }] }
+    const { cabecera } = prepararGuardado(conCero)
+    expect(cabecera.esquema).toBe(2)
+    const r = leerCabecera(comoIDB(cabecera))
+    expect(r.ok && r.valor.vistas[0]!.ceros).toEqual({ [art]: { desde: 0, hasta: 2 } })
+    // Una sesión guardada antes de este paso (ceros vacío, esquema 2) se lee igual.
+    const antes = leerCabecera(comoIDB(prepararGuardado(entrada()).cabecera))
+    expect(antes.ok && antes.valor.vistas[0]!.ceros).toEqual({})
+    // Tramos no válidos o de una articulación ajena al modelo se rechazan.
+    const vista = cabecera.vistas[0]!
+    const casos: [unknown, RegExp][] = [
+      [{ [art]: { desde: 2, hasta: 1 } }, /ceros/],
+      [{ [art]: { desde: 0, hasta: Number.NaN } }, /ceros/],
+      [{ [art]: { desde: 0, hasta: 1, media: 4 } }, /ceros/],
+      [{ [art]: 5 }, /ceros/],
+      [{ otra: { desde: 0, hasta: 1 } }, /no está en el modelo: otra/],
+    ]
+    for (const [ceros, motivo] of casos) {
+      const l = leerCabecera({ ...cabecera, vistas: [{ ...vista, ceros }] })
+      expect(l.ok, String(motivo)).toBe(false)
+      if (!l.ok) expect(l.detalle).toMatch(motivo)
+    }
+  })
+
   it('guarda el modelo de marcadores completo, con la definición de la articulación', () => {
     expect(prepararGuardado(entrada()).cabecera.modelo).toEqual(modelo)
   })

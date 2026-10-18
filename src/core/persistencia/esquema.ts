@@ -1,3 +1,4 @@
+import { esTramoEstatico, type TramoEstatico } from '../articulaciones/cero'
 import type { DefinicionArticulacion, Plano } from '../articulaciones/definicion'
 import type { OrientacionVista } from '../geometria/canonico'
 import type { IdMarcador, ModeloMarcadores } from '../modelo/tipos'
@@ -18,9 +19,10 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  *   - DatosSesion: las trayectorias, por vista y marcador.
  *
  * Lo que llega en pasos posteriores de la fase 2 ya tiene su sitio, vacío:
- * `calibracion` (null = sin escala) y `ceros` (por articulación; vacío = sin
- * cero de referencia). `filtro` ya se rellena (paso 4; null = el de por
- * defecto, así que lo guardado antes sigue valiendo sin migrar). Rellenarlos
+ * `calibracion` (null = sin escala). `filtro` (paso 4; null = el de por
+ * defecto) y `ceros` (paso 5: tramo estático por id de articulación; vacío =
+ * sin cero de referencia) ya se rellenan, y lo guardado antes sigue valiendo
+ * sin migrar. Rellenarlos
  * no exige cambiar de versión mientras null / {} sigan siendo válidos; un
  * cambio que deje de admitir lo guardado sí: sube ESQUEMA_ACTUAL y añade su
  * migración.
@@ -36,8 +38,8 @@ export interface VistaCabecera {
   readonly desfase: number
   /** Escala, DLT o lente: llega en el paso 6. */
   readonly calibracion: null
-  /** Cero de referencia por articulación: llega en el paso 5. */
-  readonly ceros: Readonly<Record<string, never>>
+  /** Cero de referencia: tramo estático por id de articulación (vacío = sin cero). */
+  readonly ceros: Readonly<Record<string, TramoEstatico>>
 }
 
 export interface CabeceraSesion {
@@ -83,6 +85,8 @@ export interface EntradaGuardado {
     readonly huella: HuellaArchivo
     readonly orientacion: OrientacionVista
     readonly series: ReadonlyMap<IdMarcador, SerieFrames>
+    /** Tramo estático por id de articulación; sin él, ninguno. */
+    readonly ceros?: Readonly<Record<string, TramoEstatico>>
   }[]
 }
 
@@ -107,7 +111,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     creada: e.creada,
     actualizada: e.ahora,
     modelo: e.modelo,
-    vistas: e.vistas.map((v) => ({ id: v.id, huella: v.huella, orientacion: v.orientacion, desfase: 0, calibracion: null, ceros: {} })),
+    vistas: e.vistas.map((v) => ({ id: v.id, huella: v.huella, orientacion: v.orientacion, desfase: 0, calibracion: null, ceros: { ...v.ceros } })),
     filtro: e.filtro ?? null,
     resumen: { frames: e.vistas.reduce((s, v) => s + v.huella.frames, 0), conDatos, aMano, interpolados },
     claves: e.vistas.map((v) => claveHuella(v.huella)),
@@ -213,7 +217,7 @@ function errorVista(v: unknown): string | null {
   if (o) return `${o} en la vista ${v.id}`
   if (typeof v.desfase !== 'number' || !Number.isFinite(v.desfase)) return `desfase no válido en la vista ${v.id}`
   if (v.calibracion !== null) return `calibración no válida en la vista ${v.id}`
-  if (!esObjeto(v.ceros) || Object.keys(v.ceros).length > 0) return `ceros no válidos en la vista ${v.id}`
+  if (!esObjeto(v.ceros) || !Object.values(v.ceros).every(esTramoEstatico)) return `ceros no válidos en la vista ${v.id}`
   return null
 }
 
@@ -233,6 +237,11 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
     if (ev) return mal(ev)
   }
   const vistas = c.vistas as VistaCabecera[]
+  const articulaciones = new Set((c.modelo as ModeloMarcadores).articulaciones.map((a) => a.id))
+  for (const vista of vistas) {
+    const ajena = Object.keys(vista.ceros).find((id) => !articulaciones.has(id))
+    if (ajena) return mal(`cero de referencia de una articulación que no está en el modelo: ${ajena}`)
+  }
   if (new Set(vistas.map((x) => x.id)).size !== vistas.length) return mal('vistas repetidas')
   if (c.filtro !== null && !esAjustesFiltro(c.filtro)) return mal('filtro no válido')
   const r = c.resumen

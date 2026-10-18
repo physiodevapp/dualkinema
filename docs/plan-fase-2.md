@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia), 3 (corrección manual) y 4 (Butterworth) hechos; siguiente: paso 5 (velocidades y cero de referencia).
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia), 3 (corrección manual), 4 (Butterworth) y 5 (velocidades y cero de referencia) hechos; siguiente: paso 6 (escala en metros).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -50,7 +50,7 @@ Por qué hace falta: el seguimiento tiene ruido de unas décimas de píxel por f
 - **Visor (provisional hasta el paso 8):** panel «Filtro» con el corte y el ángulo filtrado del frame actual, y la curva filtrada como línea clara sobre la cruda en la gráfica. Mientras se sigue no se refiltra (las trayectorias cambian con cada lote); se rehace al parar. Coste medido: unos 8 ms por marcador con 3600 frames en un ordenador.
 - **Tests:** −3 dB en el corte (teórico y medido sobre un seno), seno de 1 Hz con ruido (sin desfase: fase del componente de 1 Hz < 0,1°), constante y recta, fps variable frente a equiespaciado y frente a la salida exacta del filtro, huecos (un salto de 200 px al otro lado no se nota), tramos cortos, marcas conservadas y validación de los ajustes. En navegador: ángulo filtrado frente al real con fps variable, sin valor dentro de un hueco y correcto a sus lados, y el corte se guarda y se recupera.
 
-## 2. Velocidades y aceleraciones
+## 2. Velocidades y aceleraciones — hecho (paso 5)
 
 - **Cálculo:** diferencias centrales sobre la señal filtrada y equiespaciada, y vuelta a los tiempos reales.
   - **Velocidad angular** en °/s; **aceleración angular** en °/s².
@@ -58,14 +58,28 @@ Por qué hace falta: el seguimiento tiene ruido de unas décimas de píxel por f
 - **Sin datos fiables:** en los bordes de cada tramo y en los tramos cortos, no hay derivada (hueco, nunca 0).
 - **Tests:** derivada de un seno y de una parábola, con valor conocido.
 
-## 3. Cero de referencia [D3]
+**Cómo quedó (paso 5):**
+- **Núcleo** en `src/core/filtros/derivadas.ts`. El filtrado del paso 4 ahora conserva la rejilla uniforme filtrada de cada tramo (`rejillas` en `TrayectoriaFiltrada`, de `filtrarTramoConRejilla`), y se deriva ahí: v = (x[k+1] − x[k−1]) / 2h y a = (x[k+1] − 2x[k] + x[k−1]) / h², con error del orden de h² (exactas con una parábola). Se vuelve a los tiempos reales con spline cúbico por los nodos con derivada, sin extrapolar.
+- **Sin derivada (NaN, nunca 0):** el primer y el último nodo no tienen vecinos a los dos lados, así que el primer y el último frame de cada tramo quedan sin valor; con fps variable, a veces también el segundo o el penúltimo (si caen fuera de los nodos interiores). Los tramos cortos no se derivan.
+- **Velocidad angular y aceleración angular:** un tramo del ángulo son frames en los que todos sus marcadores están en tramos no cortos. En una rejilla de ese tramo se evalúa la posición filtrada de cada marcador (spline por su rejilla: si los tramos coinciden, son los mismos valores), se calcula el ángulo, se desenrolla y se deriva.
+- **Velocidad lineal** de cada marcador: vx, vy y módulo en px/s (y hacia abajo, como la imagen). `velocidadMarcador(f, metrosPorPx)` ya acepta la escala: con ella devuelve m/s y la unidad va con el valor, así que el paso 6 solo tiene que pasar los m/px.
+- **Ruido:** la segunda derivada multiplica el ruido por (2πf)². En el vídeo sintético (ruido de seguimiento ≈ 0,05°), la aceleración oscila unos ±20 °/s² a 6 Hz y ±4 °/s² a 3 Hz; la velocidad, menos de 1 °/s a 6 Hz. El panel lo dice: si la aceleración salta, bajar el corte. Un corte propio para las derivadas (o el análisis de residuos de Winter) queda como posible mejora.
+- **Tests:** diferencias centrales exactas con una parábola en la rejilla y con fps variable en los tiempos reales; seno de 1 Hz (< 1 % del pico); giro de 1 Hz con huecos, tramo corto y perdidos (rapidez real, sin valor en bordes, huecos y tramos cortos, nunca 0; componentes con su signo; m/s con escala); flexión de rodilla 0→90→0° con fps variable (±1 °/s, ±3 °/s²), con un hueco del tobillo y con un tramo corto de la cadera. Una derivada rota a propósito (diferencia hacia delante) la detectan 6 tests. En navegador: velocidad angular frente a la derivada real del vídeo (±3 °/s, también tras los huecos de fps), aceleración a 3 Hz (±10 °/s²), «—» en el primer y el último frame, y la velocidad del tobillo (±5 %) con cadera y rodilla quietas.
+
+## 3. Cero de referencia [D3] — hecho (paso 5)
 
 De pie salió −4,7° porque los gomets no caen sobre los ejes articulares. La práctica habitual es una **toma estática**: tú eliges un tramo quieto (por ejemplo, los primeros 2 s de pie), la app calcula el ángulo medio y lo resta.
 
 - Se muestran el valor **crudo** y el **relativo al estático**, nunca uno en lugar del otro sin decirlo.
 - El tramo elegido se guarda con la sesión y sale en el CSV.
 
-**[D3]** ¿Te sirve clínicamente así, o prefieres otra referencia (por ejemplo, un ángulo medido con goniómetro e introducido a mano)?
+**[D3]** ¿Te sirve clínicamente así, o prefieres otra referencia (por ejemplo, un ángulo medido con goniómetro e introducido a mano)? Aceptado así.
+
+**Cómo quedó (paso 5):**
+- **Núcleo** en `src/core/articulaciones/cero.ts`: `ceroDeReferencia(serie, tramo)` hace la media del ángulo filtrado de los frames del tramo (extremos incluidos, sin los huecos), desenrollada para que una postura cerca de ±180° no dé 0, y su desviación típica; `relativoAlCero` = normalizar(ángulo − media).
+- **Se guarda el tramo, no la media:** `ceros: { [idArticulacion]: { desde, hasta } }` en segundos de vídeo, en cada vista. La media se recalcula si cambia el corte o se corrige un marcador. `{}` sigue siendo «sin cero», así que lo guardado antes vale y el esquema se queda en la versión 2; la validación rechaza un tramo mal formado y uno de una articulación que no está en el modelo (test).
+- **Visor (provisional, panel «Velocidad y cero»):** ángulo sin cero y relativo al estático, velocidad y aceleración angulares y velocidad de cada marcador del frame actual. Tramo con «Primeros 2 s», «Inicio aquí» / «Fin aquí» (el frame actual; si no hay tramo, 2 s hacia delante o hacia atrás) y «Quitar». Muestra el tramo, la media, la desviación típica y los frames, y avisa si la desviación pasa de 2° (no parece quieto).
+- **Tests:** media y desviación conocidas, huecos ignorados, cerca de ±180°, tramo sin ángulo, primeros 2 s sin pasar del final, validación del tramo y del esquema. En navegador, con el vídeo sintético: los primeros 2 s dan la media real de esos frames (≈ 45°, con aviso de que no es quieto), el relativo es el sin cero menos la media, «Inicio aquí» / «Fin aquí» dan la media real de su tramo, el tramo se guarda, se recupera tras recargar con la misma media y relativo, y «Quitar» se guarda vacío.
 
 ## 4. Escala en metros [D4]
 

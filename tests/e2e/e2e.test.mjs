@@ -103,7 +103,7 @@ describe('visor: frame exacto con fps variable', () => {
   })
 
   it('avisa de que los fps son variables y da el rango entre frames', async () => {
-    const datos = await p.locator('dl').innerText()
+    const datos = await p.locator('section', { has: p.getByRole('heading', { name: 'Datos del vídeo' }) }).innerText()
     assert.match(datos, /variable/)
     assert.match(datos, /33,\d.{1,3}6\d,\d ms/s) // 33 ms normales y 66 ms con el frame que falta
   })
@@ -694,6 +694,167 @@ describe('avanzar saltando frames', () => {
         assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i)
         assert.equal(await p.getByTestId('lectura').innerText(), modo, `al frame ${i}`)
       }
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+/** Número que muestra un elemento («−12,3 °/s», «148 px/s»); NaN si muestra «—». */
+async function leerNumero(p, testid) {
+  const texto = (await p.getByTestId(testid).innerText()).trim()
+  const m = /^(−|-)?([\d.,]+)/.exec(texto)
+  return m ? (m[1] ? -1 : 1) * Number(m[2].replace(/\./g, '').replace(',', '.')) : NaN
+}
+
+/** Espera a que la sesión guardada tenga en su vista el cero `ceros` (comparado como JSON). */
+async function esperarCerosGuardados(p, ceros) {
+  await p.waitForFunction(
+    async (esperado) => {
+      const bd = await new Promise((ok, mal) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+        r.onerror = () => mal(r.error)
+      })
+      try {
+        if (!bd.objectStoreNames.contains('sesiones')) return false
+        const todas = await new Promise((ok) => {
+          const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+          r.onsuccess = () => ok(r.result)
+        })
+        return todas.some((c) => JSON.stringify(c.vistas[0].ceros) === esperado)
+      } finally {
+        bd.close()
+      }
+    },
+    JSON.stringify(ceros),
+    { timeout: 20000, polling: 200 },
+  )
+}
+
+describe('velocidad y aceleración angulares, velocidad de los marcadores', () => {
+  // Flexión real 45·(1 − cos(πt/2)): velocidad 45·(π/2)·sin(πt/2) °/s (pico 70,7 a t = 1 s) y
+  // aceleración 45·(π/2)²·cos(πt/2) °/s². El tobillo gira a 120 px de la rodilla.
+  const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+  const acelReal = (t) => 45 * (Math.PI / 2) ** 2 * Math.cos((Math.PI * t) / 2)
+  let p
+  before(async () => {
+    ;({ p } = await seguirVideo(videos.verde))
+  })
+  after(() => p?.close())
+
+  it('velocidad angular frente a la derivada real del vídeo (±3 °/s), también tras los huecos de fps', async () => {
+    const verdad = videos.verde.verdad
+    for (const i of [10, 30, 41, 60, 81, 100, 110]) {
+      await irAFrame(p, i)
+      const v = await leerNumero(p, 'velocidad-angular')
+      assert.ok(Math.abs(v - velReal(verdad[i].t)) < 3, `frame ${i + 1}: ${v} °/s, real ${velReal(verdad[i].t).toFixed(1)} °/s`)
+    }
+  })
+
+  it('aceleración angular frente a la real (±10 °/s²) con el corte a 3 Hz', async () => {
+    // La segunda derivada multiplica el ruido por (2πf)²: con el ruido de seguimiento de este
+    // vídeo (≈ 0,05°), a 6 Hz la aceleración oscila unos ±20 °/s² (medido); a 3 Hz, unos ±4.
+    // La flexión (0,25 Hz) pasa igual por los dos cortes.
+    await p.getByRole('slider', { name: 'Frecuencia de corte del filtro' }).fill('3')
+    assert.match(await p.getByTestId('corte').innerText(), /3,0 Hz/)
+    const verdad = videos.verde.verdad
+    for (const i of [15, 30, 60, 90, 105]) {
+      await irAFrame(p, i)
+      const a = await leerNumero(p, 'aceleracion-angular')
+      assert.ok(Math.abs(a - acelReal(verdad[i].t)) < 10, `frame ${i + 1}: ${a} °/s², real ${acelReal(verdad[i].t).toFixed(1)} °/s²`)
+    }
+  })
+
+  it('sin derivada en el primer y el último frame (—, nunca 0)', async () => {
+    for (const i of [0, videos.verde.verdad.length - 1]) {
+      await irAFrame(p, i)
+      for (const id of ['velocidad-angular', 'aceleracion-angular']) assert.equal(await p.getByTestId(id).innerText(), '—', `${id}, frame ${i + 1}`)
+    }
+  })
+
+  it('velocidad lineal en px/s: el tobillo, la real (±5 %); cadera y rodilla quietas', async () => {
+    const verdad = videos.verde.verdad
+    const filas = p.locator('[data-testid^="velocidad-marcador-"]')
+    assert.equal(await filas.count(), 3)
+    await irAFrame(p, 30)
+    const real = 120 * (velReal(verdad[30].t) * Math.PI) / 180
+    const textos = await filas.allInnerTexts()
+    assert.match(textos[2], /px\/s$/)
+    const tobillo = await leerNumero(p, await filas.nth(2).getAttribute('data-testid'))
+    assert.ok(Math.abs(tobillo / real - 1) < 0.05, `tobillo ${tobillo} px/s, real ${real.toFixed(0)} px/s`)
+    for (const k of [0, 1]) {
+      const v = await leerNumero(p, await filas.nth(k).getAttribute('data-testid'))
+      assert.ok(v < 3, `marcador ${k}: ${v} px/s`)
+    }
+  })
+})
+
+describe('cero de referencia: tramo estático guardado con la sesión', () => {
+  it('primeros 2 s, inicio y fin aquí, relativo = sin cero − media; se guarda, se recupera y se quita', async () => {
+    const verdad = videos.verde.verdad
+    const media = (a, b) => {
+      const v = verdad.filter((f) => f.t >= a - 1e-9 && f.t <= b + 1e-9).map((f) => f.flexion)
+      return v.reduce((s, x) => s + x, 0) / v.length
+    }
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await esperarGuardado(p, verdad.length)
+      assert.equal(await p.getByTestId('angulo-relativo').innerText(), '—')
+      // Primeros 2 s: de 0° a 90° y vuelta a empezar; la media es la de esos frames (≈ 45°).
+      await p.getByRole('button', { name: 'Primeros 2 s' }).click()
+      const m1 = media(verdad[0].t, verdad[0].t + 2)
+      assert.ok(Math.abs((await leerNumero(p, 'cero-media')) - m1) < 0.5, `media ${await p.getByTestId('cero-media').innerText()}, real ${m1.toFixed(2)}`)
+      // No es un tramo quieto: se avisa.
+      await p.getByText(/no parece quieto/).waitFor()
+      await irAFrame(p, 60)
+      const sinCero = await leerNumero(p, 'angulo-sin-cero')
+      assert.ok(Math.abs(sinCero - verdad[60].flexion) < TOLERANCIA_GRADOS)
+      assert.ok(Math.abs((await leerNumero(p, 'angulo-relativo')) - (sinCero - (await leerNumero(p, 'cero-media')))) < 0.11)
+
+      // Inicio en el frame 11 y fin en el 31 (tiempos del vídeo).
+      await irAFrame(p, 10)
+      await p.getByRole('button', { name: 'Inicio aquí' }).click()
+      await irAFrame(p, 30)
+      await p.getByRole('button', { name: 'Fin aquí' }).click()
+      const tramo = { desde: verdad[10].t, hasta: verdad[30].t }
+      const m2 = media(tramo.desde, tramo.hasta)
+      assert.ok(Math.abs((await leerNumero(p, 'cero-media')) - m2) < 0.5)
+      await p.waitForFunction(
+        async ({ a, b }) => {
+          const bd = await new Promise((ok) => {
+            const r = indexedDB.open('dualkinema')
+            r.onsuccess = () => ok(r.result)
+          })
+          try {
+            const todas = await new Promise((ok) => {
+              const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+              r.onsuccess = () => ok(r.result)
+            })
+            return todas.some((c) => Object.values(c.vistas[0].ceros).some((z) => z.desde === a && z.hasta === b))
+          } finally {
+            bd.close()
+          }
+        },
+        { a: tramo.desde, b: tramo.hasta },
+        { timeout: 20000, polling: 200 },
+      )
+      const textoTramo = await p.getByTestId('cero-tramo').innerText()
+
+      // Recargar y recuperar: el mismo tramo y la misma media.
+      await p.reload()
+      await p.getByTestId('sesion-guardada').waitFor()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.equal(await p.getByTestId('cero-tramo').innerText(), textoTramo)
+      await irAFrame(p, 60)
+      assert.ok(Math.abs((await leerNumero(p, 'angulo-relativo')) - (verdad[60].flexion - m2)) < 0.6)
+
+      // Quitar: vuelve a no haber relativo, y se guarda vacío.
+      await p.getByRole('button', { name: 'Quitar', exact: true }).click()
+      assert.equal(await p.getByTestId('angulo-relativo').innerText(), '—')
+      await esperarCerosGuardados(p, {})
     } finally {
       await p.close()
     }
