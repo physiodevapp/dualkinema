@@ -137,6 +137,14 @@ describe('esquema de la sesión', () => {
       expect(l.ok).toBe(false)
       if (!l.ok) expect(l.detalle).toMatch(/calibración no válida/)
     }
+    // Entre dos marcadores: tienen que estar en el modelo.
+    const [m1, m2] = modelo.marcadores.map((m) => m.id)
+    const entre = { tipo: 'escala-plano', objeto: 'marcadores', a: { x: 0, y: 0 }, b: { x: 0, y: 160 }, longitudM: 0.4, t: 0, entre: { desde: m1!, hasta: m2!, tramo: { desde: 0, hasta: 1 }, muestras: 30, dispersionPx: 0.3 } }
+    const bien = leerCabecera(comoIDB({ ...cabecera, vistas: [{ ...vista, calibracion: entre }] }))
+    expect(bien.ok && bien.valor.vistas[0]!.calibracion?.entre?.hasta).toBe(m2)
+    const ajena = leerCabecera({ ...cabecera, vistas: [{ ...vista, calibracion: { ...entre, entre: { ...entre.entre, hasta: 'otro' } } }] })
+    expect(ajena.ok).toBe(false)
+    if (!ajena.ok) expect(ajena.detalle).toMatch(/no están en el modelo/)
   })
 
   it('guarda el modelo de marcadores completo, con la definición de la articulación', () => {

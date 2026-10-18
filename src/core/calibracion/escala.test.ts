@@ -7,8 +7,11 @@ import {
   DISTANCIA_MIN_PX,
   distanciaPx,
   esCalibracion,
+  ERROR_MEDIA_MARCADOR_PX,
+  incertidumbreEscala,
   incertidumbreRelativa,
   INCERTIDUMBRE_AVISO,
+  medirEntreMarcadores,
   metrosDesdeCm,
   metrosPorPx,
   type EscalaPlano,
@@ -91,5 +94,80 @@ describe('escala: validación', () => {
     expect(metrosDesdeCm('30.5')).toBeCloseTo(0.305, 12)
     expect(metrosDesdeCm(',5')).toBeCloseTo(0.005, 12)
     for (const malo of ['', '0', 'abc', '1,2,3', '-5', '10 cm']) expect(metrosDesdeCm(malo), malo).toBeNull()
+  })
+})
+
+describe('escala entre dos marcadores', () => {
+  const m = (t: number, x: number, y: number, calidad = 1): Muestra2D => ({ t, x, y, calidad, editadoManual: false })
+  // Rodilla en (300, 100) y tobillo en (300, 260) de pie (160 px), con ruido alterno de ±0,5 px en y.
+  const n = 90
+  const rodilla = Array.from({ length: n }, (_, i) => m(i / 30, 300, 100 + (i % 2 ? 0.5 : -0.5)))
+  const tobillo = Array.from({ length: n }, (_, i) => m(i / 30, 300, 260 + (i % 2 ? -0.5 : 0.5)))
+
+  it('posición media de cada marcador en el tramo y dispersión de la distancia', () => {
+    const r = medirEntreMarcadores(rodilla, tobillo, { desde: 0, hasta: 59 / 30 })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.muestras).toBe(60)
+    expect(r.a.x).toBeCloseTo(300, 12)
+    expect(r.a.y).toBeCloseTo(100, 12)
+    expect(r.b.y).toBeCloseTo(260, 12)
+    // La distancia es 161 o 159 px, por igual: desviación típica 1 px.
+    expect(r.dispersionPx).toBeCloseTo(1, 12)
+    // 40 cm entre ellos → 2,5 mm por píxel.
+    const e = crearEscala({ objeto: 'marcadores', a: r.a, b: r.b, longitudM: 0.4, t: 0, entre: { desde: 'r', hasta: 't', tramo: { desde: 0, hasta: 59 / 30 }, muestras: r.muestras, dispersionPx: r.dispersionPx } })
+    expect(e.ok && metrosPorPx(e.valor)).toBeCloseTo(0.0025, 12)
+    // Error de la media: 1/√60 = 0,13 px → se queda en el mínimo de 0,25 px; sobre 160 px.
+    expect(e.ok && incertidumbreEscala(e.valor)).toBeCloseTo(ERROR_MEDIA_MARCADOR_PX / 160, 12)
+    // Con pocos frames y mucha dispersión manda dispersión / √n.
+    expect(incertidumbreEscala({ a: r.a, b: r.b, entre: { desde: 'r', hasta: 't', tramo: { desde: 0, hasta: 0 }, muestras: 4, dispersionPx: 2 } })).toBeCloseTo(1 / 160, 12)
+    // Sin `entre`, la de dos toques.
+    expect(incertidumbreEscala({ a: r.a, b: r.b })).toBeCloseTo(Math.SQRT2 / 160, 12)
+  })
+
+  it('con el segmento girando en el tramo, la distancia es la del segmento, no la de las posiciones medias', () => {
+    // Pierna de 120 px que gira 90° alrededor de la rodilla: las posiciones medias del tobillo
+    // quedan a unos 108 px de la rodilla, pero el segmento mide 120 en todos los frames.
+    const r0 = Array.from({ length: 31 }, (_, i) => m(i / 30, 300, 100))
+    const t0 = r0.map((_, i) => m(i / 30, 300 + 120 * Math.sin((i / 30) * (Math.PI / 2)), 100 + 120 * Math.cos((i / 30) * (Math.PI / 2))))
+    const r = medirEntreMarcadores(r0, t0, { desde: 0, hasta: 1 })
+    expect(r.ok && distanciaPx(r.a, r.b)).toBeCloseTo(120, 9)
+    expect(r.ok && r.dispersionPx).toBeLessThan(1e-9)
+    // b, en la dirección media del tobillo (45°).
+    expect(r.ok && Math.atan2(r.b.x - r.a.x, r.b.y - r.a.y)).toBeCloseTo(Math.PI / 4, 9)
+  })
+
+  it('un solo frame vale; ignora perdidos, poco fiables y lo de fuera del tramo', () => {
+    const uno = medirEntreMarcadores(rodilla, tobillo, { desde: 1 / 30, hasta: 1 / 30 })
+    expect(uno.ok && uno.muestras).toBe(1)
+    expect(uno.ok && uno.dispersionPx).toBe(0)
+    const a = [...rodilla]
+    a[2] = m(2 / 30, NaN, NaN, 0)
+    a[3] = m(3 / 30, 0, 0, 0.4)
+    const b = [...tobillo]
+    b[4] = undefined as unknown as Muestra2D
+    const r = medirEntreMarcadores(a, b, { desde: 0, hasta: 9 / 30 })
+    expect(r.ok && r.muestras).toBe(7)
+    expect(r.ok && r.a.y).toBeCloseTo(100, 0)
+    expect(medirEntreMarcadores(rodilla, tobillo, { desde: 10, hasta: 11 })).toMatchObject({ ok: false, motivo: /tramo/ })
+  })
+
+  it('crearEscala y esCalibracion exigen el origen con «marcadores» y solo con él', () => {
+    const entre = { desde: 'r', hasta: 't', tramo: { desde: 0, hasta: 1 }, muestras: 30, dispersionPx: 0.2 }
+    const base = { a: { x: 0, y: 0 }, b: { x: 0, y: 160 }, longitudM: 0.4, t: 0 }
+    expect(crearEscala({ ...base, objeto: 'marcadores' }).ok).toBe(false)
+    expect(crearEscala({ ...base, objeto: 'palo', entre }).ok).toBe(false)
+    const r = crearEscala({ ...base, objeto: 'marcadores', entre })
+    expect(r.ok && esCalibracion(r.valor)).toBe(true)
+    const v = { tipo: 'escala-plano', objeto: 'marcadores', ...base, entre }
+    for (const malo of [
+      { ...v, entre: undefined },
+      { ...v, entre: { ...entre, hasta: 'r' } },
+      { ...v, entre: { ...entre, tramo: { desde: 2, hasta: 1 } } },
+      { ...v, entre: { ...entre, muestras: 0 } },
+      { ...v, entre: { ...entre, dispersionPx: -1 } },
+    ]) {
+      expect(esCalibracion(malo), JSON.stringify(malo)).toBe(false)
+    }
   })
 })

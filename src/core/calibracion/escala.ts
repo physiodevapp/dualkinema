@@ -14,10 +14,32 @@
  *
  * Se guarda con la vista (`calibracion`). Los ángulos no la necesitan; las
  * velocidades lineales y las distancias, sí.
+ *
+ * Variante «entre dos marcadores»: en vez de un objeto, la distancia medida
+ * con cinta entre dos gomets de la persona (p. ej. rodilla y tobillo, de
+ * pie). Los extremos son la posición media de cada marcador en un tramo
+ * quieto, así que el error de marcado baja mucho y la escala queda justo en
+ * el plano de los marcadores. Lo que más pesa entonces es la medida con cinta
+ * sobre la piel, que la app no puede saber.
  */
 
-export type ObjetoCalibracion = 'cinta' | 'palo' | 'regla' | 'otro'
-export const OBJETOS_CALIBRACION: readonly ObjetoCalibracion[] = ['cinta', 'palo', 'regla', 'otro']
+import { CALIDAD_MINIMA } from '../articulaciones/calculo'
+import type { IdMarcador, Muestra2D } from '../modelo/tipos'
+
+export type ObjetoCalibracion = 'cinta' | 'palo' | 'regla' | 'otro' | 'marcadores'
+export const OBJETOS_CALIBRACION: readonly ObjetoCalibracion[] = ['cinta', 'palo', 'regla', 'otro', 'marcadores']
+
+/** De dónde salen los extremos cuando la escala es la distancia entre dos marcadores. */
+export interface EntreMarcadores {
+  readonly desde: IdMarcador
+  readonly hasta: IdMarcador
+  /** Tramo promediado, en s de vídeo (desde ≤ hasta: un solo frame vale). */
+  readonly tramo: { readonly desde: number; readonly hasta: number }
+  /** Frames con los dos marcadores utilizables en el tramo. */
+  readonly muestras: number
+  /** Desviación típica de la distancia entre ellos en el tramo, px. */
+  readonly dispersionPx: number
+}
 
 export interface Punto2D {
   readonly x: number
@@ -35,6 +57,8 @@ export interface EscalaPlano {
   readonly longitudM: number
   /** Instante (s de vídeo) del frame en que se marcaron los extremos, para volver a verlo. */
   readonly t: number
+  /** Solo con `objeto: 'marcadores'`: de qué marcadores y tramo salen `a` y `b`. */
+  readonly entre?: EntreMarcadores
 }
 
 /** Calibración de una vista. Hoy solo la escala 2D; DLT (fase 5) y lente (fase 6) se añadirán aquí. */
@@ -47,6 +71,12 @@ export const LONGITUD_MAX_M = 20
 export const DISTANCIA_MIN_PX = 20
 /** Error típico al marcar cada extremo con la lupa, en px. */
 export const ERROR_MARCADO_PX = 1
+/**
+ * Error mínimo de la posición media de un gomet, px. Promediar muchos frames
+ * reduce el ruido del seguimiento, pero no lo que comparten todos (la forma
+ * del gomet, la luz): no se baja de aquí.
+ */
+export const ERROR_MEDIA_MARCADOR_PX = 0.25
 /** Por encima de esta incertidumbre relativa, la app aconseja un objeto más largo. */
 export const INCERTIDUMBRE_AVISO = 0.01
 
@@ -68,6 +98,69 @@ export function incertidumbreRelativa(a: Punto2D, b: Punto2D, errorPx = ERROR_MA
   return (Math.SQRT2 * errorPx) / distanciaPx(a, b)
 }
 
+/**
+ * Incertidumbre relativa de una escala por cómo se obtuvieron sus extremos:
+ * tocados a mano, `incertidumbreRelativa`; entre marcadores, el error de la
+ * distancia media (dispersión / √n, nunca por debajo de ERROR_MEDIA_MARCADOR_PX).
+ * Los frames de un tramo quieto no son independientes, así que √n es optimista:
+ * de ahí el mínimo.
+ */
+export function incertidumbreEscala(c: Pick<EscalaPlano, 'a' | 'b' | 'entre'>): number {
+  if (!c.entre) return incertidumbreRelativa(c.a, c.b)
+  const errorPx = Math.max(c.entre.dispersionPx / Math.sqrt(c.entre.muestras), ERROR_MEDIA_MARCADOR_PX)
+  return errorPx / distanciaPx(c.a, c.b)
+}
+
+export type ResultadoEntre =
+  | { readonly ok: true; readonly a: Punto2D; readonly b: Punto2D; readonly muestras: number; readonly dispersionPx: number }
+  | { readonly ok: false; readonly motivo: string }
+
+const utilizable = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x) && Number.isFinite(m.y)
+
+/**
+ * Distancia media entre dos marcadores en un tramo (extremos incluidos), con
+ * los frames en que los dos tienen posición utilizable, y su desviación
+ * típica frame a frame (cuánto se deslizaron o salieron del plano). Las
+ * series van por frame, como en el visor.
+ *
+ * Se promedia la distancia de cada frame, no las posiciones: si el segmento
+ * se mueve en el tramo (gira en el plano), la distancia entre las posiciones
+ * medias sería más corta que el segmento. `a` es la posición media del
+ * primero y `b` está en la dirección de la posición media del segundo, a la
+ * distancia media: así distanciaPx(a, b) es esa distancia y el segmento se
+ * dibuja donde estaban.
+ */
+export function medirEntreMarcadores(
+  serieA: readonly (Muestra2D | undefined)[],
+  serieB: readonly (Muestra2D | undefined)[],
+  tramo: { readonly desde: number; readonly hasta: number },
+): ResultadoEntre {
+  let n = 0
+  let ax = 0, ay = 0, bx = 0, by = 0
+  const distancias: number[] = []
+  for (let i = 0; i < Math.min(serieA.length, serieB.length); i++) {
+    const ma = serieA[i]
+    const mb = serieB[i]
+    if (!utilizable(ma) || !utilizable(mb) || ma.t < tramo.desde || ma.t > tramo.hasta) continue
+    n++
+    ax += ma.x
+    ay += ma.y
+    bx += mb.x
+    by += mb.y
+    distancias.push(distanciaPx(ma, mb))
+  }
+  if (n === 0) return { ok: false, motivo: 'En ese tramo no están los dos marcadores: sigue los gomets primero o elige otro tramo.' }
+  const media = distancias.reduce((s, d) => s + d, 0) / n
+  const dispersionPx = Math.sqrt(distancias.reduce((s, d) => s + (d - media) ** 2, 0) / n)
+  const a = { x: ax / n, y: ay / n }
+  const dx = bx / n - a.x
+  const dy = by / n - a.y
+  const norma = Math.hypot(dx, dy)
+  // Si las posiciones medias coinciden (un giro completo), la dirección no importa.
+  const [ux, uy] = norma > 1e-9 ? [dx / norma, dy / norma] : [0, 1]
+  return { ok: true, a, b: { x: a.x + ux * media, y: a.y + uy * media }, muestras: n, dispersionPx }
+}
+
 export type ResultadoEscala = { readonly ok: true; readonly valor: EscalaPlano } | { readonly ok: false; readonly motivo: string }
 
 /** Crea la escala comprobando los extremos y la longitud; si no sirve, dice por qué. */
@@ -80,11 +173,37 @@ export function crearEscala(e: Omit<EscalaPlano, 'tipo'>): ResultadoEscala {
   if (d < DISTANCIA_MIN_PX) {
     return { ok: false, motivo: `Los extremos están a ${Math.round(d)} px: demasiado juntos. Toca los dos extremos del objeto (al menos ${DISTANCIA_MIN_PX} px).` }
   }
-  return { ok: true, valor: { tipo: 'escala-plano', objeto: e.objeto, a: { x: e.a.x, y: e.a.y }, b: { x: e.b.x, y: e.b.y }, longitudM: e.longitudM, t: e.t } }
+  if ((e.objeto === 'marcadores') !== !!e.entre || (e.entre && !esEntre(e.entre))) {
+    return { ok: false, motivo: 'Faltan los dos marcadores y el tramo de donde sale la distancia.' }
+  }
+  return {
+    ok: true,
+    valor: {
+      tipo: 'escala-plano',
+      objeto: e.objeto,
+      a: { x: e.a.x, y: e.a.y },
+      b: { x: e.b.x, y: e.b.y },
+      longitudM: e.longitudM,
+      t: e.t,
+      ...(e.entre && { entre: { desde: e.entre.desde, hasta: e.entre.hasta, tramo: { ...e.entre.tramo }, muestras: e.entre.muestras, dispersionPx: e.entre.dispersionPx } }),
+    },
+  }
 }
 
 const esPunto = (v: unknown): v is Punto2D =>
   typeof v === 'object' && v !== null && Number.isFinite((v as Punto2D).x) && Number.isFinite((v as Punto2D).y)
+
+function esEntre(v: unknown): v is EntreMarcadores {
+  if (typeof v !== 'object' || v === null) return false
+  const e = v as Record<string, unknown>
+  const t = e.tramo as Record<string, unknown> | null
+  return (
+    typeof e.desde === 'string' && typeof e.hasta === 'string' && e.desde !== e.hasta &&
+    typeof t === 'object' && t !== null && Number.isFinite(t.desde) && Number.isFinite(t.hasta) && (t.desde as number) <= (t.hasta as number) &&
+    Number.isInteger(e.muestras) && (e.muestras as number) >= 1 &&
+    typeof e.dispersionPx === 'number' && Number.isFinite(e.dispersionPx) && e.dispersionPx >= 0
+  )
+}
 
 /** Valida una calibración leída de lo guardado. */
 export function esCalibracion(v: unknown): v is CalibracionVista {
@@ -93,6 +212,7 @@ export function esCalibracion(v: unknown): v is CalibracionVista {
   if (c.tipo !== 'escala-plano' || !OBJETOS_CALIBRACION.includes(c.objeto as ObjetoCalibracion)) return false
   if (!esPunto(c.a) || !esPunto(c.b) || typeof c.t !== 'number' || !Number.isFinite(c.t)) return false
   if (typeof c.longitudM !== 'number' || !(c.longitudM >= LONGITUD_MIN_M && c.longitudM <= LONGITUD_MAX_M)) return false
+  if (c.objeto === 'marcadores' ? !esEntre(c.entre) : c.entre !== undefined) return false
   return distanciaPx(c.a, c.b) >= DISTANCIA_MIN_PX
 }
 

@@ -244,6 +244,9 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
   for (const vista of vistas) {
     const ajena = Object.keys(vista.ceros).find((id) => !articulaciones.has(id))
     if (ajena) return mal(`cero de referencia de una articulación que no está en el modelo: ${ajena}`)
+    const entre = vista.calibracion?.entre
+    const marcadores = new Set((c.modelo as ModeloMarcadores).marcadores.map((m) => m.id))
+    if (entre && (!marcadores.has(entre.desde) || !marcadores.has(entre.hasta))) return mal('escala entre marcadores que no están en el modelo')
   }
   if (new Set(vistas.map((x) => x.id)).size !== vistas.length) return mal('vistas repetidas')
   if (c.filtro !== null && !esAjustesFiltro(c.filtro)) return mal('filtro no válido')
