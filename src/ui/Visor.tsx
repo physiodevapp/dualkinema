@@ -463,6 +463,18 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     const serie = (id: IdMarcador) => trayectorias.current.get(id) ?? []
     return medirEntreMarcadores(serie(borrador.entre.desde), serie(borrador.entre.hasta), borrador.tramo)
   }, [borrador, version])
+  // La guardada, medida otra vez con lo seguido ahora: si se calibró antes de seguir, hay más frames.
+  const medicionGuardada = useMemo(() => {
+    void version
+    const entre = calibracion?.entre
+    if (!entre) return null
+    return medirEntreMarcadores(trayectorias.current.get(entre.desde) ?? [], trayectorias.current.get(entre.hasta) ?? [], entre.tramo)
+  }, [calibracion, version])
+  const framesTramo = useMemo(() => {
+    const tr = borrador?.tramo
+    if (!tr) return null
+    return tabla.tiempos.reduce((n, t) => (t >= tr.desde && t <= tr.hasta ? n + 1 : n), 0)
+  }, [borrador?.tramo, tabla])
   const empezarEscala = () => {
     setErrorToque(null)
     // Por defecto, el segmento distal (rodilla–tobillo: el gomet del trocánter se desliza más) y el tramo del cero o los primeros 2 s.
@@ -1019,6 +1031,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           calibracion={calibracion}
           borrador={borrador}
           medicion={medicion}
+          framesTramo={framesTramo}
+          medicionGuardada={medicionGuardada}
           segmentos={segmentos}
           tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
           constancia={constancia}

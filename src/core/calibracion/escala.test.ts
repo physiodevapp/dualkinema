@@ -119,6 +119,8 @@ describe('escala entre dos marcadores', () => {
     expect(e.ok && metrosPorPx(e.valor)).toBeCloseTo(0.0025, 12)
     // Error de la media: 1/√60 = 0,13 px → se queda en el mínimo de 0,25 px; sobre 160 px.
     expect(e.ok && incertidumbreEscala(e.valor)).toBeCloseTo(ERROR_MEDIA_MARCADOR_PX / 160, 12)
+    // Un solo frame: dispersión 0, pero no por eso precisa; manda el error de una detección (√2 · 0,5 px).
+    expect(incertidumbreEscala({ a: r.a, b: r.b, entre: { desde: 'r', hasta: 't', tramo: { desde: 0, hasta: 2 }, muestras: 1, dispersionPx: 0 } })).toBeCloseTo((Math.SQRT2 * 0.5) / 160, 12)
     // Con pocos frames y mucha dispersión manda dispersión / √n.
     expect(incertidumbreEscala({ a: r.a, b: r.b, entre: { desde: 'r', hasta: 't', tramo: { desde: 0, hasta: 0 }, muestras: 4, dispersionPx: 2 } })).toBeCloseTo(1 / 160, 12)
     // Sin `entre`, la de dos toques.

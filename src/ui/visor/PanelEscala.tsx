@@ -101,6 +101,10 @@ interface Props {
   borrador: BorradorEscala | null
   /** Con «Entre dos marcadores»: lo medido con el borrador actual. */
   medicion: ResultadoEntre | null
+  /** Frames del vídeo en el tramo del borrador (con o sin marcadores). */
+  framesTramo: number | null
+  /** La escala guardada entre marcadores, medida otra vez con lo seguido ahora (para ofrecer rehacerla). */
+  medicionGuardada: ResultadoEntre | null
   /** Segmentos que se pueden usar para calibrar y cuya longitud se vigila. */
   segmentos: readonly Segmento[]
   /** Tramos que se ofrecen para promediar: el del cero de referencia, los primeros 2 s y el frame actual. */
@@ -154,6 +158,8 @@ export default function PanelEscala({
   calibracion,
   borrador,
   medicion,
+  framesTramo,
+  medicionGuardada,
   segmentos,
   tramos,
   constancia,
@@ -241,6 +247,12 @@ export default function PanelEscala({
                 Distancia media: <span className="font-mono">{fmt(distanciaPx(medicion.a, medicion.b), 1)} px</span> en {medicion.muestras}{' '}
                 frame{medicion.muestras === 1 ? '' : 's'} (varía ± {fmt(medicion.dispersionPx, 1)} px)
               </p>
+              {framesTramo !== null && medicion.muestras < framesTramo && (
+                <p className="text-xs text-acento" data-testid="escala-pocos-frames">
+                  Solo {medicion.muestras} de los {framesTramo} frames del tramo tienen los dos marcadores. Sigue los gomets antes de
+                  calibrar («Seguir desde aquí») para promediar todo el tramo.
+                </p>
+              )}
               {medicion.dispersionPx > 0.01 * distanciaPx(medicion.a, medicion.b) && (
                 <p className="text-xs text-acento">
                   En ese tramo la distancia cambia más de un 1 %: no parece quieto o los gomets se deslizan. Elige otro tramo.
@@ -321,6 +333,12 @@ export default function PanelEscala({
                 Posición media de los dos gomets en {calibracion.entre.muestras} frame{calibracion.entre.muestras === 1 ? '' : 's'} (
                 {fmt(calibracion.entre.tramo.desde, 2)}–{fmt(calibracion.entre.tramo.hasta, 2)} s), tal como estaban al guardar. Si corriges
                 esos marcadores, pulsa «Rehacer».
+              </p>
+            )}
+            {calibracion.entre && medicionGuardada?.ok && medicionGuardada.muestras > calibracion.entre.muestras && (
+              <p className="text-xs text-acento" data-testid="escala-rehacer">
+                Al guardar solo había {calibracion.entre.muestras} frame{calibracion.entre.muestras === 1 ? '' : 's'} con los dos marcadores en
+                el tramo; ahora hay {medicionGuardada.muestras}. Pulsa «Rehacer» y guarda para promediarlos todos.
               </p>
             )}
             <Precision c={calibracion} cinta={!!calibracion.entre} />

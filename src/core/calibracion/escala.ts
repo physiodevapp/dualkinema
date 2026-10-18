@@ -77,6 +77,12 @@ export const ERROR_MARCADO_PX = 1
  * del gomet, la luz): no se baja de aquí.
  */
 export const ERROR_MEDIA_MARCADOR_PX = 0.25
+/**
+ * Error típico del centro de un gomet en un solo frame, px. Con pocos frames
+ * la dispersión no se puede estimar (con uno es 0): se supone este error en
+ * cada marcador, √2 en la distancia, y se divide por √n.
+ */
+export const ERROR_DETECCION_PX = 0.5
 /** Por encima de esta incertidumbre relativa, la app aconseja un objeto más largo. */
 export const INCERTIDUMBRE_AVISO = 0.01
 
@@ -101,13 +107,15 @@ export function incertidumbreRelativa(a: Punto2D, b: Punto2D, errorPx = ERROR_MA
 /**
  * Incertidumbre relativa de una escala por cómo se obtuvieron sus extremos:
  * tocados a mano, `incertidumbreRelativa`; entre marcadores, el error de la
- * distancia media (dispersión / √n, nunca por debajo de ERROR_MEDIA_MARCADOR_PX).
- * Los frames de un tramo quieto no son independientes, así que √n es optimista:
- * de ahí el mínimo.
+ * distancia media: lo mayor de la dispersión medida / √n, el error supuesto de
+ * cada detección (√2 · ERROR_DETECCION_PX / √n; con pocos frames la dispersión
+ * no dice nada, con uno es 0) y ERROR_MEDIA_MARCADOR_PX. Los frames de un
+ * tramo quieto no son independientes, así que √n es optimista: de ahí el mínimo.
  */
 export function incertidumbreEscala(c: Pick<EscalaPlano, 'a' | 'b' | 'entre'>): number {
   if (!c.entre) return incertidumbreRelativa(c.a, c.b)
-  const errorPx = Math.max(c.entre.dispersionPx / Math.sqrt(c.entre.muestras), ERROR_MEDIA_MARCADOR_PX)
+  const raiz = Math.sqrt(c.entre.muestras)
+  const errorPx = Math.max(c.entre.dispersionPx / raiz, (Math.SQRT2 * ERROR_DETECCION_PX) / raiz, ERROR_MEDIA_MARCADOR_PX)
   return errorPx / distanciaPx(c.a, c.b)
 }
 

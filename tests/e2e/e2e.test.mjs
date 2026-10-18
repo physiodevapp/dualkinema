@@ -1026,6 +1026,43 @@ async function esperarCalibracionGuardada(p, longitudM) {
   )
 }
 
+describe('escala entre marcadores calibrada antes de seguir', () => {
+  it('avisa de que solo hay un frame en el tramo y, tras seguir, ofrece rehacerla con todos', async () => {
+    // Lo que pasó en el móvil: marcar los gomets, calibrar y después seguir. La escala se quedaba
+    // con 1 frame de un tramo de 2 s, y la precisión se mostraba como si fueran muchos.
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      await marcarTres(p, videos.verde.verdad[0].ps)
+      const panel = p.getByTestId('panel-escala')
+      await panel.getByRole('button', { name: 'Calibrar escala' }).click()
+      await panel.getByRole('radio', { name: 'Entre dos marcadores' }).click()
+      await panel.getByTestId('escala-pocos-frames').waitFor()
+      assert.match(await panel.getByTestId('escala-pocos-frames').innerText(), /Solo 1 de los \d+ frames/)
+      // Un frame: √2 · 0,5 px sobre 120 px ≈ 0,6 %, no el 0,2 % de una media larga.
+      const precision = Number(/± ([\d,]+) %/.exec(await panel.getByTestId('escala-precision').innerText())[1].replace(',', '.'))
+      assert.ok(precision >= 0.5, `± ${precision} %`)
+      await panel.getByLabel('Longitud en cm').fill('30')
+      await panel.getByRole('button', { name: 'Guardar escala' }).click()
+      assert.equal(await panel.getByTestId('escala-rehacer').count(), 0)
+
+      await seguirHastaElFinal(p)
+      await panel.getByTestId('escala-rehacer').waitFor()
+      assert.match(await panel.getByTestId('escala-rehacer').innerText(), /solo había 1 frame .* ahora hay \d+/)
+      await panel.getByRole('button', { name: 'Rehacer' }).click()
+      assert.equal(await panel.getByTestId('escala-pocos-frames').count(), 0)
+      assert.equal(await panel.getByLabel('Longitud en cm').inputValue(), '30')
+      await panel.getByRole('button', { name: 'Guardar escala' }).click()
+      assert.equal(await panel.getByTestId('escala-rehacer').count(), 0)
+      assert.match(await panel.getByText(/Posición media de los dos gomets/).innerText(), /en \d{2,} frames/)
+      const mm = await leerNumero(p, 'escala-mm-px')
+      assert.ok(Math.abs(mm - 2.5) < 0.03, `${mm} mm/px`)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('estela de los marcadores: siempre por detrás en el sentido del recorrido', () => {
   it('al avanzar dibuja los frames anteriores; al retroceder, los posteriores', async () => {
     // Antes la estela eran siempre los 20 frames anteriores: al retroceder iba por delante del marcador.
