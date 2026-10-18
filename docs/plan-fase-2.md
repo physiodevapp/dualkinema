@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia), 3 (corrección manual), 4 (Butterworth) y 5 (velocidades y cero de referencia) hechos; siguiente: paso 6 (escala en metros).
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia), 3 (corrección manual), 4 (Butterworth), 5 (velocidades y cero de referencia) y 6 (escala en metros) hechos; siguiente: paso 7 (exportación CSV).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -83,7 +83,7 @@ De pie salió −4,7° porque los gomets no caen sobre los ejes articulares. La 
 - **Visor (provisional, panel «Velocidad y cero»):** ángulo sin cero y relativo al estático, velocidad y aceleración angulares y velocidad de cada marcador del frame actual. Tramo con «Primeros 2 s», «Inicio aquí» / «Fin aquí» (el frame actual; si no hay tramo, 2 s hacia delante o hacia atrás) y «Quitar». Muestra el tramo, la media, la desviación típica y los frames, y avisa si la desviación pasa de 2° (no parece quieto).
 - **Tests:** media y desviación conocidas, huecos ignorados, cerca de ±180°, tramo sin ángulo, primeros 2 s sin pasar del final, validación del tramo y del esquema. En navegador, con el vídeo sintético: los primeros 2 s dan la media real de esos frames (≈ 45°, con aviso de que no es quieto), el relativo es el sin cero menos la media, «Inicio aquí» / «Fin aquí» dan la media real de su tramo, el tramo se guarda, se recupera tras recargar con la misma media y relativo, y «Quitar» se guarda vacío.
 
-## 4. Escala en metros [D4]
+## 4. Escala en metros [D4] — hecho (paso 6)
 
 - **Calibración 2D:** con un objeto de longitud conocida **en el plano del movimiento**, tocas sus dos extremos, introduces la longitud y la app calcula metros por píxel. Sirve una cinta métrica o un palo de 1 m apoyado junto a la pierna, a la misma distancia de la cámara.
 - **Avisos que tendrá la app:**
@@ -93,6 +93,14 @@ De pie salió −4,7° porque los gomets no caen sobre los ejes articulares. La 
 - **Los ángulos no necesitan escala.** Las velocidades lineales y las distancias, sí.
 
 **[D4]** ¿Qué objeto tendrías a mano para calibrar? Cinta métrica en el suelo, palo de longitud conocida, regla en la pared…
+
+**Cómo quedó (paso 6):**
+- **Núcleo** en `src/core/calibracion/escala.ts`: `EscalaPlano` (`tipo: 'escala-plano'`, `objeto`, extremos `a` y `b` en px de la imagen, `longitudM`, y `t`, el instante del frame en que se marcaron), `metrosPorPx` = longitud / distancia, `crearEscala` (valida: extremos marcados, al menos 20 px entre ellos, de 1 cm a 20 m), `esCalibracion` (validación de lo guardado) y `metrosDesdeCm` (acepta coma o punto). `CalibracionVista` es hoy solo `EscalaPlano`; DLT y lente se añadirán a esa unión.
+- **El objeto se elige** (cinta métrica, palo, regla u otro), pero no cambia el cálculo: da una longitud de partida (100, 100, 30 cm o vacía), un consejo de colocación y queda anotado con la escala para el CSV. Lo que sí importa es cuántos píxeles ocupa: **precisión por el marcado** = √2 · 1 px / distancia (un error de ~1 px con la lupa en cada extremo). Un palo de 1 m en 400 px: ±0,35 %; una regla de 30 cm en el mismo vídeo (120 px): ±1,2 %. Por encima del 1 % la app aconseja un objeto más largo o la cámara más cerca. No incluye lo que suele pesar más (objeto fuera del plano o inclinado hacia la cámara), que la app explica con un ejemplo: a 3 m, 10 cm más cerca o más lejos ya son un 3 %.
+- **Marcar:** «Calibrar escala» → elegir objeto → tocar un extremo y el otro con la lupa (sin buscar gomet: el extremo queda donde se suelta el dedo) → escribir la longitud en cm → «Guardar escala». Un tercer toque mueve el extremo más cercano. Mientras se calibra, tocar el vídeo no mueve marcadores. La escala guardada se ve en su frame («Ver en el frame N») y se puede rehacer (parte de lo guardado) o quitar.
+- **Uso:** `useFiltrado` pasa los m/px a `velocidadMarcador`: la velocidad de cada marcador sale en m/s (2 decimales) con escala y en px/s sin ella. Cambiar la escala no vuelve a filtrar. Los ángulos no la usan.
+- **Sesión:** `calibracion` de la vista, que era `null`, ya se rellena; lo guardado antes sigue valiendo y el esquema se queda en la versión 2 (test). Calibrar antes de marcar ya crea la sesión (no se pierde).
+- **Tests:** metros por píxel conocidos (3-4-5, vertical y horizontal, orden de los extremos), m/s de un marcador a velocidad conocida, incertidumbre y su aviso, validación y lectura de cm; esquema con y sin escala y escalas mal formadas. En navegador: elegir objeto (longitud de partida), aviso con 50 px, tercer toque que mueve el extremo más cercano, tocar no mueve marcadores, mm por píxel, velocidad del tobillo en m/s frente a la real con la escala (±5 %), ángulo igual, guardado, recuperado tras recargar y «Quitar» (vuelve a px/s y se guarda vacío).
 
 ## 5. Corrección manual de puntos [D5] — hecho (paso 3)
 
@@ -207,7 +215,7 @@ Las pruebas e2e van primero para que cada paso siguiente quede cubierto. La pers
 | D1 | Qué se filtra | Las coordenadas de los marcadores; ángulos y derivadas se calculan después |
 | D2 | Frecuencia de corte | 6 Hz por defecto, ajustable de 2 a 15 Hz |
 | D3 | Cero de referencia | Media de un tramo estático elegido; mostrar crudo y relativo |
-| D4 | Objeto de calibración | El que haya: cinta, palo o regla en el plano del movimiento (la app no impone uno) |
+| D4 | Objeto de calibración | El que haya: cinta, palo o regla en el plano del movimiento (la app no impone uno; se elige en la app y solo cambia la longitud de partida y los consejos) |
 | D5 | Interpolar huecos cortos | Solo a petición, ≤ 0,2 s, siempre marcado como interpolado |
 | D6 | Persistencia | IndexedDB sin el vídeo; al reabrir el mismo archivo, recuperar el trabajo |
 | D7 | Formato CSV | `;` y coma decimal por defecto; el internacional como opción |
