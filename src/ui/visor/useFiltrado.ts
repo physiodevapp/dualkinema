@@ -18,6 +18,8 @@ interface Opciones {
   readonly ajustes: AjustesFiltro
   readonly articulacion: DefinicionArticulacion
   readonly orientacion: OrientacionVista
+  /** Escala de la vista (m/px); null = sin escala, velocidades en px/s. */
+  readonly metrosPorPx: number | null
   /**
    * Mientras se sigue, las trayectorias cambian con cada lote del worker:
    * se conserva lo último filtrado y se rehace al parar.
@@ -40,7 +42,7 @@ export interface Filtrado {
   readonly anguloEn: (i: number) => number
   /** Velocidad (°/s) y aceleración (°/s²) angulares por frame (NaN = sin valor). */
   readonly derivadas: Derivadas
-  /** Velocidad lineal de cada marcador por frame, en px/s hasta que haya escala (paso 6). */
+  /** Velocidad lineal de cada marcador por frame: en m/s con escala, en px/s sin ella. */
   readonly velocidades: ReadonlyMap<IdMarcador, VelocidadMarcador>
 }
 
@@ -51,9 +53,9 @@ export interface Filtrado {
  * es lineal en el número de frames: unos 8 ms por marcador con 3600 frames
  * (2 min a 30 fps) en un ordenador, varias veces más en un móvil.
  */
-export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articulacion, orientacion, congelado }: Opciones): Filtrado {
+export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articulacion, orientacion, metrosPorPx, congelado }: Opciones): Filtrado {
   const fs = useMemo(() => fpsMediano(tabla), [tabla])
-  const ultimo = useRef<Filtrado | null>(null)
+  const ultimo = useRef<Omit<Filtrado, 'velocidades'> | null>(null)
   const filtrado = useMemo(() => {
     void version
     if (congelado && ultimo.current) return ultimo.current
@@ -79,10 +81,13 @@ export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articu
       return anguloArticular(articulacion, puntos)
     }
     const derivadas = derivadasAngulares(articulacion, porMarcador, orientacion, fs)
-    // Sin escala todavía: px/s. El paso 6 pasará aquí los m/px de la calibración.
-    const velocidades = new Map([...porMarcador].map(([id, f]) => [id, velocidadMarcador(f, null)]))
-    return { porMarcador, serie, fs, corte: corteEfectivo(ajustes.corteHz, fs), tramosCortos, anguloEn, derivadas, velocidades }
+    return { porMarcador, serie, fs, corte: corteEfectivo(ajustes.corteHz, fs), tramosCortos, anguloEn, derivadas }
   }, [version, fs, ids, trayectorias, ajustes, articulacion, orientacion, congelado])
   ultimo.current = filtrado
-  return filtrado
+  // Aparte: cambiar la escala no obliga a volver a filtrar.
+  const velocidades = useMemo(
+    () => new Map([...filtrado.porMarcador].map(([id, f]) => [id, velocidadMarcador(f, metrosPorPx)])),
+    [filtrado, metrosPorPx],
+  )
+  return useMemo(() => ({ ...filtrado, velocidades }), [filtrado, velocidades])
 }

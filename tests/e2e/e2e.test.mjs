@@ -865,6 +865,105 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
   })
 })
 
+describe('escala en metros: dos extremos y la longitud', () => {
+  it('elegir el objeto, tocar los extremos, m/s del tobillo con la escala; se guarda, se recupera y se quita', async () => {
+    const verdad = videos.verde.verdad
+    const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await esperarGuardado(p, verdad.length)
+      const panel = p.getByTestId('panel-escala')
+      await irAFrame(p, 30)
+      const anguloAntes = await leerAngulo(p)
+      assert.match(await p.getByTestId('velocidad-marcador-' + (await idTobillo(p))).innerText(), /px\/s$/)
+
+      await panel.getByRole('button', { name: 'Calibrar escala' }).click()
+      // Se puede elegir el objeto; cada uno trae su longitud de partida.
+      assert.equal(await panel.getByRole('radio', { name: 'Cinta métrica' }).getAttribute('aria-checked'), 'true')
+      await panel.getByRole('radio', { name: 'Regla' }).click()
+      assert.equal(await panel.getByLabel('Longitud en cm').inputValue(), '30')
+      await panel.getByRole('radio', { name: 'Palo' }).click()
+      assert.equal(await panel.getByLabel('Longitud en cm').inputValue(), '100')
+
+      // Dos extremos a 50 px: se avisa de que es corto.
+      await tocarVideo(p, 100, 300)
+      await tocarVideo(p, 150, 300)
+      await panel.getByTestId('escala-aviso-corto').waitFor()
+      // Un tercer toque mueve el extremo más cercano (el de x = 150): quedan a 400 px.
+      await tocarVideo(p, 500, 300)
+      const d = Number(/a ([\d.,]+) px/.exec(await panel.getByTestId('escala-estado').innerText())[1].replace(',', '.'))
+      assert.ok(Math.abs(d - 400) < 3, `extremos a ${d} px`)
+      assert.equal(await panel.getByTestId('escala-aviso-corto').count(), 0)
+      // Tocar al calibrar no mueve ningún marcador.
+      assert.equal(await leerAngulo(p), anguloAntes)
+
+      await panel.getByLabel('Longitud en cm').fill('400')
+      await panel.getByRole('button', { name: 'Guardar escala' }).click()
+      // 4 m en 400 px: 10 mm por píxel.
+      const mm = await leerNumero(p, 'escala-mm-px')
+      assert.ok(Math.abs(mm - 1000 * (4 / d)) < 0.02, `${mm} mm/px`)
+
+      // Velocidad del tobillo (gira a 120 px de la rodilla) en m/s, la real con la escala (±5 %).
+      const tobillo = 'velocidad-marcador-' + (await idTobillo(p))
+      assert.match(await p.getByTestId(tobillo).innerText(), /m\/s$/)
+      const real = ((120 * velReal(verdad[30].t) * Math.PI) / 180) * (mm / 1000)
+      const v = await leerNumero(p, tobillo)
+      assert.ok(Math.abs(v / real - 1) < 0.05, `tobillo ${v} m/s, real ${real.toFixed(3)} m/s`)
+      // Los ángulos no dependen de la escala.
+      assert.equal(await leerAngulo(p), anguloAntes)
+
+      await esperarCalibracionGuardada(p, 4)
+      const textoEscala = await p.getByTestId('escala-objeto').innerText()
+      await p.reload()
+      await p.getByTestId('sesion-guardada').waitFor()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.equal(await p.getByTestId('escala-objeto').innerText(), textoEscala)
+      assert.match(textoEscala, /400,0 cm/)
+      await irAFrame(p, 30)
+      assert.equal(await leerNumero(p, tobillo), v)
+
+      await p.getByTestId('panel-escala').getByRole('button', { name: 'Quitar' }).click()
+      assert.match(await p.getByTestId(tobillo).innerText(), /px\/s$/)
+      await esperarCalibracionGuardada(p, null)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+/** Id del tercer marcador (el tobillo, distal) según las filas de velocidad. */
+async function idTobillo(p) {
+  const id = await p.locator('[data-testid^="velocidad-marcador-"]').nth(2).getAttribute('data-testid')
+  return id.replace('velocidad-marcador-', '')
+}
+
+/** Espera a que la vista guardada tenga una escala de `longitudM` metros (null: sin escala). */
+async function esperarCalibracionGuardada(p, longitudM) {
+  await p.waitForFunction(
+    async (l) => {
+      const bd = await new Promise((ok, mal) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+        r.onerror = () => mal(r.error)
+      })
+      try {
+        if (!bd.objectStoreNames.contains('sesiones')) return false
+        const todas = await new Promise((ok) => {
+          const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+          r.onsuccess = () => ok(r.result)
+        })
+        return todas.some((c) => (l === null ? c.vistas[0].calibracion === null : c.vistas[0].calibracion?.longitudM === l))
+      } finally {
+        bd.close()
+      }
+    },
+    longitudM,
+    { timeout: 20000, polling: 200 },
+  )
+}
+
 describe('la línea de posición no mueve los botones', () => {
   // Si «t = … · frame … · N ms clave» pasaba de una a dos líneas según el texto, los botones de
   // debajo se movían y se perdía la pulsación mantenida. Se recorren anchos de móvil para dar con
