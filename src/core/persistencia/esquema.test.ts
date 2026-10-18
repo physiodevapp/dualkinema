@@ -87,6 +87,14 @@ describe('esquema de la sesión', () => {
     expect(cabecera.resumen).toEqual({ frames: FRAMES, conDatos: 4, aMano: 1, interpolados: 0 })
   })
 
+  it('guarda el ajuste del filtro, y lo guardado sin él (null) sigue valiendo', () => {
+    const { cabecera } = prepararGuardado({ ...entrada(), filtro: { corteHz: 8.5 } })
+    const r = leerCabecera(structuredClone(cabecera))
+    expect(r.ok && r.valor.filtro).toEqual({ corteHz: 8.5 })
+    const sinFiltro = leerCabecera(structuredClone(prepararGuardado(entrada()).cabecera))
+    expect(sinFiltro.ok && sinFiltro.valor.filtro).toBeNull()
+  })
+
   it('guarda el modelo de marcadores completo, con la definición de la articulación', () => {
     expect(prepararGuardado(entrada()).cabecera.modelo).toEqual(modelo)
   })
@@ -120,6 +128,7 @@ describe('esquema de la sesión', () => {
       [{ ...cabecera, vistas: [{ ...cabecera.vistas[0], huella: { ...huella, frames: 0 } }] }, /huella/],
       [{ ...cabecera, claves: ['otra'] }, /claves/],
       [{ ...cabecera, filtro: 6 }, /filtro/],
+      [{ ...cabecera, filtro: { corteHz: 20 } }, /filtro/],
       [{ ...cabecera, modelo: { ...modelo, articulaciones: [{ ...modelo.articulaciones[0], signo: 2 }] } }, /articulación/],
       [{ ...cabecera, modelo: { ...modelo, articulaciones: [{ ...modelo.articulaciones[0], distal: { desde: rodilla, hasta: 'pie' } }] } }, /articulación/],
     ]

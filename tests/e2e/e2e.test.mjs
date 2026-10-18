@@ -12,9 +12,11 @@ import { after, before, describe, it } from 'node:test'
 import { asegurarVideos } from './videos.mjs'
 import {
   abrirApp,
+  cajaVideo,
   cargarVideo,
   elegirArchivoDesde,
   errores,
+  esperarFiltroGuardado,
   esperarGuardado,
   esperarQuieto,
   frameMasCercano,
@@ -156,7 +158,7 @@ describe('marcado: errores sobre el vídeo y siguiente marcador', () => {
 
   it('el mensaje de error no tapa la imagen (si no, el siguiente toque cae en él en vez de marcar)', async () => {
     const error = await p.getByTestId('error-toque').boundingBox()
-    const imagen = await p.getByTestId('capa').boundingBox()
+    const imagen = await cajaVideo(p)
     assert.ok(error.y >= imagen.y + imagen.height - 1, `el error empieza en y=${error.y} y la imagen acaba en ${imagen.y + imagen.height}`)
   })
 
@@ -174,7 +176,7 @@ describe('lupa: anillo donde quedará el marcador', () => {
     const p = await abrirApp(navegador)
     try {
       await cargarVideo(p, videos.verde.ruta)
-      const caja = await p.getByTestId('capa').boundingBox()
+      const caja = await cajaVideo(p)
       const enPantalla = (x, y) => [caja.x + (x / 640) * caja.width, caja.y + (y / 360) * caja.height]
       const lupa = p.getByTestId('lupa')
       const ps = videos.verde.verdad[0].ps
@@ -211,6 +213,20 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('el ángulo medido coincide con el real (tolerancia 0,5°) con fps variable', async () => {
     await compararAngulos(p, videos.verde.verdad)
+  })
+
+  it('el ángulo filtrado (6 Hz, coordenadas remuestreadas por el fps variable) coincide con el real', async () => {
+    assert.match(await p.getByTestId('corte').innerText(), /6,0 Hz/)
+    assert.match(await p.getByText(/filtrado a 6,0 Hz/).innerText(), /filtrado a 6,0 Hz/)
+    for (const i of FRAMES_A_COMPARAR) {
+      await irAFrame(p, i)
+      const filtrado = await leerAngulo(p, 'angulo-filtrado')
+      assert.ok(
+        Math.abs(filtrado - videos.verde.verdad[i].flexion) < TOLERANCIA_GRADOS,
+        `frame ${i + 1}: filtrado ${filtrado}°, real ${videos.verde.verdad[i].flexion.toFixed(2)}°`,
+      )
+    }
+    assert.equal(await p.getByTestId('tramos-cortos').count(), 0)
   })
 
   it('la gráfica resume el máximo (90°) y el mínimo (0°) sin instantes sin valor', async () => {
@@ -289,6 +305,18 @@ describe('un gomet tapado unos frames', () => {
     await irAFrame(p, despues)
     assert.match(await p.getByRole('radiogroup').innerText(), /Maléolo\s+seguido/)
     assert.ok(Math.abs((await leerAngulo(p)) - videos.oculto.verdad[despues].flexion) < TOLERANCIA_GRADOS)
+  })
+
+  it('el filtro no cruza el hueco: dentro no hay ángulo filtrado; justo a los lados, sí y cerca del real', async () => {
+    const tapados = ocultos()
+    await irAFrame(p, tapados[2])
+    assert.equal(await p.getByTestId('angulo-filtrado').innerText(), '—')
+    // Bordes de los dos tramos (reflexión en los extremos): ±1°.
+    for (const i of [tapados[0] - 1, tapados.at(-1) + 1]) {
+      await irAFrame(p, i)
+      const filtrado = await leerAngulo(p, 'angulo-filtrado')
+      assert.ok(Math.abs(filtrado - videos.oculto.verdad[i].flexion) < 1, `frame ${i + 1}: filtrado ${filtrado}°`)
+    }
   })
 
   it('«Ir al primer frame con hueco» lleva al primero', async () => {
@@ -436,6 +464,32 @@ describe('persistencia: marcar, seguir, recargar y recuperar', () => {
   })
 })
 
+describe('filtro: el corte se guarda con la sesión', () => {
+  it('cambiar el corte, recargar y recuperar lo deja como estaba', async () => {
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await esperarGuardado(p, videos.verde.verdad.length)
+      await p.getByRole('slider', { name: 'Frecuencia de corte del filtro' }).fill('9')
+      assert.match(await p.getByTestId('corte').innerText(), /9,0 Hz/)
+      await esperarFiltroGuardado(p, 9)
+      await p.reload()
+      await p.getByTestId('sesion-guardada').waitFor()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.match(await p.getByTestId('corte').innerText(), /9,0 Hz/)
+      assert.equal(await p.getByRole('slider', { name: 'Frecuencia de corte del filtro' }).inputValue(), '9')
+      await irAFrame(p, 60)
+      assert.ok(Math.abs((await leerAngulo(p, 'angulo-filtrado')) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+      // «Volver a 6 Hz» y se guarda también.
+      await p.getByRole('button', { name: 'Volver a 6 Hz' }).click()
+      await esperarFiltroGuardado(p, 6)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('persistencia: recuperar a medio marcar', () => {
   it('elige el primer marcador que falta, como al marcar', async () => {
     const p = await abrirApp(navegador)
@@ -486,7 +540,7 @@ describe('corrección manual: arrastrar, a ojo, quitar y anclas', () => {
     await irAFrame(p, i)
     await elegirMarcador(p, 'Trocánter')
     const real = videos.oculto.verdad[i].ps[0]
-    const caja = await p.getByTestId('capa').boundingBox()
+    const caja = await cajaVideo(p)
     const enPantalla = (x, y) => [caja.x + (x / 640) * caja.width, caja.y + (y / 360) * caja.height]
     await p.mouse.move(...enPantalla(real.x + 40, real.y + 30))
     await p.mouse.down()
@@ -585,19 +639,60 @@ describe('retroceder con la caché de frames', () => {
       const { bits, ladoBloque } = videos.numerado
       await irAFrame(p, 70)
       const anterior = p.getByRole('button', { name: 'Frame anterior' })
-      // Del 70 al 45: cruza el fotograma clave del 50 (uno cada 25 frames).
+      // El salto al 70 decodifica desde el fotograma clave del 50 y deja en la
+      // caché todo lo que entrega de paso (del 50 al 70).
+      assert.equal(await p.getByTestId('lectura').innerText(), 'clave')
+      // Del 70 al 45: cruza el fotograma clave del 50 (uno cada 25 frames). Solo
+      // el paso al 49 vuelve a decodificar (desde el 25); el resto sale de la caché.
+      const conClave = []
       for (let i = 69; i >= 45; i--) {
         await anterior.click()
         await esperarQuieto(p)
         assert.equal((await leerPosicion(p)).frame, i + 1)
         assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i, `el canvas no muestra el frame ${i + 1}`)
+        if ((await p.getByTestId('lectura').innerText()) !== 'caché') conClave.push(i)
       }
+      assert.deepEqual(conClave, [49])
       // Y hacia delante otra vez, saliendo de la caché.
       const siguiente = p.getByRole('button', { name: 'Frame siguiente' })
       for (let i = 46; i <= 52; i++) {
         await siguiente.click()
         await esperarQuieto(p)
         assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i)
+      }
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('avanzar saltando frames', () => {
+  it('dentro del mismo grupo de imágenes sigue con el decodificador; pasado un fotograma clave, empieza en él', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.numerado.ruta)
+      const { bits, ladoBloque } = videos.numerado
+      await irAFrame(p, 30)
+      const avanzar = p.getByRole('button', { name: 'Avanzar 10 frames' })
+      // 30 → 40: sin fotograma clave entre medias (son el 25 y el 50). Antes,
+      // cualquier salto hacia delante volvía al fotograma clave: al mantener
+      // pulsado y saltarse frames, el avance se atascaba.
+      await avanzar.click()
+      await esperarQuieto(p)
+      assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), 40)
+      assert.equal(await p.getByTestId('lectura').innerText(), 'seguido')
+      // 40 → 50 y 70 → 80 cruzan un fotograma clave (50, 75): empezar en él
+      // decodifica menos que seguir. 50 → 60 → 70, dentro del grupo, siguen.
+      for (const [i, modo] of [
+        [50, 'clave'],
+        [60, 'seguido'],
+        [70, 'seguido'],
+        [80, 'clave'],
+      ]) {
+        await avanzar.click()
+        await esperarQuieto(p)
+        assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i)
+        assert.equal(await p.getByTestId('lectura').innerText(), modo, `al frame ${i}`)
       }
     } finally {
       await p.close()

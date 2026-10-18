@@ -1,6 +1,7 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input, type WrappedCanvas } from 'mediabunny'
 import { crearTablaFrames, indiceEnTiempo, type TablaFrames } from '../core/tiempo/tablaFrames'
 import { CacheFrames, capacidadCache } from './cacheFrames'
+import { planificarLectura } from './planLectura'
 
 export interface InfoVideo {
   readonly nombre: string
@@ -16,6 +17,16 @@ export interface InfoVideo {
 }
 
 export class ErrorVideo extends Error {}
+
+/**
+ * Cómo se consiguió el último frame, para diagnosticar en el móvil: de la
+ * caché, siguiendo el decodificador hacia delante o volviendo al fotograma
+ * clave. `frames`: cuántos frames entregó el decodificador para llegar.
+ */
+export interface UltimaLectura {
+  readonly modo: 'cache' | 'seguido' | 'clave'
+  readonly frames: number
+}
 
 function mensajeSinCodec(codec: string): string {
   const base = `Este navegador no puede decodificar el vídeo (códec ${codec}).`
@@ -38,6 +49,7 @@ export class VideoAbierto {
   private cerrado = false
   /** Últimos frames decodificados (el CanvasSink da un canvas nuevo por frame, así que se pueden guardar). */
   private readonly cache: CacheFrames<WrappedCanvas>
+  ultimaLectura: UltimaLectura | null = null
 
   private constructor(
     private readonly entrada: Input,
@@ -46,6 +58,8 @@ export class VideoAbierto {
     readonly archivo: File,
     readonly info: InfoVideo,
     readonly tabla: TablaFrames,
+    /** Índices de los fotogramas clave en la tabla, ordenados. */
+    readonly claves: readonly number[],
   ) {
     this.cache = new CacheFrames(capacidadCache(info.ancho, info.alto))
   }
@@ -59,12 +73,17 @@ export class VideoAbierto {
       if (!(await pista.canDecode())) throw new ErrorVideo(mensajeSinCodec(codec))
 
       // Tabla de frames: el pts de cada paquete, sin leer los datos de imagen.
+      // y los fotogramas clave, para saber cuándo conviene seguir decodificando
+      // hacia delante y desde dónde empezar al retroceder.
       const pts: number[] = []
+      const ptsClave: number[] = []
       for await (const paquete of new EncodedPacketSink(pista).packets(undefined, undefined, { metadataOnly: true })) {
         pts.push(paquete.timestamp)
+        if (paquete.type === 'key') ptsClave.push(paquete.timestamp)
       }
       const tabla = crearTablaFrames(pts)
       if (tabla.tiempos.length === 0) throw new ErrorVideo('El vídeo no tiene frames.')
+      const claves = [...new Set(ptsClave.map((t) => indiceEnTiempo(tabla, t + 1e-6)))].sort((a, b) => a - b)
 
       const formato = await entrada.getFormat()
       const info: InfoVideo = {
@@ -77,7 +96,7 @@ export class VideoAbierto {
         rotacion: pista.rotation,
         duracion: await pista.computeDuration(),
       }
-      return new VideoAbierto(entrada, new CanvasSink(pista), archivo, info, tabla)
+      return new VideoAbierto(entrada, new CanvasSink(pista), archivo, info, tabla, claves)
     } catch (e) {
       entrada.dispose()
       if (e instanceof ErrorVideo) throw e
@@ -87,10 +106,11 @@ export class VideoAbierto {
 
   /**
    * Imagen del frame `indice` de la tabla. Las peticiones se atienden de una en
-   * una. Avanzar de uno en uno reutiliza el decodificador (rápido); saltar o
-   * retroceder vuelve a decodificar desde el fotograma clave anterior, y los
-   * frames decodificados de paso se guardan en la caché, de donde salen los
-   * siguientes pasos atrás sin decodificar.
+   * una. Avanzar (de uno en uno o saltando unos pocos dentro del mismo grupo
+   * de imágenes) sigue con el decodificador abierto; retroceder o saltar más
+   * allá de un fotograma clave vuelve a decodificar desde el anterior. Los
+   * frames que se entregan de paso van a la caché, de donde salen los
+   * siguientes pasos atrás sin decodificar (ver `planLectura.ts`).
    */
   frame(indice: number): Promise<WrappedCanvas> {
     const resultado = this.cola.then(() => this.leer(indice))
@@ -103,16 +123,29 @@ export class VideoAbierto {
     const objetivo = this.tabla.tiempos[indice]
     if (objetivo === undefined) throw new RangeError(`No hay frame ${indice}.`)
     const guardado = this.cache.obtener(indice)
-    if (guardado) return guardado
-
-    if (!this.iterador || indice !== this.siguienteDelIterador) {
-      await this.iterador?.return()
-      this.iterador = this.sink.canvases(objetivo)
+    if (guardado) {
+      this.ultimaLectura = { modo: 'cache', frames: 0 }
+      return guardado
     }
-    // El iterador empieza en el frame visible en `objetivo`; si devolviera
-    // alguno anterior, se descarta hasta llegar.
+
+    const plan = planificarLectura({
+      indice,
+      siguiente: this.iterador ? this.siguienteDelIterador : null,
+      claves: this.claves,
+      capacidad: this.cache.capacidad,
+    })
+    if (plan.modo === 'saltar' || !this.iterador) {
+      await this.iterador?.return()
+      // Mediabunny decodifica desde el fotograma clave anterior y entrega a
+      // partir del frame visible en este instante: los de paso hasta el
+      // pedido se guardan en la caché.
+      this.iterador = this.sink.canvases(this.tabla.tiempos[plan.modo === 'saltar' ? plan.desde : indice])
+    }
+    const modo = plan.modo === 'saltar' ? 'clave' : 'seguido'
+    let frames = 0
     for (;;) {
       const r = await this.iterador.next()
+      frames++
       if (r.done) {
         this.iterador = null
         throw new ErrorVideo(`No se ha podido decodificar el frame ${indice}.`)
@@ -120,8 +153,11 @@ export class VideoAbierto {
       // Cada frame decodificado, también los de paso, va a la caché con su
       // índice en la tabla (el del frame visible en su instante).
       this.cache.guardar(indiceEnTiempo(this.tabla, r.value.timestamp + 1e-6), r.value)
+      // El decodificador siempre va hacia delante: el próximo es el siguiente
+      // al que acaba de entregar.
+      this.siguienteDelIterador = indiceEnTiempo(this.tabla, r.value.timestamp + 1e-6) + 1
       if (r.value.timestamp >= objetivo - 1e-6) {
-        this.siguienteDelIterador = indice + 1
+        this.ultimaLectura = { modo, frames }
         return r.value
       }
     }

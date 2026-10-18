@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowPathIcon, FilmIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
+import type { AjustesFiltro } from '../core/filtros/tramos'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import type { CabeceraSesion } from '../core/persistencia/esquema'
 import { diferenciasHuella } from '../core/persistencia/huella'
@@ -30,6 +31,7 @@ type Estado =
       /** Solo al recuperar: modelo y trayectorias guardados. */
       modelo?: ModeloMarcadores
       inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
+      filtro?: AjustesFiltro | null
       aviso?: string
     }
 
@@ -55,6 +57,7 @@ async function prepararRecuperacion(video: VideoAbierto, cabecera: CabeceraSesio
     sesion: { id: cabecera.id, nombre: cabecera.nombre, creada: cabecera.creada, vistaId: vista.id },
     modelo: cabecera.modelo,
     inicial,
+    filtro: cabecera.filtro,
     aviso: `Trabajo recuperado tal como se guardó el ${fechaCorta(cabecera.actualizada)}: ${textoResumen(cabecera)}.`,
   }
 }
@@ -211,6 +214,7 @@ export default function App() {
             sesion={estado.sesion}
             modelo={estado.modelo}
             inicial={estado.inicial}
+            filtro={estado.filtro}
             avisoInicial={estado.aviso}
           />
         </Suspense>

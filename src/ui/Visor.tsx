@@ -20,6 +20,7 @@ import type { LeerVentana } from '../core/seguimiento/imagen'
 import type { MotivoHueco } from '../core/seguimiento/huecos'
 import { huecosInterpolables, HUECO_MAX_S, interpolarHueco } from '../core/seguimiento/interpolar'
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
+import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import { resumirSerie } from '../core/graficas/rango'
 import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
@@ -30,6 +31,8 @@ import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import GraficaAngulo from './visor/GraficaAngulo'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
+import PanelFiltro from './visor/PanelFiltro'
+import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
 const SALTO = 10
@@ -108,10 +111,12 @@ interface Props {
   /** Al recuperar una sesión: su modelo y sus trayectorias, tal como se guardaron. */
   modelo?: ModeloMarcadores
   inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
+  /** Al recuperar: el ajuste del filtro guardado (null = el de por defecto). */
+  filtro?: AjustesFiltro | null
   avisoInicial?: string
 }
 
-export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, avisoInicial }: Props) {
+export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, avisoInicial }: Props) {
   const lienzo = useRef<HTMLCanvasElement>(null)
   const { info, tabla } = video
   const total = tabla.tiempos.length
@@ -138,6 +143,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // `aOjo`: dónde se tocó, para ofrecer colocarlo ahí aunque no se reconozca el gomet.
   const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string; aOjo?: { id: IdMarcador; i: number; x: number; y: number } } | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
+  // Cómo se consiguió el frame: de la caché, siguiendo el decodificador o desde el fotograma clave.
+  const [lectura, setLectura] = useState<string | null>(null)
   // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
   // si están todos, ninguno, para no mover uno sin querer con el primer toque.
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
@@ -146,7 +153,25 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
   const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
   const huella = useMemo(() => huellaDe(video), [video])
-  const guardado = useGuardado({ sesion, huella, orientacion, modelo, trayectorias, version, recuperada: !!inicial })
+  // Ajuste del filtro: se guarda con la sesión. `revAjustes` cuenta sus cambios
+  // para que el guardado automático los vea (como `version` con las trayectorias).
+  const [ajustes, setAjustes] = useState<AjustesFiltro>(filtro ?? AJUSTES_FILTRO_DEFECTO)
+  const [revAjustes, setRevAjustes] = useState(0)
+  const cambiarAjustes = useCallback((a: AjustesFiltro) => {
+    setAjustes(a)
+    setRevAjustes((r) => r + 1)
+  }, [])
+  const guardado = useGuardado({
+    sesion,
+    huella,
+    orientacion,
+    modelo,
+    trayectorias,
+    filtro: ajustes,
+    // Los dos contadores solo crecen: su suma cambia con cualquiera de los dos.
+    version: version + revAjustes,
+    recuperada: !!inicial,
+  })
 
   // Pintado «el último gana».
   const pedido = useRef(0)
@@ -162,6 +187,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         lienzo.current?.getContext('2d')?.drawImage(frame.canvas, 0, 0)
         ultimoFrame.current = frame.canvas
         setMsDecodificar(performance.now() - inicio)
+        const l = video.ultimaLectura
+        setLectura(!l ? null : l.modo === 'cache' ? 'caché' : l.modo === 'seguido' ? 'seguido' : 'clave')
         setMostrado(i)
         setError(null)
         if (pedido.current === i) break
@@ -486,6 +513,17 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     return serieAngular(articulacion, porMarcador, orientacion)
   }, [version, ids, orientacion, articulacion])
   const resumen = useMemo(() => resumirSerie(serie), [serie])
+  const filtrado = useFiltrado({
+    trayectorias,
+    version,
+    ids,
+    tabla,
+    ajustes,
+    articulacion,
+    orientacion,
+    congelado: seguimiento.estado === 'siguiendo',
+  })
+  const anguloFiltrado = mostrado === null ? NaN : filtrado.anguloEn(mostrado)
   const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
     (t: number) => {
@@ -558,13 +596,27 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           </div>
         )}
 
-        <div className="flex items-baseline justify-between font-mono text-sm" data-testid="posicion">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 font-mono text-sm" data-testid="posicion">
           <span>
             t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
           </span>
           <span className="text-texto-2">
             frame {mostrado === null ? '—' : mostrado + 1} / {total}
             {mostrado !== deseado && ' …'}
+            {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
+            {msDecodificar !== null && (
+              <span data-testid="ms-decodificar">
+                {' '}
+                · {fmt(msDecodificar, 0)} ms{lectura && (
+                  <>
+                    {' '}
+                    <span data-testid="lectura" className="text-xs">
+                      {lectura}
+                    </span>
+                  </>
+                )}
+              </span>
+            )}
           </span>
         </div>
 
@@ -606,6 +658,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           </div>
           <GraficaAngulo
             serie={serie}
+            filtrada={filtrado.serie}
             desde={tabla.tiempos[0]!}
             hasta={tabla.tiempos[total - 1]!}
             tActual={deseado < total ? tabla.tiempos[deseado]! : null}
@@ -628,7 +681,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
             )}
           </p>
-          <p className="mt-1 px-1 text-xs text-texto-2">Toca o arrastra la gráfica para ir a ese instante.</p>
+          <p className="mt-1 px-1 text-xs text-texto-2">
+            <span className="text-acento">Ámbar</span>: medido · <span className="text-texto">línea clara</span>: filtrado a{' '}
+            {fmt(filtrado.corte, 1)} Hz. Toca o arrastra la gráfica para ir a ese instante.
+          </p>
         </section>
 
         {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
@@ -769,6 +825,16 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </span>
           </div>
         </section>
+
+        <PanelFiltro
+          ajustes={ajustes}
+          onCambiar={cambiarAjustes}
+          corte={filtrado.corte}
+          fs={filtrado.fs}
+          tramosCortos={filtrado.tramosCortos}
+          anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
+          deshabilitado={siguiendo}
+        />
 
         <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
           <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
