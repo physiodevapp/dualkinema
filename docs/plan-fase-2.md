@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia) y 3 (corrección manual) hechos; siguiente: paso 4 (Butterworth).
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia), 3 (corrección manual) y 4 (Butterworth) hechos; siguiente: paso 5 (velocidades y cero de referencia).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -13,7 +13,7 @@ Criterio de cierre: con un vídeo real de sentadillas, la persona puede:
 
 ---
 
-## 1. Filtrado: Butterworth paso bajo de fase cero [D1, D2]
+## 1. Filtrado: Butterworth paso bajo de fase cero [D1, D2] — hecho (paso 4)
 
 Por qué hace falta: el seguimiento tiene ruido de unas décimas de píxel por frame, y al derivar (velocidad, aceleración) ese ruido se multiplica por los fps al cuadrado. La media móvil de physiq-kinematics no sirve aquí: depende de los fps, retrasa la señal y deforma los picos.
 
@@ -38,6 +38,17 @@ Por qué hace falta: el seguimiento tiene ruido de unas décimas de píxel por f
 - La señal filtrada debe quedar cerca del seno y sin desfase.
 - La respuesta en frecuencia a 6 Hz debe ser −3 dB.
 - Con fps variable y con huecos, el resultado debe coincidir con filtrar la señal equiespaciada.
+
+**Cómo quedó (paso 4):**
+- **Núcleo** en `src/core/filtros/`: `butterworth.ts` (coeficientes, ida y vuelta, ganancia), `spline.ts` (spline cúbico natural, espaciado desigual) y `tramos.ts` (tramos, remuestreo y ajustes). Mediana de los fps: `fpsMediano` en `core/tiempo/tablaFrames.ts`.
+- **Corrección de Winter** (C = 0,802) aplicada sobre la frecuencia ya deformada por la transformación bilineal, `K = tan(π·fc/fs) / C`. A cortes bajos es lo mismo que la fórmula del libro (corregir antes de deformar); cerca de Nyquist solo así cae el −3 dB exactamente en el corte. Un test lo comprueba de 2 a 12 Hz a 30 fps.
+- **Arranque:** cada pasada empieza en estado estacionario con su primer valor y los extremos se rellenan por reflexión impar (2·x₀ − x[k]), con un periodo del corte de relleno (al menos 9 muestras, nunca más de lo que el tramo permite). Una constante pasa exacta y una recta con un error de milésimas de píxel.
+- **Remuestreo:** cada tramo va a una rejilla uniforme de paso lo más cercano posible a 1/fps mediano que empieza y acaba justo en sus extremos (sin extrapolar), con spline cúbico natural; se filtra y se vuelve con otro spline a los tiempos reales. Con frames ya equiespaciados el resultado es el del filtro solo.
+- **Tramos:** frames consecutivos con posición utilizable (calidad ≥ 0,5; lo marcado a mano y lo interpolado entran y conservan su marca). Tramo corto: menos de 10 muestras (más de 3 veces la longitud del filtro, la regla de scipy). Se filtra igual, queda marcado y el paso 5 no lo derivará.
+- **Corte:** 6 Hz por defecto, de 2 a 15 Hz en pasos de 0,5. Si los fps no lo permiten se limita a 0,4·fps (12 Hz a 30 fps) y la app lo dice.
+- **Sesión:** `filtro: { corteHz } | null` (null = 6 Hz). Lo guardado antes sigue valiendo, así que el esquema se queda en la versión 2.
+- **Visor (provisional hasta el paso 8):** panel «Filtro» con el corte y el ángulo filtrado del frame actual, y la curva filtrada como línea clara sobre la cruda en la gráfica. Mientras se sigue no se refiltra (las trayectorias cambian con cada lote); se rehace al parar. Coste medido: unos 8 ms por marcador con 3600 frames en un ordenador.
+- **Tests:** −3 dB en el corte (teórico y medido sobre un seno), seno de 1 Hz con ruido (sin desfase: fase del componente de 1 Hz < 0,1°), constante y recta, fps variable frente a equiespaciado y frente a la salida exacta del filtro, huecos (un salto de 200 px al otro lado no se nota), tramos cortos, marcas conservadas y validación de los ajustes. En navegador: ángulo filtrado frente al real con fps variable, sin valor dentro de un hueco y correcto a sus lados, y el corte se guarda y se recupera.
 
 ## 2. Velocidades y aceleraciones
 
@@ -152,8 +163,10 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 | 5 | Velocidades y aceleraciones, y cero de referencia | Opus |
 | 6 | Calibración de escala en metros | Opus |
 | 7 | Exportación CSV | Sonnet |
-| 8 | Gráfica: crudo y filtrado, velocidad | Sonnet |
+| 8 | Gráfica: crudo y filtrado, velocidad (ver nota) | Sonnet |
 | 9 | Cierre de fase: revisión, CLAUDE.md y limitaciones | Opus |
+
+**Nota para el paso 8 (gráfica):** la línea del frame actual tiene que ir en una capa aparte (un canvas o un elemento superpuesto a la gráfica), sin redibujar las curvas. Hoy cada cambio de frame llama a `redraw` de uPlot y redibuja todas las series; con la gráfica llena (cruda, filtrada y, en el paso 5, velocidad) avanzar frame a frame va menos suave. Tocar o arrastrar la gráfica debe seguir funcionando igual.
 
 Las pruebas e2e van primero para que cada paso siguiente quede cubierto. La persistencia va antes que los cálculos porque probar los filtros con vídeos reales sin guardar el marcado obliga a repetirlo cada vez.
 
