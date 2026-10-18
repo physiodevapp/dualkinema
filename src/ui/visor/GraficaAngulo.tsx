@@ -14,6 +14,12 @@ export interface PuntoAngulo {
 interface Props {
   /** Serie del ángulo, ordenada por tiempo. */
   serie: readonly PuntoAngulo[]
+  /**
+   * Ángulo con las coordenadas filtradas (paso 4 de la fase 2). Sus instantes
+   * son un subconjunto de los de `serie`. Provisional: el paso 8 rehace la
+   * gráfica (crudo y filtrado, velocidad, leyenda).
+   */
+  filtrada?: readonly PuntoAngulo[]
   /** Primer y último instante del vídeo: el eje X siempre los abarca. */
   desde: number
   hasta: number
@@ -49,7 +55,7 @@ function indiceExacto(xs: readonly number[], t: number): number {
  * frame actual y, tocando o arrastrando la gráfica, el vídeo salta a ese
  * instante. El gesto vertical sigue desplazando la página.
  */
-export default function GraficaAngulo({ serie, desde, hasta, tActual, onBuscar }: Props) {
+export default function GraficaAngulo({ serie, filtrada, desde, hasta, tActual, onBuscar }: Props) {
   const contenedor = useRef<HTMLDivElement>(null)
   const grafica = useRef<uPlot | null>(null)
 
@@ -62,9 +68,13 @@ export default function GraficaAngulo({ serie, desde, hasta, tActual, onBuscar }
     const interpolados = serie.map((p, i) =>
       p.interpolado || serie[i - 1]?.interpolado || serie[i + 1]?.interpolado ? valor(p) : null,
     )
+    // La filtrada, alineada con los instantes de la cruda.
+    const porT = new Map<number, number>()
+    for (const p of filtrada ?? []) if (Number.isFinite(p.valor)) porT.set(p.t, p.valor)
+    const filtrados = xs.map((t) => porT.get(t) ?? null)
     // uPlot necesita al menos una muestra para dibujar los ejes.
-    return xs.length ? [xs, medidos, interpolados] : [[desde, hasta], [null, null], [null, null]]
-  }, [serie, desde, hasta])
+    return xs.length ? [xs, medidos, interpolados, filtrados] : [[desde, hasta], [null, null], [null, null], [null, null]]
+  }, [serie, filtrada, desde, hasta])
 
   // Lo que leen los hooks de dibujo y los manejadores sin recrear la gráfica.
   const vivo = useRef({ datos, desde, hasta, tActual, onBuscar })
@@ -78,6 +88,7 @@ export default function GraficaAngulo({ serie, desde, hasta, tActual, onBuscar }
     const acento = variable('--color-acento', '#f2a65a')
     const interpolado = variable('--color-interpolado', '#56b4e9')
     const borde = variable('--color-borde', '#2a2f38')
+    const textoClaro = variable('--color-texto', '#e8e9eb')
     const texto = variable('--color-texto-2', '#a3a7ae')
     const ejes = { stroke: texto, font: FUENTE, grid: { stroke: borde, width: 1 }, ticks: { stroke: borde, width: 1 } }
 
@@ -108,6 +119,13 @@ export default function GraficaAngulo({ serie, desde, hasta, tActual, onBuscar }
             stroke: interpolado,
             width: 2,
             dash: [5, 4],
+            spanGaps: false,
+            points: { show: false },
+          },
+          {
+            // Filtrada: línea fina y clara por encima de la cruda.
+            stroke: textoClaro,
+            width: 1.5,
             spanGaps: false,
             points: { show: false },
           },
