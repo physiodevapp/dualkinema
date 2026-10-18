@@ -14,6 +14,8 @@ import {
 import { anguloArticular, CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
 import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
+import { distanciaPx, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
+import { constanciaSegmento } from '../core/calibracion/segmentos'
 import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
 import type { Vec3 } from '../core/geometria/vector'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
@@ -33,12 +35,13 @@ import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import GraficaAngulo from './visor/GraficaAngulo'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
 import PanelCinematica from './visor/PanelCinematica'
+import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './visor/PanelEscala'
 import PanelFiltro from './visor/PanelFiltro'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
 const SALTO = 10
-const ESTELA = 20 // frames de trayectoria dibujados hacia atrás
+const ESTELA = 20 // frames de trayectoria dibujados por detrás, en el sentido en que se recorre el vídeo
 
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
 /** Grados con una decimal sin «−0,0» (un valor entre −0,05 y 0 se muestra 0,0). */
@@ -71,6 +74,38 @@ function lectorDeCanvas(c: HTMLCanvasElement | OffscreenCanvas): LeerVentana {
   return (v) => {
     const d = ctx.getImageData(v.x, v.y, Math.max(1, v.ancho), Math.max(1, v.alto))
     return { ancho: d.width, alto: d.height, datos: d.data, x0: v.x, y0: v.y }
+  }
+}
+
+/**
+ * Segmento de la escala sobre el vídeo: línea a trazos entre los extremos y,
+ * en cada uno, una cruz con el centro libre para ver el punto exacto.
+ */
+function dibujarSegmentoEscala(ctx: CanvasRenderingContext2D, base: number, a: Punto2D | null, b: Punto2D | null) {
+  const acento = getComputedStyle(document.documentElement).getPropertyValue('--color-acento').trim() || '#f2a65a'
+  const trazo = (color: string, ancho: number, f: () => void) => {
+    ctx.strokeStyle = color
+    ctx.lineWidth = ancho
+    ctx.beginPath()
+    f()
+    ctx.stroke()
+  }
+  if (a && b) {
+    ctx.setLineDash([base * 3, base * 2])
+    trazo('#000', base * 1.2, () => (ctx.moveTo(a.x, a.y), ctx.lineTo(b.x, b.y)))
+    trazo(acento, base * 0.6, () => (ctx.moveTo(a.x, a.y), ctx.lineTo(b.x, b.y)))
+    ctx.setLineDash([])
+  }
+  for (const p of [a, b]) {
+    if (!p) continue
+    const cruz = () => {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        ctx.moveTo(p.x + dx * base * 1.5, p.y + dy * base * 1.5)
+        ctx.lineTo(p.x + dx * base * 6, p.y + dy * base * 6)
+      }
+    }
+    trazo('#000', base * 1.2, cruz)
+    trazo(acento, base * 0.6, cruz)
   }
 }
 
@@ -122,10 +157,12 @@ interface Props {
   filtro?: AjustesFiltro | null
   /** Al recuperar: el tramo estático del cero de referencia, por articulación. */
   ceros?: Readonly<Record<string, TramoEstatico>>
+  /** Al recuperar: la escala de la vista (null = sin escala). */
+  calibracion?: CalibracionVista | null
   avisoInicial?: string
 }
 
-export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, ceros: cerosGuardados, avisoInicial }: Props) {
+export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, ceros: cerosGuardados, calibracion: calibracionGuardada, avisoInicial }: Props) {
   const lienzo = useRef<HTMLCanvasElement>(null)
   const { info, tabla } = video
   const total = tabla.tiempos.length
@@ -186,6 +223,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     },
     [articulacion.id],
   )
+  // Escala (paso 6): la guardada y, mientras se calibra, el borrador con los extremos tocados.
+  const [calibracion, setCalibracion] = useState<CalibracionVista | null>(calibracionGuardada ?? null)
+  const [revCalibracion, setRevCalibracion] = useState(0)
+  const [borrador, setBorrador] = useState<BorradorEscala | null>(null)
+  const calibrando = borrador !== null
+  // Calibrar tocando los extremos (con «Entre dos marcadores» no se toca el vídeo).
+  const tocandoEscala = calibrando && borrador.objeto !== 'marcadores'
   const guardado = useGuardado({
     sesion,
     huella,
@@ -194,8 +238,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     trayectorias,
     filtro: ajustes,
     ceros,
+    calibracion,
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: version + revAjustes + revCeros,
+    version: version + revAjustes + revCeros + revCalibracion,
     recuperada: !!inicial,
   })
 
@@ -231,10 +276,15 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => void pintar(), [pintar])
 
+  // Sentido de la última navegación: la estela va por detrás del marcador, hacia los frames
+  // de los que se viene (hacia atrás en el tiempo al avanzar, hacia delante al retroceder).
+  const [sentido, setSentido] = useState<1 | -1>(1)
   const ir = useCallback(
     (i: number) => {
-      pedido.current = limitarIndice(tabla, i)
-      setDeseado(pedido.current)
+      const destino = limitarIndice(tabla, i)
+      if (destino !== pedido.current) setSentido(destino > pedido.current ? 1 : -1)
+      pedido.current = destino
+      setDeseado(destino)
       void pintar()
     },
     [tabla, pintar],
@@ -389,6 +439,68 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     setVersion((v) => v + 1)
   }
 
+  // ---- Escala: tocar los dos extremos del objeto ----
+  const frameCalibracion = useMemo(() => (calibracion ? indiceMasCercano(tabla, calibracion.t) : null), [calibracion, tabla])
+  const tocarExtremo = (x: number, y: number) => {
+    if (mostrado === null || !borrador) return
+    const p: Punto2D = { x, y }
+    const t = tabla.tiempos[mostrado]!
+    const { a, b } = borrador
+    // El primero y el segundo, por orden; después, cada toque mueve el extremo más cercano.
+    if (!a) setBorrador({ ...borrador, a: p, t })
+    else if (!b || distanciaPx(p, b) < distanciaPx(p, a)) setBorrador({ ...borrador, b: p, t })
+    else setBorrador({ ...borrador, a: p, t })
+  }
+  // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
+  const segmentos = useMemo(() => {
+    const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
+    return [articulacion.proximal, articulacion.distal].map((s) => ({ desde: s.desde, hasta: s.hasta, nombre: `${nombre(s.desde)} – ${nombre(s.hasta)}` }))
+  }, [modelo, articulacion])
+  // Con «Entre dos marcadores»: posición media de los dos en el tramo, con lo seguido ahora.
+  const medicion = useMemo(() => {
+    void version
+    if (borrador?.objeto !== 'marcadores' || !borrador.entre || !borrador.tramo) return null
+    const serie = (id: IdMarcador) => trayectorias.current.get(id) ?? []
+    return medirEntreMarcadores(serie(borrador.entre.desde), serie(borrador.entre.hasta), borrador.tramo)
+  }, [borrador, version])
+  // La guardada, medida otra vez con lo seguido ahora: si se calibró antes de seguir, hay más frames.
+  const medicionGuardada = useMemo(() => {
+    void version
+    const entre = calibracion?.entre
+    if (!entre) return null
+    return medirEntreMarcadores(trayectorias.current.get(entre.desde) ?? [], trayectorias.current.get(entre.hasta) ?? [], entre.tramo)
+  }, [calibracion, version])
+  const framesTramo = useMemo(() => {
+    const tr = borrador?.tramo
+    if (!tr) return null
+    return tabla.tiempos.reduce((n, t) => (t >= tr.desde && t <= tr.hasta ? n + 1 : n), 0)
+  }, [borrador?.tramo, tabla])
+  const empezarEscala = () => {
+    setErrorToque(null)
+    // Por defecto, el segmento distal (rodilla–tobillo: el gomet del trocánter se desliza más) y el tramo del cero o los primeros 2 s.
+    const entre = calibracion?.entre ? { desde: calibracion.entre.desde, hasta: calibracion.entre.hasta } : { desde: articulacion.distal.desde, hasta: articulacion.distal.hasta }
+    const tramo = calibracion?.entre?.tramo ?? ceros[articulacion.id] ?? tramoInicial(tabla.tiempos)
+    if (!calibracion) {
+      setBorrador({ objeto: 'cinta', a: null, b: null, t: null, longitud: OBJETOS.cinta.cm, entre, tramo })
+      return
+    }
+    // Rehacer: se parte de lo guardado, en su frame, para ajustar un extremo o la longitud.
+    const longitud = fmt(calibracion.longitudM * 100, 1).replace(/,0$/, '')
+    setBorrador({ objeto: calibracion.objeto, a: calibracion.a, b: calibracion.b, t: calibracion.t, longitud, entre, tramo })
+    if (frameCalibracion !== null) ir(frameCalibracion)
+  }
+  const guardarEscala = () => {
+    const r = borrador && escalaDeBorrador(borrador, medicion)
+    if (!r?.ok) return
+    setCalibracion(r.valor)
+    setRevCalibracion((v) => v + 1)
+    setBorrador(null)
+  }
+  const quitarEscala = () => {
+    setCalibracion(null)
+    setRevCalibracion((v) => v + 1)
+  }
+
   // ---- Huecos cortos: rellenar a petición ----
   const huecosCortos = useMemo(() => {
     void version
@@ -447,13 +559,15 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       }
       ids.forEach((id, k) => {
         const color = COLORES_MARCADOR[k % COLORES_MARCADOR.length]!
-        // Estela de los últimos frames.
+        // Estela de los últimos frames recorridos.
         ctx.strokeStyle = color
         ctx.lineWidth = base * 0.6
         ctx.globalAlpha = 0.6
         ctx.beginPath()
         let empezado = false
-        for (let i = Math.max(0, mostrado - ESTELA); i <= mostrado; i++) {
+        const desde = sentido > 0 ? Math.max(0, mostrado - ESTELA) : mostrado
+        const hasta = sentido > 0 ? mostrado : Math.min(total - 1, mostrado + ESTELA)
+        for (let i = desde; i <= hasta; i++) {
           const m = muestra(id, i)
           if (!valida(m)) {
             empezado = false
@@ -487,8 +601,19 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           ctx.fill()
         }
       })
+      // Escala: mientras se calibra, y la guardada en el frame en que se marcó.
+      const segmento = borrador
+        ? borrador.objeto === 'marcadores'
+          ? medicion?.ok
+            ? medicion
+            : null
+          : borrador
+        : calibracion && mostrado === frameCalibracion
+          ? calibracion
+          : null
+      if (segmento) dibujarSegmentoEscala(ctx, base, segmento.a, segmento.b)
     },
-    [version, mostrado, ids, muestra, articulacion],
+    [version, mostrado, sentido, total, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion],
   )
 
   // ---- Estado por frame para la franja y ángulo actual ----
@@ -547,11 +672,21 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     ajustes,
     articulacion,
     orientacion,
+    metrosPorPx: calibracion ? metrosPorPx(calibracion) : null,
     congelado: seguimiento.estado === 'siguiendo',
   })
   const anguloFiltrado = mostrado === null ? NaN : filtrado.anguloEn(mostrado)
   const tramoEstatico = ceros[articulacion.id] ?? null
   const cero = useMemo(() => (tramoEstatico ? ceroDeReferencia(filtrado.serie, tramoEstatico) : null), [tramoEstatico, filtrado.serie])
+  // Longitud de cada segmento a lo largo del vídeo, con lo filtrado (menos ruido que lo crudo).
+  const constancia = useMemo(
+    () =>
+      segmentos.map((s) => ({
+        segmento: s,
+        c: constanciaSegmento(filtrado.porMarcador.get(s.desde)?.posiciones ?? [], filtrado.porMarcador.get(s.hasta)?.posiciones ?? []),
+      })),
+    [segmentos, filtrado.porMarcador],
+  )
   const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
     (t: number) => {
@@ -573,14 +708,20 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             alto={info.alto}
             lienzo={lienzo}
             dibujar={dibujar}
-            interactivo={!!seleccionado && !siguiendo && mostrado === deseado}
-            onToque={colocar}
-            previsualizar={seleccionado ? previsualizar : undefined}
+            interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
+            onToque={tocandoEscala ? tocarExtremo : colocar}
+            // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
+            previsualizar={!calibrando && seleccionado ? previsualizar : undefined}
           />
           {mostrado === null && !error && (
             <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
           )}
-          {seleccionado && !siguiendo && (
+          {tocandoEscala && !siguiendo && (
+            <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
+              Escala: {!borrador.a ? 'toca un extremo' : !borrador.b ? 'toca el otro extremo' : 'toca cerca de un extremo para moverlo'}
+            </p>
+          )}
+          {!calibrando && seleccionado && !siguiendo && (
             <p className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-fondo/85 px-2 py-1 text-sm">
               <span
                 className="size-3 rounded-full"
@@ -883,6 +1024,26 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           fs={filtrado.fs}
           tramosCortos={filtrado.tramosCortos}
           anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
+          deshabilitado={siguiendo}
+        />
+
+        <PanelEscala
+          calibracion={calibracion}
+          borrador={borrador}
+          medicion={medicion}
+          framesTramo={framesTramo}
+          medicionGuardada={medicionGuardada}
+          segmentos={segmentos}
+          tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
+          constancia={constancia}
+          onIr={ir}
+          frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
+          onEmpezar={empezarEscala}
+          onBorrador={setBorrador}
+          onGuardar={guardarEscala}
+          onCancelar={() => setBorrador(null)}
+          onQuitar={quitarEscala}
+          onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
           deshabilitado={siguiendo}
         />
 

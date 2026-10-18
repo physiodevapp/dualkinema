@@ -865,6 +865,241 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
   })
 })
 
+describe('escala en metros: dos extremos y la longitud', () => {
+  it('elegir el objeto, tocar los extremos, m/s del tobillo con la escala; se guarda, se recupera y se quita', async () => {
+    const verdad = videos.verde.verdad
+    const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await esperarGuardado(p, verdad.length)
+      const panel = p.getByTestId('panel-escala')
+      await irAFrame(p, 30)
+      const anguloAntes = await leerAngulo(p)
+      assert.match(await p.getByTestId('velocidad-marcador-' + (await idTobillo(p))).innerText(), /px\/s$/)
+
+      await panel.getByRole('button', { name: 'Calibrar escala' }).click()
+      // Se puede elegir el objeto; cada uno trae su longitud de partida.
+      assert.equal(await panel.getByRole('radio', { name: 'Cinta métrica' }).getAttribute('aria-checked'), 'true')
+      await panel.getByRole('radio', { name: 'Regla' }).click()
+      assert.equal(await panel.getByLabel('Longitud en cm').inputValue(), '30')
+      await panel.getByRole('radio', { name: 'Palo' }).click()
+      assert.equal(await panel.getByLabel('Longitud en cm').inputValue(), '100')
+
+      // Dos extremos a 50 px: se avisa de que es corto.
+      await tocarVideo(p, 100, 300)
+      await tocarVideo(p, 150, 300)
+      await panel.getByTestId('escala-aviso-corto').waitFor()
+      // Un tercer toque mueve el extremo más cercano (el de x = 150): quedan a 400 px.
+      await tocarVideo(p, 500, 300)
+      const d = Number(/a ([\d.,]+) px/.exec(await panel.getByTestId('escala-estado').innerText())[1].replace(',', '.'))
+      assert.ok(Math.abs(d - 400) < 3, `extremos a ${d} px`)
+      assert.equal(await panel.getByTestId('escala-aviso-corto').count(), 0)
+      // Tocar al calibrar no mueve ningún marcador.
+      assert.equal(await leerAngulo(p), anguloAntes)
+
+      await panel.getByLabel('Longitud en cm').fill('400')
+      await panel.getByRole('button', { name: 'Guardar escala' }).click()
+      // 4 m en 400 px: 10 mm por píxel.
+      const mm = await leerNumero(p, 'escala-mm-px')
+      assert.ok(Math.abs(mm - 1000 * (4 / d)) < 0.02, `${mm} mm/px`)
+
+      // Velocidad del tobillo (gira a 120 px de la rodilla) en m/s, la real con la escala (±5 %).
+      const tobillo = 'velocidad-marcador-' + (await idTobillo(p))
+      assert.match(await p.getByTestId(tobillo).innerText(), /m\/s$/)
+      const real = ((120 * velReal(verdad[30].t) * Math.PI) / 180) * (mm / 1000)
+      const v = await leerNumero(p, tobillo)
+      assert.ok(Math.abs(v / real - 1) < 0.05, `tobillo ${v} m/s, real ${real.toFixed(3)} m/s`)
+      // Los ángulos no dependen de la escala.
+      assert.equal(await leerAngulo(p), anguloAntes)
+
+      await esperarCalibracionGuardada(p, 4)
+      const textoEscala = await p.getByTestId('escala-objeto').innerText()
+      await p.reload()
+      await p.getByTestId('sesion-guardada').waitFor()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.equal(await p.getByTestId('escala-objeto').innerText(), textoEscala)
+      assert.match(textoEscala, /400,0 cm/)
+      await irAFrame(p, 30)
+      assert.equal(await leerNumero(p, tobillo), v)
+
+      await p.getByTestId('panel-escala').getByRole('button', { name: 'Quitar' }).click()
+      assert.match(await p.getByTestId(tobillo).innerText(), /px\/s$/)
+      await esperarCalibracionGuardada(p, null)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('escala entre dos marcadores y longitud de los segmentos', () => {
+  it('rodilla–tobillo en los primeros 2 s con su distancia real; la longitud de los segmentos no cambia', async () => {
+    // En el vídeo sintético el muslo mide 130 px y la pierna 120, rígidos y en el plano.
+    const verdad = videos.verde.verdad
+    const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await esperarGuardado(p, verdad.length)
+      const panel = p.getByTestId('panel-escala')
+      // Uno por segmento de la rodilla, en orden: muslo (trocánter–rodilla) y pierna (rodilla–tobillo).
+      const segmentos = panel.locator('[data-testid^="constancia-trocanter"], [data-testid^="constancia-epicondilo"]')
+      assert.equal(await segmentos.count(), 2)
+      for (const [k, real] of [[0, 130], [1, 120]]) {
+        const s = segmentos.nth(k)
+        const l = Number((await s.getByTestId('constancia-longitud').innerText()).match(/[\d,]+/)[0].replace(',', '.'))
+        assert.ok(Math.abs(l - real) < 1.5, `segmento ${k}: ${l} px, real ${real}`)
+        const rms = Number((await s.getByTestId('constancia-rms').innerText()).match(/[\d,]+/)[0].replace(',', '.'))
+        assert.ok(rms < 1, `segmento ${k}: varía ± ${rms} %`)
+        assert.equal(await s.getByTestId('constancia-fuera').count(), 0)
+      }
+
+      await panel.getByRole('button', { name: 'Calibrar escala' }).click()
+      await panel.getByRole('radio', { name: 'Entre dos marcadores' }).click()
+      // Por defecto, la pierna (rodilla–tobillo) y los primeros 2 s; sin longitud: hay que medirla.
+      const opciones = panel.getByRole('radiogroup', { name: 'Segmento de calibración' }).getByRole('radio')
+      assert.equal(await opciones.nth(1).getAttribute('aria-checked'), 'true')
+      assert.equal(await panel.getByRole('radio', { name: 'Primeros 2 s' }).getAttribute('aria-checked'), 'true')
+      assert.equal(await panel.getByLabel('Longitud en cm').inputValue(), '')
+      assert.ok(await panel.getByRole('button', { name: 'Guardar escala' }).isDisabled())
+      const d = Number(/([\d,]+) px/.exec(await panel.getByTestId('escala-estado').innerText())[1].replace(',', '.'))
+      assert.ok(Math.abs(d - 120) < 1, `distancia media ${d} px`)
+      // Promediar en muchos frames: la precisión por el marcado queda muy por debajo de la de dos toques (√2/120 = 1,2 %).
+      const precision = Number(/± ([\d,]+) %/.exec(await panel.getByTestId('escala-precision').innerText())[1].replace(',', '.'))
+      assert.ok(precision <= 0.3, `± ${precision} %`)
+
+      await panel.getByLabel('Longitud en cm').fill('30')
+      await panel.getByRole('button', { name: 'Guardar escala' }).click()
+      const mm = await leerNumero(p, 'escala-mm-px')
+      assert.ok(Math.abs(mm - 2.5) < 0.03, `${mm} mm/px`)
+      await irAFrame(p, 30)
+      const tobillo = 'velocidad-marcador-' + (await idTobillo(p))
+      const real = ((120 * velReal(verdad[30].t) * Math.PI) / 180) * 0.0025
+      const v = await leerNumero(p, tobillo)
+      assert.ok(Math.abs(v / real - 1) < 0.05, `tobillo ${v} m/s, real ${real.toFixed(3)} m/s`)
+      // La longitud de los segmentos, también en cm.
+      assert.match(await segmentos.nth(1).getByTestId('constancia-longitud').innerText(), /30,\d cm/)
+
+      await esperarCalibracionGuardada(p, 0.3)
+      const texto = await p.getByTestId('escala-objeto').innerText()
+      await p.reload()
+      await p.getByTestId('sesion-guardada').waitFor()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.equal(await p.getByTestId('escala-objeto').innerText(), texto)
+      await p.getByText(/Posición media de los dos gomets/).waitFor()
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+/** Id del tercer marcador (el tobillo, distal) según las filas de velocidad. */
+async function idTobillo(p) {
+  const id = await p.locator('[data-testid^="velocidad-marcador-"]').nth(2).getAttribute('data-testid')
+  return id.replace('velocidad-marcador-', '')
+}
+
+/** Espera a que la vista guardada tenga una escala de `longitudM` metros (null: sin escala). */
+async function esperarCalibracionGuardada(p, longitudM) {
+  await p.waitForFunction(
+    async (l) => {
+      const bd = await new Promise((ok, mal) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+        r.onerror = () => mal(r.error)
+      })
+      try {
+        if (!bd.objectStoreNames.contains('sesiones')) return false
+        const todas = await new Promise((ok) => {
+          const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+          r.onsuccess = () => ok(r.result)
+        })
+        return todas.some((c) => (l === null ? c.vistas[0].calibracion === null : c.vistas[0].calibracion?.longitudM === l))
+      } finally {
+        bd.close()
+      }
+    },
+    longitudM,
+    { timeout: 20000, polling: 200 },
+  )
+}
+
+describe('escala entre marcadores calibrada antes de seguir', () => {
+  it('avisa de que solo hay un frame en el tramo y, tras seguir, ofrece rehacerla con todos', async () => {
+    // Lo que pasó en el móvil: marcar los gomets, calibrar y después seguir. La escala se quedaba
+    // con 1 frame de un tramo de 2 s, y la precisión se mostraba como si fueran muchos.
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      await marcarTres(p, videos.verde.verdad[0].ps)
+      const panel = p.getByTestId('panel-escala')
+      await panel.getByRole('button', { name: 'Calibrar escala' }).click()
+      await panel.getByRole('radio', { name: 'Entre dos marcadores' }).click()
+      await panel.getByTestId('escala-pocos-frames').waitFor()
+      assert.match(await panel.getByTestId('escala-pocos-frames').innerText(), /Solo 1 de los \d+ frames/)
+      // Un frame: √2 · 0,5 px sobre 120 px ≈ 0,6 %, no el 0,2 % de una media larga.
+      const precision = Number(/± ([\d,]+) %/.exec(await panel.getByTestId('escala-precision').innerText())[1].replace(',', '.'))
+      assert.ok(precision >= 0.5, `± ${precision} %`)
+      await panel.getByLabel('Longitud en cm').fill('30')
+      await panel.getByRole('button', { name: 'Guardar escala' }).click()
+      assert.equal(await panel.getByTestId('escala-rehacer').count(), 0)
+
+      await seguirHastaElFinal(p)
+      await panel.getByTestId('escala-rehacer').waitFor()
+      assert.match(await panel.getByTestId('escala-rehacer').innerText(), /solo había 1 frame .* ahora hay \d+/)
+      await panel.getByRole('button', { name: 'Rehacer' }).click()
+      assert.equal(await panel.getByTestId('escala-pocos-frames').count(), 0)
+      assert.equal(await panel.getByLabel('Longitud en cm').inputValue(), '30')
+      await panel.getByRole('button', { name: 'Guardar escala' }).click()
+      assert.equal(await panel.getByTestId('escala-rehacer').count(), 0)
+      assert.match(await panel.getByText(/Posición media de los dos gomets/).innerText(), /en \d{2,} frames/)
+      const mm = await leerNumero(p, 'escala-mm-px')
+      assert.ok(Math.abs(mm - 2.5) < 0.03, `${mm} mm/px`)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('estela de los marcadores: siempre por detrás en el sentido del recorrido', () => {
+  it('al avanzar dibuja los frames anteriores; al retroceder, los posteriores', async () => {
+    // Antes la estela eran siempre los 20 frames anteriores: al retroceder iba por delante del marcador.
+    const verdad = videos.verde.verdad
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      // ¿Hay trazo en la capa junto a la posición real del tobillo en el frame k?
+      const hayTrazo = (k) =>
+        p.evaluate(({ x, y }) => {
+          const d = document.querySelector('[data-testid=capa]').getContext('2d').getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5).data
+          for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true
+          return false
+        }, verdad[k].ps[2])
+      // Avanzando hasta el 30 (de 29 a 30): se ve el tobillo del frame 20 y no el del 40.
+      await irAFrame(p, 29)
+      await irAFrame(p, 30)
+      assert.equal(await hayTrazo(20), true, 'avanzando, estela en el frame 20')
+      assert.equal(await hayTrazo(40), false, 'avanzando, sin estela en el frame 40')
+      // Retrocediendo hasta el 30 (de 31 a 30): al revés.
+      await irAFrame(p, 31)
+      await irAFrame(p, 30)
+      assert.equal(await hayTrazo(40), true, 'retrocediendo, estela en el frame 40')
+      assert.equal(await hayTrazo(20), false, 'retrocediendo, sin estela en el frame 20')
+      // Con el botón de frame anterior, igual.
+      await irAFrame(p, 31)
+      await p.getByRole('button', { name: 'Frame siguiente' }).click()
+      await esperarQuieto(p)
+      await p.getByRole('button', { name: 'Frame anterior' }).click()
+      await esperarQuieto(p)
+      assert.equal((await leerPosicion(p)).frame, 32)
+      assert.equal(await hayTrazo(42), true, 'con el botón, estela hacia delante')
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('la línea de posición no mueve los botones', () => {
   // Si «t = … · frame … · N ms clave» pasaba de una a dos líneas según el texto, los botones de
   // debajo se movían y se perdía la pulsación mantenida. Se recorren anchos de móvil para dar con

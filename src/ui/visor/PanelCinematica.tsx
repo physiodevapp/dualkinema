@@ -79,14 +79,14 @@ export default function PanelCinematica({
               <span className="inline-block size-2.5 shrink-0 rounded-full" style={{ backgroundColor: m.color }} />
               Velocidad {m.nombre}
             </dt>
-            <dd className="text-right font-mono" data-testid={`velocidad-marcador-${m.id}`}>{valor(m.velocidad, 0, m.unidad)}</dd>
+            <dd className="text-right font-mono" data-testid={`velocidad-marcador-${m.id}`}>{valor(m.velocidad, m.unidad === 'm/s' ? 2 : 0, m.unidad)}</dd>
           </div>
         ))}
       </dl>
       <p className="text-xs text-texto-2">
         Derivadas de lo filtrado. Sin valor en el primer y el último frame de cada tramo seguido ni en los tramos cortos. La
         aceleración amplifica mucho el ruido: si salta de un frame a otro, baja el corte del filtro. Las velocidades de los
-        marcadores van en px/s hasta que haya escala (paso 6).
+        marcadores van en m/s con la escala calibrada y en px/s sin ella.
       </p>
 
       <div className="flex flex-col gap-2 border-t border-borde pt-3">

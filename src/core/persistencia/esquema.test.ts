@@ -122,6 +122,31 @@ describe('esquema de la sesión', () => {
     }
   })
 
+  it('guarda la escala de la vista sin cambiar de versión; lo guardado sin ella (null) sigue valiendo', () => {
+    const e = entrada()
+    const calibracion = { tipo: 'escala-plano', objeto: 'palo', a: { x: 10, y: 20 }, b: { x: 10, y: 452 }, longitudM: 1, t: 0.25 } as const
+    const { cabecera } = prepararGuardado({ ...e, vistas: [{ ...e.vistas[0]!, calibracion }] })
+    expect(cabecera.esquema).toBe(2)
+    const r = leerCabecera(comoIDB(cabecera))
+    expect(r.ok && r.valor.vistas[0]!.calibracion).toEqual(calibracion)
+    const antes = leerCabecera(comoIDB(prepararGuardado(entrada()).cabecera))
+    expect(antes.ok && antes.valor.vistas[0]!.calibracion).toBeNull()
+    const vista = cabecera.vistas[0]!
+    for (const mala of [{ ...calibracion, longitudM: -1 }, { ...calibracion, b: calibracion.a }, { ...calibracion, objeto: 'metro' }, 5]) {
+      const l = leerCabecera({ ...cabecera, vistas: [{ ...vista, calibracion: mala }] })
+      expect(l.ok).toBe(false)
+      if (!l.ok) expect(l.detalle).toMatch(/calibración no válida/)
+    }
+    // Entre dos marcadores: tienen que estar en el modelo.
+    const [m1, m2] = modelo.marcadores.map((m) => m.id)
+    const entre = { tipo: 'escala-plano', objeto: 'marcadores', a: { x: 0, y: 0 }, b: { x: 0, y: 160 }, longitudM: 0.4, t: 0, entre: { desde: m1!, hasta: m2!, tramo: { desde: 0, hasta: 1 }, muestras: 30, dispersionPx: 0.3 } }
+    const bien = leerCabecera(comoIDB({ ...cabecera, vistas: [{ ...vista, calibracion: entre }] }))
+    expect(bien.ok && bien.valor.vistas[0]!.calibracion?.entre?.hasta).toBe(m2)
+    const ajena = leerCabecera({ ...cabecera, vistas: [{ ...vista, calibracion: { ...entre, entre: { ...entre.entre, hasta: 'otro' } } }] })
+    expect(ajena.ok).toBe(false)
+    if (!ajena.ok) expect(ajena.detalle).toMatch(/no están en el modelo/)
+  })
+
   it('guarda el modelo de marcadores completo, con la definición de la articulación', () => {
     expect(prepararGuardado(entrada()).cabecera.modelo).toEqual(modelo)
   })

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { TramoEstatico } from '../../core/articulaciones/cero'
+import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
@@ -37,7 +38,9 @@ interface Opciones {
   readonly filtro: AjustesFiltro
   /** Tramo estático del cero de referencia por id de articulación. */
   readonly ceros: Readonly<Record<string, TramoEstatico>>
-  /** Cambia con cada modificación de lo que se guarda (trayectorias, ajustes o ceros); solo crece. */
+  /** Escala de la vista (null = sin escala). */
+  readonly calibracion: CalibracionVista | null
+  /** Cambia con cada modificación de lo que se guarda (trayectorias, ajustes, ceros o escala); solo crece. */
   readonly version: number
   /** La sesión viene de lo guardado (no es nueva). */
   readonly recuperada: boolean
@@ -47,9 +50,9 @@ interface Opciones {
  * Guarda la sesión en el dispositivo sin que haya que pedirlo: ESPERA_MS
  * después del último cambio (MAXIMO_MS como mucho mientras sigue), y en
  * seguida al ocultar la página (cambiar de app, apagar la pantalla) o al
- * cerrar el visor. No crea la sesión hasta que hay algo marcado.
+ * cerrar el visor. No crea la sesión hasta que hay algo marcado o una escala.
  */
-export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias, filtro, ceros, version, recuperada }: Opciones): EstadoGuardado {
+export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias, filtro, ceros, calibracion, version, recuperada }: Opciones): EstadoGuardado {
   const [estado, setEstado] = useState<EstadoGuardado>({ estado: recuperada ? 'recuperado' : 'nada' })
   // La versión con que se montó ya está guardada (vacía o recuperada).
   const guardada = useRef(version)
@@ -59,8 +62,8 @@ export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias,
   const primerCambio = useRef(0)
   const persistenciaPedida = useRef(false)
   // Lo que se lee al guardar: siempre lo último, sin rehacer los efectos.
-  const datos = useRef({ sesion, huella, orientacion, modelo, filtro, ceros })
-  datos.current = { sesion, huella, orientacion, modelo, filtro, ceros }
+  const datos = useRef({ sesion, huella, orientacion, modelo, filtro, ceros, calibracion })
+  datos.current = { sesion, huella, orientacion, modelo, filtro, ceros, calibracion }
 
   const guardar = useCallback(() => {
     if (temporizador.current) clearTimeout(temporizador.current)
@@ -68,13 +71,14 @@ export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias,
     const v = actual.current
     if (v === guardada.current) return
     const series = trayectorias.current
-    const hayAlgo = [...series.values()].some((s) => s.some((m) => m !== undefined))
+    // Calibrar antes de marcar también es trabajo que no se debe perder.
+    const hayAlgo = datos.current.calibracion !== null || [...series.values()].some((s) => s.some((m) => m !== undefined))
     if (!hayAlgo) {
       guardada.current = v
       setEstado({ estado: 'nada' })
       return
     }
-    const { sesion, huella, orientacion, modelo, filtro, ceros } = datos.current
+    const { sesion, huella, orientacion, modelo, filtro, ceros, calibracion } = datos.current
     // Se serializa ahora: las trayectorias cambian en sitio.
     const { cabecera, datos: tray } = prepararGuardado({
       id: sesion.id,
@@ -83,7 +87,7 @@ export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias,
       ahora: new Date().toISOString(),
       modelo,
       filtro,
-      vistas: [{ id: sesion.vistaId, huella, orientacion, series, ceros }],
+      vistas: [{ id: sesion.vistaId, huella, orientacion, series, ceros, calibracion }],
     })
     guardada.current = v
     guardarSesion(cabecera, tray).then(

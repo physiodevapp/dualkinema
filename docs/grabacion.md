@@ -30,7 +30,19 @@ En la pierna que mira a la cámara, sobre la piel (pantalón corto): en ropa sue
 
 1. 2–3 s quieto de pie con la rodilla extendida: sirve para marcar los gomets y ver el cero.
 2. 3–4 sentadillas lentas o flexiones de rodilla de pie. Unos 10–20 s en total.
-3. Para ajustar el seguimiento: el mismo ejercicio a 60 fps, más rápido y con algo que complique (fondo con objetos, ropa de color parecido al gomet).
+3. Para pasar las velocidades a m/s: al principio, un objeto de longitud conocida **en el plano del movimiento** (ver «Objeto para la escala»).
+4. Para ajustar el seguimiento: el mismo ejercicio a 60 fps, más rápido y con algo que complique (fondo con objetos, ropa de color parecido al gomet).
+
+## Objeto para la escala
+
+Sirve cualquier objeto rígido de longitud conocida: un palo de 1 m, una cinta métrica o una regla. En la app se elige cuál es, pero el cálculo es el mismo: tocar sus dos extremos y escribir la longitud.
+
+- **En el plano del movimiento:** junto a la pierna que se mide, a la misma distancia de la cámara. A 3 m de la cámara, 10 cm más cerca o más lejos ya cambian la escala un 3 %.
+- **Paralelo a la cámara:** sin inclinarlo hacia ella ni alejarlo (se vería más corto). Vertical u horizontal da igual.
+- **Cuanto más largo, mejor:** un píxel de error al marcar pesa más en un objeto corto. Un palo de 1 m suele ocupar unos 400 px en un vídeo 1080 a 3 m (±0,35 %); una regla de 30 cm, unos 120 px (±1,2 %, la app avisa).
+- **Lejos de los bordes de la imagen:** sin corrección de lente, ahí hay algo de distorsión.
+- Basta con que se vea bien en un frame: se puede retirar antes de empezar el ejercicio, sin mover la cámara.
+- **Sin objeto:** mide con cinta (mejor con pie de rey) la distancia entre los centros de los gomets de rodilla y tobillo, de pie, y elige «Entre dos marcadores» en la app. La escala queda justo en el plano de los marcadores, pero la medida sobre la piel tiene su error (5 mm en 40 cm = 1,2 %), en el tramo elegido la pierna debe estar quieta y paralela a la cámara, y la longitud de ese segmento ya no se podrá medir con el vídeo.
 
 ## En la app
 
@@ -38,3 +50,5 @@ En la pierna que mira a la cámara, sobre la piel (pantalón corto): en ropa sue
 2. En el primer frame, tocar los 3 gomets. Con el dedo pulsado aparece una lupa; se coloca al soltar.
 3. «Seguir desde aquí». Si un gomet se pierde, no se inventa su posición: queda un hueco (rojo en la franja y corte en la gráfica). Se puede ir a un frame donde se vea, tocarlo y seguir desde ahí.
 4. La gráfica muestra el ángulo en segundos; tocarla o arrastrarla lleva el vídeo a ese instante.
+5. Escala: en el panel «Escala», «Calibrar escala», elegir el objeto, ir a un frame donde se vea, tocar sus dos extremos con la lupa, escribir la longitud en cm y «Guardar escala». Con «Entre dos marcadores», después de seguir: elegir los marcadores y el tramo quieto, y escribir la distancia medida.
+6. «Longitud de los segmentos» (panel «Escala»): si la distancia entre gomets cambia más de un 3 % en algunos frames, ahí la pierna sale del plano o los gomets se deslizan; la escala y los ángulos son menos fiables en esos frames.
