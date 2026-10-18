@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { crearTablaFrames, estadisticas, indiceEnTiempo, indiceMasCercano, limitarIndice } from './tablaFrames'
+import { crearTablaFrames, estadisticas, indiceEnTiempo, indiceMasCercano, limitarIndice, fpsMediano } from './tablaFrames'
 
 describe('crearTablaFrames', () => {
   it('ordena los pts (frames B llegan desordenados) y quita duplicados y no finitos', () => {
@@ -79,5 +79,17 @@ describe('estadisticas', () => {
 
   it('con menos de 2 frames no inventa fps', () => {
     expect(estadisticas(crearTablaFrames([0])).fpsMedio).toBeNaN()
+  })
+})
+
+describe('fpsMediano', () => {
+  it('no lo mueven los frames saltados (la media sí)', () => {
+    const ts = Array.from({ length: 31 }, (_, i) => i / 30).filter((_, i) => i !== 10 && i !== 11)
+    const tabla = crearTablaFrames(ts)
+    expect(fpsMediano(tabla)).toBeCloseTo(30, 6)
+    expect(estadisticas(tabla).fpsMedio).toBeLessThan(29)
+  })
+  it('NaN con menos de dos frames', () => {
+    expect(fpsMediano(crearTablaFrames([0.5]))).toBeNaN()
   })
 })

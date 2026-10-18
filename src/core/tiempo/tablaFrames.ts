@@ -84,3 +84,19 @@ export function estadisticas(tabla: TablaFrames): EstadisticasFrames {
     variable: pasoMax > pasoMin * 1.1,
   }
 }
+
+/**
+ * Frecuencia de muestreo de referencia para filtrar: la inversa de la mediana
+ * de la separación entre frames. A diferencia de la media, no la mueven los
+ * frames que el móvil se salta. NaN con menos de 2 frames.
+ */
+export function fpsMediano(tabla: TablaFrames): number {
+  const ts = tabla.tiempos
+  if (ts.length < 2) return NaN
+  const pasos = new Float64Array(ts.length - 1)
+  for (let i = 1; i < ts.length; i++) pasos[i - 1] = ts[i]! - ts[i - 1]!
+  pasos.sort()
+  const m = pasos.length >> 1
+  const mediana = pasos.length % 2 ? pasos[m]! : (pasos[m - 1]! + pasos[m]!) / 2
+  return 1 / mediana
+}
