@@ -143,6 +143,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // `aOjo`: dónde se tocó, para ofrecer colocarlo ahí aunque no se reconozca el gomet.
   const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string; aOjo?: { id: IdMarcador; i: number; x: number; y: number } } | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
+  // Cómo se consiguió el frame: de la caché, siguiendo el decodificador o desde el fotograma clave.
+  const [lectura, setLectura] = useState<string | null>(null)
   // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
   // si están todos, ninguno, para no mover uno sin querer con el primer toque.
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
@@ -185,6 +187,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         lienzo.current?.getContext('2d')?.drawImage(frame.canvas, 0, 0)
         ultimoFrame.current = frame.canvas
         setMsDecodificar(performance.now() - inicio)
+        const l = video.ultimaLectura
+        setLectura(!l ? null : l.modo === 'cache' ? 'caché' : l.modo === 'seguido' ? 'seguido' : 'clave')
         setMostrado(i)
         setError(null)
         if (pedido.current === i) break
@@ -592,7 +596,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           </div>
         )}
 
-        <div className="flex items-baseline justify-between font-mono text-sm" data-testid="posicion">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 font-mono text-sm" data-testid="posicion">
           <span>
             t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
           </span>
@@ -600,7 +604,19 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             frame {mostrado === null ? '—' : mostrado + 1} / {total}
             {mostrado !== deseado && ' …'}
             {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
-            {msDecodificar !== null && <span data-testid="ms-decodificar"> · {fmt(msDecodificar, 0)} ms</span>}
+            {msDecodificar !== null && (
+              <span data-testid="ms-decodificar">
+                {' '}
+                · {fmt(msDecodificar, 0)} ms{lectura && (
+                  <>
+                    {' '}
+                    <span data-testid="lectura" className="text-xs">
+                      {lectura}
+                    </span>
+                  </>
+                )}
+              </span>
+            )}
           </span>
         </div>
 
