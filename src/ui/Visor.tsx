@@ -599,6 +599,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           <span className="text-texto-2">
             frame {mostrado === null ? '—' : mostrado + 1} / {total}
             {mostrado !== deseado && ' …'}
+            {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
+            {msDecodificar !== null && <span data-testid="ms-decodificar"> · {fmt(msDecodificar, 0)} ms</span>}
           </span>
         </div>
 
