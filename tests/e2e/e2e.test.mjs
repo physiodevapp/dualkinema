@@ -1026,6 +1026,43 @@ async function esperarCalibracionGuardada(p, longitudM) {
   )
 }
 
+describe('estela de los marcadores: siempre por detrás en el sentido del recorrido', () => {
+  it('al avanzar dibuja los frames anteriores; al retroceder, los posteriores', async () => {
+    // Antes la estela eran siempre los 20 frames anteriores: al retroceder iba por delante del marcador.
+    const verdad = videos.verde.verdad
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      // ¿Hay trazo en la capa junto a la posición real del tobillo en el frame k?
+      const hayTrazo = (k) =>
+        p.evaluate(({ x, y }) => {
+          const d = document.querySelector('[data-testid=capa]').getContext('2d').getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5).data
+          for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true
+          return false
+        }, verdad[k].ps[2])
+      // Avanzando hasta el 30 (de 29 a 30): se ve el tobillo del frame 20 y no el del 40.
+      await irAFrame(p, 29)
+      await irAFrame(p, 30)
+      assert.equal(await hayTrazo(20), true, 'avanzando, estela en el frame 20')
+      assert.equal(await hayTrazo(40), false, 'avanzando, sin estela en el frame 40')
+      // Retrocediendo hasta el 30 (de 31 a 30): al revés.
+      await irAFrame(p, 31)
+      await irAFrame(p, 30)
+      assert.equal(await hayTrazo(40), true, 'retrocediendo, estela en el frame 40')
+      assert.equal(await hayTrazo(20), false, 'retrocediendo, sin estela en el frame 20')
+      // Con el botón de frame anterior, igual.
+      await irAFrame(p, 31)
+      await p.getByRole('button', { name: 'Frame siguiente' }).click()
+      await esperarQuieto(p)
+      await p.getByRole('button', { name: 'Frame anterior' }).click()
+      await esperarQuieto(p)
+      assert.equal((await leerPosicion(p)).frame, 32)
+      assert.equal(await hayTrazo(42), true, 'con el botón, estela hacia delante')
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('la línea de posición no mueve los botones', () => {
   // Si «t = … · frame … · N ms clave» pasaba de una a dos líneas según el texto, los botones de
   // debajo se movían y se perdía la pulsación mantenida. Se recorren anchos de móvil para dar con

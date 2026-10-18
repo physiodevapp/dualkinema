@@ -41,7 +41,7 @@ import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
 const SALTO = 10
-const ESTELA = 20 // frames de trayectoria dibujados hacia atrás
+const ESTELA = 20 // frames de trayectoria dibujados por detrás, en el sentido en que se recorre el vídeo
 
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
 /** Grados con una decimal sin «−0,0» (un valor entre −0,05 y 0 se muestra 0,0). */
@@ -276,10 +276,15 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => void pintar(), [pintar])
 
+  // Sentido de la última navegación: la estela va por detrás del marcador, hacia los frames
+  // de los que se viene (hacia atrás en el tiempo al avanzar, hacia delante al retroceder).
+  const [sentido, setSentido] = useState<1 | -1>(1)
   const ir = useCallback(
     (i: number) => {
-      pedido.current = limitarIndice(tabla, i)
-      setDeseado(pedido.current)
+      const destino = limitarIndice(tabla, i)
+      if (destino !== pedido.current) setSentido(destino > pedido.current ? 1 : -1)
+      pedido.current = destino
+      setDeseado(destino)
       void pintar()
     },
     [tabla, pintar],
@@ -542,13 +547,15 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       }
       ids.forEach((id, k) => {
         const color = COLORES_MARCADOR[k % COLORES_MARCADOR.length]!
-        // Estela de los últimos frames.
+        // Estela de los últimos frames recorridos.
         ctx.strokeStyle = color
         ctx.lineWidth = base * 0.6
         ctx.globalAlpha = 0.6
         ctx.beginPath()
         let empezado = false
-        for (let i = Math.max(0, mostrado - ESTELA); i <= mostrado; i++) {
+        const desde = sentido > 0 ? Math.max(0, mostrado - ESTELA) : mostrado
+        const hasta = sentido > 0 ? mostrado : Math.min(total - 1, mostrado + ESTELA)
+        for (let i = desde; i <= hasta; i++) {
           const m = muestra(id, i)
           if (!valida(m)) {
             empezado = false
@@ -594,7 +601,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           : null
       if (segmento) dibujarSegmentoEscala(ctx, base, segmento.a, segmento.b)
     },
-    [version, mostrado, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion],
+    [version, mostrado, sentido, total, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion],
   )
 
   // ---- Estado por frame para la franja y ángulo actual ----
