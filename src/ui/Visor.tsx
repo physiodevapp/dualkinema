@@ -12,6 +12,7 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline'
 import { anguloArticular, CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
+import { angulosPorFrame, construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
 import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
 import { distanciaPx, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
@@ -35,6 +36,7 @@ import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import GraficaAngulo from './visor/GraficaAngulo'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
 import PanelCinematica from './visor/PanelCinematica'
+import PanelExportar from './visor/PanelExportar'
 import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './visor/PanelEscala'
 import PanelFiltro from './visor/PanelFiltro'
 import { useFiltrado } from './visor/useFiltrado'
@@ -687,6 +689,58 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       })),
     [segmentos, filtrado.porMarcador],
   )
+  const est = useMemo(() => estadisticas(tabla), [tabla])
+  const generarCsv = useCallback(
+    (formato: FormatoCsv) => {
+      const mismoPlano = orientacion.plano === articulacion.plano
+      const n = total
+      const filtradoPorFrame = new Float64Array(n)
+      for (let i = 0; i < n; i++) filtradoPorFrame[i] = filtrado.anguloEn(i)
+      const texto = construirCsv(
+        {
+          tiempos: tabla.tiempos,
+          marcadores: modelo.marcadores.map((mk) => ({
+            id: mk.id,
+            nombre: mk.nombre,
+            crudo: trayectorias.current.get(mk.id) ?? [],
+            filtrado: filtrado.porMarcador.get(mk.id)!,
+            velocidad: filtrado.velocidades.get(mk.id)!,
+          })),
+          angulo: mismoPlano
+            ? {
+                id: articulacion.id,
+                nombre: articulacion.nombre,
+                positivo: articulacion.positivo,
+                negativo: articulacion.negativo,
+                crudo: angulosPorFrame(serie, tabla.tiempos),
+                filtrado: filtradoPorFrame,
+                relativo: cero ? filtradoPorFrame.map((v) => relativoAlCero(v, cero)) : null,
+                velocidad: filtrado.derivadas.velocidad,
+                aceleracion: filtrado.derivadas.aceleracion,
+                cero,
+              }
+            : null,
+          calibracion,
+          meta: {
+            archivo: info.nombre,
+            ancho: info.ancho,
+            alto: info.alto,
+            rotacion: info.rotacion,
+            duracionS: info.duracion,
+            fpsMedio: est.fpsMedio,
+            fpsVariable: est.variable,
+            orientacion,
+            corteHz: ajustes.corteHz,
+            corteEfectivoHz: filtrado.corte,
+            exportado: new Date().toISOString(),
+          },
+        },
+        formato,
+      )
+      return { nombre: nombreArchivoCsv(info.nombre, mismoPlano ? articulacion.id : null), texto }
+    },
+    [orientacion, articulacion, total, filtrado, tabla, modelo, serie, cero, calibracion, info, est, ajustes],
+  )
   const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
     (t: number) => {
@@ -695,7 +749,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     },
     [tabla, ir],
   )
-  const est = useMemo(() => estadisticas(tabla), [tabla])
   const t = mostrado === null ? null : tabla.tiempos[mostrado]!
   const siguiendo = seguimiento.estado === 'siguiendo'
 
@@ -1069,6 +1122,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           tn={tabla.tiempos[total - 1] ?? 0}
           onTramo={cambiarTramo}
           onPrimeros={() => cambiarTramo(tramoInicial(tabla.tiempos))}
+          deshabilitado={siguiendo}
+        />
+
+        <PanelExportar
+          generar={generarCsv}
+          resumen={`${total} frames · ${modelo.marcadores.length} marcadores · ${
+            calibracion ? 'posiciones en px y en m, velocidades en m/s' : 'sin escala: todo en píxeles'
+          }${orientacion.plano === articulacion.plano ? '' : ' · sin ángulo (la articulación es de otro plano)'}`}
           deshabilitado={siguiendo}
         />
 

@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia), 3 (corrección manual), 4 (Butterworth), 5 (velocidades y cero de referencia) y 6 (escala en metros) hechos; siguiente: paso 7 (exportación CSV).
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia), 3 (corrección manual), 4 (Butterworth), 5 (velocidades y cero de referencia) y 6 (escala en metros) y 7 (exportación CSV) hechos; siguiente: paso 8 (gráfica y distribución de paneles).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -154,7 +154,11 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 - **Recuperar:** al abrir un vídeo con trabajo guardado, «Recuperar el trabajo» (sin volver a preguntar la orientación) o «Empezar de cero» (lo guardado se queda). En la portada, la lista de sesiones con «Continuar» (abre el selector y solo acepta el vídeo de esa sesión) y «Borrar» con confirmación.
 - **Limitación:** con dos sesiones del mismo vídeo, cada una es independiente (no se fusionan).
 
-## 7. Exportación CSV [D7]
+## 7. Exportación CSV [D7] — hecho (paso 7)
+
+Implementado con `;` y coma decimal por defecto y el formato internacional como opción (se recuerda). Columnas por frame: `t_s`, `frame`; por marcador `x_px`, `y_px`, `calidad`, `manual`, `interpolado`, `filtrado_x_px`, `filtrado_y_px`, con escala `filtrado_x_m`, `filtrado_y_m`, y `velocidad_m_s` (o `_px_s`); del ángulo, crudo, filtrado, relativo, velocidad y aceleración. Las posiciones en metros son las filtradas (origen en la esquina de la imagen, y hacia abajo): la escala es solo un factor. La cabecera lleva la calibración completa. Descargar siempre; «Compartir» solo si el navegador puede compartir archivos (Chrome para Android sí). Prueba e2e: filas = frames, crudo frente a la verdad, m/s del tobillo (±5 %) y vacío en el primer frame.
+
+Plan original:
 
 - **Una fila por frame:**
   - tiempo (s) y número de frame;

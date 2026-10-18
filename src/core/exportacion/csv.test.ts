@@ -1,0 +1,144 @@
+import { describe, expect, it } from 'vitest'
+import type { VelocidadMarcador } from '../filtros/derivadas'
+import type { PosicionFiltrada, TrayectoriaFiltrada } from '../filtros/tramos'
+import type { Muestra2D } from '../modelo/tipos'
+import { angulosPorFrame, construirCsv, nombreArchivoCsv, type DatosExportacion } from './csv'
+
+const BOM = String.fromCharCode(0xfeff)
+const tiempos = [0, 0.1, 0.2, 0.3]
+const NaNs = () => new Float64Array(4).fill(NaN)
+
+const crudo: (Muestra2D | undefined)[] = [
+  { t: 0, x: 100, y: 200, calidad: 1, editadoManual: false },
+  { t: 0.1, x: 101.5, y: 201.25, calidad: 0.8, editadoManual: true },
+  { t: 0.2, x: NaN, y: NaN, calidad: 0, editadoManual: false }, // perdido
+  undefined, // sin muestra
+]
+const pos = (t: number, x: number, y: number): PosicionFiltrada => ({ t, x, y, corto: false, interpolado: false, editadoManual: false })
+const filtrado: TrayectoriaFiltrada = {
+  posiciones: [pos(0, 100, 200), pos(0.1, 101, 201), undefined, undefined],
+  tramos: [],
+  rejillas: [],
+}
+const velocidad = (unidad: 'px/s' | 'm/s'): VelocidadMarcador => {
+  const modulo = NaNs()
+  modulo[1] = 12.34567
+  return { vx: NaNs(), vy: NaNs(), modulo, unidad }
+}
+
+function datos(conEscala: boolean): DatosExportacion {
+  return {
+    tiempos,
+    marcadores: [{ id: 'rodilla', nombre: 'Rodilla', crudo, filtrado, velocidad: velocidad(conEscala ? 'm/s' : 'px/s') }],
+    angulo: {
+      id: 'rodilla-sagital',
+      nombre: 'Rodilla (flexión)',
+      positivo: 'flexión',
+      negativo: 'extensión',
+      crudo: [10, 20, NaN, NaN],
+      filtrado: [11, 21, NaN, NaN],
+      relativo: [1, 11, NaN, NaN],
+      velocidad: NaNs(),
+      aceleracion: NaNs(),
+      cero: { tramo: { desde: 0, hasta: 0.1 }, media: 10, desviacion: 0.5, muestras: 2 },
+    },
+    calibracion: conEscala
+      ? { tipo: 'escala-plano', objeto: 'cinta', a: { x: 0, y: 0 }, b: { x: 100, y: 0 }, longitudM: 1, t: 0 }
+      : null,
+    meta: {
+      archivo: 'sentadilla.mp4', ancho: 720, alto: 1280, rotacion: 90, duracionS: 0.3, fpsMedio: 10, fpsVariable: false,
+      orientacion: { plano: 'sagital', mira: 'derecha' }, corteHz: 6, corteEfectivoHz: 4, exportado: '2026-10-18T10:00:00.000Z',
+    },
+  }
+}
+
+const filas = (csv: string) => csv.replace(BOM, '').split('\r\n').filter((l) => l !== '')
+const cuerpo = (csv: string) => filas(csv).filter((l) => !l.startsWith('#')).slice(1)
+
+describe('construirCsv', () => {
+  it('empieza con BOM, cabecera con # y una fila por frame', () => {
+    const csv = construirCsv(datos(false))
+    expect(csv.startsWith(BOM + '# dualkinema')).toBe(true)
+    expect(cuerpo(csv)).toHaveLength(4)
+    expect(filas(csv).some((l) => l.startsWith('# archivo;sentadilla.mp4'))).toBe(true)
+  })
+
+  it('formato español: «;» y coma decimal; sin valor = celda vacía, nunca 0', () => {
+    const [f0, f1, f2, f3] = cuerpo(construirCsv(datos(false)))
+    expect(f0!.split(';')).toEqual(['0,000000', '1', '100,000', '200,000', '1,00', '0', '0', '100,000', '200,000', '', '10,000', '11,000', '1,000', '', ''])
+    expect(f1!.split(';')[2]).toBe('101,500')
+    expect(f1!.split(';')[5]).toBe('1') // editado a mano
+    expect(f1!.split(';')[9]).toBe('12,3457')
+    // perdido: calidad 0 visible, posición vacía
+    expect(f2!.split(';').slice(2, 7)).toEqual(['', '', '0,00', '0', '0'])
+    // sin muestra: todo vacío salvo t y frame
+    expect(f3!.split(';').slice(2).every((c) => c === '')).toBe(true)
+  })
+
+  it('formato internacional: «,» y punto decimal', () => {
+    const f1 = cuerpo(construirCsv(datos(false), 'internacional'))[1]!
+    expect(f1.split(',')[2]).toBe('101.500')
+  })
+
+  it('con escala: posición filtrada en m, velocidad en m/s y la calibración en la cabecera', () => {
+    const csv = construirCsv(datos(true))
+    const cols = filas(csv).find((l) => !l.startsWith('#'))!.split(';')
+    expect(cols).toContain('rodilla_filtrado_x_m')
+    expect(cols).toContain('rodilla_velocidad_m_s')
+    const f0 = cuerpo(csv)[0]!.split(';')
+    // 1 m / 100 px = 0,01 m/px
+    expect(f0[cols.indexOf('rodilla_filtrado_x_m')]).toBe('1,000000')
+    expect(f0[cols.indexOf('rodilla_filtrado_y_m')]).toBe('2,000000')
+    const cab = filas(csv).filter((l) => l.startsWith('# escala'))
+    expect(cab.find((l) => l.startsWith('# escala;'))).toContain('cinta, 1,0000 m = 100,00 px; 10,0000 mm/px')
+    expect(cab.length).toBe(4)
+  })
+
+  it('sin escala: columnas en px, sin columnas en metros, y se dice en la cabecera', () => {
+    const csv = construirCsv(datos(false))
+    const cols = filas(csv).find((l) => !l.startsWith('#'))!
+    expect(cols).toContain('rodilla_velocidad_px_s')
+    expect(cols).not.toContain('_x_m')
+    expect(csv).toContain('# escala;sin escala')
+  })
+
+  it('cabecera: filtro, vista y cero de referencia', () => {
+    const csv = construirCsv(datos(false))
+    expect(csv).toContain('corte pedido 6,0 Hz, aplicado 4,0 Hz')
+    expect(csv).toContain('# vista;sagital, la persona mira a la derecha')
+    expect(csv).toContain('media 10,000 grados')
+  })
+
+  it('en internacional las celdas con comas de la cabecera van entre comillas', () => {
+    const csv = construirCsv(datos(false), 'internacional')
+    expect(csv).toContain('# vista,"sagital, la persona mira a la derecha"')
+  })
+
+  it('sin cero la columna relativa queda vacía y se avisa', () => {
+    const d = datos(false)
+    const sinCero: DatosExportacion = { ...d, angulo: { ...d.angulo!, relativo: null, cero: null } }
+    const csv = construirCsv(sinCero)
+    expect(csv).toContain('# cero de referencia;ninguno')
+    expect(cuerpo(csv)[0]!.split(';')[12]).toBe('')
+  })
+
+  it('articulación de otro plano: sin columnas de ángulo', () => {
+    const csv = construirCsv({ ...datos(false), angulo: null })
+    expect(csv).not.toContain('angulo_')
+    expect(cuerpo(csv)[0]!.split(';')).toHaveLength(10)
+  })
+})
+
+describe('angulosPorFrame', () => {
+  it('alinea por t exacto y deja NaN donde no hay valor', () => {
+    const r = angulosPorFrame([{ t: 0.1, valor: 5, interpolado: false }, { t: 0.3, valor: 7, interpolado: false }], tiempos)
+    expect(Array.from(r)).toEqual([NaN, 5, NaN, 7])
+  })
+})
+
+describe('nombreArchivoCsv', () => {
+  it('quita la extensión y los caracteres raros', () => {
+    expect(nombreArchivoCsv('Sentadilla 1.mp4', 'rodilla')).toBe('Sentadilla_1_rodilla.csv')
+    expect(nombreArchivoCsv('.mp4', null)).toBe('dualkinema.csv')
+  })
+})
