@@ -56,6 +56,10 @@ const filas = (csv: string) => csv.replace(BOM, '').split('\r\n').filter((l) => 
 const cuerpo = (csv: string) => filas(csv).filter((l) => !l.startsWith('#')).slice(1)
 
 describe('construirCsv', () => {
+  it('formato es: empieza con BOM; internacional: sin BOM, la primera línea empieza por #', () => {
+    expect(construirCsv(datos(false), 'internacional').startsWith('# dualkinema')).toBe(true)
+  })
+
   it('empieza con BOM, cabecera con # y una fila por frame', () => {
     const csv = construirCsv(datos(false))
     expect(csv.startsWith(BOM + '# dualkinema')).toBe(true)

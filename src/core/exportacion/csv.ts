@@ -17,7 +17,11 @@ import type { IdMarcador, Muestra2D } from '../modelo/tipos'
  * BOM para que Excel lea bien las tildes.
  */
 
-/** Marca de orden de bytes: sin ella Excel lee mal las tildes de un UTF-8. */
+/**
+ * Marca de orden de bytes: sin ella Excel lee mal las tildes de un UTF-8. Solo en el
+ * formato `es` (el de Excel): en el internacional, pensado para scripts (pandas, R…),
+ * pegada a la primera línea «# …» le quitaría el «#» y no la tomarían por comentario.
+ */
 const BOM = String.fromCharCode(0xfeff)
 
 export type FormatoCsv = 'es' | 'internacional'
@@ -179,7 +183,7 @@ function columnas(d: DatosExportacion): string[] {
 }
 
 /**
- * Texto CSV completo (con BOM). Precisión: tiempo 6 decimales, píxeles 3,
+ * Texto CSV completo (con BOM solo en `es`). Precisión: tiempo 6 decimales, píxeles 3,
  * metros 6, ángulos 3, velocidades 4, aceleración 2 — de sobra para el ruido
  * de lo medido, sin arrastrar cifras que no significan nada.
  */
@@ -213,7 +217,7 @@ export function construirCsv(d: DatosExportacion, formato: FormatoCsv = 'es'): s
     }
     lineas.push(f.join(e.sep))
   }
-  return `${BOM}${lineas.join('\r\n')}\r\n`
+  return `${formato === 'es' ? BOM : ''}${lineas.join('\r\n')}\r\n`
 }
 
 /** Nombre de archivo: el del vídeo sin extensión + articulación, sin caracteres problemáticos. */
