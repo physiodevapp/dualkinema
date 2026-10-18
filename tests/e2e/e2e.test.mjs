@@ -749,6 +749,9 @@ describe('velocidad y aceleración angulares, velocidad de los marcadores', () =
       await irAFrame(p, i)
       const v = await leerNumero(p, 'velocidad-angular')
       assert.ok(Math.abs(v - velReal(verdad[i].t)) < 3, `frame ${i + 1}: ${v} °/s, real ${velReal(verdad[i].t).toFixed(1)} °/s`)
+      // La fila de valores junto a los controles dice lo mismo que el panel.
+      assert.equal(await leerNumero(p, 'rapida-velocidad'), v)
+      assert.equal(await leerNumero(p, 'rapida-angulo'), await leerNumero(p, 'angulo-sin-cero'))
     }
   })
 
@@ -811,6 +814,7 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
       const sinCero = await leerNumero(p, 'angulo-sin-cero')
       assert.ok(Math.abs(sinCero - verdad[60].flexion) < TOLERANCIA_GRADOS)
       assert.ok(Math.abs((await leerNumero(p, 'angulo-relativo')) - (sinCero - (await leerNumero(p, 'cero-media')))) < 0.11)
+      assert.equal(await leerNumero(p, 'rapida-relativo'), await leerNumero(p, 'angulo-relativo'))
 
       // Inicio en el frame 11 y fin en el 31 (tiempos del vídeo).
       await irAFrame(p, 10)

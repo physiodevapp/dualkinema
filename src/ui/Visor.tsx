@@ -43,6 +43,11 @@ const ESTELA = 20 // frames de trayectoria dibujados hacia atrás
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
 /** Grados con una decimal sin «−0,0» (un valor entre −0,05 y 0 se muestra 0,0). */
 const grados = (n: number) => fmt(Math.round(n * 10) / 10 + 0, 1)
+/** Valor de una serie por frame con d decimales, «—» si no hay (NaN o sin frame). */
+const valorEn = (serie: ArrayLike<number>, i: number | null, d: number) => {
+  const v = i === null ? NaN : (serie[i] ?? NaN)
+  return Number.isFinite(v) ? fmt(Math.round(v * 10 ** d) / 10 ** d + 0, d) : '—'
+}
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
 function BotonPaso({ etiqueta, accion, children }: { etiqueta: string; accion: () => void; children: React.ReactNode }) {
@@ -645,6 +650,25 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             )}
           </span>
         </div>
+
+        {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
+            cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
+            partir, para no mover los botones (se perdería la pulsación mantenida). */}
+        <dl className="grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-1 font-mono tabular-nums" data-testid="lectura-rapida">
+          {(
+            [
+              ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
+              ['Relativo', cero && Number.isFinite(anguloFiltrado) ? `${grados(relativoAlCero(anguloFiltrado, cero))}°` : '—', 'rapida-relativo'],
+              ['°/s', valorEn(filtrado.derivadas.velocidad, mostrado, 1), 'rapida-velocidad'],
+              ['°/s²', valorEn(filtrado.derivadas.aceleracion, mostrado, 0), 'rapida-aceleracion'],
+            ] as const
+          ).map(([etiqueta, texto, id]) => (
+            <div key={id} className="min-w-0 text-center">
+              <dt className="truncate text-[0.65rem] text-texto-2">{etiqueta}</dt>
+              <dd className="truncate text-sm whitespace-nowrap" data-testid={id}>{texto}</dd>
+            </div>
+          ))}
+        </dl>
 
         <div className="flex flex-col gap-1">
           <input
