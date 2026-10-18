@@ -163,10 +163,19 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 | 5 | Velocidades y aceleraciones, y cero de referencia | Opus |
 | 6 | Calibración de escala en metros | Opus |
 | 7 | Exportación CSV | Sonnet |
-| 8 | Gráfica: crudo y filtrado, velocidad (ver nota) | Sonnet |
+| 8 | Gráfica: crudo y filtrado, velocidad; trayectoria completa en el vídeo (ver nota) | Sonnet |
 | 9 | Cierre de fase: revisión, CLAUDE.md y limitaciones | Opus |
 
 **Nota para el paso 8 (gráfica):** la línea del frame actual tiene que ir en una capa aparte (un canvas o un elemento superpuesto a la gráfica), sin redibujar las curvas. Hoy cada cambio de frame llama a `redraw` de uPlot y redibuja todas las series; con la gráfica llena (cruda, filtrada y, en el paso 5, velocidad) avanzar frame a frame va menos suave. Tocar o arrastrar la gráfica debe seguir funcionando igual.
+
+**Trayectoria completa en el vídeo (paso 8, pedido tras probar el paso 4):** hoy solo se dibujan los últimos 20 frames de cada marcador (`ESTELA` en `Visor.tsx`), pensado para vigilar el seguimiento. Para analizar el recorrido (camino de la rodilla en la sentadilla, desviaciones laterales en vista frontal):
+- interruptor «Trayectoria completa», para todos los marcadores o eligiendo cuáles; la estela corta sigue como ahora;
+- dibujada con las coordenadas **filtradas** (las crudas tiemblan justo donde se quiere ver la forma);
+- cortada en los huecos, como la gráfica, y a trazos en lo interpolado;
+- preparada una vez (p. ej. un `Path2D` por marcador o una capa propia) y rehecha solo al cambiar las trayectorias o el corte, no en cada frame, para no empeorar el avance frame a frame;
+- aviso: es la trayectoria en la imagen; solo equivale al recorrido físico para lo que se mueve en el plano de la cámara, y en metros con la escala del paso 6.
+
+**Avance mantenido (observado en el móvil tras el paso 4):** manteniendo pulsado avanzar o retroceder, la suavidad baja tras unos segundos. Sospechas: liberación de memoria a ratos (canvas nuevo por frame y caché de ~160 MB llena), el retroceso al cruzar un fotograma clave y el calentamiento del móvil, además del redibujado completo de la gráfica (nota anterior). Para distinguirlas, el tiempo de decodificación sale ahora junto al número de frame. Revisarlo con lo que mida el usuario antes de cerrar el paso 8.
 
 Las pruebas e2e van primero para que cada paso siguiente quede cubierto. La persistencia va antes que los cálculos porque probar los filtros con vídeos reales sin guardar el marcado obliga a repetirlo cada vez.
 
