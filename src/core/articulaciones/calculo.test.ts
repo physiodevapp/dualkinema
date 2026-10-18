@@ -86,6 +86,17 @@ describe('serieAngular', () => {
     expect(serie[3]!.valor).toBeCloseTo(40)
   })
 
+  it('marca los instantes con algún marcador interpolado, y solo si hay valor', () => {
+    const interp = frame(0.1, rodillaEnImagen(20))
+    interp[m.tobillo] = [{ ...interp[m.tobillo]![0]!, interpolado: true }]
+    const sinRodilla = frame(0.2, rodillaEnImagen(30))
+    sinRodilla[m.tobillo] = [{ ...sinRodilla[m.tobillo]![0]!, interpolado: true }]
+    delete sinRodilla[m.rodilla]
+    const serie = serieAngular(rodilla, unir(frame(0, rodillaEnImagen(10)), interp, sinRodilla), o)
+    expect(serie.map((s) => s.interpolado)).toEqual([false, true, false])
+    expect(serie[1]!.valor).toBeCloseTo(20)
+  })
+
   it('es continua al pasar de 180°: no salta a −180°', () => {
     // Flexión forzada de 170° a 190° (geométricamente rara, pero la serie no debe saltar).
     const serie = serieAngular(rodilla, unir(frame(0, rodillaEnImagen(170)), frame(0.1, rodillaEnImagen(185)), frame(0.2, rodillaEnImagen(190))), o)

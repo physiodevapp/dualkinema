@@ -1,17 +1,18 @@
 import { useEffect, useRef } from 'react'
 
-export type EstadoFrame = 'vacio' | 'seguido' | 'perdido' | 'manual'
+export type EstadoFrame = 'vacio' | 'seguido' | 'perdido' | 'manual' | 'interpolado'
 
 const COLOR: Record<EstadoFrame, string> = {
   vacio: 'transparent',
   seguido: '#34d399',
   manual: '#f2a65a',
+  interpolado: '#56b4e9',
   perdido: '#f87171',
 }
 // Si varios frames caen en el mismo píxel, se pinta el estado más importante.
-const PRIORIDAD: Record<EstadoFrame, number> = { vacio: 0, seguido: 1, manual: 2, perdido: 3 }
+const PRIORIDAD: Record<EstadoFrame, number> = { vacio: 0, seguido: 1, manual: 2, interpolado: 3, perdido: 4 }
 
-/** Franja bajo el deslizador con el estado de cada frame: seguido, perdido, marcado a mano. */
+/** Franja bajo el deslizador con el estado de cada frame: seguido, perdido, marcado a mano, interpolado. */
 export default function BandaFrames({ estados }: { estados: readonly EstadoFrame[] }) {
   const lienzo = useRef<HTMLCanvasElement>(null)
 

@@ -1,5 +1,6 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input, type WrappedCanvas } from 'mediabunny'
-import { crearTablaFrames, type TablaFrames } from '../core/tiempo/tablaFrames'
+import { crearTablaFrames, indiceEnTiempo, type TablaFrames } from '../core/tiempo/tablaFrames'
+import { CacheFrames, capacidadCache } from './cacheFrames'
 
 export interface InfoVideo {
   readonly nombre: string
@@ -35,6 +36,8 @@ export class VideoAbierto {
   private siguienteDelIterador = -1
   private cola: Promise<unknown> = Promise.resolve()
   private cerrado = false
+  /** Últimos frames decodificados (el CanvasSink da un canvas nuevo por frame, así que se pueden guardar). */
+  private readonly cache: CacheFrames<WrappedCanvas>
 
   private constructor(
     private readonly entrada: Input,
@@ -43,7 +46,9 @@ export class VideoAbierto {
     readonly archivo: File,
     readonly info: InfoVideo,
     readonly tabla: TablaFrames,
-  ) {}
+  ) {
+    this.cache = new CacheFrames(capacidadCache(info.ancho, info.alto))
+  }
 
   static async abrir(archivo: File): Promise<VideoAbierto> {
     const entrada = new Input({ source: new BlobSource(archivo), formats: ALL_FORMATS })
@@ -83,7 +88,9 @@ export class VideoAbierto {
   /**
    * Imagen del frame `indice` de la tabla. Las peticiones se atienden de una en
    * una. Avanzar de uno en uno reutiliza el decodificador (rápido); saltar o
-   * retroceder vuelve a decodificar desde el fotograma clave anterior.
+   * retroceder vuelve a decodificar desde el fotograma clave anterior, y los
+   * frames decodificados de paso se guardan en la caché, de donde salen los
+   * siguientes pasos atrás sin decodificar.
    */
   frame(indice: number): Promise<WrappedCanvas> {
     const resultado = this.cola.then(() => this.leer(indice))
@@ -95,6 +102,8 @@ export class VideoAbierto {
     if (this.cerrado) throw new ErrorVideo('El vídeo está cerrado.')
     const objetivo = this.tabla.tiempos[indice]
     if (objetivo === undefined) throw new RangeError(`No hay frame ${indice}.`)
+    const guardado = this.cache.obtener(indice)
+    if (guardado) return guardado
 
     if (!this.iterador || indice !== this.siguienteDelIterador) {
       await this.iterador?.return()
@@ -108,6 +117,9 @@ export class VideoAbierto {
         this.iterador = null
         throw new ErrorVideo(`No se ha podido decodificar el frame ${indice}.`)
       }
+      // Cada frame decodificado, también los de paso, va a la caché con su
+      // índice en la tabla (el del frame visible en su instante).
+      this.cache.guardar(indiceEnTiempo(this.tabla, r.value.timestamp + 1e-6), r.value)
       if (r.value.timestamp >= objetivo - 1e-6) {
         this.siguienteDelIterador = indice + 1
         return r.value
@@ -120,6 +132,7 @@ export class VideoAbierto {
     await this.cola
     await this.iterador?.return()
     this.iterador = null
+    this.cache.vaciar()
     this.entrada.dispose()
   }
 }

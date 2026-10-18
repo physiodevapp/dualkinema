@@ -71,6 +71,7 @@ describe('trayectorias guardadas', () => {
     expect(errorTrayectoria({ ...g, calidad: Float64Array.from([1, 2, 0, 1]) }, FRAMES)).toMatch(/calidad/)
     expect(errorTrayectoria({ ...g, y: Float64Array.from([1, 2, 3, 4]) }, FRAMES)).toMatch(/a medias/)
     expect(errorTrayectoria({ ...g, t: Array.from(g.t) }, FRAMES)).toMatch(/Float64Array/)
+    expect(errorTrayectoria({ ...g, interpolado: Uint8Array.from([1, 0, 0, 0]) }, FRAMES)).toMatch(/a mano e interpolado/)
   })
 })
 
@@ -78,12 +79,12 @@ describe('esquema de la sesión', () => {
   it('cabecera de la versión actual con los huecos de los pasos siguientes vacíos', () => {
     const { cabecera } = prepararGuardado(entrada())
     expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL)
-    expect(ESQUEMA_ACTUAL).toBe(1)
+    expect(ESQUEMA_ACTUAL).toBe(2)
     expect(cabecera.filtro).toBeNull()
     expect(cabecera.vistas[0]).toMatchObject({ desfase: 0, calibracion: null, ceros: {} })
     expect(cabecera.claves).toEqual(['1000:6:200'])
     // Frames 0, 1, 2 y 4 tienen alguna muestra; solo el 0 tiene marcas a mano.
-    expect(cabecera.resumen).toEqual({ frames: FRAMES, conDatos: 4, aMano: 1 })
+    expect(cabecera.resumen).toEqual({ frames: FRAMES, conDatos: 4, aMano: 1, interpolados: 0 })
   })
 
   it('guarda el modelo de marcadores completo, con la definición de la articulación', () => {
@@ -134,6 +135,45 @@ describe('esquema de la sesión', () => {
     expect(leerDatos({ ...datos, id: 'otra' }, cabecera)).toMatchObject({ ok: false, detalle: /otra sesión/ })
     const sinTobillo = { ...datos, trayectorias: { v1: { ...datos.trayectorias.v1, [tobillo]: undefined } } }
     expect(leerDatos(sinTobillo, cabecera)).toMatchObject({ ok: false, detalle: new RegExp(tobillo) })
+  })
+})
+
+describe('interpolado (esquema 2)', () => {
+  it('ida y vuelta de muestras interpoladas, contadas en el resumen', () => {
+    const serie = [...serieCadera]
+    serie[3] = { t: 0.1, x: 102.5, y: 51.9, calidad: 1, editadoManual: false, interpolado: true }
+    const e = entrada()
+    const { cabecera, datos } = prepararGuardado({ ...e, vistas: [{ ...e.vistas[0]!, series: new Map([[cadera, serie]]) }] })
+    expect(cabecera.resumen).toMatchObject({ conDatos: 5, interpolados: 1 })
+    const d = leerDatos(comoIDB(datos), cabecera)
+    expect(d.ok).toBe(true)
+    if (d.ok) expect(desempaquetarTrayectoria(d.valor.trayectorias.v1![cadera]!, FRAMES)).toEqual(serie)
+  })
+
+  it('una sesión guardada con el esquema 1 se lee igual, sin nada interpolado', () => {
+    // Registro tal como lo escribía la versión 1 (paso 2 de la fase 2).
+    const { cabecera, datos } = prepararGuardado(entrada())
+    const resumenV1: Record<string, unknown> = { ...cabecera.resumen }
+    delete resumenV1.interpolados
+    const cabeceraV1 = { ...cabecera, esquema: 1, resumen: resumenV1 }
+    const trayectoriasV1 = Object.fromEntries(
+      Object.entries(datos.trayectorias.v1!).map(([id, g]) => {
+        const resto: Record<string, unknown> = { ...g }
+        delete resto.interpolado
+        return [id, resto]
+      }),
+    )
+    const datosV1 = { esquema: 1, id: datos.id, trayectorias: { v1: trayectoriasV1 } }
+
+    const c = leerCabecera(comoIDB(cabeceraV1))
+    expect(c).toEqual({ ok: true, valor: cabecera })
+    if (!c.ok) return
+    const d = leerDatos(comoIDB(datosV1), c.valor)
+    expect(d.ok).toBe(true)
+    if (!d.ok) return
+    expect(d.valor.esquema).toBe(2)
+    expect(desempaquetarTrayectoria(d.valor.trayectorias.v1![cadera]!, FRAMES)).toEqual(serieCadera)
+    expect(Array.from(d.valor.trayectorias.v1![cadera]!.interpolado)).toEqual([0, 0, 0, 0])
   })
 })
 

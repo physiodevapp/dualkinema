@@ -28,6 +28,8 @@ export interface MuestraAngulo {
   readonly t: number
   /** Grados; NaN cuando no hay valor (marcador perdido o ausente). */
   readonly valor: number
+  /** Algún marcador usado en este instante está interpolado (relleno a petición). */
+  readonly interpolado: boolean
 }
 
 /** Calidad mínima para usar una muestra. Por debajo, el marcador está perdido. */
@@ -60,15 +62,22 @@ export function serieAngular(
   for (const [, m] of porMarcador) for (const t of m.keys()) tiempos.add(t)
   const ordenados = [...tiempos].sort((a, b) => a - b)
 
+  const interpolados: boolean[] = []
   const crudos = ordenados.map((t) => {
     const puntos = new Map<IdMarcador, Vec3>()
+    let interpolado = false
     for (const [id, m] of porMarcador) {
       const s = m.get(t)
-      if (s && s.calidad >= CALIDAD_MINIMA) puntos.set(id, aCanonico(s.x, s.y, orientacion))
+      if (s && s.calidad >= CALIDAD_MINIMA) {
+        puntos.set(id, aCanonico(s.x, s.y, orientacion))
+        if (s.interpolado) interpolado = true
+      }
     }
-    return anguloArticular(def, puntos)
+    const valor = anguloArticular(def, puntos)
+    interpolados.push(interpolado && Number.isFinite(valor))
+    return valor
   })
 
   const continuos = desenrollar(crudos)
-  return ordenados.map((t, i) => ({ t, valor: continuos[i] ?? NaN }))
+  return ordenados.map((t, i) => ({ t, valor: continuos[i] ?? NaN, interpolado: interpolados[i]! }))
 }

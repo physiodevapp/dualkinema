@@ -85,6 +85,12 @@ const ESCALAS = [1, 1.5, 2, 3, 4] as const
  *    tolerancia fija, un gomet rojo sobre piel se «escapaba» por la piel.
  * 3. Aprende el color real con los píxeles de esa mancha y devuelve su centro:
  *    el marcador queda en el centro del gomet aunque el toque no fuera exacto.
+ *
+ * `radioSemilla`: hasta qué distancia del toque se busca el gomet (px del
+ * vídeo). Por defecto ≈ 1,2 % del lado menor, pensado para posiciones ya
+ * precisas (anclas, inicio del seguimiento). Al tocar con el dedo, el visor
+ * pasa uno mayor, en proporción a lo que se ve en la lupa: en un vídeo 1080
+ * en un móvil, el de por defecto eran 3–4 px de pantalla.
  */
 export function aprenderMarcador(
   leer: LeerVentana,
@@ -93,13 +99,15 @@ export function aprenderMarcador(
   t: number,
   x: number,
   y: number,
-  radioBusqueda = Math.max(24, Math.round(Math.min(ancho, alto) * 0.04)),
+  opciones: { readonly radioSemilla?: number; readonly radioBusqueda?: number } = {},
 ): Resultado {
   // Color de partida: los píxeles más saturados cerca del toque. Un gomet es
   // lo más saturado de su entorno; así un toque en el borde (donde el color se
   // mezcla con la piel, sobre todo con la compresión de vídeo del móvil, que
   // guarda el color a media resolución) no da un color de partida a medias.
-  const radioSemilla = Math.max(4, Math.round(Math.min(ancho, alto) * 0.012))
+  const radioSemilla = Math.max(4, Math.round(opciones.radioSemilla ?? Math.min(ancho, alto) * 0.012))
+  // La zona de búsqueda abarca la de la semilla y un gomet entero más allá.
+  const radioBusqueda = Math.max(opciones.radioBusqueda ?? Math.max(24, Math.round(Math.min(ancho, alto) * 0.04)), radioSemilla * 2)
   const zona = leer(ventanaAlrededor(x, y, radioSemilla, ancho, alto))
   const candidatos: Hsv[] = []
   for (let k = 0; k < zona.datos.length; k += 4) {

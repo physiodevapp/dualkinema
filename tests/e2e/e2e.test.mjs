@@ -169,6 +169,34 @@ describe('marcado: errores sobre el vídeo y siguiente marcador', () => {
   })
 })
 
+describe('lupa: anillo donde quedará el marcador', () => {
+  it('sin gomet en la lupa no hay anillo; con él dentro, sí, y al soltar va a su centro', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      const caja = await p.getByTestId('capa').boundingBox()
+      const enPantalla = (x, y) => [caja.x + (x / 640) * caja.width, caja.y + (y / 360) * caja.height]
+      const lupa = p.getByTestId('lupa')
+      const ps = videos.verde.verdad[0].ps
+      // En este vídeo (640 × 360 a 390 px de ancho) la lupa abarca 40 px del vídeo: busca a 20 del dedo.
+      for (const [k, q] of ps.entries()) {
+        await p.mouse.move(...enPantalla(q.x + 45, q.y + 30))
+        await p.mouse.down()
+        await lupa.waitFor()
+        assert.equal(await lupa.getAttribute('data-gomet'), 'no', 'a 54 px no debería encontrar el gomet')
+        await p.mouse.move(...enPantalla(q.x + 12, q.y - 8), { steps: 5 })
+        assert.equal(await lupa.getAttribute('data-gomet'), 'si', 'a 14 px debería encontrar el gomet')
+        await p.mouse.up()
+        assert.equal(await p.getByTestId('error-toque').count(), 0, `marcador ${k + 1}: error al soltar`)
+      }
+      // Soltando a 14 px de cada gomet, el ángulo es el real: los tres quedaron en su centro.
+      assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[0].flexion) < TOLERANCIA_GRADOS)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('seguimiento y gráfica con gomets verdes', () => {
   let p
   let aviso
@@ -425,6 +453,152 @@ describe('persistencia: recuperar a medio marcar', () => {
       const [, rodilla] = videos.verde.verdad[0].ps
       await tocarVideo(p, rodilla.x, rodilla.y)
       assert.equal(await p.getByRole('radio', { name: /Maléolo/ }).getAttribute('aria-checked'), 'true')
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+/** Elige un marcador (sin desmarcarlo si ya estaba elegido). */
+async function elegirMarcador(p, nombre) {
+  const r = p.getByRole('radio', { name: new RegExp(nombre) })
+  if ((await r.getAttribute('aria-checked')) !== 'true') await r.click()
+}
+const estadoMarcador = async (p, nombre) =>
+  new RegExp(`${nombre}\\s+(\\S[^\\n]*)`).exec(await p.getByRole('radiogroup').innerText())?.[1]?.trim()
+
+describe('corrección manual: arrastrar, a ojo, quitar y anclas', () => {
+  let p
+  let aviso
+  const ocultos = () => videos.oculto.verdad.flatMap((f, i) => (f.tobilloOculto ? [i] : []))
+  before(async () => {
+    ;({ p, aviso } = await seguirVideo(videos.oculto))
+  })
+  after(() => p?.close())
+
+  it('un hueco de 0,3 s no se ofrece para rellenar', async () => {
+    assert.match(aviso, /no tiene posición fiable/)
+    assert.equal(await p.getByTestId('huecos-cortos').count(), 0)
+  })
+
+  it('arrastrar con la lupa coloca el marcador en el gomet donde se suelta', async () => {
+    const i = 30
+    await irAFrame(p, i)
+    await elegirMarcador(p, 'Trocánter')
+    const real = videos.oculto.verdad[i].ps[0]
+    const caja = await p.getByTestId('capa').boundingBox()
+    const enPantalla = (x, y) => [caja.x + (x / 640) * caja.width, caja.y + (y / 360) * caja.height]
+    await p.mouse.move(...enPantalla(real.x + 40, real.y + 30))
+    await p.mouse.down()
+    await p.mouse.move(...enPantalla(real.x + 1, real.y - 1), { steps: 6 })
+    await p.mouse.up()
+    assert.equal(await estadoMarcador(p, 'Trocánter'), 'a mano')
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.oculto.verdad[i].flexion) < TOLERANCIA_GRADOS)
+  })
+
+  it('con el gomet tapado ofrece colocarlo a ojo, y queda marcado a mano', async () => {
+    const i = ocultos()[2]
+    await irAFrame(p, i)
+    assert.ok(Number.isNaN(await leerAngulo(p)))
+    await elegirMarcador(p, 'Maléolo')
+    const real = videos.oculto.verdad[i].ps[2]
+    await tocarVideo(p, real.x, real.y)
+    await p.getByTestId('error-toque').waitFor()
+    await p.getByRole('button', { name: 'Colocarlo aquí a ojo' }).click()
+    assert.equal(await estadoMarcador(p, 'Maléolo'), 'a mano')
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.oculto.verdad[i].flexion) < 1.5)
+  })
+
+  it('al seguir de nuevo, lo marcado a mano es un ancla: se respeta y deja de contar como hueco', async () => {
+    await irAFrame(p, 0)
+    const texto = await seguirHastaElFinal(p)
+    // El aviso lo cuenta el worker: si no recibiera las anclas, contaría el frame a ojo como hueco.
+    assert.match(texto, new RegExp(`Maléolo no tiene posición fiable en ${ocultos().length - 1} frames`))
+    await irAFrame(p, ocultos()[2])
+    assert.equal(await estadoMarcador(p, 'Maléolo'), 'a mano')
+    await irAFrame(p, 30)
+    assert.equal(await estadoMarcador(p, 'Trocánter'), 'a mano')
+  })
+
+  it('una marca a mano equivocada se puede quitar', async () => {
+    await irAFrame(p, ocultos()[2])
+    await elegirMarcador(p, 'Maléolo')
+    await p.getByRole('button', { name: 'Quitar la marca a mano de este frame' }).click()
+    assert.equal(await estadoMarcador(p, 'Maléolo'), '—')
+    assert.ok(Number.isNaN(await leerAngulo(p)))
+  })
+})
+
+describe('huecos cortos: rellenar a petición', () => {
+  let p
+  const ocultos = () => videos.corto.verdad.flatMap((f, i) => (f.tobilloOculto ? [i] : []))
+  before(async () => {
+    ;({ p } = await seguirVideo(videos.corto))
+  })
+  after(() => p?.close())
+
+  it('el hueco se ofrece, pero no se rellena hasta pedirlo', async () => {
+    const n = ocultos().length
+    assert.ok(n >= 2)
+    assert.match(await p.getByTestId('resumen-grafica').innerText(), new RegExp(`${n} sin valor`))
+    await irAFrame(p, ocultos()[1])
+    assert.ok(Number.isNaN(await leerAngulo(p)))
+    assert.match(await p.getByTestId('huecos-cortos').innerText(), /Rellenar 1 hueco corto/)
+  })
+
+  it('al rellenarlo, cada frame interpolado da el ángulo real (±1°) y queda marcado', async () => {
+    await p.getByRole('button', { name: /Rellenar 1 hueco corto/ }).click()
+    const resumen = await p.getByTestId('resumen-grafica').innerText()
+    assert.doesNotMatch(resumen, /sin valor/)
+    assert.match(resumen, new RegExp(`${ocultos().length} interpolados`))
+    for (const i of ocultos()) {
+      await irAFrame(p, i)
+      assert.equal(await estadoMarcador(p, 'Maléolo'), 'interpolado')
+      const medido = await leerAngulo(p)
+      assert.ok(Math.abs(medido - videos.corto.verdad[i].flexion) < 1, `frame ${i + 1}: ${medido}° frente a ${videos.corto.verdad[i].flexion.toFixed(2)}°`)
+    }
+  })
+
+  it('lo interpolado se guarda y se recupera como interpolado', async () => {
+    await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo a las' }).waitFor({ timeout: 10000 })
+    await p.reload()
+    assert.match(await p.getByTestId('sesion-guardada').innerText(), new RegExp(`${ocultos().length} interpolados`))
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Continuar' }), videos.corto.ruta)
+    await esperarQuieto(p)
+    await irAFrame(p, ocultos()[0])
+    assert.equal(await estadoMarcador(p, 'Maléolo'), 'interpolado')
+  })
+
+  it('«Quitar lo interpolado» los devuelve a huecos', async () => {
+    await p.getByRole('button', { name: 'Quitar lo interpolado' }).click()
+    assert.match(await p.getByTestId('resumen-grafica').innerText(), new RegExp(`${ocultos().length} sin valor`))
+    assert.equal(await estadoMarcador(p, 'Maléolo'), 'perdido')
+    assert.match(await p.getByTestId('huecos-cortos').innerText(), /Rellenar 1 hueco corto/)
+  })
+})
+
+describe('retroceder con la caché de frames', () => {
+  it('frame a frame hacia atrás muestra siempre el frame pedido', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.numerado.ruta)
+      const { bits, ladoBloque } = videos.numerado
+      await irAFrame(p, 70)
+      const anterior = p.getByRole('button', { name: 'Frame anterior' })
+      // Del 70 al 45: cruza el fotograma clave del 50 (uno cada 25 frames).
+      for (let i = 69; i >= 45; i--) {
+        await anterior.click()
+        await esperarQuieto(p)
+        assert.equal((await leerPosicion(p)).frame, i + 1)
+        assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i, `el canvas no muestra el frame ${i + 1}`)
+      }
+      // Y hacia delante otra vez, saliendo de la caché.
+      const siguiente = p.getByRole('button', { name: 'Frame siguiente' })
+      for (let i = 46; i <= 52; i++) {
+        await siguiente.click()
+        await esperarQuieto(p)
+        assert.equal(await leerFrameDibujado(p, { bits, ladoBloque }), i)
+      }
     } finally {
       await p.close()
     }

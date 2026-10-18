@@ -16,6 +16,6 @@ export const textoOrientacion = (o: OrientacionVista) =>
 
 /** «82 de 120 frames seguidos · 1 con marcas a mano». */
 export function textoResumen(c: CabeceraSesion): string {
-  const { frames, conDatos, aMano } = c.resumen
-  return `${conDatos} de ${frames} frames seguidos · ${aMano} con marcas a mano`
+  const { frames, conDatos, aMano, interpolados } = c.resumen
+  return `${conDatos} de ${frames} frames seguidos · ${aMano} con marcas a mano${interpolados ? ` · ${interpolados} interpolados` : ''}`
 }

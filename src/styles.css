@@ -13,6 +13,8 @@
   --color-texto: #e8e6e3;
   --color-texto-2: #a3a7ae;
   --color-acento: #f2a65a;
+  /* Lo interpolado a petición (franja, gráfica, textos): azul cielo de Okabe-Ito. */
+  --color-interpolado: #56b4e9;
 }
 
 html,

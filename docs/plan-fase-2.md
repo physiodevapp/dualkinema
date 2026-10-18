@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e) y 2 (persistencia) hechos; siguiente: paso 3 (corrección manual).
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e), 2 (persistencia) y 3 (corrección manual) hechos; siguiente: paso 4 (Butterworth).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -67,7 +67,7 @@ De pie salió −4,7° porque los gomets no caen sobre los ejes articulares. La 
 
 **[D4]** ¿Qué objeto tendrías a mano para calibrar? Cinta métrica en el suelo, palo de longitud conocida, regla en la pared…
 
-## 5. Corrección manual de puntos [D5]
+## 5. Corrección manual de puntos [D5] — hecho (paso 3)
 
 Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 
@@ -78,7 +78,20 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 - **Rellenar un hueco a mano,** frame a frame. Opcionalmente, interpolar huecos cortos **solo si tú lo pides**, marcando esos frames como interpolados en la franja, la gráfica y el CSV.
 - **Retroceder rápido:** caché de los últimos frames decodificados (limitación 7). Su tamaño se ajusta a la resolución del vídeo para no agotar la memoria del móvil.
 
-**[D5]** Interpolar huecos cortos a petición, marcado como interpolado: ¿sí o no? Mi recomendación: sí, con un máximo de unos 0,2 s y siempre visible como tal.
+**[D5]** Interpolar huecos cortos a petición, marcado como interpolado: ¿sí o no? Mi recomendación: sí, con un máximo de unos 0,2 s y siempre visible como tal. Aceptado.
+
+**Cómo quedó (paso 3):**
+- **Corregir:** se elige el marcador y se arrastra con la lupa; al soltar, se ajusta al centro del gomet. Si ahí no se reconoce un gomet (tapado, movido), se ofrece «Colocarlo aquí a ojo», sin ajuste. Una marca a mano se puede quitar. Arrastrar un marcador sin elegirlo antes no se ha hecho: el vídeo tendría que bloquear el desplazamiento de la página con el dedo encima.
+- **Lupa** (pedido tras probarlo en el móvil: costaba fijar el centro del gomet): el problema no era solo el aumento. El gomet se buscaba a unos 13 px del vídeo del dedo, que en un vídeo 1080 en un móvil son 3–4 px de pantalla. Ahora:
+  - la lupa mide 160 px y abarca un 7,5 % del lado menor del vídeo (un gomet de 25 px pasa de unos 20 a unos 49 px en la lupa);
+  - el gomet se busca en todo lo que se ve en la lupa, y si hay dos, va al más cercano al dedo;
+  - mientras se arrastra, un anillo marca el gomet al que irá el marcador, y sin anillo la cruz sale roja.
+- **Anclas:** «Seguir desde aquí» envía al seguidor las marcas a mano posteriores. En cada una toma la posición como cierta y vuelve a aprender el gomet: color y tamaño, o solo la posición si se marcó a ojo. La velocidad previa solo se conserva si el ancla cae a menos de dos radios de lo previsto: si cae más lejos, lo seguido antes estaba mal y su velocidad también. Lo destapó la prueba unitaria del salto: con la velocidad del error, el seguidor se perdía justo después del ancla. Tras una corrección con datos detrás, el visor recuerda que se puede rehacer desde ahí.
+- **Huecos cortos:** botón «Rellenar N huecos cortos», solo si los hay: entre dos posiciones fiables, ≤ 0,2 s entre ellas, nunca en los extremos.
+  - Método: cúbico de Hermite en el tiempo real de cada frame, con la pendiente de cada lado estimada con la parábola por tres posiciones (segundo orden, espaciado desigual). Exacto a velocidad constante; 0,31 px de error con un giro de 1 Hz y 100 px de radio (628 px/s). La pendiente con dos puntos daba 1,4 px.
+  - Marcado: `interpolado` en la muestra, azul en la franja, trazo discontinuo en la gráfica, círculo a trazos en el vídeo y recuento en el resumen y en la lista de sesiones. «Quitar lo interpolado» los devuelve a huecos (como perdidos: se pierde la diferencia con una detección dudosa).
+  - El esquema guardado pasa a la versión 2, con migración de la 1 (nada interpolado).
+- **Retroceder rápido:** caché de los últimos frames decodificados, de unos 160 MB (45 frames a 720p, 20 a 1080p, 8 a 4K, 120 como mucho). Al retroceder se decodifica desde el fotograma clave anterior, como antes, pero los frames de paso quedan en la caché y los siguientes pasos atrás no decodifican.
 
 ## 6. Persistencia (IndexedDB) [D6] — hecho (paso 2)
 

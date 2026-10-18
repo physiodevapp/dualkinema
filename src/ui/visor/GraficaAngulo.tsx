@@ -7,6 +7,8 @@ export interface PuntoAngulo {
   readonly t: number
   /** Grados; NaN = hueco (no hay valor en ese instante). */
   readonly valor: number
+  /** Sale de algo interpolado a petición: se dibuja a trazos. */
+  readonly interpolado?: boolean
 }
 
 interface Props {
@@ -53,9 +55,15 @@ export default function GraficaAngulo({ serie, desde, hasta, tActual, onBuscar }
 
   const datos = useMemo<uPlot.AlignedData>(() => {
     const xs = serie.map((p) => p.t)
-    const ys = serie.map((p) => (Number.isFinite(p.valor) ? p.valor : null))
+    const valor = (p: PuntoAngulo) => (Number.isFinite(p.valor) ? p.valor : null)
+    // Dos series: la medida (corta en lo interpolado) y la interpolada, a
+    // trazos, que incluye los puntos medidos vecinos para que las dos se unan.
+    const medidos = serie.map((p) => (p.interpolado ? null : valor(p)))
+    const interpolados = serie.map((p, i) =>
+      p.interpolado || serie[i - 1]?.interpolado || serie[i + 1]?.interpolado ? valor(p) : null,
+    )
     // uPlot necesita al menos una muestra para dibujar los ejes.
-    return xs.length ? [xs, ys] : [[desde, hasta], [null, null]]
+    return xs.length ? [xs, medidos, interpolados] : [[desde, hasta], [null, null], [null, null]]
   }, [serie, desde, hasta])
 
   // Lo que leen los hooks de dibujo y los manejadores sin recrear la gráfica.
@@ -68,6 +76,7 @@ export default function GraficaAngulo({ serie, desde, hasta, tActual, onBuscar }
     const el = contenedor.current
     if (!el) return
     const acento = variable('--color-acento', '#f2a65a')
+    const interpolado = variable('--color-interpolado', '#56b4e9')
     const borde = variable('--color-borde', '#2a2f38')
     const texto = variable('--color-texto-2', '#a3a7ae')
     const ejes = { stroke: texto, font: FUENTE, grid: { stroke: borde, width: 1 }, ticks: { stroke: borde, width: 1 } }
@@ -95,6 +104,13 @@ export default function GraficaAngulo({ serie, desde, hasta, tActual, onBuscar }
             spanGaps: false, // un hueco corta la línea
             points: { size: 4, fill: acento, stroke: acento },
           },
+          {
+            stroke: interpolado,
+            width: 2,
+            dash: [5, 4],
+            spanGaps: false,
+            points: { show: false },
+          },
         ],
         hooks: {
           draw: [
@@ -113,7 +129,7 @@ export default function GraficaAngulo({ serie, desde, hasta, tActual, onBuscar }
               ctx.stroke()
               // Punto sobre la curva, si hay valor en este frame.
               const i = indiceExacto(d[0] as number[], t)
-              const v = i >= 0 ? ((d[1] as (number | null)[])[i] ?? null) : null
+              const v = i >= 0 ? ((d[1] as (number | null)[])[i] ?? (d[2] as (number | null)[])[i] ?? null) : null
               if (v !== null && v !== undefined) {
                 ctx.fillStyle = '#ffffff'
                 ctx.strokeStyle = acento
