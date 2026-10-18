@@ -933,6 +933,68 @@ describe('escala en metros: dos extremos y la longitud', () => {
   })
 })
 
+describe('escala entre dos marcadores y longitud de los segmentos', () => {
+  it('rodilla–tobillo en los primeros 2 s con su distancia real; la longitud de los segmentos no cambia', async () => {
+    // En el vídeo sintético el muslo mide 130 px y la pierna 120, rígidos y en el plano.
+    const verdad = videos.verde.verdad
+    const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await esperarGuardado(p, verdad.length)
+      const panel = p.getByTestId('panel-escala')
+      // Uno por segmento de la rodilla, en orden: muslo (trocánter–rodilla) y pierna (rodilla–tobillo).
+      const segmentos = panel.locator('[data-testid^="constancia-trocanter"], [data-testid^="constancia-epicondilo"]')
+      assert.equal(await segmentos.count(), 2)
+      for (const [k, real] of [[0, 130], [1, 120]]) {
+        const s = segmentos.nth(k)
+        const l = Number((await s.getByTestId('constancia-longitud').innerText()).match(/[\d,]+/)[0].replace(',', '.'))
+        assert.ok(Math.abs(l - real) < 1.5, `segmento ${k}: ${l} px, real ${real}`)
+        const rms = Number((await s.getByTestId('constancia-rms').innerText()).match(/[\d,]+/)[0].replace(',', '.'))
+        assert.ok(rms < 1, `segmento ${k}: varía ± ${rms} %`)
+        assert.equal(await s.getByTestId('constancia-fuera').count(), 0)
+      }
+
+      await panel.getByRole('button', { name: 'Calibrar escala' }).click()
+      await panel.getByRole('radio', { name: 'Entre dos marcadores' }).click()
+      // Por defecto, la pierna (rodilla–tobillo) y los primeros 2 s; sin longitud: hay que medirla.
+      const opciones = panel.getByRole('radiogroup', { name: 'Segmento de calibración' }).getByRole('radio')
+      assert.equal(await opciones.nth(1).getAttribute('aria-checked'), 'true')
+      assert.equal(await panel.getByRole('radio', { name: 'Primeros 2 s' }).getAttribute('aria-checked'), 'true')
+      assert.equal(await panel.getByLabel('Longitud en cm').inputValue(), '')
+      assert.ok(await panel.getByRole('button', { name: 'Guardar escala' }).isDisabled())
+      const d = Number(/([\d,]+) px/.exec(await panel.getByTestId('escala-estado').innerText())[1].replace(',', '.'))
+      assert.ok(Math.abs(d - 120) < 1, `distancia media ${d} px`)
+      // Promediar en muchos frames: la precisión por el marcado queda muy por debajo de la de dos toques (√2/120 = 1,2 %).
+      const precision = Number(/± ([\d,]+) %/.exec(await panel.getByTestId('escala-precision').innerText())[1].replace(',', '.'))
+      assert.ok(precision <= 0.3, `± ${precision} %`)
+
+      await panel.getByLabel('Longitud en cm').fill('30')
+      await panel.getByRole('button', { name: 'Guardar escala' }).click()
+      const mm = await leerNumero(p, 'escala-mm-px')
+      assert.ok(Math.abs(mm - 2.5) < 0.03, `${mm} mm/px`)
+      await irAFrame(p, 30)
+      const tobillo = 'velocidad-marcador-' + (await idTobillo(p))
+      const real = ((120 * velReal(verdad[30].t) * Math.PI) / 180) * 0.0025
+      const v = await leerNumero(p, tobillo)
+      assert.ok(Math.abs(v / real - 1) < 0.05, `tobillo ${v} m/s, real ${real.toFixed(3)} m/s`)
+      // La longitud de los segmentos, también en cm.
+      assert.match(await segmentos.nth(1).getByTestId('constancia-longitud').innerText(), /30,\d cm/)
+
+      await esperarCalibracionGuardada(p, 0.3)
+      const texto = await p.getByTestId('escala-objeto').innerText()
+      await p.reload()
+      await p.getByTestId('sesion-guardada').waitFor()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.equal(await p.getByTestId('escala-objeto').innerText(), texto)
+      await p.getByText(/Posición media de los dos gomets/).waitFor()
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 /** Id del tercer marcador (el tobillo, distal) según las filas de velocidad. */
 async function idTobillo(p) {
   const id = await p.locator('[data-testid^="velocidad-marcador-"]').nth(2).getAttribute('data-testid')

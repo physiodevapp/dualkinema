@@ -14,7 +14,8 @@ import {
 import { anguloArticular, CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
 import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
-import { distanciaPx, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
+import { distanciaPx, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
+import { constanciaSegmento } from '../core/calibracion/segmentos'
 import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
 import type { Vec3 } from '../core/geometria/vector'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
@@ -227,6 +228,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const [revCalibracion, setRevCalibracion] = useState(0)
   const [borrador, setBorrador] = useState<BorradorEscala | null>(null)
   const calibrando = borrador !== null
+  // Calibrar tocando los extremos (con «Entre dos marcadores» no se toca el vídeo).
+  const tocandoEscala = calibrando && borrador.objeto !== 'marcadores'
   const guardado = useGuardado({
     sesion,
     huella,
@@ -443,18 +446,34 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     else if (!b || distanciaPx(p, b) < distanciaPx(p, a)) setBorrador({ ...borrador, b: p, t })
     else setBorrador({ ...borrador, a: p, t })
   }
+  // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
+  const segmentos = useMemo(() => {
+    const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
+    return [articulacion.proximal, articulacion.distal].map((s) => ({ desde: s.desde, hasta: s.hasta, nombre: `${nombre(s.desde)} – ${nombre(s.hasta)}` }))
+  }, [modelo, articulacion])
+  // Con «Entre dos marcadores»: posición media de los dos en el tramo, con lo seguido ahora.
+  const medicion = useMemo(() => {
+    void version
+    if (borrador?.objeto !== 'marcadores' || !borrador.entre || !borrador.tramo) return null
+    const serie = (id: IdMarcador) => trayectorias.current.get(id) ?? []
+    return medirEntreMarcadores(serie(borrador.entre.desde), serie(borrador.entre.hasta), borrador.tramo)
+  }, [borrador, version])
   const empezarEscala = () => {
     setErrorToque(null)
+    // Por defecto, el segmento distal (rodilla–tobillo: el gomet del trocánter se desliza más) y el tramo del cero o los primeros 2 s.
+    const entre = calibracion?.entre ? { desde: calibracion.entre.desde, hasta: calibracion.entre.hasta } : { desde: articulacion.distal.desde, hasta: articulacion.distal.hasta }
+    const tramo = calibracion?.entre?.tramo ?? ceros[articulacion.id] ?? tramoInicial(tabla.tiempos)
     if (!calibracion) {
-      setBorrador({ objeto: 'cinta', a: null, b: null, t: null, longitud: OBJETOS.cinta.cm })
+      setBorrador({ objeto: 'cinta', a: null, b: null, t: null, longitud: OBJETOS.cinta.cm, entre, tramo })
       return
     }
     // Rehacer: se parte de lo guardado, en su frame, para ajustar un extremo o la longitud.
-    setBorrador({ objeto: calibracion.objeto, a: calibracion.a, b: calibracion.b, t: calibracion.t, longitud: fmt(calibracion.longitudM * 100, 1).replace(/,0$/, '') })
+    const longitud = fmt(calibracion.longitudM * 100, 1).replace(/,0$/, '')
+    setBorrador({ objeto: calibracion.objeto, a: calibracion.a, b: calibracion.b, t: calibracion.t, longitud, entre, tramo })
     if (frameCalibracion !== null) ir(frameCalibracion)
   }
   const guardarEscala = () => {
-    const r = borrador && escalaDeBorrador(borrador)
+    const r = borrador && escalaDeBorrador(borrador, medicion)
     if (!r?.ok) return
     setCalibracion(r.valor)
     setRevCalibracion((v) => v + 1)
@@ -564,10 +583,18 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         }
       })
       // Escala: mientras se calibra, y la guardada en el frame en que se marcó.
-      const segmento = borrador ?? (calibracion && mostrado === frameCalibracion ? calibracion : null)
+      const segmento = borrador
+        ? borrador.objeto === 'marcadores'
+          ? medicion?.ok
+            ? medicion
+            : null
+          : borrador
+        : calibracion && mostrado === frameCalibracion
+          ? calibracion
+          : null
       if (segmento) dibujarSegmentoEscala(ctx, base, segmento.a, segmento.b)
     },
-    [version, mostrado, ids, muestra, articulacion, borrador, calibracion, frameCalibracion],
+    [version, mostrado, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion],
   )
 
   // ---- Estado por frame para la franja y ángulo actual ----
@@ -632,6 +659,15 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const anguloFiltrado = mostrado === null ? NaN : filtrado.anguloEn(mostrado)
   const tramoEstatico = ceros[articulacion.id] ?? null
   const cero = useMemo(() => (tramoEstatico ? ceroDeReferencia(filtrado.serie, tramoEstatico) : null), [tramoEstatico, filtrado.serie])
+  // Longitud de cada segmento a lo largo del vídeo, con lo filtrado (menos ruido que lo crudo).
+  const constancia = useMemo(
+    () =>
+      segmentos.map((s) => ({
+        segmento: s,
+        c: constanciaSegmento(filtrado.porMarcador.get(s.desde)?.posiciones ?? [], filtrado.porMarcador.get(s.hasta)?.posiciones ?? []),
+      })),
+    [segmentos, filtrado.porMarcador],
+  )
   const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
     (t: number) => {
@@ -653,15 +689,15 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             alto={info.alto}
             lienzo={lienzo}
             dibujar={dibujar}
-            interactivo={(calibrando || !!seleccionado) && !siguiendo && mostrado === deseado}
-            onToque={calibrando ? tocarExtremo : colocar}
+            interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
+            onToque={tocandoEscala ? tocarExtremo : colocar}
             // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
             previsualizar={!calibrando && seleccionado ? previsualizar : undefined}
           />
           {mostrado === null && !error && (
             <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
           )}
-          {calibrando && !siguiendo && (
+          {tocandoEscala && !siguiendo && (
             <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
               Escala: {!borrador.a ? 'toca un extremo' : !borrador.b ? 'toca el otro extremo' : 'toca cerca de un extremo para moverlo'}
             </p>
@@ -975,6 +1011,11 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         <PanelEscala
           calibracion={calibracion}
           borrador={borrador}
+          medicion={medicion}
+          segmentos={segmentos}
+          tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
+          constancia={constancia}
+          onIr={ir}
           frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
           onEmpezar={empezarEscala}
           onBorrador={setBorrador}
