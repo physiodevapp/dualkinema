@@ -4,7 +4,7 @@ import type { UnidadVelocidad } from '../../core/filtros/derivadas'
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
 /** Con d decimales, sin «−0» ni «−0,0». */
 const num = (n: number, d: number) => fmt(Math.round(n * 10 ** d) / 10 ** d + 0, d)
-const valor = (n: number, d: number, unidad: string) => (Number.isFinite(n) ? `${num(n, d)} ${unidad}` : '—')
+const valor = (n: number, d: number, unidad: string) => (Number.isFinite(n) ? `${num(n, d)}${unidad === '°' ? '' : ' '}${unidad}` : '—')
 
 /** Por encima de esta desviación típica en la toma estática, se avisa de que hubo movimiento. */
 const DESVIACION_AVISO = 2

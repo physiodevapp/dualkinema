@@ -39,6 +39,7 @@ Cada vídeo de rodilla va con un `.json` con la verdad: tiempo, flexión real y 
 - **Cero de referencia:** «Primeros 2 s» y «Inicio aquí» / «Fin aquí» dan la media real de su tramo; relativo = sin cero − media; se avisa si el tramo no es quieto; el tramo se guarda, se recupera tras recargar y «Quitar» se guarda vacío.
 - **Lectura del vídeo:** retroceder del 70 al 45 solo decodifica una vez (al cruzar el fotograma clave del 50); el resto sale de la caché. Avanzar de 10 en 10 sigue con el decodificador dentro del grupo de imágenes y empieza en el fotograma clave al cruzarlo (lo dice el modo junto al número de frame, `data-testid="lectura"`).
 - **Caché de frames:** retroceder frame a frame 25 frames, cruzando un fotograma clave, y volver a avanzar muestra siempre el frame pedido.
+- **Línea de posición:** de 340 a 440 px, con un tiempo de decodificación largo, los botones de avance no se mueven al cambiar de frame (antes la línea pasaba de una a dos y se perdía la pulsación mantenida).
 - **Escritorio** (1280 px): sin desbordes.
 - **Consola:** ninguna prueba produce errores de consola ni de página.
 

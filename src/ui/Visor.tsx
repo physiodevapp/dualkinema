@@ -619,11 +619,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           </div>
         )}
 
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 font-mono text-sm" data-testid="posicion">
-          <span>
+        {/* Siempre la misma altura: en el móvil, dos líneas fijas que no se parten. Si el texto
+            cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
+            y se perdía la pulsación mantenida. */}
+        <div className="flex flex-col font-mono text-sm tabular-nums sm:flex-row sm:items-baseline sm:justify-between sm:gap-x-3" data-testid="posicion">
+          <span className="whitespace-nowrap">
             t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
           </span>
-          <span className="text-texto-2">
+          <span className="truncate whitespace-nowrap text-texto-2">
             frame {mostrado === null ? '—' : mostrado + 1} / {total}
             {mostrado !== deseado && ' …'}
             {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}

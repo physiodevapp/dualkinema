@@ -861,6 +861,34 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
   })
 })
 
+describe('la línea de posición no mueve los botones', () => {
+  // Si «t = … · frame … · N ms clave» pasaba de una a dos líneas según el texto, los botones de
+  // debajo se movían y se perdía la pulsación mantenida. Se recorren anchos de móvil para dar con
+  // el límite, con el texto más largo posible (frame de 3 cifras de «numerado» y «clave»).
+  it('de 340 a 440 px, los botones de avance no se desplazan al cambiar de frame', async () => {
+    for (let ancho = 340; ancho <= 440; ancho += 20) {
+      const p = await abrirApp(navegador, { ancho })
+      try {
+        await cargarVideo(p, videos.verde.ruta)
+        const boton = p.getByRole('button', { name: 'Frame siguiente' })
+        const alturas = new Set()
+        for (const i of [0, 1, 50, 49, 119, 75, 74, 100, 99]) {
+          await irAFrame(p, i)
+          // Texto largo de verdad: un número de ms de 4 cifras, como al decodificar lento en el móvil.
+          await p.getByTestId('ms-decodificar').evaluate((el) => {
+            const numero = [...el.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && /^\d+$/.test(n.textContent))
+            if (numero) numero.textContent = '1288'
+          })
+          alturas.add(Math.round((await boton.boundingBox()).y))
+        }
+        assert.equal(alturas.size, 1, `a ${ancho} px el botón cambia de altura: ${[...alturas].join(', ')}`)
+      } finally {
+        await p.close()
+      }
+    }
+  })
+})
+
 describe('escritorio', () => {
   it('a 1280 px la gráfica y los controles caben sin desbordar la página', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
