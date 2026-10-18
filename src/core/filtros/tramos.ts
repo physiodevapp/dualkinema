@@ -65,10 +65,23 @@ export interface PosicionFiltrada {
   readonly editadoManual: boolean
 }
 
+/**
+ * Señal filtrada de un tramo en su rejilla uniforme (antes de volver a los
+ * tiempos reales). Sobre ella se derivan las velocidades (paso 5).
+ */
+export interface RejillaTramo {
+  /** Tiempos de la rejilla: paso constante, primero y último = los del tramo. */
+  readonly t: Float64Array
+  readonly x: Float64Array
+  readonly y: Float64Array
+}
+
 export interface TrayectoriaFiltrada {
   /** Una por frame, o undefined donde no había posición utilizable. */
   readonly posiciones: readonly (PosicionFiltrada | undefined)[]
   readonly tramos: readonly Tramo[]
+  /** La rejilla filtrada de cada tramo, en el mismo orden que `tramos`. */
+  readonly rejillas: readonly RejillaTramo[]
 }
 
 /** Tramos de frames consecutivos con posición utilizable. */
@@ -87,37 +100,70 @@ export function tramosUtiles(serie: readonly (Muestra2D | undefined)[]): Tramo[]
   return r
 }
 
+export interface TramoFiltrado {
+  /** Tiempos de la rejilla uniforme (paso ≈ 1/fs, encajada en el tramo). */
+  readonly rejilla: Float64Array
+  /** Cada canal filtrado en la rejilla. */
+  readonly enRejilla: Float64Array[]
+  /** Cada canal filtrado en los tiempos reales `ts`. */
+  readonly enTiempos: Float64Array[]
+}
+
 /**
- * Filtra varias señales que comparten tiempos (x e y de un tramo). `ts`
- * estrictamente creciente; `fs` es la frecuencia de muestreo de referencia
- * (mediana de los fps del vídeo).
+ * Rejilla uniforme de paso lo más cercano posible a 1/fs que empieza y acaba
+ * justo en t0 y tn (sin extrapolar). Con t0 = tn, un solo punto.
  */
+export function rejillaUniforme(t0: number, tn: number, fs: number): Float64Array {
+  const duracion = tn - t0
+  if (!(duracion > 0)) return Float64Array.of(t0)
+  const pasos = Math.max(1, Math.round(duracion * fs))
+  const h = duracion / pasos
+  const r = new Float64Array(pasos + 1)
+  for (let k = 0; k <= pasos; k++) r[k] = k === pasos ? tn : t0 + k * h
+  return r
+}
+
+/**
+ * Filtra varias señales que comparten tiempos (x e y de un tramo) y devuelve
+ * lo filtrado en la rejilla y en los tiempos reales. `ts` estrictamente
+ * creciente; `fs` es la frecuencia de muestreo de referencia (mediana de los
+ * fps del vídeo).
+ */
+export function filtrarTramoConRejilla(
+  ts: readonly number[],
+  canales: readonly (readonly number[])[],
+  fs: number,
+  corteHz: number,
+): TramoFiltrado {
+  const n = ts.length
+  if (n <= 1) {
+    const copia = canales.map((c) => Float64Array.from(c))
+    return { rejilla: Float64Array.from(ts), enRejilla: copia, enTiempos: copia.map((c) => Float64Array.from(c)) }
+  }
+  const rejilla = rejillaUniforme(ts[0]!, ts[n - 1]!, fs)
+  const fsTramo = (rejilla.length - 1) / (ts[n - 1]! - ts[0]!)
+  const corte = corteEfectivo(corteHz, fsTramo)
+  const enRejilla: Float64Array[] = []
+  const enTiempos = canales.map((valores) => {
+    const ida = splineNatural(ts, valores)
+    const filtrada = filtrarEquiespaciado(rejilla.map((t) => ida(t)), fsTramo, corte)
+    enRejilla.push(filtrada)
+    const vuelta = splineNatural(rejilla, filtrada)
+    const r = new Float64Array(n)
+    for (let i = 0; i < n; i++) r[i] = vuelta(ts[i]!)
+    return r
+  })
+  return { rejilla, enRejilla, enTiempos }
+}
+
+/** Como filtrarTramoConRejilla, solo lo filtrado en los tiempos reales. */
 export function filtrarTramo(
   ts: readonly number[],
   canales: readonly (readonly number[])[],
   fs: number,
   corteHz: number,
 ): Float64Array[] {
-  const n = ts.length
-  if (n <= 1) return canales.map((c) => Float64Array.from(c))
-  const t0 = ts[0]!
-  const duracion = ts[n - 1]! - t0
-  // Rejilla uniforme de paso ≈ 1/fs que encaja justo en [t0, tn].
-  const pasos = Math.max(1, Math.round(duracion * fs))
-  const h = duracion / pasos
-  const fsTramo = 1 / h
-  const corte = corteEfectivo(corteHz, fsTramo)
-  const tiemposRejilla = new Float64Array(pasos + 1)
-  for (let k = 0; k <= pasos; k++) tiemposRejilla[k] = k === pasos ? ts[n - 1]! : t0 + k * h
-  return canales.map((valores) => {
-    const ida = splineNatural(ts, valores)
-    const rejilla = tiemposRejilla.map((t) => ida(t))
-    const filtrada = filtrarEquiespaciado(rejilla, fsTramo, corte)
-    const vuelta = splineNatural(tiemposRejilla, filtrada)
-    const r = new Float64Array(n)
-    for (let i = 0; i < n; i++) r[i] = vuelta(ts[i]!)
-    return r
-  })
+  return filtrarTramoConRejilla(ts, canales, fs, corteHz).enTiempos
 }
 
 /**
@@ -131,11 +177,14 @@ export function filtrarTrayectoria(
 ): TrayectoriaFiltrada {
   const posiciones: (PosicionFiltrada | undefined)[] = new Array(serie.length)
   const tramos = tramosUtiles(serie)
+  const rejillas: RejillaTramo[] = []
   for (const tramo of tramos) {
     const ms: Muestra2D[] = []
     for (let i = tramo.primero; i <= tramo.ultimo; i++) ms.push(serie[i]!)
     const ts = ms.map((m) => m.t)
-    const [xs, ys] = filtrarTramo(ts, [ms.map((m) => m.x), ms.map((m) => m.y)], fs, ajustes.corteHz)
+    const f = filtrarTramoConRejilla(ts, [ms.map((m) => m.x), ms.map((m) => m.y)], fs, ajustes.corteHz)
+    const [xs, ys] = f.enTiempos
+    rejillas.push({ t: f.rejilla, x: f.enRejilla[0]!, y: f.enRejilla[1]! })
     ms.forEach((m, k) => {
       posiciones[tramo.primero + k] = {
         t: m.t,
@@ -147,7 +196,7 @@ export function filtrarTrayectoria(
       }
     })
   }
-  return { posiciones, tramos }
+  return { posiciones, tramos, rejillas }
 }
 
 /**

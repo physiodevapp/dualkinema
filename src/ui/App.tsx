@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowPathIcon, FilmIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
+import type { TramoEstatico } from '../core/articulaciones/cero'
 import type { AjustesFiltro } from '../core/filtros/tramos'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import type { CabeceraSesion } from '../core/persistencia/esquema'
@@ -32,6 +33,7 @@ type Estado =
       modelo?: ModeloMarcadores
       inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
       filtro?: AjustesFiltro | null
+      ceros?: Readonly<Record<string, TramoEstatico>>
       aviso?: string
     }
 
@@ -58,6 +60,7 @@ async function prepararRecuperacion(video: VideoAbierto, cabecera: CabeceraSesio
     modelo: cabecera.modelo,
     inicial,
     filtro: cabecera.filtro,
+    ceros: vista.ceros,
     aviso: `Trabajo recuperado tal como se guardó el ${fechaCorta(cabecera.actualizada)}: ${textoResumen(cabecera)}.`,
   }
 }
@@ -215,6 +218,7 @@ export default function App() {
             modelo={estado.modelo}
             inicial={estado.inicial}
             filtro={estado.filtro}
+            ceros={estado.ceros}
             avisoInicial={estado.aviso}
           />
         </Suspense>

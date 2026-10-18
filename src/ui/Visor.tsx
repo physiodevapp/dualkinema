@@ -12,6 +12,7 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline'
 import { anguloArticular, CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
+import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
 import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
 import type { Vec3 } from '../core/geometria/vector'
@@ -31,6 +32,7 @@ import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import GraficaAngulo from './visor/GraficaAngulo'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
+import PanelCinematica from './visor/PanelCinematica'
 import PanelFiltro from './visor/PanelFiltro'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
@@ -41,6 +43,11 @@ const ESTELA = 20 // frames de trayectoria dibujados hacia atrás
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
 /** Grados con una decimal sin «−0,0» (un valor entre −0,05 y 0 se muestra 0,0). */
 const grados = (n: number) => fmt(Math.round(n * 10) / 10 + 0, 1)
+/** Valor de una serie por frame con d decimales, «—» si no hay (NaN o sin frame). */
+const valorEn = (serie: ArrayLike<number>, i: number | null, d: number) => {
+  const v = i === null ? NaN : (serie[i] ?? NaN)
+  return Number.isFinite(v) ? fmt(Math.round(v * 10 ** d) / 10 ** d + 0, d) : '—'
+}
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
 function BotonPaso({ etiqueta, accion, children }: { etiqueta: string; accion: () => void; children: React.ReactNode }) {
@@ -113,10 +120,12 @@ interface Props {
   inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
   /** Al recuperar: el ajuste del filtro guardado (null = el de por defecto). */
   filtro?: AjustesFiltro | null
+  /** Al recuperar: el tramo estático del cero de referencia, por articulación. */
+  ceros?: Readonly<Record<string, TramoEstatico>>
   avisoInicial?: string
 }
 
-export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, avisoInicial }: Props) {
+export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, ceros: cerosGuardados, avisoInicial }: Props) {
   const lienzo = useRef<HTMLCanvasElement>(null)
   const { info, tabla } = video
   const total = tabla.tiempos.length
@@ -161,6 +170,22 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     setAjustes(a)
     setRevAjustes((r) => r + 1)
   }, [])
+  // Cero de referencia (paso 5): tramo estático por articulación; se guarda
+  // el tramo y la media se recalcula con lo filtrado.
+  const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>(cerosGuardados ?? {})
+  const [revCeros, setRevCeros] = useState(0)
+  const cambiarTramo = useCallback(
+    (tramo: TramoEstatico | null) => {
+      setCeros((c) => {
+        const r: Record<string, TramoEstatico> = { ...c }
+        if (tramo) r[articulacion.id] = tramo
+        else delete r[articulacion.id]
+        return r
+      })
+      setRevCeros((r) => r + 1)
+    },
+    [articulacion.id],
+  )
   const guardado = useGuardado({
     sesion,
     huella,
@@ -168,8 +193,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     modelo,
     trayectorias,
     filtro: ajustes,
-    // Los dos contadores solo crecen: su suma cambia con cualquiera de los dos.
-    version: version + revAjustes,
+    ceros,
+    // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
+    version: version + revAjustes + revCeros,
     recuperada: !!inicial,
   })
 
@@ -524,6 +550,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     congelado: seguimiento.estado === 'siguiendo',
   })
   const anguloFiltrado = mostrado === null ? NaN : filtrado.anguloEn(mostrado)
+  const tramoEstatico = ceros[articulacion.id] ?? null
+  const cero = useMemo(() => (tramoEstatico ? ceroDeReferencia(filtrado.serie, tramoEstatico) : null), [tramoEstatico, filtrado.serie])
   const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
     (t: number) => {
@@ -596,11 +624,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           </div>
         )}
 
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 font-mono text-sm" data-testid="posicion">
-          <span>
+        {/* Siempre la misma altura: en el móvil, dos líneas fijas que no se parten. Si el texto
+            cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
+            y se perdía la pulsación mantenida. */}
+        <div className="flex flex-col font-mono text-sm tabular-nums sm:flex-row sm:items-baseline sm:justify-between sm:gap-x-3" data-testid="posicion">
+          <span className="whitespace-nowrap">
             t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
           </span>
-          <span className="text-texto-2">
+          <span className="truncate whitespace-nowrap text-texto-2">
             frame {mostrado === null ? '—' : mostrado + 1} / {total}
             {mostrado !== deseado && ' …'}
             {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
@@ -619,6 +650,25 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             )}
           </span>
         </div>
+
+        {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
+            cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
+            partir, para no mover los botones (se perdería la pulsación mantenida). */}
+        <dl className="grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-1 font-mono tabular-nums" data-testid="lectura-rapida">
+          {(
+            [
+              ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
+              ['Relativo', cero && Number.isFinite(anguloFiltrado) ? `${grados(relativoAlCero(anguloFiltrado, cero))}°` : '—', 'rapida-relativo'],
+              ['°/s', valorEn(filtrado.derivadas.velocidad, mostrado, 1), 'rapida-velocidad'],
+              ['°/s²', valorEn(filtrado.derivadas.aceleracion, mostrado, 0), 'rapida-aceleracion'],
+            ] as const
+          ).map(([etiqueta, texto, id]) => (
+            <div key={id} className="min-w-0 text-center">
+              <dt className="truncate text-[0.65rem] text-texto-2">{etiqueta}</dt>
+              <dd className="truncate text-sm whitespace-nowrap" data-testid={id}>{texto}</dd>
+            </div>
+          ))}
+        </dl>
 
         <div className="flex flex-col gap-1">
           <input
@@ -833,6 +883,31 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           fs={filtrado.fs}
           tramosCortos={filtrado.tramosCortos}
           anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
+          deshabilitado={siguiendo}
+        />
+
+        <PanelCinematica
+          angulo={anguloFiltrado}
+          relativo={cero ? relativoAlCero(anguloFiltrado, cero) : NaN}
+          velocidad={mostrado === null ? NaN : (filtrado.derivadas.velocidad[mostrado] ?? NaN)}
+          aceleracion={mostrado === null ? NaN : (filtrado.derivadas.aceleracion[mostrado] ?? NaN)}
+          marcadores={modelo.marcadores.map((mk, k) => {
+            const v = filtrado.velocidades.get(mk.id)
+            return {
+              id: mk.id,
+              nombre: nombreCorto(mk.nombre),
+              color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]!,
+              velocidad: mostrado === null || !v ? NaN : (v.modulo[mostrado] ?? NaN),
+              unidad: v?.unidad ?? 'px/s',
+            }
+          })}
+          tramo={tramoEstatico}
+          cero={cero}
+          t={t}
+          t0={tabla.tiempos[0] ?? 0}
+          tn={tabla.tiempos[total - 1] ?? 0}
+          onTramo={cambiarTramo}
+          onPrimeros={() => cambiarTramo(tramoInicial(tabla.tiempos))}
           deshabilitado={siguiendo}
         />
 
