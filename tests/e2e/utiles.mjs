@@ -120,3 +120,39 @@ export async function leerAngulo(p) {
 export function frameMasCercano(tiempos, t) {
   return tiempos.reduce((mejor, x, k) => (Math.abs(x - t) < Math.abs(tiempos[mejor] - t) ? k : mejor), 0)
 }
+
+/**
+ * Espera a que la sesión guardada en IndexedDB tenga `conDatos` frames con muestra.
+ * El texto «Guardado…» del visor no basta: puede venir de un guardado anterior
+ * mientras el último todavía se escribe.
+ */
+export async function esperarGuardado(p, conDatos) {
+  await p.waitForFunction(
+    async (n) => {
+      const bd = await new Promise((ok, mal) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+        r.onerror = () => mal(r.error)
+      })
+      try {
+        if (!bd.objectStoreNames.contains('sesiones')) return false
+        const todas = await new Promise((ok) => {
+          const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+          r.onsuccess = () => ok(r.result)
+        })
+        return todas.some((c) => c.resumen.conDatos === n)
+      } finally {
+        bd.close()
+      }
+    },
+    conDatos,
+    { timeout: 20000, polling: 200 },
+  )
+  await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo' }).waitFor({ timeout: 10000 })
+}
+
+/** Elige `ruta` desde un botón que abre el selector de archivos (p. ej. «Continuar» de la lista). */
+export async function elegirArchivoDesde(p, boton, ruta) {
+  const [selector] = await Promise.all([p.waitForEvent('filechooser'), boton.click()])
+  await selector.setFiles(ruta)
+}

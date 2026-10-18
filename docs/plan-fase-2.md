@@ -1,6 +1,6 @@
 # Plan de la fase 2: calibración y cálculos
 
-Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Paso 1 (pruebas e2e) hecho; siguiente: paso 2 (persistencia).
+Estado: **decisiones D1–D8 aceptadas por el usuario tal como se proponen** (2026-10-17). Pasos 1 (pruebas e2e) y 2 (persistencia) hechos; siguiente: paso 3 (corrección manual).
 
 Objetivo de la fase (CLAUDE.md): escala en metros, Butterworth de fase cero, velocidades y aceleraciones, corrección manual de puntos y exportación CSV. Además, lo que la fase 1 dejó pendiente y conviene resolver antes de calcular: persistencia (D4 de la fase 1), retroceder rápido, cero de referencia y pruebas en navegador en el repositorio (limitaciones 1, 5, 7 y 12 de `docs/plan-fase-1.md`, §12).
 
@@ -80,7 +80,7 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 
 **[D5]** Interpolar huecos cortos a petición, marcado como interpolado: ¿sí o no? Mi recomendación: sí, con un máximo de unos 0,2 s y siempre visible como tal.
 
-## 6. Persistencia (IndexedDB) [D6]
+## 6. Persistencia (IndexedDB) [D6] — hecho (paso 2)
 
 - **Se guarda automáticamente:**
   - marcado y trayectorias;
@@ -90,7 +90,17 @@ Lo de la fase 1 se queda corto (limitación 8). **Propuesta:**
 - **El vídeo no se guarda,** porque puede pesar cientos de MB. La sesión se asocia a una huella del archivo (nombre, tamaño, duración y número de frames). Al volver a abrir el mismo vídeo, la app ofrece recuperar el trabajo.
 - **Lista de sesiones guardadas,** con opción de borrarlas. Todo se queda en el dispositivo.
 
-**[D6]** ¿De acuerdo con no guardar el vídeo y pedirlo al reabrir?
+**[D6]** ¿De acuerdo con no guardar el vídeo y pedirlo al reabrir? Aceptado.
+
+**Cómo quedó (paso 2):**
+- **Qué se guarda ya:** marcado y trayectorias, orientación de la vista y el modelo de marcadores completo (marcadores y definición de la articulación). Los huecos para filtro, calibración y cero de referencia están en el esquema, vacíos (`filtro: null`, `calibracion: null`, `ceros: {}`): los pasos 4–6 los rellenan sin cambiar de versión mientras lo vacío siga siendo válido.
+- **Versión:** cada registro lleva `esquema` (hoy 1). Al leer, se migra paso a paso con `MIGRACIONES_*` y se valida; uno de una versión más nueva no se abre ni se reescribe (sale en la lista para poder borrarlo).
+- **Dos almacenes:** `sesiones` (cabecera: lo que muestra la lista y monta el visor) y `trayectorias` (arrays tipados por marcador, solo los frames con muestra, exactos). La lista no lee las trayectorias de todas.
+- **Huella:** nombre, tamaño, duración (ms) y número de frames. Se busca sin el nombre: el selector de fotos de Android entrega el mismo vídeo como «1000012345.mp4» y el gestor de archivos con su nombre real. Si solo cambia el nombre, se ofrece recuperar avisando de ello.
+- **Cuándo se guarda:** 1 s después del último cambio (como mucho cada 3 s mientras sigue) y en el acto al ocultar la página (cambiar de app, apagar la pantalla, recargar) o cambiar de vídeo. No se crea sesión hasta que hay algo marcado. Se pide al navegador almacenamiento persistente (`navigator.storage.persist()`) para que no lo borre con poco espacio.
+- **Fallo encontrado con la prueba e2e:** el guardado al recargar no llegaba a escribirse porque la transacción se creaba unas microtareas después del aviso de la página, y Chromium la descartaba. Ahora se crea en el mismo manejador (la base ya está abierta desde que se buscaron las sesiones del vídeo) y se cierra con `commit()`; sin cola propia, porque IndexedDB ya ejecuta en orden las transacciones de escritura sobre los mismos almacenes.
+- **Recuperar:** al abrir un vídeo con trabajo guardado, «Recuperar el trabajo» (sin volver a preguntar la orientación) o «Empezar de cero» (lo guardado se queda). En la portada, la lista de sesiones con «Continuar» (abre el selector y solo acepta el vídeo de esa sesión) y «Borrar» con confirmación.
+- **Limitación:** con dos sesiones del mismo vídeo, cada una es independiente (no se fusionan).
 
 ## 7. Exportación CSV [D7]
 
