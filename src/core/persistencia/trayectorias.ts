@@ -19,6 +19,8 @@ export interface TrayectoriaGuardada {
   readonly calidad: Float64Array
   /** 1 si se marcó a mano. */
   readonly manual: Uint8Array
+  /** 1 si se rellenó por interpolación (desde el esquema 2). */
+  readonly interpolado: Uint8Array
 }
 
 /** Serie en memoria del visor: una muestra (o nada) por frame. */
@@ -34,6 +36,7 @@ export function empaquetarTrayectoria(serie: SerieFrames): TrayectoriaGuardada {
     y: new Float64Array(n),
     calidad: new Float64Array(n),
     manual: new Uint8Array(n),
+    interpolado: new Uint8Array(n),
   }
   let k = 0
   serie.forEach((m, i) => {
@@ -44,6 +47,7 @@ export function empaquetarTrayectoria(serie: SerieFrames): TrayectoriaGuardada {
     g.y[k] = m.y
     g.calidad[k] = m.calidad
     g.manual[k] = m.editadoManual ? 1 : 0
+    g.interpolado[k] = m.interpolado ? 1 : 0
     k++
   })
   return g
@@ -53,7 +57,8 @@ export function empaquetarTrayectoria(serie: SerieFrames): TrayectoriaGuardada {
 export function desempaquetarTrayectoria(g: TrayectoriaGuardada, frames: number): (Muestra2D | undefined)[] {
   const serie: (Muestra2D | undefined)[] = new Array(frames)
   for (let k = 0; k < g.indices.length; k++) {
-    serie[g.indices[k]!] = { t: g.t[k]!, x: g.x[k]!, y: g.y[k]!, calidad: g.calidad[k]!, editadoManual: g.manual[k] === 1 }
+    const m: Muestra2D = { t: g.t[k]!, x: g.x[k]!, y: g.y[k]!, calidad: g.calidad[k]!, editadoManual: g.manual[k] === 1 }
+    serie[g.indices[k]!] = g.interpolado[k] === 1 ? { ...m, interpolado: true } : m
   }
   return serie
 }
@@ -69,6 +74,7 @@ export function errorTrayectoria(v: unknown, frames: number): string | null {
     ['y', Float64Array],
     ['calidad', Float64Array],
     ['manual', Uint8Array],
+    ['interpolado', Uint8Array],
   ]
   for (const [campo, tipo] of tipos) if (!(g[campo] instanceof tipo)) return `«${campo}» no es ${tipo.name}`
   const t = g as unknown as TrayectoriaGuardada
@@ -82,6 +88,8 @@ export function errorTrayectoria(v: unknown, frames: number): string | null {
     const c = t.calidad[k]!
     if (!(c >= 0 && c <= 1)) return `calidad fuera de 0–1 en el frame ${i}`
     if (t.manual[k]! > 1) return `«manual» no es 0 ni 1 en el frame ${i}`
+    if (t.interpolado[k]! > 1) return `«interpolado» no es 0 ni 1 en el frame ${i}`
+    if (t.interpolado[k] && t.manual[k]) return `marcado a mano e interpolado a la vez en el frame ${i}`
     // Perdido = NaN en x e y; si hay posición, las dos coordenadas son números.
     if (Number.isNaN(t.x[k]) !== Number.isNaN(t.y[k])) return `posición a medias en el frame ${i}`
     if (!Number.isNaN(t.x[k]) && !(Number.isFinite(t.x[k]) && Number.isFinite(t.y[k]))) return `posición infinita en el frame ${i}`
@@ -89,15 +97,21 @@ export function errorTrayectoria(v: unknown, frames: number): string | null {
   return null
 }
 
-/** Frames con alguna muestra y frames con alguna marca a mano, entre todas las trayectorias. */
-export function recuento(trayectorias: readonly TrayectoriaGuardada[], frames: number): { conDatos: number; aMano: number } {
+/** Frames con alguna muestra, con alguna marca a mano y con algo interpolado, entre todas las trayectorias. */
+export function recuento(
+  trayectorias: readonly TrayectoriaGuardada[],
+  frames: number,
+): { conDatos: number; aMano: number; interpolados: number } {
   const datos = new Uint8Array(frames)
   const mano = new Uint8Array(frames)
+  const interp = new Uint8Array(frames)
   for (const g of trayectorias) {
     for (let k = 0; k < g.indices.length; k++) {
       datos[g.indices[k]!] = 1
       if (g.manual[k]) mano[g.indices[k]!] = 1
+      if (g.interpolado[k]) interp[g.indices[k]!] = 1
     }
   }
-  return { conDatos: datos.reduce((a, b) => a + b, 0), aMano: mano.reduce((a, b) => a + b, 0) }
+  const suma = (a: Uint8Array) => a.reduce((s, b) => s + b, 0)
+  return { conDatos: suma(datos), aMano: suma(mano), interpolados: suma(interp) }
 }

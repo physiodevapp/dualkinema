@@ -5,7 +5,7 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'mediabunny'
 import type { IdMarcador } from '../core/modelo/tipos'
 import type { Imagen, LeerVentana } from '../core/seguimiento/imagen'
-import { SeguidorMultiple } from '../core/seguimiento/multiple'
+import { SeguidorMultiple, type Ancla } from '../core/seguimiento/multiple'
 import { RecuentoHuecos } from '../core/seguimiento/huecos'
 import { aprenderMarcador, ErrorMarcado, type EstadoMarcador } from '../core/seguimiento/seguidor'
 import { crearTablaFrames, indiceEnTiempo } from '../core/tiempo/tablaFrames'
@@ -46,6 +46,14 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
     const alto = pista.displayHeight
     const t0 = tabla.tiempos[m.desde]
     if (t0 === undefined) throw new Error(`No hay frame ${m.desde}.`)
+
+    const anclas = new Map<number, Map<IdMarcador, Ancla>>()
+    for (const a of m.anclas) {
+      if (a.indice <= m.desde) continue
+      let f = anclas.get(a.indice)
+      if (!f) anclas.set(a.indice, (f = new Map()))
+      f.set(a.id, { x: a.x, y: a.y })
+    }
 
     const sink = new CanvasSink(pista, { poolSize: 2 })
     let seguidor: SeguidorMultiple | null = null
@@ -93,7 +101,7 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
 
       // Un marcador perdido no detiene el resto: se sigue buscando y, si
       // reaparece, se recupera. Sus frames sin encontrar quedan como huecos.
-      const res = seguidor.procesar(frame.timestamp, leer)
+      const res = seguidor.procesar(frame.timestamp, leer, anclas.get(indice))
       lote.push({ indice, t: frame.timestamp, marcadores: [...res].map(([id, r]) => ({ id, x: r.x, y: r.y, calidad: r.calidad })) })
       for (const [id, r] of res) huecos.registrar(indice, id, r)
       if (performance.now() - ultimoEnvio > 150) {

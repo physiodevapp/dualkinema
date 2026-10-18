@@ -23,7 +23,7 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  * que deje de admitir lo guardado sí: sube ESQUEMA_ACTUAL y añade su migración.
  */
 
-export const ESQUEMA_ACTUAL = 1
+export const ESQUEMA_ACTUAL = 2
 
 export interface VistaCabecera {
   readonly id: string
@@ -48,8 +48,8 @@ export interface CabeceraSesion {
   readonly vistas: readonly VistaCabecera[]
   /** Ajustes del filtro: llegan en el paso 4. */
   readonly filtro: null
-  /** Para la lista: frames con alguna muestra y con alguna marca a mano. */
-  readonly resumen: { readonly frames: number; readonly conDatos: number; readonly aMano: number }
+  /** Para la lista: frames con alguna muestra, con alguna marca a mano y con algo interpolado. */
+  readonly resumen: { readonly frames: number; readonly conDatos: number; readonly aMano: number; readonly interpolados: number }
   /** claveHuella de cada vista: índice para buscar las sesiones de un vídeo. */
   readonly claves: readonly string[]
 }
@@ -85,6 +85,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
   const trayectorias: Record<string, Record<IdMarcador, TrayectoriaGuardada>> = {}
   let conDatos = 0
   let aMano = 0
+  let interpolados = 0
   for (const v of e.vistas) {
     const porMarcador: Record<IdMarcador, TrayectoriaGuardada> = {}
     for (const mk of e.modelo.marcadores) porMarcador[mk.id] = empaquetarTrayectoria(v.series.get(mk.id) ?? [])
@@ -92,6 +93,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     const r = recuento(Object.values(porMarcador), v.huella.frames)
     conDatos += r.conDatos
     aMano += r.aMano
+    interpolados += r.interpolados
   }
   const cabecera: CabeceraSesion = {
     esquema: ESQUEMA_ACTUAL,
@@ -102,7 +104,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     modelo: e.modelo,
     vistas: e.vistas.map((v) => ({ id: v.id, huella: v.huella, orientacion: v.orientacion, desfase: 0, calibracion: null, ceros: {} })),
     filtro: null,
-    resumen: { frames: e.vistas.reduce((s, v) => s + v.huella.frames, 0), conDatos, aMano },
+    resumen: { frames: e.vistas.reduce((s, v) => s + v.huella.frames, 0), conDatos, aMano, interpolados },
     claves: e.vistas.map((v) => claveHuella(v.huella)),
   }
   return { cabecera, datos: { esquema: ESQUEMA_ACTUAL, id: e.id, trayectorias } }
@@ -110,10 +112,36 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
 
 // ---- Migrar ----
 
-/** Migración de la versión n a la n + 1, para cada parte. Vacío mientras solo exista la versión 1. */
+/** Migración de la versión n a la n + 1, para cada parte. */
 export type Migraciones = Readonly<Record<number, (registro: Record<string, unknown>) => Record<string, unknown>>>
-export const MIGRACIONES_CABECERA: Migraciones = {}
-export const MIGRACIONES_DATOS: Migraciones = {}
+
+/*
+ * 1 → 2 (paso 3 de la fase 2): huecos rellenados por interpolación. Lo
+ * guardado antes no tiene nada interpolado: ceros en el recuento y en cada
+ * trayectoria. Si un registro viene dañado, la migración lo deja tal cual y
+ * la validación posterior lo rechaza con su motivo.
+ */
+export const MIGRACIONES_CABECERA: Migraciones = {
+  1: (r) => (esObjeto(r.resumen) ? { ...r, resumen: { ...r.resumen, interpolados: 0 } } : r),
+}
+export const MIGRACIONES_DATOS: Migraciones = {
+  1: (r) => {
+    if (!esObjeto(r.trayectorias)) return r
+    const trayectorias: Record<string, unknown> = {}
+    for (const [vista, porMarcador] of Object.entries(r.trayectorias)) {
+      if (!esObjeto(porMarcador)) {
+        trayectorias[vista] = porMarcador
+        continue
+      }
+      const nueva: Record<string, unknown> = {}
+      for (const [id, g] of Object.entries(porMarcador)) {
+        nueva[id] = esObjeto(g) && g.indices instanceof Int32Array ? { ...g, interpolado: new Uint8Array(g.indices.length) } : g
+      }
+      trayectorias[vista] = nueva
+    }
+    return { ...r, trayectorias }
+  },
+}
 
 /**
  * Lleva un registro a la versión `actual` aplicando las migraciones en orden.
@@ -203,7 +231,7 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
   if (new Set(vistas.map((x) => x.id)).size !== vistas.length) return mal('vistas repetidas')
   if (c.filtro !== null) return mal('filtro no válido')
   const r = c.resumen
-  if (!esObjeto(r) || ![r.frames, r.conDatos, r.aMano].every((n) => Number.isInteger(n) && (n as number) >= 0)) return mal('resumen no válido')
+  if (!esObjeto(r) || ![r.frames, r.conDatos, r.aMano, r.interpolados].every((n) => Number.isInteger(n) && (n as number) >= 0)) return mal('resumen no válido')
   const claves = vistas.map((x) => claveHuella(x.huella))
   const guardadas = c.claves
   if (!Array.isArray(guardadas) || guardadas.length !== claves.length || claves.some((k, i) => guardadas[i] !== k)) {

@@ -11,6 +11,11 @@ export type AlWorker =
       /** Frame desde el que se sigue: los marcadores tienen posición conocida en él. */
       readonly desde: number
       readonly posiciones: readonly { readonly id: IdMarcador; readonly x: number; readonly y: number }[]
+      /**
+       * Posiciones marcadas a mano en frames posteriores a `desde`: al llegar a
+       * cada una, el seguidor la toma como cierta y sigue desde ahí.
+       */
+      readonly anclas: readonly { readonly indice: number; readonly id: IdMarcador; readonly x: number; readonly y: number }[]
     }
   | { readonly tipo: 'cancelar' }
 

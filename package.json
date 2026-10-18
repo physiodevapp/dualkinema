@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "node --test --test-timeout=240000 tests/e2e/e2e.test.mjs"
+    "test:e2e": "node --test --test-timeout=600000 tests/e2e/e2e.test.mjs"
   },
   "engines": {
     "node": ">=22"

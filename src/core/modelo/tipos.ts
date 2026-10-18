@@ -16,6 +16,12 @@ export interface Muestra2D {
   /** 0–1. 0 = perdido: la posición no es fiable y no se usa. */
   readonly calidad: number
   readonly editadoManual: boolean
+  /**
+   * Rellenado por interpolación a petición del usuario (hueco corto entre dos
+   * posiciones fiables). Nunca lo hace el seguidor por su cuenta. Se muestra
+   * aparte en la franja, la gráfica y la exportación.
+   */
+  readonly interpolado?: boolean
 }
 
 export interface Marcador {

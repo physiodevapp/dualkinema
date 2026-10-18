@@ -9,7 +9,7 @@ import { join } from 'node:path'
 
 export const FPS = 30
 /** Súbelo si cambias cualquier generador: invalida la caché de vídeos. */
-const VERSION = 1
+const VERSION = 2
 
 export const VERDE = [40, 200, 90]
 export const ROJO = [210, 45, 55]
@@ -153,6 +153,8 @@ async function generarRodilla(dir, nombre, color, oculto = () => false) {
 
 /** Intervalo en que el tobillo queda tapado en el vídeo «oculto» (segundos de vídeo). */
 export const OCULTO = { desde: 1.5, hasta: 1.8 }
+/** Lo mismo en el vídeo «corto»: un hueco que se puede rellenar (≤ 0,2 s entre posiciones fiables). */
+export const OCULTO_CORTO = { desde: 1.5, hasta: 1.6 }
 
 // ------------------------------------------------------------------- conjunto
 
@@ -169,6 +171,7 @@ export async function asegurarVideos() {
     await generarRodilla(dir, 'verde', VERDE)
     await generarRodilla(dir, 'rojo', ROJO)
     await generarRodilla(dir, 'oculto', VERDE, (t) => t > OCULTO.desde && t < OCULTO.hasta)
+    await generarRodilla(dir, 'corto', VERDE, (t) => t > OCULTO_CORTO.desde && t < OCULTO_CORTO.hasta)
     writeFileSync(marca, '')
   }
   const leer = (nombre) => JSON.parse(readFileSync(join(dir, `${nombre}.json`), 'utf8'))
@@ -177,5 +180,6 @@ export async function asegurarVideos() {
     verde: { ruta: join(dir, 'verde.webm'), verdad: leer('verde') },
     rojo: { ruta: join(dir, 'rojo.webm'), verdad: leer('rojo') },
     oculto: { ruta: join(dir, 'oculto.webm'), verdad: leer('oculto') },
+    corto: { ruta: join(dir, 'corto.webm'), verdad: leer('corto') },
   }
 }

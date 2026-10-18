@@ -7,7 +7,9 @@ import {
   CheckIcon,
   ExclamationTriangleIcon,
   PlayIcon,
+  SparklesIcon,
   StopIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import { anguloArticular, CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
@@ -16,6 +18,7 @@ import type { Vec3 } from '../core/geometria/vector'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import type { LeerVentana } from '../core/seguimiento/imagen'
 import type { MotivoHueco } from '../core/seguimiento/huecos'
+import { huecosInterpolables, HUECO_MAX_S, interpolarHueco } from '../core/seguimiento/interpolar'
 import { aprenderMarcador, ErrorMarcado } from '../core/seguimiento/seguidor'
 import { resumirSerie } from '../core/graficas/rango'
 import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/tablaFrames'
@@ -132,7 +135,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(avisoInicial ? { texto: avisoInicial } : null)
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
-  const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string } | null>(null)
+  // `aOjo`: dónde se tocó, para ofrecer colocarlo ahí aunque no se reconozca el gomet.
+  const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string; aOjo?: { id: IdMarcador; i: number; x: number; y: number } } | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
   // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
   // si están todos, ninguno, para no mover uno sin querer con el primer toque.
@@ -261,32 +265,97 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     setVersion((v) => v + 1)
     setAviso(null)
     setSeguimiento({ estado: 'siguiendo', progreso: mostrado / Math.max(1, total - 1) })
+    // Lo marcado a mano más adelante son anclas: el seguidor las respeta y sigue desde ellas.
+    const anclas: { indice: number; id: IdMarcador; x: number; y: number }[] = []
+    for (const [id, serie] of trayectorias.current) {
+      for (let i = mostrado + 1; i < total; i++) {
+        const m = serie[i]
+        if (m?.editadoManual && Number.isFinite(m.x)) anclas.push({ indice: i, id, x: m.x, y: m.y })
+      }
+    }
     const msg: AlWorker = {
       tipo: 'seguir',
       archivo: video.archivo,
       desde: mostrado,
       posiciones: posicionesEn(mostrado).map(({ id, m }) => ({ id, x: m!.x, y: m!.y })),
+      anclas,
     }
     worker.current?.postMessage(msg)
+  }
+
+  /** Guarda una posición marcada a mano y pasa al siguiente marcador que falte en el frame. */
+  const ponerManual = (id: IdMarcador, i: number, x: number, y: number) => {
+    const serie = trayectorias.current.get(id)!
+    serie[i] = { t: tabla.tiempos[i]!, x, y, calidad: 1, editadoManual: true }
+    setErrorToque(null)
+    setVersion((v) => v + 1)
+    const falta = ids.find((otro) => otro !== id && !valida(muestra(otro, i)))
+    setSeleccionado(falta ?? null)
+    // Una corrección con lo seguido detrás: se puede rehacer desde aquí con ella como ancla.
+    const seguidoDespues = serie.some((m, k) => k > i && m !== undefined && !m.editadoManual)
+    setAviso(
+      seguidoDespues && !falta
+        ? { texto: 'Corregido. Para rehacer lo que viene después a partir de aquí, pulsa «Seguir desde aquí»: respeta todo lo marcado a mano.' }
+        : null,
+    )
   }
 
   const colocar = (x: number, y: number) => {
     if (mostrado === null || !seleccionado || !ultimoFrame.current) return
     const t = tabla.tiempos[mostrado]!
     try {
+      // Se lleva el marcador al centro del gomet que hay bajo el dedo.
       const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, t, x, y)
-      trayectorias.current.get(seleccionado)![mostrado] = { t, x: r.x, y: r.y, calidad: 1, editadoManual: true }
-      setAviso(null)
-      setErrorToque(null)
-      setVersion((v) => v + 1)
-      // Siguiente marcador que falte en este frame.
-      const falta = ids.find((id) => id !== seleccionado && !valida(muestra(id, mostrado)))
-      setSeleccionado(falta ?? null)
+      ponerManual(seleccionado, mostrado, r.x, r.y)
     } catch (e) {
       setErrorToque(
-        e instanceof ErrorMarcado ? { texto: e.message, detalle: e.detalle } : { texto: `No se ha podido marcar: ${String(e)}` },
+        e instanceof ErrorMarcado
+          ? { texto: e.message, detalle: e.detalle, aOjo: { id: seleccionado, i: mostrado, x, y } }
+          : { texto: `No se ha podido marcar: ${String(e)}` },
       )
     }
+  }
+
+  const quitarManual = (id: IdMarcador, i: number) => {
+    trayectorias.current.get(id)![i] = undefined
+    setAviso(null)
+    setVersion((v) => v + 1)
+  }
+
+  // ---- Huecos cortos: rellenar a petición ----
+  const huecosCortos = useMemo(() => {
+    void version
+    return ids.flatMap((id) => huecosInterpolables(trayectorias.current.get(id)!, tabla.tiempos).map((h) => ({ id, h })))
+  }, [version, ids, tabla])
+  const hayInterpolados = useMemo(() => {
+    void version
+    return [...trayectorias.current.values()].some((s) => s.some((m) => m?.interpolado))
+  }, [version])
+
+  const rellenarHuecosCortos = () => {
+    let frames = 0
+    for (const { id, h } of huecosCortos) {
+      const serie = trayectorias.current.get(id)!
+      for (const { indice, muestra: m } of interpolarHueco(serie, tabla.tiempos, h)) {
+        serie[indice] = m
+        frames++
+      }
+    }
+    setAviso({
+      texto: `Rellenados ${huecosCortos.length} hueco${huecosCortos.length === 1 ? '' : 's'} (${frames} posiciones interpoladas, en azul en la franja y a trazos en la gráfica).`,
+    })
+    setVersion((v) => v + 1)
+  }
+
+  const quitarInterpolados = () => {
+    // Vuelven a ser huecos: frames sin posición fiable, como los dejó el seguidor.
+    for (const serie of trayectorias.current.values()) {
+      serie.forEach((m, i) => {
+        if (m?.interpolado) serie[i] = { t: m.t, x: NaN, y: NaN, calidad: 0, editadoManual: false }
+      })
+    }
+    setAviso({ texto: 'Quitado lo interpolado: esos frames vuelven a ser huecos.' })
+    setVersion((v) => v + 1)
   }
 
   // ---- Capa de dibujo ----
@@ -338,9 +407,12 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         ctx.stroke()
         ctx.strokeStyle = color
         ctx.lineWidth = base * 0.7
+        // Interpolado: círculo a trazos (no es una detección).
+        if (m.interpolado) ctx.setLineDash([base * 1.5, base * 1.5])
         ctx.beginPath()
         ctx.arc(m.x, m.y, base * 4, 0, Math.PI * 2)
         ctx.stroke()
+        ctx.setLineDash([])
         if (m.editadoManual) {
           ctx.fillStyle = color
           ctx.beginPath()
@@ -360,14 +432,16 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       let hay = false
       let perdido = false
       let manual = false
+      let interpolado = false
       for (const id of ids) {
         const m = muestra(id, i)
         if (!m) continue
         hay = true
         if (m.editadoManual) manual = true
+        else if (m.interpolado) interpolado = true
         else if (!valida(m)) perdido = true
       }
-      r[i] = perdido ? 'perdido' : manual ? 'manual' : hay ? 'seguido' : 'vacio'
+      r[i] = perdido ? 'perdido' : interpolado ? 'interpolado' : manual ? 'manual' : hay ? 'seguido' : 'vacio'
     }
     return r
   }, [version, total, ids, muestra])
@@ -388,7 +462,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
 
   // Serie completa del ángulo para la gráfica: misma regla de huecos que el valor
-  // en directo (marcador ausente o perdido = sin valor, nunca interpolado).
+  // en directo (marcador ausente o perdido = sin valor). Lo interpolado a
+  // petición tiene valor, pero va marcado y se dibuja aparte.
   const serie = useMemo(() => {
     void version
     if (orientacion.plano !== articulacion.plano) return []
@@ -397,6 +472,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     return serieAngular(articulacion, porMarcador, orientacion)
   }, [version, ids, orientacion, articulacion])
   const resumen = useMemo(() => resumirSerie(serie), [serie])
+  const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
     (t: number) => {
       const i = indiceMasCercano(tabla, t)
@@ -438,15 +514,33 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
           // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
           // gomet) caía en el mensaje en vez de marcar.
-          <button
-            type="button"
-            data-testid="error-toque"
-            onClick={() => setErrorToque(null)}
-            className="rounded-md border border-red-400/60 bg-fondo p-2 text-left text-sm text-red-200"
-          >
-            {errorToque.texto} <span className="text-texto-2">(toca para cerrar)</span>
-            {errorToque.detalle && <span className="mt-1 block font-mono text-xs text-texto-2">{errorToque.detalle}</span>}
-          </button>
+          <div data-testid="error-toque" className="flex flex-col gap-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200">
+            <p>{errorToque.texto}</p>
+            {errorToque.detalle && <p className="font-mono text-xs text-texto-2">{errorToque.detalle}</p>}
+            <div className="flex flex-wrap gap-2">
+              {errorToque.aOjo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { id, i, x, y } = errorToque.aOjo!
+                    ponerManual(id, i, x, y)
+                  }}
+                  className="rounded-md border border-borde px-3 py-2 text-texto"
+                >
+                  Colocarlo aquí a ojo
+                </button>
+              )}
+              <button type="button" onClick={() => setErrorToque(null)} className="rounded-md border border-borde px-3 py-2 text-texto-2">
+                Cerrar
+              </button>
+            </div>
+            {errorToque.aOjo && (
+              <p className="text-xs text-texto-2">
+                A ojo: para un frame en que el gomet no se ve (tapado, movido). Queda como marcado a mano, justo donde has
+                soltado el dedo, sin ajustarlo al centro de ningún gomet.
+              </p>
+            )}
+          </div>
         )}
 
         <div className="flex items-baseline justify-between font-mono text-sm" data-testid="posicion">
@@ -513,6 +607,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                   mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
                 </span>
                 {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
+                {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
               </>
             ) : (
               'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
@@ -534,7 +629,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
             {modelo.marcadores.map((mk, k) => {
               const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
-              const estado = valida(m) ? (m.editadoManual ? 'a mano' : 'seguido') : m ? 'perdido' : '—'
+              const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
               const activo = seleccionado === mk.id
               return (
                 <button
@@ -561,11 +656,26 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             {siguiendo
               ? 'Siguiendo los gomets…'
               : seleccionado
-                ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa y suelta encima del gomet.`
+                ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa, arrástralo hasta el gomet y suelta.`
                 : listoParaSeguir
-                  ? 'Los tres marcadores están en este frame: ya puedes seguir.'
+                  ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
                   : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
           </p>
+
+          {(() => {
+            // Quitar una marca a mano equivocada del marcador elegido, en este frame.
+            const m = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
+            if (siguiendo || !seleccionado || mostrado === null || !m?.editadoManual) return null
+            return (
+              <button
+                type="button"
+                onClick={() => quitarManual(seleccionado, mostrado)}
+                className="flex items-center justify-center gap-2 self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2"
+              >
+                <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
+              </button>
+            )
+          })()}
 
           {siguiendo ? (
             <div className="flex flex-col gap-2">
@@ -603,6 +713,32 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               {aviso.irA !== undefined && (
                 <button type="button" onClick={() => ir(aviso.irA!)} className="self-start rounded-md border border-borde px-3 py-2">
                   Ir al primer frame con hueco ({aviso.irA + 1})
+                </button>
+              )}
+            </div>
+          )}
+
+          {!siguiendo && (huecosCortos.length > 0 || hayInterpolados) && (
+            <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="huecos-cortos">
+              {huecosCortos.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={rellenarHuecosCortos}
+                    className="flex items-center justify-center gap-2 rounded-md border border-interpolado/60 px-4 py-3 text-interpolado"
+                  >
+                    <SparklesIcon className="size-5" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto
+                    {huecosCortos.length === 1 ? '' : 's'}
+                  </button>
+                  <p className="text-xs text-texto-2">
+                    Huecos de {fmt(HUECO_MAX_S, 1)} s o menos entre dos posiciones fiables. Se rellenan con una curva suave que
+                    sigue el movimiento de antes y de después, y quedan marcados como interpolados.
+                  </p>
+                </>
+              )}
+              {hayInterpolados && (
+                <button type="button" onClick={quitarInterpolados} className="self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
+                  Quitar lo interpolado
                 </button>
               )}
             </div>
