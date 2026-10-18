@@ -71,7 +71,7 @@ export async function leerPosicion(p) {
 
 /** Salta al frame `i` (0-based) con el deslizador. */
 export async function irAFrame(p, i) {
-  await p.locator('input[type=range]').fill(String(i))
+  await p.getByRole('slider', { name: 'Posición en el vídeo' }).fill(String(i))
   await esperarQuieto(p)
 }
 
@@ -91,9 +91,21 @@ export function leerFrameDibujado(p, { bits, ladoBloque }) {
   )
 }
 
+/**
+ * Caja del vídeo en pantalla, con el vídeo a la vista. El ratón de Playwright
+ * no llega fuera de la ventana: si mover el deslizador ha desplazado la página
+ * y el vídeo queda en parte fuera (depende de la altura del texto, p. ej. si
+ * no cargan las fuentes), el toque se perdería.
+ */
+export async function cajaVideo(p) {
+  const capa = p.getByTestId('capa')
+  await capa.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  return capa.boundingBox()
+}
+
 /** Toca el vídeo en (x, y) de los px del vídeo (640×360 por defecto). */
 export async function tocarVideo(p, x, y, { ancho = 640, alto = 360 } = {}) {
-  const caja = await p.getByTestId('capa').boundingBox()
+  const caja = await cajaVideo(p)
   await p.mouse.click(caja.x + (x / ancho) * caja.width, caja.y + (y / alto) * caja.height)
 }
 
@@ -109,9 +121,9 @@ export async function seguirHastaElFinal(p) {
   return (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
 }
 
-/** Ángulo que muestra el panel, en grados (NaN si no hay valor). */
-export async function leerAngulo(p) {
-  const texto = await p.getByTestId('angulo').innerText()
+/** Ángulo que muestra el panel (o el filtrado, con testid 'angulo-filtrado'), en grados (NaN si no hay valor). */
+export async function leerAngulo(p, testid = 'angulo') {
+  const texto = await p.getByTestId(testid).innerText()
   const m = /^(−|-)?([\d.,]+)°/.exec(texto.trim())
   return m ? (m[1] ? -1 : 1) * Number(m[2].replace(',', '.')) : NaN
 }
@@ -155,4 +167,29 @@ export async function esperarGuardado(p, conDatos) {
 export async function elegirArchivoDesde(p, boton, ruta) {
   const [selector] = await Promise.all([p.waitForEvent('filechooser'), boton.click()])
   await selector.setFiles(ruta)
+}
+
+/** Espera a que la sesión guardada tenga el corte de filtro `corteHz`. */
+export async function esperarFiltroGuardado(p, corteHz) {
+  await p.waitForFunction(
+    async (corte) => {
+      const bd = await new Promise((ok, mal) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+        r.onerror = () => mal(r.error)
+      })
+      try {
+        if (!bd.objectStoreNames.contains('sesiones')) return false
+        const todas = await new Promise((ok) => {
+          const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+          r.onsuccess = () => ok(r.result)
+        })
+        return todas.some((c) => c.filtro?.corteHz === corte)
+      } finally {
+        bd.close()
+      }
+    },
+    corteHz,
+    { timeout: 20000, polling: 200 },
+  )
 }
