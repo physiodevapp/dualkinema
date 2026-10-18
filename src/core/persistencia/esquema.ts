@@ -1,6 +1,7 @@
 import type { DefinicionArticulacion, Plano } from '../articulaciones/definicion'
 import type { OrientacionVista } from '../geometria/canonico'
 import type { IdMarcador, ModeloMarcadores } from '../modelo/tipos'
+import { esAjustesFiltro, type AjustesFiltro } from '../filtros/tramos'
 import { claveHuella, esHuella, type HuellaArchivo } from './huella'
 import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, type TrayectoriaGuardada } from './trayectorias'
 
@@ -17,10 +18,12 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  *   - DatosSesion: las trayectorias, por vista y marcador.
  *
  * Lo que llega en pasos posteriores de la fase 2 ya tiene su sitio, vacío:
- * `filtro` (null = el de por defecto), `calibracion` (null = sin escala) y
- * `ceros` (por articulación; vacío = sin cero de referencia). Rellenarlos no
- * exige cambiar de versión mientras null / {} sigan siendo válidos; un cambio
- * que deje de admitir lo guardado sí: sube ESQUEMA_ACTUAL y añade su migración.
+ * `calibracion` (null = sin escala) y `ceros` (por articulación; vacío = sin
+ * cero de referencia). `filtro` ya se rellena (paso 4; null = el de por
+ * defecto, así que lo guardado antes sigue valiendo sin migrar). Rellenarlos
+ * no exige cambiar de versión mientras null / {} sigan siendo válidos; un
+ * cambio que deje de admitir lo guardado sí: sube ESQUEMA_ACTUAL y añade su
+ * migración.
  */
 
 export const ESQUEMA_ACTUAL = 2
@@ -46,8 +49,8 @@ export interface CabeceraSesion {
   readonly actualizada: string
   readonly modelo: ModeloMarcadores
   readonly vistas: readonly VistaCabecera[]
-  /** Ajustes del filtro: llegan en el paso 4. */
-  readonly filtro: null
+  /** Ajustes del filtro (paso 4); null = los de por defecto (6 Hz). */
+  readonly filtro: AjustesFiltro | null
   /** Para la lista: frames con alguna muestra, con alguna marca a mano y con algo interpolado. */
   readonly resumen: { readonly frames: number; readonly conDatos: number; readonly aMano: number; readonly interpolados: number }
   /** claveHuella de cada vista: índice para buscar las sesiones de un vídeo. */
@@ -73,6 +76,8 @@ export interface EntradaGuardado {
   readonly creada: string
   readonly ahora: string
   readonly modelo: ModeloMarcadores
+  /** Ajustes del filtro; sin ellos (o null), los de por defecto. */
+  readonly filtro?: AjustesFiltro | null
   readonly vistas: readonly {
     readonly id: string
     readonly huella: HuellaArchivo
@@ -103,7 +108,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     actualizada: e.ahora,
     modelo: e.modelo,
     vistas: e.vistas.map((v) => ({ id: v.id, huella: v.huella, orientacion: v.orientacion, desfase: 0, calibracion: null, ceros: {} })),
-    filtro: null,
+    filtro: e.filtro ?? null,
     resumen: { frames: e.vistas.reduce((s, v) => s + v.huella.frames, 0), conDatos, aMano, interpolados },
     claves: e.vistas.map((v) => claveHuella(v.huella)),
   }
@@ -229,7 +234,7 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
   }
   const vistas = c.vistas as VistaCabecera[]
   if (new Set(vistas.map((x) => x.id)).size !== vistas.length) return mal('vistas repetidas')
-  if (c.filtro !== null) return mal('filtro no válido')
+  if (c.filtro !== null && !esAjustesFiltro(c.filtro)) return mal('filtro no válido')
   const r = c.resumen
   if (!esObjeto(r) || ![r.frames, r.conDatos, r.aMano, r.interpolados].every((n) => Number.isInteger(n) && (n as number) >= 0)) return mal('resumen no válido')
   const claves = vistas.map((x) => claveHuella(x.huella))
