@@ -55,6 +55,7 @@ const color = (token: TokenColor) => getComputedStyle(document.documentElement).
 export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad, altoMinimo, banda, alto, etiqueta, testid, onBuscar }: Props) {
   const contenedor = useRef<HTMLDivElement>(null)
   const grafica = useRef<uPlot | null>(null)
+  const cursor = useRef<() => void>(() => {})
 
   const datos = useMemo<uPlot.AlignedData>(() => [xs as number[], ...series.map((s) => s.valores as (number | null)[])], [xs, series])
   // Si cambia qué series hay (no sus valores ni si se ven), se rehace la gráfica.
@@ -71,6 +72,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     if (!el) return
     const borde = color('texto-2')
     const rejilla = getComputedStyle(document.documentElement).getPropertyValue('--color-borde').trim() || '#2a2f38'
+    let redibujos = 0
     const ejes = { stroke: borde, font: FUENTE, grid: { stroke: rejilla, width: 1 }, ticks: { stroke: rejilla, width: 1 } }
 
     const u = new uPlot(
@@ -118,33 +120,11 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
               ctx.restore()
             },
           ],
+          // Tras cada dibujo (datos nuevos, series, tamaño), el cursor vuelve a su sitio.
           draw: [
-            (self) => {
-              const { datos: d, indice: i, series: ss } = vivo.current
-              if (i === null || i >= d[0].length) return
-              const { ctx, bbox } = self
-              const x = self.valToPos(d[0][i]!, 'x', true)
-              if (x < bbox.left || x > bbox.left + bbox.width) return
-              ctx.save()
-              ctx.strokeStyle = '#ffffff'
-              ctx.lineWidth = Math.max(1, devicePixelRatio)
-              ctx.beginPath()
-              ctx.moveTo(x, bbox.top)
-              ctx.lineTo(x, bbox.top + bbox.height)
-              ctx.stroke()
-              // Punto sobre la curva: la primera serie visible con valor en este frame.
-              const k = ss.findIndex((s, j) => s.visible && d[j + 1]![i] != null)
-              const v = k >= 0 ? d[k + 1]![i] : null
-              if (v != null) {
-                ctx.fillStyle = '#ffffff'
-                ctx.strokeStyle = color(ss[k]!.color)
-                ctx.lineWidth = 2 * devicePixelRatio
-                ctx.beginPath()
-                ctx.arc(x, self.valToPos(v, 'y', true), 5 * devicePixelRatio, 0, Math.PI * 2)
-                ctx.fill()
-                ctx.stroke()
-              }
-              ctx.restore()
+            () => {
+              el.dataset.redibujos = String(++redibujos)
+              cursor.current()
             },
           ],
         },
@@ -153,6 +133,33 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
       el,
     )
     grafica.current = u
+
+    // Cursor del frame actual: dos elementos encima de las curvas. Moverlos no
+    // redibuja la gráfica (antes, cada cambio de frame redibujaba todas las series).
+    const linea = document.createElement('div')
+    linea.dataset.testid = `${testid}-cursor`
+    linea.className = 'pointer-events-none absolute top-0 bottom-0 left-0 w-px bg-white will-change-transform'
+    const punto = document.createElement('div')
+    punto.className = 'pointer-events-none absolute top-0 left-0 -mt-[5px] -ml-[5px] size-2.5 rounded-full border-2 bg-white will-change-transform'
+    u.over.append(linea, punto)
+    const colocarCursor = () => {
+      const { datos: d, indice: i, series: ss } = vivo.current
+      const x = i === null || i >= d[0].length ? NaN : u.valToPos(d[0][i]!, 'x')
+      const dentro = Number.isFinite(x) && x >= 0 && x <= u.over.clientWidth
+      linea.style.display = dentro ? '' : 'none'
+      punto.style.display = 'none'
+      if (!dentro) return
+      linea.style.transform = `translateX(${x}px)`
+      // Punto sobre la curva: la primera serie visible con valor en este frame.
+      const k = ss.findIndex((s, j) => s.visible && d[j + 1]![i!] != null)
+      const v = k >= 0 ? d[k + 1]![i!] : null
+      if (v == null) return
+      punto.style.display = ''
+      punto.style.transform = `translate(${x}px, ${u.valToPos(v, 'y')}px)`
+      punto.style.borderColor = `var(--color-${ss[k]!.color})`
+    }
+    colocarCursor()
+    cursor.current = colocarCursor
 
     // Tocar o arrastrar: salta el vídeo al instante bajo el dedo.
     const encima = u.over
@@ -184,6 +191,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
       obs.disconnect()
       u.destroy()
       grafica.current = null
+      cursor.current = () => {}
     }
   }, [forma, alto, testid])
 
@@ -200,7 +208,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     })
   }, [visibles])
   useEffect(() => {
-    grafica.current?.redraw(false, false)
+    cursor.current()
   }, [indice])
 
   return <div ref={contenedor} data-testid={testid} className="w-full overflow-hidden" role="img" aria-label={etiqueta} />

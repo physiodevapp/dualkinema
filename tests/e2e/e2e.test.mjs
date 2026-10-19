@@ -280,6 +280,29 @@ describe('seguimiento y gráfica con gomets verdes', () => {
     assert.equal(await p.getByTestId('valor-serie-velocidad').innerText(), '—')
   })
 
+  it('cambiar de frame no redibuja la gráfica: el cursor va en una capa aparte, en su instante', async () => {
+    const tiempos = videos.verde.verdad.map((f) => f.t)
+    await irAFrame(p, 20)
+    const redibujos = async () => [await p.getByTestId('grafica-angulo').getAttribute('data-redibujos'), await p.getByTestId('grafica-velocidad').getAttribute('data-redibujos')]
+    const antes = await redibujos()
+    assert.ok(antes.every((n) => Number(n) > 0))
+    for (const i of [21, 22, 40, 41, 90]) {
+      await irAFrame(p, i)
+      for (const id of ['grafica-angulo', 'grafica-velocidad']) {
+        // La línea del cursor cae en el instante del frame (±1 px).
+        const area = await p.getByTestId(`${id}-area`).boundingBox()
+        const linea = await p.getByTestId(`${id}-cursor`).boundingBox()
+        const esperado = area.x + ((tiempos[i] - tiempos[0]) / (tiempos.at(-1) - tiempos[0])) * area.width
+        assert.ok(Math.abs(linea.x - esperado) <= 1.5, `${id}, frame ${i + 1}: cursor en ${linea.x}, esperado ${esperado}`)
+      }
+    }
+    for (let k = 0; k < 5; k++) {
+      await p.getByRole('button', { name: 'Frame siguiente' }).click()
+      await esperarQuieto(p)
+    }
+    assert.deepEqual(await redibujos(), antes)
+  })
+
   it('cada interruptor oculta y muestra su serie; un panel sin series no se dibuja', async () => {
     const velocidad = p.getByTestId('serie-velocidad')
     assert.equal(await velocidad.getAttribute('aria-pressed'), 'true')
