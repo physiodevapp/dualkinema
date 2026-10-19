@@ -48,6 +48,8 @@ interface Props {
   segmentos: readonly SerieSegmento[]
   /** Resumen bajo la gráfica del ángulo. */
   resumen: ReactNode
+  /** Vista de solo gráficas (móvil): paneles más altos. */
+  ampliada?: boolean
 }
 
 const VISIBLES_DEFECTO: Record<string, boolean> = { crudo: true, filtrado: true, velocidad: true }
@@ -62,7 +64,7 @@ const porcentaje = (v: number) => `${fmt(v, Math.abs(v) < 10 && v % 1 !== 0 ? 1 
  * u oculta con su botón, que da además su valor en el frame actual; un panel
  * sin ninguna serie a la vista no se dibuja.
  */
-export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positivo, crudo, filtrado, velocidad, corte, segmentos, resumen }: Props) {
+export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positivo, crudo, filtrado, velocidad, corte, segmentos, resumen, ampliada }: Props) {
   // Los segmentos empiezan ocultos: son una comprobación, no el análisis.
   const [visibles, setVisibles] = useState(VISIBLES_DEFECTO)
   const visible = (id: string) => visibles[id] ?? false
@@ -173,7 +175,7 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
           series={seriesAngulo}
           unidad={grados}
           altoMinimo={20}
-          alto={190}
+          alto={ampliada ? 260 : 190}
           etiqueta="Gráfica del ángulo en el tiempo"
           testid="grafica-angulo"
         />
@@ -188,7 +190,7 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
             series={seriesVelocidad}
             unidad={gradosPorS}
             altoMinimo={40}
-            alto={130}
+            alto={ampliada ? 190 : 130}
             etiqueta="Gráfica de la velocidad angular en el tiempo"
             testid="grafica-velocidad"
           />
@@ -204,7 +206,7 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
             unidad={porcentaje}
             altoMinimo={10}
             banda={BANDA_SEGMENTOS}
-            alto={130}
+            alto={ampliada ? 190 : 130}
             etiqueta="Gráfica de la longitud de los segmentos en el tiempo"
             testid="grafica-segmentos"
           />

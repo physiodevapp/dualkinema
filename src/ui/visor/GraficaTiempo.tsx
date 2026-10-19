@@ -140,6 +140,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     linea.dataset.testid = `${testid}-cursor`
     linea.className = 'pointer-events-none absolute top-0 bottom-0 left-0 w-px bg-white will-change-transform'
     const punto = document.createElement('div')
+    punto.dataset.testid = `${testid}-punto`
     punto.className = 'pointer-events-none absolute top-0 left-0 -mt-[5px] -ml-[5px] size-2.5 rounded-full border-2 bg-white will-change-transform'
     u.over.append(linea, punto)
     const colocarCursor = () => {

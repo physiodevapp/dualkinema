@@ -4,6 +4,8 @@ import {
   ChevronDoubleRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
   CheckIcon,
   ExclamationTriangleIcon,
   PlayIcon,
@@ -824,59 +826,23 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const [barraRef, altoBarra] = useAltura<HTMLDivElement>()
   const [fijoRef, altoFijo] = useAltura<HTMLDivElement>()
   const anchoLg = useAnchoMinimo()
+  // Vista en el móvil: la mixta de siempre, el vídeo grande para marcar o solo las gráficas. En pantalla ancha no existe.
+  const [vista, setVista] = useState<'mixta' | 'video' | 'graficas'>('mixta')
+  const enVideo = !anchoLg && vista === 'video'
+  const enGraficas = !anchoLg && vista === 'graficas'
+  const ampliada = enVideo || enGraficas
+  // Con una vista ampliada, la página de debajo no se desplaza.
+  useEffect(() => {
+    if (!ampliada) return
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = antes
+    }
+  }, [ampliada])
 
-  return (
-    <div
-      className="flex flex-col gap-4 max-lg:pb-(--alto-barra) lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
-      style={{ '--alto-barra': `${altoBarra}px`, '--alto-fijo': `${altoFijo}px` } as React.CSSProperties}
-    >
-      {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
-          toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
-      <div className="contents lg:flex lg:flex-col lg:gap-3">
-        <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3">
-          {/* Móvil: el vídeo (con altura limitada) y la gráfica del ángulo quedan pegados arriba mientras
-              se desplazan las pestañas y los paneles. El elemento pegado tiene que colgar de la página
-              (por eso la columna de la izquierda es `contents`): un `sticky` solo dura lo que su padre. */}
-          <div
-            ref={fijoRef}
-            data-testid="visor-fijo"
-            className="flex flex-col gap-2 max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pb-2"
-          >
-          <div className="relative">
-            <LienzoVideo
-              ancho={info.ancho}
-              alto={info.alto}
-              lienzo={lienzo}
-              dibujar={dibujar}
-              interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
-              onToque={tocandoEscala ? tocarExtremo : colocar}
-              // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
-              previsualizar={!calibrando && seleccionado ? previsualizar : undefined}
-            />
-            {mostrado === null && !error && (
-              <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
-            )}
-            {tocandoEscala && !siguiendo && (
-              <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
-                Escala: {!borrador.a ? 'toca un extremo' : !borrador.b ? 'toca el otro extremo' : 'toca cerca de un extremo para moverlo'}
-              </p>
-            )}
-            {!calibrando && seleccionado && !siguiendo && (
-              <p className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-fondo/85 px-2 py-1 text-sm">
-                <span
-                  className="size-3 rounded-full"
-                  style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
-                />
-                Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
-              </p>
-            )}
-          </div>
-          {!anchoLg && (
-            <MiniGrafica tiempos={tabla.tiempos} indice={deseado < total ? deseado : null} onBuscar={buscarEnTiempo} crudo={crudoPorFrame} filtrado={filtradoPorFrame} />
-          )}
-          </div>
-
-          {errorToque && (
+  // Debajo del vídeo (en la vista de vídeo grande, dentro de ella: lo de fuera queda tapado).
+  const nodoError = errorToque && (
             // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
             // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
             // gomet) caía en el mensaje en vez de marcar.
@@ -907,9 +873,148 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 </p>
               )}
             </div>
-          )}
+            )
 
-          <div className="flex flex-col gap-1 max-lg:order-3 lg:order-1">
+  // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
+  const tiraMarcado = (
+    <div className="flex flex-col gap-2" data-testid="marcado-compacto">
+      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
+        {modelo.marcadores.map((mk, k) => {
+          const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
+          const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
+          const activo = seleccionado === mk.id
+          return (
+            <button
+              key={mk.id}
+              type="button"
+              role="radio"
+              aria-checked={activo}
+              disabled={siguiendo}
+              onClick={() => setSeleccionado(activo ? null : mk.id)}
+              title={mk.nombre}
+              className={`flex flex-col items-center rounded-md border px-1 py-1.5 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
+                {nombreCorto(mk.nombre)}
+              </span>
+              <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
+            </button>
+          )
+        })}
+      </div>
+      {siguiendo ? (
+        <div className="flex items-center gap-2">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-borde">
+            <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
+          </div>
+          <button
+            type="button"
+            onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
+            className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-2"
+          >
+            <StopIcon className="size-5" /> Parar
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={seguirDesdeAqui}
+          disabled={!listoParaSeguir}
+          className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-2.5 font-medium text-fondo disabled:opacity-40"
+        >
+          <PlayIcon className="size-5" /> Seguir desde aquí
+        </button>
+      )}
+      {aviso && <p className="line-clamp-2 text-xs text-texto-2">{aviso.texto}</p>}
+    </div>
+  )
+
+  return (
+    <div
+      className="flex flex-col gap-4 max-lg:pb-(--alto-barra) lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
+      style={{ '--alto-barra': `${altoBarra}px`, '--alto-fijo': `${altoFijo}px` } as React.CSSProperties}
+    >
+      {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
+          toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
+      <div className="contents lg:flex lg:flex-col lg:gap-3">
+        <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3">
+          {/* Móvil: el vídeo (con altura limitada) y la gráfica del ángulo quedan pegados arriba mientras
+              se desplazan las pestañas y los paneles. El elemento pegado tiene que colgar de la página
+              (por eso la columna de la izquierda es `contents`): un `sticky` solo dura lo que su padre. */}
+          <div
+            ref={fijoRef}
+            data-testid="visor-fijo"
+            className={`flex flex-col gap-2 max-lg:z-30 max-lg:bg-fondo ${
+              enVideo
+                ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
+                : 'max-lg:sticky max-lg:top-0 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:px-4 max-lg:pb-2'
+            } ${enGraficas ? 'max-lg:hidden' : ''}`}
+          >
+          <div className="relative">
+            <LienzoVideo
+              llenar={enVideo}
+              ancho={info.ancho}
+              alto={info.alto}
+              lienzo={lienzo}
+              dibujar={dibujar}
+              interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
+              onToque={tocandoEscala ? tocarExtremo : colocar}
+              // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
+              previsualizar={!calibrando && seleccionado ? previsualizar : undefined}
+            />
+            {mostrado === null && !error && (
+              <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
+            )}
+            {tocandoEscala && !siguiendo && (
+              <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
+                Escala: {!borrador.a ? 'toca un extremo' : !borrador.b ? 'toca el otro extremo' : 'toca cerca de un extremo para moverlo'}
+              </p>
+            )}
+            {!calibrando && seleccionado && !siguiendo && (
+              <p className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-fondo/85 px-2 py-1 text-sm">
+                <span
+                  className="size-3 rounded-full"
+                  style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
+                />
+                Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
+              </p>
+            )}
+            {!anchoLg && (
+              <button
+                type="button"
+                onClick={() => setVista(enVideo ? 'mixta' : 'video')}
+                aria-label={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
+                title={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
+                data-testid={enVideo ? 'reducir-video' : 'ampliar-video'}
+                className="absolute top-2 right-2 z-10 flex size-9 items-center justify-center rounded-md border border-borde bg-fondo/85 text-texto"
+              >
+                {enVideo ? <ArrowsPointingInIcon className="size-5" /> : <ArrowsPointingOutIcon className="size-5" />}
+              </button>
+            )}
+          </div>
+          {!anchoLg && vista === 'mixta' && (
+            <MiniGrafica
+              tiempos={tabla.tiempos}
+              indice={deseado < total ? deseado : null}
+              onBuscar={buscarEnTiempo}
+              crudo={crudoPorFrame}
+              filtrado={filtradoPorFrame}
+              velocidad={filtrado.derivadas.velocidad}
+              onAmpliar={() => setVista('graficas')}
+            />
+          )}
+          {enVideo && (
+            <>
+              {nodoError}
+              {tiraMarcado}
+            </>
+          )}
+          </div>
+
+          {!enVideo && nodoError}
+
+          <div className={`flex flex-col gap-1 max-lg:order-3 lg:order-1 ${ampliada ? 'max-lg:hidden' : ''}`}>
             <input
               type="range"
               min={0}
@@ -992,14 +1097,35 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </div>
           </div>
 
-          <div className="max-lg:order-4 lg:order-3">
+          <div className={`max-lg:order-4 lg:order-3 ${ampliada ? 'max-lg:hidden' : ''}`}>
             <TextoGuardado g={guardado} />
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 max-lg:order-6">
+        <div
+          data-testid="vista-graficas"
+          className={`flex flex-col gap-3 max-lg:order-6 ${
+            enGraficas ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
+          } ${enVideo ? 'max-lg:hidden' : ''}`}
+        >
+          {enGraficas && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-xs tracking-wider text-texto-2 uppercase">Solo gráficas</span>
+              <button
+                type="button"
+                onClick={() => setVista('mixta')}
+                aria-label="Volver a la vista con vídeo"
+                title="Volver a la vista con vídeo"
+                data-testid="reducir-graficas"
+                className="flex size-9 items-center justify-center rounded-md border border-borde text-texto"
+              >
+                <ArrowsPointingInIcon className="size-5" />
+              </button>
+            </div>
+          )}
 
           <PanelGrafica
+            ampliada={enGraficas}
             tiempos={tabla.tiempos}
             indice={deseado < total ? deseado : null}
             onBuscar={buscarEnTiempo}
@@ -1037,7 +1163,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
       {/* Columna de herramientas. En pantalla ancha va fija (sticky) con su propio scroll, para que
           el vídeo y la gráfica no se muevan al recorrer los paneles. */}
-      <div className="flex flex-col gap-3 max-lg:order-5 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto" data-testid="columna-herramientas">
+      <div className={`flex flex-col gap-3 max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''} lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto`} data-testid="columna-herramientas">
         <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} />
 
         <PanelPestana id="marcar" activa={pestana === 'marcar'}>

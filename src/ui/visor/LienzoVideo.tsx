@@ -24,6 +24,8 @@ interface Props {
   onToque: (x: number, y: number, radio: number) => void
   /** Mientras se arrastra: dónde caería el marcador, para dibujarlo en la lupa. */
   previsualizar?: (x: number, y: number, radio: number) => Previsualizacion
+  /** Vista de vídeo grande: todo el alto libre (sin la barra de abajo ni los controles de marcado), en vez de un tope de un tercio. */
+  llenar?: boolean
 }
 
 /**
@@ -36,7 +38,7 @@ interface Props {
 const variableColor = (nombre: string, defecto: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(nombre).trim() || defecto
 
-export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo, onToque, previsualizar }: Props) {
+export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo, onToque, previsualizar, llenar }: Props) {
   const capa = useRef<HTMLCanvasElement>(null)
   const lupa = useRef<HTMLCanvasElement>(null)
   // `campo`: lo que abarca la lupa, en px del vídeo, con el tamaño del vídeo en pantalla al tocar.
@@ -132,7 +134,7 @@ export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo,
           data-testid="lienzo"
           width={ancho}
           height={alto}
-          className="block max-h-[34dvh] max-w-full lg:max-h-[60dvh]"
+          className={`block max-w-full ${llenar ? 'max-h-[calc(100dvh-var(--alto-barra)-13rem)]' : 'max-h-[34dvh] lg:max-h-[60dvh]'}`}
           style={{ aspectRatio: `${ancho} / ${alto}` }}
         />
         <canvas

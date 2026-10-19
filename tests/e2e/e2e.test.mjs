@@ -1447,6 +1447,20 @@ describe('pestañas de herramientas', () => {
     }
   })
 
+  it('la tira de pestañas pegada tiene un fondo opaco de lado a lado: no se ven las tarjetas por detrás', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
+    try {
+      await p.evaluate(() => window.scrollTo(0, 300))
+      const contenedor = p.getByRole('tablist').locator('..')
+      const caja = await contenedor.boundingBox()
+      assert.ok(caja.x <= 0.5 && Math.abs(caja.width - 390) <= 1, `el fondo va de ${caja.x} a ${caja.x + caja.width}`)
+      const fondo = await contenedor.evaluate((el) => getComputedStyle(el).backgroundColor)
+      assert.doesNotMatch(fondo, /rgba\(.*, 0\)|transparent/, `fondo ${fondo}`)
+    } finally {
+      await p.close()
+    }
+  })
+
   it('un punto en el nombre de una pestaña oculta avisa de huecos y de un cero que no parece quieto', async () => {
     const { p } = await seguirVideo(videos.oculto, { ancho: 1280 })
     try {
@@ -1573,6 +1587,135 @@ describe('exportación CSV', () => {
       const intl = leerCsv((await descargar()).texto, ',')
       assert.equal(intl.filas.length, verdad.length)
       assert.match(intl.filas[29][intl.columnas.indexOf(`${tobillo}_filtrado_x_m`)], /^-?\d+\.\d{6}$/)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('gráfica pequeña del móvil: ángulo, velocidad o las dos normalizadas', () => {
+  it('alterna entre ángulo, velocidad y ambas; el punto del cursor cae donde está el valor', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
+    try {
+      const posicionRelativa = async () => {
+        const area = await p.getByTestId('minigrafica-area').boundingBox()
+        const punto = await p.getByTestId('minigrafica-punto').boundingBox()
+        return (punto.y + punto.height / 2 - area.y) / area.height
+      }
+      const modo = (id) => p.getByTestId(`minigrafica-modo-${id}`)
+      assert.equal(await modo('angulo').getAttribute('aria-pressed'), 'true')
+
+      // Velocidad: máxima hacia arriba en t = 1 s (frame ≈ 31) y mínima en t = 3 s (frame ≈ 91).
+      await modo('velocidad').click()
+      assert.equal(await modo('velocidad').getAttribute('aria-pressed'), 'true')
+      assert.equal(await modo('angulo').getAttribute('aria-pressed'), 'false')
+      const tiempos = videos.verde.verdad.map((f) => f.t)
+      const i1 = frameMasCercano(tiempos, 1)
+      const i3 = frameMasCercano(tiempos, 3)
+      await irAFrame(p, i1)
+      const arriba = await posicionRelativa()
+      await irAFrame(p, i3)
+      const abajo = await posicionRelativa()
+      assert.ok(arriba < 0.3, `velocidad máxima: el punto está a ${arriba} de la altura`)
+      assert.ok(abajo > 0.7, `velocidad mínima: el punto está a ${abajo} de la altura`)
+
+      // Ambas, normalizadas: el ángulo (el punto va sobre su curva) llega a su máximo en t = 2 s, arriba del todo.
+      await modo('ambas').click()
+      await p.getByText(/Normalizadas/).waitFor()
+      await irAFrame(p, frameMasCercano(tiempos, 2))
+      const cima = await posicionRelativa()
+      assert.ok(cima < 0.3, `ángulo máximo normalizado: el punto está a ${cima} de la altura`)
+      // Y al volver al ángulo desaparece la nota.
+      await modo('angulo').click()
+      assert.equal(await p.getByText(/Normalizadas/).count(), 0)
+
+      // Tocar la gráfica sigue saltando de frame en cualquier modo.
+      await modo('velocidad').click()
+      const caja = await cajaElemento(p, 'minigrafica-area')
+      await p.mouse.click(caja.x + caja.width * 0.5, caja.y + caja.height / 2)
+      await esperarQuieto(p)
+      const esperado = frameMasCercano(tiempos, tiempos[0] + 0.5 * (tiempos.at(-1) - tiempos[0])) + 1
+      assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('vistas ampliadas del móvil', () => {
+  it('vídeo grande: se marca y se sigue sin salir de ella, y el ángulo medido es el real', async () => {
+    const video = videos.verde
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await cargarVideo(p, video.ruta)
+      await p.getByTestId('ampliar-video').click()
+      // Cubre la pantalla hasta la barra; lo demás no se ve.
+      const alto = p.viewportSize().height
+      const fijo = await p.getByTestId('visor-fijo').boundingBox()
+      const barra = await p.getByTestId('barra-fija').boundingBox()
+      assert.ok(fijo.y <= 0.5 && Math.abs(fijo.y + fijo.height - barra.y) <= 1, `el vídeo grande ocupa de ${fijo.y} a ${fijo.y + fijo.height}; la barra empieza en ${barra.y}`)
+      assert.equal(await p.getByTestId('columna-herramientas').isVisible(), false)
+      assert.equal(await p.getByTestId('minigrafica').count(), 0)
+      assert.equal(await p.getByRole('slider', { name: 'Posición en el vídeo' }).isVisible(), false)
+      assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
+      assert.equal(await p.evaluate(() => getComputedStyle(document.body).overflow), 'hidden', 'la página de debajo se puede desplazar')
+      // Lo necesario para marcar está dentro, y la barra de avance sigue.
+      assert.equal(await p.getByRole('radio').count(), 3)
+      assert.ok(await p.getByRole('button', { name: 'Frame siguiente' }).isVisible())
+      assert.ok((await (await p.getByTestId('capa').boundingBox()).y) >= 0 && (await p.getByTestId('capa').boundingBox()).y < alto)
+
+      await marcarTres(p, video.verdad[0].ps)
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      await p.getByTestId('marcado-compacto').getByText(/Seguimiento completado/).waitFor({ timeout: 90000 })
+
+      // Al volver, todo lo hecho está en su sitio y el ángulo coincide con el real.
+      await p.getByTestId('reducir-video').click()
+      assert.ok(await p.getByTestId('columna-herramientas').isVisible())
+      assert.ok(await p.getByTestId('minigrafica').isVisible())
+      assert.equal(await p.evaluate(() => getComputedStyle(document.body).overflow), 'visible')
+      await compararAngulos(p, video.verdad)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('solo gráficas: la completa ocupa el espacio, tocarla salta de frame y la barra sigue', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
+    try {
+      const tiempos = videos.verde.verdad.map((f) => f.t)
+      await p.getByTestId('ampliar-graficas').click()
+      const vista = p.getByTestId('vista-graficas')
+      const caja = await vista.boundingBox()
+      const barra = await p.getByTestId('barra-fija').boundingBox()
+      assert.ok(caja.y <= 0.5 && Math.abs(caja.y + caja.height - barra.y) <= 1, `las gráficas van de ${caja.y} a ${caja.y + caja.height}; la barra empieza en ${barra.y}`)
+      assert.equal(await p.getByTestId('capa').isVisible(), false)
+      assert.equal(await p.getByTestId('columna-herramientas').isVisible(), false)
+      // Más altas que en la vista mixta (190 px de gráfica → unos 160 de zona táctil).
+      assert.ok((await p.getByTestId('grafica-angulo-area').boundingBox()).height > 200)
+      // Tocarla salta de frame; el cursor y los botones de avance siguen.
+      const area = await cajaElemento(p, 'grafica-angulo-area')
+      await p.mouse.click(area.x + area.width * 0.4, area.y + area.height / 2)
+      await esperarQuieto(p)
+      const esperado = frameMasCercano(tiempos, tiempos[0] + 0.4 * (tiempos.at(-1) - tiempos[0])) + 1
+      assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
+      await p.getByRole('button', { name: 'Frame siguiente' }).click()
+      await esperarQuieto(p)
+      assert.ok((await leerPosicion(p)).frame >= esperado)
+      // Volver.
+      await p.getByTestId('reducir-graficas').click()
+      assert.ok(await p.getByTestId('capa').isVisible())
+      assert.ok(await p.getByTestId('minigrafica').isVisible())
+      assert.equal(await p.getByTestId('grafica-angulo-area').boundingBox().then((b) => b.height > 200), false)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('en pantalla ancha no hay botones de ampliar', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
+    try {
+      assert.equal(await p.getByTestId('ampliar-video').count(), 0)
+      assert.equal(await p.getByTestId('ampliar-graficas').count(), 0)
     } finally {
       await p.close()
     }
