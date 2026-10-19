@@ -12,8 +12,8 @@ const COLOR: Record<EstadoFrame, string> = {
 // Si varios frames caen en el mismo píxel, se pinta el estado más importante.
 const PRIORIDAD: Record<EstadoFrame, number> = { vacio: 0, seguido: 1, manual: 2, interpolado: 3, perdido: 4 }
 
-/** Franja bajo el deslizador con el estado de cada frame: seguido, perdido, marcado a mano, interpolado. */
-export default function BandaFrames({ estados }: { estados: readonly EstadoFrame[] }) {
+/** Franja con el estado de cada frame (seguido, perdido, marcado a mano, interpolado): la pista del deslizador de frames. */
+export default function BandaFrames({ estados, className = 'h-2' }: { estados: readonly EstadoFrame[]; className?: string }) {
   const lienzo = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -38,5 +38,5 @@ export default function BandaFrames({ estados }: { estados: readonly EstadoFrame
     }
   }, [estados])
 
-  return <canvas ref={lienzo} aria-hidden="true" className="h-2 w-full rounded-full bg-borde/60" />
+  return <canvas ref={lienzo} aria-hidden="true" className={`w-full rounded-full bg-borde/60 ${className}`} />
 }

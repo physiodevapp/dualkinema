@@ -1015,17 +1015,23 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           {!enVideo && nodoError}
 
           <div className={`flex flex-col gap-1 max-lg:order-3 lg:order-1 ${ampliada ? 'max-lg:hidden' : ''}`}>
-            <input
-              type="range"
-              min={0}
-              max={total - 1}
-              step={1}
-              value={deseado}
-              onChange={(e) => ir(Number(e.target.value))}
-              aria-label="Posición en el vídeo"
-              className="w-full accent-acento"
-            />
-            <BandaFrames estados={estadosFrames} />
+            {/* Una sola barra: la franja de estado de cada frame es la pista del deslizador y el tirador va encima.
+                La franja se mete la mitad del tirador por cada lado, para que su centro coincida con el frame. */}
+            <div className="relative h-7">
+              <div className="pointer-events-none absolute inset-x-[7px] top-1/2 -translate-y-1/2">
+                <BandaFrames estados={estadosFrames} className="h-2.5" />
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={total - 1}
+                step={1}
+                value={deseado}
+                onChange={(e) => ir(Number(e.target.value))}
+                aria-label="Posición en el vídeo"
+                className="deslizador-frames relative"
+              />
+            </div>
           </div>
 
           {/* Móvil: barra fija abajo con los botones, la línea de posición y los valores del frame, para

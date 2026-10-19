@@ -1754,6 +1754,35 @@ describe('vistas ampliadas del móvil', () => {
   })
 })
 
+describe('deslizador de frames y franja de estado: una sola barra', () => {
+  it('la franja de estado es la pista del deslizador (una barra baja) y tocarlo salta de frame', async () => {
+    for (const ancho of [390, 1280]) {
+      const { p } = await seguirVideo(videos.verde, { ancho })
+      try {
+        const deslizador = p.getByRole('slider', { name: 'Posición en el vídeo' })
+        const contenedor = deslizador.locator('..')
+        await contenedor.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+        const caja = await contenedor.boundingBox()
+        assert.ok(caja.height <= 30, `${ancho} px: la barra mide ${caja.height} px`)
+        // La franja (canvas) va dentro de la misma caja, centrada: no es una fila aparte.
+        const franja = await contenedor.locator('canvas').boundingBox()
+        assert.ok(franja.y >= caja.y && franja.y + franja.height <= caja.y + caja.height + 0.5, `${ancho} px: la franja se sale de la barra`)
+        assert.ok(Math.abs(franja.y + franja.height / 2 - (caja.y + caja.height / 2)) <= 1)
+        // Tocar la barra salta de frame: al 50 % del recorrido, el frame central (±2 por el tirador).
+        const total = videos.verde.verdad.length
+        await p.mouse.click(caja.x + caja.width * 0.5, caja.y + caja.height / 2)
+        await esperarQuieto(p)
+        const { frame } = await leerPosicion(p)
+        assert.ok(Math.abs(frame - (total / 2 + 0.5)) <= 3, `${ancho} px: tocar la mitad lleva al frame ${frame} de ${total}`)
+        // El deslizador sigue siendo accesible y con el valor del frame actual.
+        assert.equal(Number(await deslizador.inputValue()), frame - 1)
+      } finally {
+        await p.close()
+      }
+    }
+  })
+})
+
 describe('escritorio', () => {
   it('a 1280 px la gráfica y los controles caben sin desbordar la página', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
