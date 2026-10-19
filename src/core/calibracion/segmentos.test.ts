@@ -26,6 +26,12 @@ describe('constancia de la longitud de un segmento', () => {
     expect(c.umbral).toBe(UMBRAL_CONSTANCIA)
     // rms = √((4·0,1² + 0,15²) / 40)
     expect(c.rms).toBeCloseTo(Math.sqrt((4 * 0.01 + 0.0225) / 40), 12)
+    // Por frame: 0 fuera del giro, −10 % en él y −15 % en el 32.
+    expect(c.relativa).toHaveLength(40)
+    expect(c.relativa[29]).toBe(0)
+    expect(c.relativa[30]).toBeCloseTo(-0.1, 12)
+    expect(c.relativa[32]).toBeCloseTo(-0.15, 12)
+    expect(c.relativa[35]).toBe(0)
   })
 
   it('sin un extremo, ese frame no cuenta; sin ninguno, null', () => {
@@ -34,6 +40,14 @@ describe('constancia de la longitud de un segmento', () => {
     const c = constanciaSegmento(a, b)!
     expect(c.muestras).toBe(2)
     expect(c.referenciaPx).toBe(101) // mediana de 100 y 102
+    // Sin valor (NaN, nunca 0) donde falta un extremo.
+    expect([...c.relativa].map((r) => (Number.isNaN(r) ? null : Math.round(r * 1e4) / 1e4))).toEqual([-0.0099, null, null, 0.0099])
     expect(constanciaSegmento([undefined], [{ x: 0, y: 0 }])).toBeNull()
+  })
+
+  it('marca los frames con algún extremo interpolado', () => {
+    const a = [{ x: 0, y: 0 }, { x: 0, y: 0, interpolado: true }, { x: 0, y: 0 }]
+    const b = [{ x: 0, y: 10 }, { x: 0, y: 10 }, { x: 0, y: 10, interpolado: false }]
+    expect([...constanciaSegmento(a, b)!.interpolado]).toEqual([0, 1, 0])
   })
 })

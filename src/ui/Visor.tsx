@@ -26,6 +26,8 @@ import { huecosInterpolables, HUECO_MAX_S, interpolarHueco } from '../core/segui
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import { resumirSerie } from '../core/graficas/rango'
+import { seriePorFrame } from '../core/graficas/series'
+import { polilineasTrayectoria } from '../core/graficas/trayectoria'
 import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
 import type { AlWorker, DelWorker, Hueco } from '../workers/protocolo'
@@ -33,7 +35,8 @@ import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { huellaDe } from './sesion'
 import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
-import GraficaAngulo from './visor/GraficaAngulo'
+import ControlTrayectoria from './visor/ControlTrayectoria'
+import PanelGrafica from './visor/PanelGrafica'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
 import PanelCinematica from './visor/PanelCinematica'
 import PanelExportar from './visor/PanelExportar'
@@ -539,85 +542,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     setVersion((v) => v + 1)
   }
 
-  // ---- Capa de dibujo ----
-  const dibujar = useCallback(
-    (ctx: CanvasRenderingContext2D, escala: number) => {
-      void version
-      if (mostrado === null) return
-      const base = 2 * escala // 2 px de pantalla
-      // Segmentos de la articulación.
-      const p = (id: IdMarcador) => muestra(id, mostrado)
-      ctx.lineCap = 'round'
-      for (const s of [articulacion.proximal, articulacion.distal]) {
-        const a = p(s.desde)
-        const b = p(s.hasta)
-        if (!valida(a) || !valida(b)) continue
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)'
-        ctx.lineWidth = base
-        ctx.beginPath()
-        ctx.moveTo(a.x, a.y)
-        ctx.lineTo(b.x, b.y)
-        ctx.stroke()
-      }
-      ids.forEach((id, k) => {
-        const color = COLORES_MARCADOR[k % COLORES_MARCADOR.length]!
-        // Estela de los últimos frames recorridos.
-        ctx.strokeStyle = color
-        ctx.lineWidth = base * 0.6
-        ctx.globalAlpha = 0.6
-        ctx.beginPath()
-        let empezado = false
-        const desde = sentido > 0 ? Math.max(0, mostrado - ESTELA) : mostrado
-        const hasta = sentido > 0 ? mostrado : Math.min(total - 1, mostrado + ESTELA)
-        for (let i = desde; i <= hasta; i++) {
-          const m = muestra(id, i)
-          if (!valida(m)) {
-            empezado = false
-            continue
-          }
-          if (empezado) ctx.lineTo(m.x, m.y)
-          else ctx.moveTo(m.x, m.y)
-          empezado = true
-        }
-        ctx.stroke()
-        ctx.globalAlpha = 1
-        const m = muestra(id, mostrado)
-        if (!valida(m)) return
-        ctx.lineWidth = base
-        ctx.strokeStyle = '#000'
-        ctx.beginPath()
-        ctx.arc(m.x, m.y, base * 4, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.strokeStyle = color
-        ctx.lineWidth = base * 0.7
-        // Interpolado: círculo a trazos (no es una detección).
-        if (m.interpolado) ctx.setLineDash([base * 1.5, base * 1.5])
-        ctx.beginPath()
-        ctx.arc(m.x, m.y, base * 4, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.setLineDash([])
-        if (m.editadoManual) {
-          ctx.fillStyle = color
-          ctx.beginPath()
-          ctx.arc(m.x, m.y, base * 1.2, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      })
-      // Escala: mientras se calibra, y la guardada en el frame en que se marcó.
-      const segmento = borrador
-        ? borrador.objeto === 'marcadores'
-          ? medicion?.ok
-            ? medicion
-            : null
-          : borrador
-        : calibracion && mostrado === frameCalibracion
-          ? calibracion
-          : null
-      if (segmento) dibujarSegmentoEscala(ctx, base, segmento.a, segmento.b)
-    },
-    [version, mostrado, sentido, total, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion],
-  )
-
   // ---- Estado por frame para la franja y ángulo actual ----
   const estadosFrames = useMemo<EstadoFrame[]>(() => {
     void version
@@ -677,6 +601,124 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     metrosPorPx: calibracion ? metrosPorPx(calibracion) : null,
     congelado: seguimiento.estado === 'siguiendo',
   })
+
+  // Trayectoria completa de cada marcador, con lo filtrado: se prepara aquí al
+  // encenderla y cuando cambian las trayectorias o el corte; en cada frame solo se pinta.
+  const [trayectoriaCompleta, setTrayectoriaCompleta] = useState(false)
+  const [conTrayectoria, setConTrayectoria] = useState<ReadonlySet<IdMarcador>>(() => new Set(ids))
+  const caminos = useMemo(() => {
+    const r = new Map<IdMarcador, { continuo: Path2D; trazos: Path2D }>()
+    if (!trayectoriaCompleta) return r
+    for (const [id, f] of filtrado.porMarcador) {
+      const c = { continuo: new Path2D(), trazos: new Path2D() }
+      for (const l of polilineasTrayectoria(f.posiciones)) {
+        const camino = l.interpolado ? c.trazos : c.continuo
+        const [p0, ...resto] = l.puntos
+        camino.moveTo(p0!.x, p0!.y)
+        // Un punto suelto se ve como un punto (extremo redondeado).
+        if (resto.length === 0) camino.lineTo(p0!.x, p0!.y)
+        for (const q of resto) camino.lineTo(q.x, q.y)
+      }
+      r.set(id, c)
+    }
+    return r
+  }, [filtrado.porMarcador, trayectoriaCompleta])
+
+  // ---- Capa de dibujo ----
+  const dibujar = useCallback(
+    (ctx: CanvasRenderingContext2D, escala: number) => {
+      void version
+      if (mostrado === null) return
+      const base = 2 * escala // 2 px de pantalla
+      // Segmentos de la articulación.
+      const p = (id: IdMarcador) => muestra(id, mostrado)
+      ctx.lineCap = 'round'
+      for (const s of [articulacion.proximal, articulacion.distal]) {
+        const a = p(s.desde)
+        const b = p(s.hasta)
+        if (!valida(a) || !valida(b)) continue
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+        ctx.lineWidth = base
+        ctx.beginPath()
+        ctx.moveTo(a.x, a.y)
+        ctx.lineTo(b.x, b.y)
+        ctx.stroke()
+      }
+      ids.forEach((id, k) => {
+        const color = COLORES_MARCADOR[k % COLORES_MARCADOR.length]!
+        // Trayectoria completa (con lo filtrado), ya preparada: aquí solo se pinta.
+        const camino = trayectoriaCompleta && conTrayectoria.has(id) ? caminos.get(id) : undefined
+        if (camino) {
+          ctx.save()
+          ctx.strokeStyle = color
+          ctx.lineWidth = base * 0.75
+          ctx.lineJoin = 'round'
+          ctx.globalAlpha = 0.9
+          ctx.stroke(camino.continuo)
+          ctx.setLineDash([base * 2, base * 1.5])
+          ctx.stroke(camino.trazos)
+          ctx.restore()
+        }
+        // Estela de los últimos frames recorridos.
+        ctx.strokeStyle = color
+        ctx.lineWidth = base * 0.6
+        ctx.globalAlpha = 0.6
+        ctx.beginPath()
+        let empezado = false
+        const desde = sentido > 0 ? Math.max(0, mostrado - ESTELA) : mostrado
+        const hasta = sentido > 0 ? mostrado : Math.min(total - 1, mostrado + ESTELA)
+        for (let i = desde; i <= hasta; i++) {
+          const m = muestra(id, i)
+          if (!valida(m)) {
+            empezado = false
+            continue
+          }
+          if (empezado) ctx.lineTo(m.x, m.y)
+          else ctx.moveTo(m.x, m.y)
+          empezado = true
+        }
+        ctx.stroke()
+        ctx.globalAlpha = 1
+        const m = muestra(id, mostrado)
+        if (!valida(m)) return
+        ctx.lineWidth = base
+        ctx.strokeStyle = '#000'
+        ctx.beginPath()
+        ctx.arc(m.x, m.y, base * 4, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.strokeStyle = color
+        ctx.lineWidth = base * 0.7
+        // Interpolado: círculo a trazos (no es una detección).
+        if (m.interpolado) ctx.setLineDash([base * 1.5, base * 1.5])
+        ctx.beginPath()
+        ctx.arc(m.x, m.y, base * 4, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.setLineDash([])
+        if (m.editadoManual) {
+          ctx.fillStyle = color
+          ctx.beginPath()
+          ctx.arc(m.x, m.y, base * 1.2, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      })
+      // Escala: mientras se calibra, y la guardada en el frame en que se marcó.
+      const segmento = borrador
+        ? borrador.objeto === 'marcadores'
+          ? medicion?.ok
+            ? medicion
+            : null
+          : borrador
+        : calibracion && mostrado === frameCalibracion
+          ? calibracion
+          : null
+      if (segmento) dibujarSegmentoEscala(ctx, base, segmento.a, segmento.b)
+    },
+    [version, mostrado, sentido, total, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion, trayectoriaCompleta, conTrayectoria, caminos],
+  )
+
+  // Las series de la gráfica, un valor por frame.
+  const crudoPorFrame = useMemo(() => seriePorFrame(serie, tabla.tiempos), [serie, tabla])
+  const filtradoPorFrame = useMemo(() => seriePorFrame(filtrado.serie, tabla.tiempos), [filtrado.serie, tabla])
   const anguloFiltrado = mostrado === null ? NaN : filtrado.anguloEn(mostrado)
   const tramoEstatico = ceros[articulacion.id] ?? null
   const cero = useMemo(() => (tramoEstatico ? ceroDeReferencia(filtrado.serie, tramoEstatico) : null), [tramoEstatico, filtrado.serie])
@@ -688,6 +730,16 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         c: constanciaSegmento(filtrado.porMarcador.get(s.desde)?.posiciones ?? [], filtrado.porMarcador.get(s.hasta)?.posiciones ?? []),
       })),
     [segmentos, filtrado.porMarcador],
+  )
+  const seriesSegmentos = useMemo(
+    () =>
+      constancia.map(({ segmento: s, c }) => ({
+        id: `${s.desde}-${s.hasta}`,
+        nombre: s.nombre,
+        relativa: c?.relativa ?? [],
+        interpolado: c?.interpolado ?? [],
+      })),
+    [constancia],
   )
   const est = useMemo(() => estadisticas(tabla), [tabla])
   const generarCsv = useCallback(
@@ -895,41 +947,37 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
         <TextoGuardado g={guardado} />
 
-        <section className="rounded-2xl border border-borde bg-panel p-3">
-          <div className="mb-1 flex items-baseline justify-between gap-2 px-1">
-            <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">{articulacion.nombre.replace(/\s*\(.*\)$/, '')}</h2>
-            <span className="font-mono text-xs text-texto-2">{articulacion.positivo} +</span>
-          </div>
-          <GraficaAngulo
-            serie={serie}
-            filtrada={filtrado.serie}
-            desde={tabla.tiempos[0]!}
-            hasta={tabla.tiempos[total - 1]!}
-            tActual={deseado < total ? tabla.tiempos[deseado]! : null}
-            onBuscar={buscarEnTiempo}
-          />
-          <p className="mt-1 px-1 font-mono text-xs text-texto-2" data-testid="resumen-grafica">
-            {resumen.max && resumen.min ? (
-              <>
-                <span className="whitespace-nowrap">
-                  máx. {grados(resumen.max.valor)}° (t = {fmt(resumen.max.t, 2)} s)
-                </span>{' '}
-                ·{' '}
-                <span className="whitespace-nowrap">
-                  mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
-                </span>
-                {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
-                {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
-              </>
-            ) : (
-              'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
-            )}
-          </p>
-          <p className="mt-1 px-1 text-xs text-texto-2">
-            <span className="text-acento">Ámbar</span>: medido · <span className="text-texto">línea clara</span>: filtrado a{' '}
-            {fmt(filtrado.corte, 1)} Hz. Toca o arrastra la gráfica para ir a ese instante.
-          </p>
-        </section>
+        <PanelGrafica
+          tiempos={tabla.tiempos}
+          indice={deseado < total ? deseado : null}
+          onBuscar={buscarEnTiempo}
+          titulo={articulacion.nombre.replace(/\s*\(.*\)$/, '')}
+          positivo={articulacion.positivo}
+          crudo={crudoPorFrame}
+          filtrado={filtradoPorFrame}
+          velocidad={filtrado.derivadas.velocidad}
+          corte={filtrado.corte}
+          segmentos={seriesSegmentos}
+          resumen={
+            <p className="font-mono text-xs text-texto-2" data-testid="resumen-grafica">
+              {resumen.max && resumen.min ? (
+                <>
+                  <span className="whitespace-nowrap">
+                    máx. {grados(resumen.max.valor)}° (t = {fmt(resumen.max.t, 2)} s)
+                  </span>{' '}
+                  ·{' '}
+                  <span className="whitespace-nowrap">
+                    mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
+                  </span>
+                  {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
+                  {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
+                </>
+              ) : (
+                'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
+              )}
+            </p>
+          }
+        />
 
         {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
       </div>
@@ -1058,6 +1106,20 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               )}
             </div>
           )}
+
+          <ControlTrayectoria
+            activa={trayectoriaCompleta}
+            onActiva={setTrayectoriaCompleta}
+            marcadores={modelo.marcadores.map((mk, k) => ({ id: mk.id, nombre: nombreCorto(mk.nombre), color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]! }))}
+            elegidos={conTrayectoria}
+            onElegir={(id) =>
+              setConTrayectoria((c) => {
+                const n = new Set(c)
+                if (!n.delete(id)) n.add(id)
+                return n
+              })
+            }
+          />
 
           <div className="flex items-baseline justify-between border-t border-borde pt-3">
             <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>

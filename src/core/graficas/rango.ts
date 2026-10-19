@@ -2,12 +2,12 @@
 export const RANGO_Y_VACIO: readonly [number, number] = [-10, 100]
 
 /**
- * Rango del eje Y de una gráfica de ángulos: abarca los datos y el 0 (la
- * posición de referencia siempre se ve), con un 10 % de margen y un mínimo de
- * 20° de alto para que un movimiento pequeño no se vea como una recta
- * ampliada. Ignora valores no finitos (huecos).
+ * Rango del eje Y de una gráfica: abarca los datos y el 0 (la posición de
+ * referencia, o velocidad nula, siempre se ve), con un 10 % de margen y un
+ * mínimo de alto (20° por defecto) para que un movimiento pequeño no se vea
+ * como una recta ampliada. Ignora valores no finitos (huecos).
  */
-export function rangoY(valores: Iterable<number | null | undefined>): [number, number] {
+export function rangoY(valores: Iterable<number | null | undefined>, altoMinimo = 20): [number, number] {
   let min = Infinity
   let max = -Infinity
   for (const v of valores) {
@@ -15,10 +15,10 @@ export function rangoY(valores: Iterable<number | null | undefined>): [number, n
     if (v < min) min = v
     if (v > max) max = v
   }
-  if (min === Infinity) return [RANGO_Y_VACIO[0], RANGO_Y_VACIO[1]]
+  if (min === Infinity) return altoMinimo === 20 ? [RANGO_Y_VACIO[0], RANGO_Y_VACIO[1]] : [-altoMinimo / 2, altoMinimo / 2]
   const lo = Math.min(min, 0)
   const hi = Math.max(max, 0)
-  const alto = Math.max(hi - lo, 20)
+  const alto = Math.max(hi - lo, altoMinimo)
   const centro = (hi + lo) / 2
   const margen = alto * 0.1
   return [centro - alto / 2 - margen, centro + alto / 2 + margen]

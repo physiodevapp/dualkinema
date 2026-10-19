@@ -49,3 +49,15 @@ describe('resumirSerie', () => {
     expect(resumirSerie([{ t: 0, valor: NaN }])).toEqual({ min: null, max: null, validas: 0, huecos: 1 })
   })
 })
+
+describe('rangoY con otro alto mínimo', () => {
+  it('una velocidad casi nula se ve centrada en 0 con el alto mínimo pedido', () => {
+    const [lo, hi] = rangoY([-1, 1], 40)
+    expect(hi - lo).toBeCloseTo(48)
+    expect(lo + hi).toBeCloseTo(0)
+  })
+
+  it('sin datos, simétrico con ese alto', () => {
+    expect(rangoY([], 6)).toEqual([-3, 3])
+  })
+})

@@ -36,6 +36,9 @@ const TOLERANCIA_GRADOS = 0.5
 /** Frames donde se compara el ángulo medido con el real: incluye los que siguen a los huecos de fps. */
 const FRAMES_A_COMPARAR = [1, 20, 40, 41, 60, 80, 81, 100, 119]
 
+// Flexión real de los vídeos de rodilla: 45·(1 − cos(πt/2)); velocidad 45·(π/2)·sin(πt/2) °/s (pico 70,7 a t = 1 s).
+const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+
 let videos
 let navegador
 let pararServidor
@@ -238,7 +241,7 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('tocar la gráfica salta al frame más cercano a ese instante (±1 frame)', async () => {
     const tiempos = videos.verde.verdad.map((f) => f.t)
-    const caja = await p.locator('.u-over').boundingBox()
+    const caja = await p.getByTestId('grafica-angulo-area').boundingBox()
     for (const f of [0.25, 0.5, 0.75, 0.999]) {
       await p.mouse.click(caja.x + caja.width * f, caja.y + caja.height / 2)
       await esperarQuieto(p)
@@ -251,13 +254,112 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('arrastrar sobre la gráfica mueve el vídeo con el dedo', async () => {
     const tiempos = videos.verde.verdad.map((f) => f.t)
-    const caja = await p.locator('.u-over').boundingBox()
+    const caja = await p.getByTestId('grafica-angulo-area').boundingBox()
     await p.mouse.move(caja.x + caja.width * 0.1, caja.y + caja.height / 2)
     await p.mouse.down()
     await p.mouse.move(caja.x + caja.width * 0.4, caja.y + caja.height / 2, { steps: 8 })
     await p.mouse.up()
     await esperarQuieto(p)
     const esperado = frameMasCercano(tiempos, tiempos[0] + 0.4 * (tiempos.at(-1) - tiempos[0])) + 1
+    assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
+  })
+
+  it('las series de la gráfica dan en cada frame el ángulo real (crudo y filtrado) y la velocidad real', async () => {
+    const verdad = videos.verde.verdad
+    for (const i of [10, 30, 41, 60, 81, 100, 110]) {
+      await irAFrame(p, i)
+      const crudo = await leerNumero(p, 'valor-serie-crudo')
+      const filtrado = await leerNumero(p, 'valor-serie-filtrado')
+      const v = await leerNumero(p, 'valor-serie-velocidad')
+      assert.ok(Math.abs(crudo - verdad[i].flexion) < TOLERANCIA_GRADOS, `frame ${i + 1}: crudo ${crudo}°, real ${verdad[i].flexion.toFixed(2)}°`)
+      assert.ok(Math.abs(filtrado - verdad[i].flexion) < TOLERANCIA_GRADOS, `frame ${i + 1}: filtrado ${filtrado}°`)
+      assert.ok(Math.abs(v - velReal(verdad[i].t)) < 3, `frame ${i + 1}: ${v} °/s, real ${velReal(verdad[i].t).toFixed(1)} °/s`)
+    }
+    // Sin derivada en el primer frame: la serie de velocidad no tiene valor (nunca 0).
+    await irAFrame(p, 0)
+    assert.equal(await p.getByTestId('valor-serie-velocidad').innerText(), '—')
+  })
+
+  it('cambiar de frame no redibuja la gráfica: el cursor va en una capa aparte, en su instante', async () => {
+    const tiempos = videos.verde.verdad.map((f) => f.t)
+    await irAFrame(p, 20)
+    const redibujos = async () => [await p.getByTestId('grafica-angulo').getAttribute('data-redibujos'), await p.getByTestId('grafica-velocidad').getAttribute('data-redibujos')]
+    const antes = await redibujos()
+    assert.ok(antes.every((n) => Number(n) > 0))
+    for (const i of [21, 22, 40, 41, 90]) {
+      await irAFrame(p, i)
+      for (const id of ['grafica-angulo', 'grafica-velocidad']) {
+        // La línea del cursor cae en el instante del frame (±1 px).
+        const area = await p.getByTestId(`${id}-area`).boundingBox()
+        const linea = await p.getByTestId(`${id}-cursor`).boundingBox()
+        const esperado = area.x + ((tiempos[i] - tiempos[0]) / (tiempos.at(-1) - tiempos[0])) * area.width
+        assert.ok(Math.abs(linea.x - esperado) <= 1.5, `${id}, frame ${i + 1}: cursor en ${linea.x}, esperado ${esperado}`)
+      }
+    }
+    for (let k = 0; k < 5; k++) {
+      await p.getByRole('button', { name: 'Frame siguiente' }).click()
+      await esperarQuieto(p)
+    }
+    assert.deepEqual(await redibujos(), antes)
+  })
+
+  it('cada interruptor oculta y muestra su serie; un panel sin series no se dibuja', async () => {
+    const velocidad = p.getByTestId('serie-velocidad')
+    assert.equal(await velocidad.getAttribute('aria-pressed'), 'true')
+    await velocidad.click()
+    assert.equal(await velocidad.getAttribute('aria-pressed'), 'false')
+    assert.equal(await p.getByTestId('grafica-velocidad').count(), 0)
+    await velocidad.click()
+    await p.getByTestId('grafica-velocidad').waitFor()
+    // Sin crudo ni filtrado, el panel del ángulo desaparece; con uno de los dos, vuelve.
+    await p.getByTestId('serie-crudo').click()
+    assert.equal(await p.getByTestId('grafica-angulo').count(), 1)
+    await p.getByTestId('serie-filtrado').click()
+    assert.equal(await p.getByTestId('grafica-angulo').count(), 0)
+    await p.getByTestId('serie-crudo').click()
+    await p.getByTestId('serie-filtrado').click()
+    await p.getByTestId('grafica-angulo').waitFor()
+  })
+
+  it('longitud de los segmentos: oculta al empezar; mostrada, cerca de 0 % en todo el vídeo (son rígidos)', async () => {
+    const botones = p.locator('[data-testid^="serie-segmento-"]')
+    assert.equal(await botones.count(), 2)
+    assert.equal(await p.getByTestId('grafica-segmentos').count(), 0)
+    for (let k = 0; k < 2; k++) {
+      assert.equal(await botones.nth(k).getAttribute('aria-pressed'), 'false')
+      await botones.nth(k).click()
+    }
+    await p.getByTestId('grafica-segmentos').waitFor()
+    const ids = await botones.evaluateAll((bs) => bs.map((b) => b.dataset.testid.replace('serie-', '')))
+    // En el vídeo, cadera–rodilla mide siempre 130 px y rodilla–tobillo 120 px: 0 % en cada frame.
+    for (const i of [0, 30, 41, 60, 81, 119]) {
+      await irAFrame(p, i)
+      for (const id of ids) {
+        const v = await leerNumero(p, `valor-serie-${id}`)
+        assert.ok(Math.abs(v) < 1, `${id}, frame ${i + 1}: ${v} %`)
+      }
+    }
+    // Tocar esta gráfica también lleva al frame.
+    const area = p.getByTestId('grafica-segmentos-area')
+    await area.scrollIntoViewIfNeeded()
+    const caja = await area.boundingBox()
+    await p.mouse.click(caja.x + caja.width * 0.3, caja.y + caja.height / 2)
+    await esperarQuieto(p)
+    const tiempos = videos.verde.verdad.map((f) => f.t)
+    const esperado = frameMasCercano(tiempos, tiempos[0] + 0.3 * (tiempos.at(-1) - tiempos[0])) + 1
+    assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
+    for (let k = 0; k < 2; k++) await botones.nth(k).click()
+    assert.equal(await p.getByTestId('grafica-segmentos').count(), 0)
+  })
+
+  it('tocar la gráfica de velocidad también salta al frame más cercano', async () => {
+    const tiempos = videos.verde.verdad.map((f) => f.t)
+    const area = p.getByTestId('grafica-velocidad-area')
+    await area.scrollIntoViewIfNeeded()
+    const caja = await area.boundingBox()
+    await p.mouse.click(caja.x + caja.width * 0.6, caja.y + caja.height / 2)
+    await esperarQuieto(p)
+    const esperado = frameMasCercano(tiempos, tiempos[0] + 0.6 * (tiempos.at(-1) - tiempos[0])) + 1
     assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
   })
 })
@@ -703,8 +805,8 @@ describe('avanzar saltando frames', () => {
 /** Número que muestra un elemento («−12,3 °/s», «148 px/s»); NaN si muestra «—». */
 async function leerNumero(p, testid) {
   const texto = (await p.getByTestId(testid).innerText()).trim()
-  const m = /^(−|-)?([\d.,]+)/.exec(texto)
-  return m ? (m[1] ? -1 : 1) * Number(m[2].replace(/\./g, '').replace(',', '.')) : NaN
+  const m = /^([+−-])?([\d.,]+)/.exec(texto)
+  return m ? (m[1] === '−' || m[1] === '-' ? -1 : 1) * Number(m[2].replace(/\./g, '').replace(',', '.')) : NaN
 }
 
 /** Espera a que la sesión guardada tenga en su vista el cero `ceros` (comparado como JSON). */
@@ -733,9 +835,7 @@ async function esperarCerosGuardados(p, ceros) {
 }
 
 describe('velocidad y aceleración angulares, velocidad de los marcadores', () => {
-  // Flexión real 45·(1 − cos(πt/2)): velocidad 45·(π/2)·sin(πt/2) °/s (pico 70,7 a t = 1 s) y
-  // aceleración 45·(π/2)²·cos(πt/2) °/s². El tobillo gira a 120 px de la rodilla.
-  const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+  // Aceleración real 45·(π/2)²·cos(πt/2) °/s². El tobillo gira a 120 px de la rodilla.
   const acelReal = (t) => 45 * (Math.PI / 2) ** 2 * Math.cos((Math.PI * t) / 2)
   let p
   before(async () => {
@@ -1100,6 +1200,56 @@ describe('estela de los marcadores: siempre por detrás en el sentido del recorr
   })
 })
 
+describe('trayectoria completa sobre el vídeo', () => {
+  /** ¿Hay trazo en la capa en (x, y) del vídeo (±2 px)? */
+  const hayTrazo = (p, { x, y }) =>
+    p.evaluate(
+      ({ x, y }) => {
+        const d = document.querySelector('[data-testid=capa]').getContext('2d').getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5).data
+        for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true
+        return false
+      },
+      { x, y },
+    )
+
+  it('apagada por defecto; encendida, todo el recorrido del tobillo; se elige por marcador', async () => {
+    // La flexión va de 0° a 90° y vuelve: la bajada y la subida pasan por los mismos sitios.
+    // En el frame 30, avanzando, la estela corta cubre del 10 al 30 (de ~5° a 45°); el tobillo
+    // de los frames 45 a 75 (más de 75°) solo puede estar dibujado por la trayectoria completa.
+    // El corte en los huecos y los trazos de lo interpolado se prueban en el núcleo
+    // (core/graficas/trayectoria.test.ts): aquí la vuelta taparía el hueco.
+    const verdad = videos.verde.verdad
+    const lejos = [45, 52, 60, 68, 75]
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await irAFrame(p, 29)
+      await irAFrame(p, 30)
+      for (const k of lejos) assert.equal(await hayTrazo(p, verdad[k].ps[2]), false, `sin trayectoria completa, nada en el frame ${k + 1}`)
+      const boton = p.getByRole('button', { name: 'Trayectoria completa' })
+      assert.equal(await boton.getAttribute('aria-pressed'), 'false')
+      await boton.click()
+      for (const k of lejos) assert.equal(await hayTrazo(p, verdad[k].ps[2]), true, `trayectoria en el frame ${k + 1}`)
+      // Sin el tobillo elegido, su trayectoria desaparece; los otros dos siguen elegidos.
+      const marcadores = p.getByRole('group', { name: 'Marcadores con trayectoria' }).getByRole('button')
+      assert.equal(await marcadores.count(), 3)
+      await marcadores.nth(2).click()
+      assert.equal(await marcadores.nth(2).getAttribute('aria-pressed'), 'false')
+      assert.equal(await marcadores.nth(0).getAttribute('aria-pressed'), 'true')
+      assert.equal(await hayTrazo(p, verdad[60].ps[2]), false, 'sin el tobillo elegido')
+      await marcadores.nth(2).click()
+      assert.equal(await hayTrazo(p, verdad[60].ps[2]), true)
+      // Cambiar de frame no la quita; apagarla, sí.
+      await irAFrame(p, 31)
+      assert.equal(await hayTrazo(p, verdad[60].ps[2]), true)
+      await boton.click()
+      assert.equal(await hayTrazo(p, verdad[60].ps[2]), false)
+    } finally {
+      await p.close()
+    }
+  })
+
+})
+
 describe('la línea de posición no mueve los botones', () => {
   // Si «t = … · frame … · N ms clave» pasaba de una a dos líneas según el texto, los botones de
   // debajo se movían y se perdía la pulsación mantenida. Se recorren anchos de móvil para dar con
@@ -1210,7 +1360,7 @@ describe('escritorio', () => {
     try {
       const { desborda } = await p.evaluate(() => ({ desborda: document.documentElement.scrollWidth > window.innerWidth }))
       assert.equal(desborda, false, 'la página tiene scroll horizontal')
-      assert.ok(await p.locator('.u-over').isVisible())
+      assert.ok(await p.getByTestId('grafica-angulo-area').isVisible())
     } finally {
       await p.close()
     }
