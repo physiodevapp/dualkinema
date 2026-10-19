@@ -1200,6 +1200,56 @@ describe('estela de los marcadores: siempre por detrás en el sentido del recorr
   })
 })
 
+describe('trayectoria completa sobre el vídeo', () => {
+  /** ¿Hay trazo en la capa en (x, y) del vídeo (±2 px)? */
+  const hayTrazo = (p, { x, y }) =>
+    p.evaluate(
+      ({ x, y }) => {
+        const d = document.querySelector('[data-testid=capa]').getContext('2d').getImageData(Math.round(x) - 2, Math.round(y) - 2, 5, 5).data
+        for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true
+        return false
+      },
+      { x, y },
+    )
+
+  it('apagada por defecto; encendida, todo el recorrido del tobillo; se elige por marcador', async () => {
+    // La flexión va de 0° a 90° y vuelve: la bajada y la subida pasan por los mismos sitios.
+    // En el frame 30, avanzando, la estela corta cubre del 10 al 30 (de ~5° a 45°); el tobillo
+    // de los frames 45 a 75 (más de 75°) solo puede estar dibujado por la trayectoria completa.
+    // El corte en los huecos y los trazos de lo interpolado se prueban en el núcleo
+    // (core/graficas/trayectoria.test.ts): aquí la vuelta taparía el hueco.
+    const verdad = videos.verde.verdad
+    const lejos = [45, 52, 60, 68, 75]
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await irAFrame(p, 29)
+      await irAFrame(p, 30)
+      for (const k of lejos) assert.equal(await hayTrazo(p, verdad[k].ps[2]), false, `sin trayectoria completa, nada en el frame ${k + 1}`)
+      const boton = p.getByRole('button', { name: 'Trayectoria completa' })
+      assert.equal(await boton.getAttribute('aria-pressed'), 'false')
+      await boton.click()
+      for (const k of lejos) assert.equal(await hayTrazo(p, verdad[k].ps[2]), true, `trayectoria en el frame ${k + 1}`)
+      // Sin el tobillo elegido, su trayectoria desaparece; los otros dos siguen elegidos.
+      const marcadores = p.getByRole('group', { name: 'Marcadores con trayectoria' }).getByRole('button')
+      assert.equal(await marcadores.count(), 3)
+      await marcadores.nth(2).click()
+      assert.equal(await marcadores.nth(2).getAttribute('aria-pressed'), 'false')
+      assert.equal(await marcadores.nth(0).getAttribute('aria-pressed'), 'true')
+      assert.equal(await hayTrazo(p, verdad[60].ps[2]), false, 'sin el tobillo elegido')
+      await marcadores.nth(2).click()
+      assert.equal(await hayTrazo(p, verdad[60].ps[2]), true)
+      // Cambiar de frame no la quita; apagarla, sí.
+      await irAFrame(p, 31)
+      assert.equal(await hayTrazo(p, verdad[60].ps[2]), true)
+      await boton.click()
+      assert.equal(await hayTrazo(p, verdad[60].ps[2]), false)
+    } finally {
+      await p.close()
+    }
+  })
+
+})
+
 describe('la línea de posición no mueve los botones', () => {
   // Si «t = … · frame … · N ms clave» pasaba de una a dos líneas según el texto, los botones de
   // debajo se movían y se perdía la pulsación mantenida. Se recorren anchos de móvil para dar con
