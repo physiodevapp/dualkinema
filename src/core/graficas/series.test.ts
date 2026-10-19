@@ -42,4 +42,10 @@ describe('partirInterpolado', () => {
   it('sin nada interpolado, la serie de trazos queda vacía', () => {
     expect(partirInterpolado([1, 2, 3], [0, 0, 0]).interpolada).toEqual([null, null, null])
   })
+
+  it('completa hasta n frames sin valor', () => {
+    const r = partirInterpolado([1, 2], [0, 0], 4)
+    expect(r.medida).toEqual([1, 2, null, null])
+    expect(r.interpolada).toEqual([null, null, null, null])
+  })
 })

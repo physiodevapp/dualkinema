@@ -693,6 +693,16 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       })),
     [segmentos, filtrado.porMarcador],
   )
+  const seriesSegmentos = useMemo(
+    () =>
+      constancia.map(({ segmento: s, c }) => ({
+        id: `${s.desde}-${s.hasta}`,
+        nombre: s.nombre,
+        relativa: c?.relativa ?? [],
+        interpolado: c?.interpolado ?? [],
+      })),
+    [constancia],
+  )
   const est = useMemo(() => estadisticas(tabla), [tabla])
   const generarCsv = useCallback(
     (formato: FormatoCsv) => {
@@ -909,6 +919,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           filtrado={filtradoPorFrame}
           velocidad={filtrado.derivadas.velocidad}
           corte={filtrado.corte}
+          segmentos={seriesSegmentos}
           resumen={
             <p className="font-mono text-xs text-texto-2" data-testid="resumen-grafica">
               {resumen.max && resumen.min ? (

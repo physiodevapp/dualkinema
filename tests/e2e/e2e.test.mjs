@@ -321,6 +321,37 @@ describe('seguimiento y gráfica con gomets verdes', () => {
     await p.getByTestId('grafica-angulo').waitFor()
   })
 
+  it('longitud de los segmentos: oculta al empezar; mostrada, cerca de 0 % en todo el vídeo (son rígidos)', async () => {
+    const botones = p.locator('[data-testid^="serie-segmento-"]')
+    assert.equal(await botones.count(), 2)
+    assert.equal(await p.getByTestId('grafica-segmentos').count(), 0)
+    for (let k = 0; k < 2; k++) {
+      assert.equal(await botones.nth(k).getAttribute('aria-pressed'), 'false')
+      await botones.nth(k).click()
+    }
+    await p.getByTestId('grafica-segmentos').waitFor()
+    const ids = await botones.evaluateAll((bs) => bs.map((b) => b.dataset.testid.replace('serie-', '')))
+    // En el vídeo, cadera–rodilla mide siempre 130 px y rodilla–tobillo 120 px: 0 % en cada frame.
+    for (const i of [0, 30, 41, 60, 81, 119]) {
+      await irAFrame(p, i)
+      for (const id of ids) {
+        const v = await leerNumero(p, `valor-serie-${id}`)
+        assert.ok(Math.abs(v) < 1, `${id}, frame ${i + 1}: ${v} %`)
+      }
+    }
+    // Tocar esta gráfica también lleva al frame.
+    const area = p.getByTestId('grafica-segmentos-area')
+    await area.scrollIntoViewIfNeeded()
+    const caja = await area.boundingBox()
+    await p.mouse.click(caja.x + caja.width * 0.3, caja.y + caja.height / 2)
+    await esperarQuieto(p)
+    const tiempos = videos.verde.verdad.map((f) => f.t)
+    const esperado = frameMasCercano(tiempos, tiempos[0] + 0.3 * (tiempos.at(-1) - tiempos[0])) + 1
+    assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
+    for (let k = 0; k < 2; k++) await botones.nth(k).click()
+    assert.equal(await p.getByTestId('grafica-segmentos').count(), 0)
+  })
+
   it('tocar la gráfica de velocidad también salta al frame más cercano', async () => {
     const tiempos = videos.verde.verdad.map((f) => f.t)
     const area = p.getByTestId('grafica-velocidad-area')
@@ -774,8 +805,8 @@ describe('avanzar saltando frames', () => {
 /** Número que muestra un elemento («−12,3 °/s», «148 px/s»); NaN si muestra «—». */
 async function leerNumero(p, testid) {
   const texto = (await p.getByTestId(testid).innerText()).trim()
-  const m = /^(−|-)?([\d.,]+)/.exec(texto)
-  return m ? (m[1] ? -1 : 1) * Number(m[2].replace(/\./g, '').replace(',', '.')) : NaN
+  const m = /^([+−-])?([\d.,]+)/.exec(texto)
+  return m ? (m[1] === '−' || m[1] === '-' ? -1 : 1) * Number(m[2].replace(/\./g, '').replace(',', '.')) : NaN
 }
 
 /** Espera a que la sesión guardada tenga en su vista el cero `ceros` (comparado como JSON). */

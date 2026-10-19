@@ -47,14 +47,16 @@ export interface SeriePartida {
   readonly interpolada: (number | null)[]
 }
 
-/** Separa una serie por frame en la línea continua y la de trazos. */
-export function partirInterpolado(valores: ArrayLike<number>, interpolado: ArrayLike<number | boolean>): SeriePartida {
-  const n = valores.length
+/**
+ * Separa una serie por frame en la línea continua y la de trazos, con `n`
+ * frames (los que falten al final de `valores` quedan sin valor).
+ */
+export function partirInterpolado(valores: ArrayLike<number>, interpolado: ArrayLike<number | boolean>, n = valores.length): SeriePartida {
   const medida: (number | null)[] = new Array(n)
   const interpolada: (number | null)[] = new Array(n)
   const interp = (i: number) => i >= 0 && i < n && !!interpolado[i]
   for (let i = 0; i < n; i++) {
-    const v = valores[i]!
+    const v = i < valores.length ? valores[i]! : NaN
     const hay = Number.isFinite(v)
     medida[i] = hay && !interp(i) ? v : null
     interpolada[i] = hay && (interp(i) || interp(i - 1) || interp(i + 1)) ? v : null
