@@ -1237,13 +1237,17 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       {/* En el móvil la columna es `contents`: la tira de pestañas cuelga de la página (como el vídeo) y se
           queda pegada durante todo el desplazamiento, también al pasar a la gráfica de debajo; un `sticky`
           dentro de la columna se iría con ella al acabar sus paneles. */}
-      {/* Pantalla ancha: la columna mide lo mismo que la fila del vídeo y la gráfica (estira la rejilla) pero no la alarga: su contenido va
-          en una caja absoluta con su propio scroll, que solo aparece si el panel abierto excede esa altura. */}
+      {/* Pantalla ancha: la columna mide lo mismo que la fila del vídeo y la gráfica (estira la rejilla) pero no la alarga: va en una caja
+          absoluta. Debajo de las pestañas, UNA tarjeta (esquinas redondeadas siempre) que es la que se desplaza por dentro si el panel
+          abierto excede esa altura; los paneles de dentro pierden su caja propia y se separan con una línea. */}
       <div className="max-lg:contents lg:relative">
-      <div className="max-lg:contents lg:absolute lg:inset-0 lg:flex lg:flex-col lg:gap-3 lg:overflow-y-auto lg:pr-1" data-testid="columna-herramientas">
+      <div className="max-lg:contents lg:absolute lg:inset-0 lg:flex lg:flex-col lg:gap-3" data-testid="columna-herramientas">
         <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`} />
 
-        <div className={`flex flex-col gap-3 max-lg:order-6 lg:flex-1 ${ampliada ? 'max-lg:hidden' : ''}`}>
+        <div
+          data-testid="panel-herramientas"
+          className={`flex flex-col gap-3 max-lg:order-6 lg:relative lg:min-h-0 lg:flex-1 lg:gap-0 lg:overflow-y-auto lg:rounded-2xl lg:border lg:border-borde lg:bg-panel lg:p-4 lg:[&_section]:rounded-none lg:[&_section]:border-0 lg:[&_section]:bg-transparent lg:[&_section]:p-0 lg:[&_section+section]:mt-4 lg:[&_section+section]:border-t lg:[&_section+section]:border-borde lg:[&_section+section]:pt-4 ${ampliada ? 'max-lg:hidden' : ''}`}
+        >
 
           <PanelPestana id="marcar" activa={pestana === 'marcar'}>
             <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">

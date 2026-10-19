@@ -1529,18 +1529,26 @@ describe('pestañas de herramientas', () => {
       await p.getByRole('tab', { name: 'Análisis' }).click()
       await p.setViewportSize({ width: 1280, height: 480 })
       const columna = p.getByTestId('columna-herramientas')
-      const hay = await columna.evaluate((el) => el.scrollHeight > el.clientHeight + 20)
-      assert.ok(hay, 'la columna cabe entera: la prueba no comprueba nada')
-      const antes = { video: await p.getByTestId('capa').boundingBox(), columna: await columna.boundingBox() }
-      await columna.evaluate((el) => (el.scrollTop = el.scrollHeight))
-      assert.ok((await columna.evaluate((el) => el.scrollTop)) > 100, 'la columna no se desplazó')
-      const despues = { video: await p.getByTestId('capa').boundingBox(), columna: await columna.boundingBox() }
+      const tarjeta = p.getByTestId('panel-herramientas')
+      const hay = await tarjeta.evaluate((el) => el.scrollHeight > el.clientHeight + 20)
+      assert.ok(hay, 'la tarjeta cabe entera: la prueba no comprueba nada')
+      const antes = { video: await p.getByTestId('capa').boundingBox(), columna: await columna.boundingBox(), tarjeta: await tarjeta.boundingBox() }
+      await tarjeta.evaluate((el) => (el.scrollTop = el.scrollHeight))
+      assert.ok((await tarjeta.evaluate((el) => el.scrollTop)) > 100, 'la tarjeta no se desplazó')
+      const despues = { video: await p.getByTestId('capa').boundingBox(), columna: await columna.boundingBox(), tarjeta: await tarjeta.boundingBox() }
       assert.deepEqual(despues.video, antes.video, 'el vídeo se movió al recorrer los paneles')
       assert.deepEqual(despues.columna, antes.columna, 'la columna se movió de sitio')
+      assert.deepEqual(despues.tarjeta, antes.tarjeta, 'la tarjeta se movió de sitio: se desplaza su contenido, no ella')
       assert.equal(await p.evaluate(() => window.scrollY), 0, 'la página se desplazó')
-      // Y las pestañas siguen a mano arriba de la columna aunque se haya bajado.
+      // Las pestañas siguen a mano arriba aunque se haya bajado, y la tarjeta conserva sus esquinas redondeadas (es ella la que se recorta).
       const pestanas = await p.getByRole('tablist').boundingBox()
       assert.ok(pestanas.y >= despues.columna.y - 1 && pestanas.y < despues.columna.y + 20, `las pestañas están en ${pestanas.y}`)
+      const radios = await tarjeta.evaluate((el) => {
+        const c = getComputedStyle(el)
+        return { abajoIzq: parseFloat(c.borderBottomLeftRadius), abajoDer: parseFloat(c.borderBottomRightRadius), desborde: c.overflowY }
+      })
+      assert.ok(radios.abajoIzq >= 12 && radios.abajoDer >= 12, `esquinas de abajo: ${JSON.stringify(radios)}`)
+      assert.equal(radios.desborde, 'auto')
     } finally {
       await p.close()
     }
@@ -1981,19 +1989,18 @@ describe('escritorio: la columna de herramientas mide lo mismo que la tarjeta de
             assert.ok(Math.abs(c.height - g.height) <= 1.5, `${pestana}: herramientas ${c.height} px y gráfica ${g.height} px`)
             assert.ok(Math.abs(c.y - g.y) <= 1.5 + 0.5, `${pestana}: herramientas empiezan en ${c.y} y la gráfica en ${g.y}`)
             alturas.add(Math.round(c.height))
-            // Sin scroll, la tarjeta de herramientas llega hasta abajo, igual que la de la gráfica.
-            if (!(await columna.evaluate((el) => el.scrollHeight > el.clientHeight + 1))) {
-              const ultima = await p.locator('[role=tabpanel]:visible > *').last().boundingBox()
-              assert.ok(Math.abs(ultima.y + ultima.height - (g.y + g.height)) <= 8, `${pestana}: la tarjeta acaba en ${ultima.y + ultima.height} y la de la gráfica en ${g.y + g.height}`)
-            }
+            // La tarjeta de herramientas (la que lleva los paneles) acaba justo donde la de la gráfica, con scroll o sin él.
+            const t = await p.getByTestId('panel-herramientas').boundingBox()
+            assert.ok(Math.abs(t.y + t.height - (g.y + g.height)) <= 1.5, `${pestana}: la tarjeta acaba en ${t.y + t.height} y la de la gráfica en ${g.y + g.height}`)
           }
         }
         assert.equal(alturas.size, 1, `la altura cambia según la pestaña: ${[...alturas].join(', ')}`)
         // El scroll aparece solo si el panel excede esa altura: «Análisis» (largo) sí, «Vídeo» (corto) no.
+        const tarjetaHerramientas = p.getByTestId('panel-herramientas')
         await abrirPestana(p, 'analisis')
-        assert.ok(await columna.evaluate((el) => el.scrollHeight > el.clientHeight + 1), 'Análisis debería desplazarse')
+        assert.ok(await tarjetaHerramientas.evaluate((el) => el.scrollHeight > el.clientHeight + 1), 'Análisis debería desplazarse')
         await abrirPestana(p, 'video')
-        assert.ok(await columna.evaluate((el) => el.scrollHeight <= el.clientHeight + 1), 'Vídeo no debería desplazarse')
+        assert.ok(await tarjetaHerramientas.evaluate((el) => el.scrollHeight <= el.clientHeight + 1), 'Vídeo no debería desplazarse')
       } finally {
         await p.close()
       }
@@ -2010,9 +2017,9 @@ describe('barras de desplazamiento', () => {
         const g = (el) => getComputedStyle(el)
         return {
           esquema: g(document.documentElement).colorScheme,
-          columna: g(e('[data-testid=columna-herramientas]')).scrollbarWidth,
+          columna: g(e('[data-testid=panel-herramientas]')).scrollbarWidth,
           serie: g(e('[role=group][aria-label="Series de la gráfica"]')).scrollbarWidth,
-          color: g(e('[data-testid=columna-herramientas]')).scrollbarColor,
+          color: g(e('[data-testid=panel-herramientas]')).scrollbarColor,
         }
       })
       assert.equal(estilos.esquema, 'dark')
