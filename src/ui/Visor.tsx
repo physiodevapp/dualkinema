@@ -817,9 +817,23 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     },
     { id: 'video', nombre: 'Vídeo' },
   ]
+  // La barra fija del móvil mide lo que mide su contenido; la página deja ese sitio debajo.
+  const barraRef = useRef<HTMLDivElement>(null)
+  const [altoBarra, setAltoBarra] = useState(0)
+  useEffect(() => {
+    const el = barraRef.current
+    if (!el) return
+    const medir = () => setAltoBarra(Math.ceil(el.getBoundingClientRect().height))
+    medir()
+    const o = new ResizeObserver(medir)
+    o.observe(el)
+    return () => o.disconnect()
+  }, [])
+
   return (
     <div
-      className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
+      className="flex flex-col gap-4 max-lg:pb-(--alto-barra) lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
+      style={{ '--alto-barra': `${altoBarra}px` } as React.CSSProperties}
     >
       {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
           toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
@@ -902,8 +916,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           <BandaFrames estados={estadosFrames} />
         </div>
 
-        {/* Agrupa la línea de posición, los valores del frame y los botones (en la pantalla ancha, sin caja). */}
-        <div className="contents">
+        {/* Móvil: barra fija abajo con los botones, la línea de posición y los valores del frame, para
+            no perderlos de vista al hacer scroll. Altura fija (nada de lo que contiene cambia de
+            altura). En pantalla ancha no existe como caja (contents): queda en su sitio de siempre. */}
+        <div
+          ref={barraRef}
+          data-testid="barra-fija"
+          className="max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:flex max-lg:flex-col max-lg:gap-2 max-lg:border-t max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pt-2 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:contents"
+        >
           {/* Siempre la misma altura: en el móvil, dos líneas fijas que no se parten. Si el texto
               cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
               y se perdía la pulsación mantenida. */}

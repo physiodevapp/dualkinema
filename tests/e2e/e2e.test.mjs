@@ -1269,17 +1269,19 @@ describe('trayectoria completa sobre el vídeo', () => {
 
 })
 
-describe('la línea de posición no mueve los botones', () => {
+describe('la barra fija del móvil no mueve los botones', () => {
   // Si «t = … · frame … · N ms clave» pasaba de una a dos líneas según el texto, los botones de
-  // debajo se movían y se perdía la pulsación mantenida. Se recorren anchos de móvil para dar con
-  // el límite, con el texto más largo posible (frame de 3 cifras de «numerado» y «clave»).
-  it('de 340 a 440 px, los botones de avance no se desplazan al cambiar de frame', async () => {
+  // debajo se movían y se perdía la pulsación mantenida. Ahora van en una barra pegada abajo: si
+  // su altura cambia, se mueve su borde de arriba y con él los botones. Se recorren anchos de móvil
+  // para dar con el límite, con el texto más largo posible (frame de 3 cifras de «numerado» y «clave»).
+  it('de 340 a 440 px, la barra y los botones de avance no se desplazan al cambiar de frame', async () => {
     for (let ancho = 340; ancho <= 440; ancho += 20) {
       const p = await abrirApp(navegador, { ancho })
       try {
         await cargarVideo(p, videos.verde.ruta)
         const boton = p.getByRole('button', { name: 'Frame siguiente' })
-        const alturas = new Set()
+        const barra = p.getByTestId('barra-fija')
+        const posiciones = new Set()
         for (const i of [0, 1, 50, 49, 119, 75, 74, 100, 99]) {
           await irAFrame(p, i)
           // Texto largo de verdad: un número de ms de 4 cifras, como al decodificar lento en el móvil.
@@ -1287,12 +1289,45 @@ describe('la línea de posición no mueve los botones', () => {
             const numero = [...el.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && /^\d+$/.test(n.textContent))
             if (numero) numero.textContent = '1288'
           })
-          alturas.add(Math.round((await boton.boundingBox()).y))
+          const b = await barra.boundingBox()
+          posiciones.add(`${Math.round(b.y)}/${Math.round(b.height)}/${Math.round((await boton.boundingBox()).y)}`)
         }
-        assert.equal(alturas.size, 1, `a ${ancho} px el botón cambia de altura: ${[...alturas].join(', ')}`)
+        assert.equal(posiciones.size, 1, `a ${ancho} px la barra o el botón cambian de sitio: ${[...posiciones].join(', ')}`)
       } finally {
         await p.close()
       }
+    }
+  })
+
+  it('la barra queda pegada abajo con scroll y no tapa el final de la página', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
+    try {
+      const alto = p.viewportSize().height
+      const antes = await p.getByTestId('barra-fija').boundingBox()
+      assert.equal(Math.round(antes.y + antes.height), alto, 'la barra no está pegada abajo')
+      await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      const despues = await p.getByTestId('barra-fija').boundingBox()
+      assert.deepEqual(despues, antes, 'la barra se mueve con el scroll')
+      // Lo último de la página (la gráfica) queda entero por encima de la barra.
+      const grafica = await p.getByTestId('panel-grafica').boundingBox()
+      assert.ok(grafica.y + grafica.height <= despues.y + 1, `la gráfica acaba en ${grafica.y + grafica.height}, la barra empieza en ${despues.y}`)
+      // Los botones y los valores del frame siguen ahí aunque se haya bajado hasta el final.
+      assert.ok(await p.getByRole('button', { name: 'Frame siguiente' }).isVisible())
+      assert.ok(await p.getByTestId('rapida-angulo').isVisible())
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('en pantalla ancha no es una barra: los controles van en el flujo', async () => {
+    const p = await abrirApp(navegador, { ancho: 1280 })
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      assert.notEqual(await p.getByTestId('barra-fija').evaluate((el) => getComputedStyle(el).position), 'fixed')
+      const boton = await p.getByRole('button', { name: 'Frame siguiente' }).boundingBox()
+      assert.ok(boton.y + boton.height < 900)
+    } finally {
+      await p.close()
     }
   })
 })
