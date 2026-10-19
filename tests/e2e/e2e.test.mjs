@@ -12,6 +12,8 @@ import { after, before, describe, it } from 'node:test'
 import { asegurarVideos } from './videos.mjs'
 import {
   abrirApp,
+  abrirPestana,
+  cajaElemento,
   cajaVideo,
   cargarVideo,
   elegirArchivoDesde,
@@ -23,6 +25,7 @@ import {
   irAFrame,
   lanzarNavegador,
   leerAngulo,
+  textoDe,
   leerFrameDibujado,
   leerPosicion,
   marcarTres,
@@ -106,6 +109,7 @@ describe('visor: frame exacto con fps variable', () => {
   })
 
   it('avisa de que los fps son variables y da el rango entre frames', async () => {
+    await abrirPestana(p, 'video')
     const datos = await p.locator('section', { has: p.getByRole('heading', { name: 'Datos del vídeo' }) }).innerText()
     assert.match(datos, /variable/)
     assert.match(datos, /33,\d.{1,3}6\d,\d ms/s) // 33 ms normales y 66 ms con el frame que falta
@@ -219,7 +223,8 @@ describe('seguimiento y gráfica con gomets verdes', () => {
   })
 
   it('el ángulo filtrado (6 Hz, coordenadas remuestreadas por el fps variable) coincide con el real', async () => {
-    assert.match(await p.getByTestId('corte').innerText(), /6,0 Hz/)
+    assert.match(await textoDe(p, 'corte'), /6,0 Hz/)
+    await abrirPestana(p, 'analisis')
     assert.match(await p.getByText(/filtrado a 6,0 Hz/).innerText(), /filtrado a 6,0 Hz/)
     for (const i of FRAMES_A_COMPARAR) {
       await irAFrame(p, i)
@@ -241,7 +246,7 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('tocar la gráfica salta al frame más cercano a ese instante (±1 frame)', async () => {
     const tiempos = videos.verde.verdad.map((f) => f.t)
-    const caja = await p.getByTestId('grafica-angulo-area').boundingBox()
+    const caja = await cajaElemento(p, 'grafica-angulo-area')
     for (const f of [0.25, 0.5, 0.75, 0.999]) {
       await p.mouse.click(caja.x + caja.width * f, caja.y + caja.height / 2)
       await esperarQuieto(p)
@@ -254,7 +259,7 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('arrastrar sobre la gráfica mueve el vídeo con el dedo', async () => {
     const tiempos = videos.verde.verdad.map((f) => f.t)
-    const caja = await p.getByTestId('grafica-angulo-area').boundingBox()
+    const caja = await cajaElemento(p, 'grafica-angulo-area')
     await p.mouse.move(caja.x + caja.width * 0.1, caja.y + caja.height / 2)
     await p.mouse.down()
     await p.mouse.move(caja.x + caja.width * 0.4, caja.y + caja.height / 2, { steps: 8 })
@@ -340,9 +345,7 @@ describe('seguimiento y gráfica con gomets verdes', () => {
       }
     }
     // Tocar esta gráfica también lleva al frame.
-    const area = p.getByTestId('grafica-segmentos-area')
-    await area.scrollIntoViewIfNeeded()
-    const caja = await area.boundingBox()
+    const caja = await cajaElemento(p, 'grafica-segmentos-area')
     await p.mouse.click(caja.x + caja.width * 0.3, caja.y + caja.height / 2)
     await esperarQuieto(p)
     const tiempos = videos.verde.verdad.map((f) => f.t)
@@ -354,9 +357,7 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('tocar la gráfica de velocidad también salta al frame más cercano', async () => {
     const tiempos = videos.verde.verdad.map((f) => f.t)
-    const area = p.getByTestId('grafica-velocidad-area')
-    await area.scrollIntoViewIfNeeded()
-    const caja = await area.boundingBox()
+    const caja = await cajaElemento(p, 'grafica-velocidad-area')
     await p.mouse.click(caja.x + caja.width * 0.6, caja.y + caja.height / 2)
     await esperarQuieto(p)
     const esperado = frameMasCercano(tiempos, tiempos[0] + 0.6 * (tiempos.at(-1) - tiempos[0])) + 1
@@ -412,7 +413,7 @@ describe('un gomet tapado unos frames', () => {
   it('el filtro no cruza el hueco: dentro no hay ángulo filtrado; justo a los lados, sí y cerca del real', async () => {
     const tapados = ocultos()
     await irAFrame(p, tapados[2])
-    assert.equal(await p.getByTestId('angulo-filtrado').innerText(), '—')
+    assert.equal(await textoDe(p, 'angulo-filtrado'), '—')
     // Bordes de los dos tramos (reflexión en los extremos): ±1°.
     for (const i of [tapados[0] - 1, tapados.at(-1) + 1]) {
       await irAFrame(p, i)
@@ -571,19 +572,22 @@ describe('filtro: el corte se guarda con la sesión', () => {
     const { p } = await seguirVideo(videos.verde)
     try {
       await esperarGuardado(p, videos.verde.verdad.length)
+      await abrirPestana(p, 'analisis')
       await p.getByRole('slider', { name: 'Frecuencia de corte del filtro' }).fill('9')
-      assert.match(await p.getByTestId('corte').innerText(), /9,0 Hz/)
+      assert.match(await textoDe(p, 'corte'), /9,0 Hz/)
       await esperarFiltroGuardado(p, 9)
       await p.reload()
       await p.getByTestId('sesion-guardada').waitFor()
       await p.setInputFiles('input[type=file]', videos.verde.ruta)
       await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
       await esperarQuieto(p)
-      assert.match(await p.getByTestId('corte').innerText(), /9,0 Hz/)
+      assert.match(await textoDe(p, 'corte'), /9,0 Hz/)
+      await abrirPestana(p, 'analisis')
       assert.equal(await p.getByRole('slider', { name: 'Frecuencia de corte del filtro' }).inputValue(), '9')
       await irAFrame(p, 60)
       assert.ok(Math.abs((await leerAngulo(p, 'angulo-filtrado')) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
       // «Volver a 6 Hz» y se guarda también.
+      await abrirPestana(p, 'analisis')
       await p.getByRole('button', { name: 'Volver a 6 Hz' }).click()
       await esperarFiltroGuardado(p, 6)
     } finally {
@@ -804,7 +808,7 @@ describe('avanzar saltando frames', () => {
 
 /** Número que muestra un elemento («−12,3 °/s», «148 px/s»); NaN si muestra «—». */
 async function leerNumero(p, testid) {
-  const texto = (await p.getByTestId(testid).innerText()).trim()
+  const texto = (await textoDe(p, testid)).trim()
   const m = /^([+−-])?([\d.,]+)/.exec(texto)
   return m ? (m[1] === '−' || m[1] === '-' ? -1 : 1) * Number(m[2].replace(/\./g, '').replace(',', '.')) : NaN
 }
@@ -859,8 +863,9 @@ describe('velocidad y aceleración angulares, velocidad de los marcadores', () =
     // La segunda derivada multiplica el ruido por (2πf)²: con el ruido de seguimiento de este
     // vídeo (≈ 0,05°), a 6 Hz la aceleración oscila unos ±20 °/s² (medido); a 3 Hz, unos ±4.
     // La flexión (0,25 Hz) pasa igual por los dos cortes.
+    await abrirPestana(p, 'analisis')
     await p.getByRole('slider', { name: 'Frecuencia de corte del filtro' }).fill('3')
-    assert.match(await p.getByTestId('corte').innerText(), /3,0 Hz/)
+    assert.match(await textoDe(p, 'corte'), /3,0 Hz/)
     const verdad = videos.verde.verdad
     for (const i of [15, 30, 60, 90, 105]) {
       await irAFrame(p, i)
@@ -872,7 +877,7 @@ describe('velocidad y aceleración angulares, velocidad de los marcadores', () =
   it('sin derivada en el primer y el último frame (—, nunca 0)', async () => {
     for (const i of [0, videos.verde.verdad.length - 1]) {
       await irAFrame(p, i)
-      for (const id of ['velocidad-angular', 'aceleracion-angular']) assert.equal(await p.getByTestId(id).innerText(), '—', `${id}, frame ${i + 1}`)
+      for (const id of ['velocidad-angular', 'aceleracion-angular']) assert.equal(await textoDe(p, id), '—', `${id}, frame ${i + 1}`)
     }
   })
 
@@ -903,12 +908,14 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
     const { p } = await seguirVideo(videos.verde)
     try {
       await esperarGuardado(p, verdad.length)
-      assert.equal(await p.getByTestId('angulo-relativo').innerText(), '—')
+      assert.equal(await textoDe(p, 'angulo-relativo'), '—')
       // Primeros 2 s: de 0° a 90° y vuelta a empezar; la media es la de esos frames (≈ 45°).
+      await abrirPestana(p, 'analisis')
       await p.getByRole('button', { name: 'Primeros 2 s' }).click()
       const m1 = media(verdad[0].t, verdad[0].t + 2)
-      assert.ok(Math.abs((await leerNumero(p, 'cero-media')) - m1) < 0.5, `media ${await p.getByTestId('cero-media').innerText()}, real ${m1.toFixed(2)}`)
+      assert.ok(Math.abs((await leerNumero(p, 'cero-media')) - m1) < 0.5, `media ${await textoDe(p, 'cero-media')}, real ${m1.toFixed(2)}`)
       // No es un tramo quieto: se avisa.
+      await abrirPestana(p, 'analisis')
       await p.getByText(/no parece quieto/).waitFor()
       await irAFrame(p, 60)
       const sinCero = await leerNumero(p, 'angulo-sin-cero')
@@ -918,8 +925,10 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
 
       // Inicio en el frame 11 y fin en el 31 (tiempos del vídeo).
       await irAFrame(p, 10)
+      await abrirPestana(p, 'analisis')
       await p.getByRole('button', { name: 'Inicio aquí' }).click()
       await irAFrame(p, 30)
+      await abrirPestana(p, 'analisis')
       await p.getByRole('button', { name: 'Fin aquí' }).click()
       const tramo = { desde: verdad[10].t, hasta: verdad[30].t }
       const m2 = media(tramo.desde, tramo.hasta)
@@ -943,7 +952,7 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
         { a: tramo.desde, b: tramo.hasta },
         { timeout: 20000, polling: 200 },
       )
-      const textoTramo = await p.getByTestId('cero-tramo').innerText()
+      const textoTramo = await textoDe(p, 'cero-tramo')
 
       // Recargar y recuperar: el mismo tramo y la misma media.
       await p.reload()
@@ -951,13 +960,14 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
       await p.setInputFiles('input[type=file]', videos.verde.ruta)
       await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
       await esperarQuieto(p)
-      assert.equal(await p.getByTestId('cero-tramo').innerText(), textoTramo)
+      assert.equal(await textoDe(p, 'cero-tramo'), textoTramo)
       await irAFrame(p, 60)
       assert.ok(Math.abs((await leerNumero(p, 'angulo-relativo')) - (verdad[60].flexion - m2)) < 0.6)
 
       // Quitar: vuelve a no haber relativo, y se guarda vacío.
+      await abrirPestana(p, 'analisis')
       await p.getByRole('button', { name: 'Quitar', exact: true }).click()
-      assert.equal(await p.getByTestId('angulo-relativo').innerText(), '—')
+      assert.equal(await textoDe(p, 'angulo-relativo'), '—')
       await esperarCerosGuardados(p, {})
     } finally {
       await p.close()
@@ -972,10 +982,11 @@ describe('escala en metros: dos extremos y la longitud', () => {
     const { p } = await seguirVideo(videos.verde)
     try {
       await esperarGuardado(p, verdad.length)
+      await abrirPestana(p, 'escala')
       const panel = p.getByTestId('panel-escala')
       await irAFrame(p, 30)
       const anguloAntes = await leerAngulo(p)
-      assert.match(await p.getByTestId('velocidad-marcador-' + (await idTobillo(p))).innerText(), /px\/s$/)
+      assert.match(await textoDe(p, 'velocidad-marcador-' + (await idTobillo(p))), /px\/s$/)
 
       await panel.getByRole('button', { name: 'Calibrar escala' }).click()
       // Se puede elegir el objeto; cada uno trae su longitud de partida.
@@ -1005,7 +1016,7 @@ describe('escala en metros: dos extremos y la longitud', () => {
 
       // Velocidad del tobillo (gira a 120 px de la rodilla) en m/s, la real con la escala (±5 %).
       const tobillo = 'velocidad-marcador-' + (await idTobillo(p))
-      assert.match(await p.getByTestId(tobillo).innerText(), /m\/s$/)
+      assert.match(await textoDe(p, tobillo), /m\/s$/)
       const real = ((120 * velReal(verdad[30].t) * Math.PI) / 180) * (mm / 1000)
       const v = await leerNumero(p, tobillo)
       assert.ok(Math.abs(v / real - 1) < 0.05, `tobillo ${v} m/s, real ${real.toFixed(3)} m/s`)
@@ -1013,19 +1024,20 @@ describe('escala en metros: dos extremos y la longitud', () => {
       assert.equal(await leerAngulo(p), anguloAntes)
 
       await esperarCalibracionGuardada(p, 4)
-      const textoEscala = await p.getByTestId('escala-objeto').innerText()
+      const textoEscala = await textoDe(p, 'escala-objeto')
       await p.reload()
       await p.getByTestId('sesion-guardada').waitFor()
       await p.setInputFiles('input[type=file]', videos.verde.ruta)
       await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
       await esperarQuieto(p)
-      assert.equal(await p.getByTestId('escala-objeto').innerText(), textoEscala)
+      assert.equal(await textoDe(p, 'escala-objeto'), textoEscala)
       assert.match(textoEscala, /400,0 cm/)
       await irAFrame(p, 30)
       assert.equal(await leerNumero(p, tobillo), v)
 
+      await abrirPestana(p, 'escala')
       await p.getByTestId('panel-escala').getByRole('button', { name: 'Quitar' }).click()
-      assert.match(await p.getByTestId(tobillo).innerText(), /px\/s$/)
+      assert.match(await textoDe(p, tobillo), /px\/s$/)
       await esperarCalibracionGuardada(p, null)
     } finally {
       await p.close()
@@ -1041,6 +1053,7 @@ describe('escala entre dos marcadores y longitud de los segmentos', () => {
     const { p } = await seguirVideo(videos.verde)
     try {
       await esperarGuardado(p, verdad.length)
+      await abrirPestana(p, 'escala')
       const panel = p.getByTestId('panel-escala')
       // Uno por segmento de la rodilla, en orden: muslo (trocánter–rodilla) y pierna (rodilla–tobillo).
       const segmentos = panel.locator('[data-testid^="constancia-trocanter"], [data-testid^="constancia-epicondilo"]')
@@ -1081,13 +1094,14 @@ describe('escala entre dos marcadores y longitud de los segmentos', () => {
       assert.match(await segmentos.nth(1).getByTestId('constancia-longitud').innerText(), /30,\d cm/)
 
       await esperarCalibracionGuardada(p, 0.3)
-      const texto = await p.getByTestId('escala-objeto').innerText()
+      const texto = await textoDe(p, 'escala-objeto')
       await p.reload()
       await p.getByTestId('sesion-guardada').waitFor()
       await p.setInputFiles('input[type=file]', videos.verde.ruta)
       await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
       await esperarQuieto(p)
-      assert.equal(await p.getByTestId('escala-objeto').innerText(), texto)
+      assert.equal(await textoDe(p, 'escala-objeto'), texto)
+      await abrirPestana(p, 'escala')
       await p.getByText(/Posición media de los dos gomets/).waitFor()
     } finally {
       await p.close()
@@ -1134,6 +1148,7 @@ describe('escala entre marcadores calibrada antes de seguir', () => {
     try {
       await cargarVideo(p, videos.verde.ruta)
       await marcarTres(p, videos.verde.verdad[0].ps)
+      await abrirPestana(p, 'escala')
       const panel = p.getByTestId('panel-escala')
       await panel.getByRole('button', { name: 'Calibrar escala' }).click()
       await panel.getByRole('radio', { name: 'Entre dos marcadores' }).click()
@@ -1148,6 +1163,10 @@ describe('escala entre marcadores calibrada antes de seguir', () => {
 
       await seguirHastaElFinal(p)
       await panel.getByTestId('escala-rehacer').waitFor()
+      // Desde otra pestaña, un punto en «Escala» avisa de lo mismo.
+      await abrirPestana(p, 'marcar')
+      assert.ok(await p.getByTestId('aviso-pestana-escala').isVisible())
+      await abrirPestana(p, 'escala')
       assert.match(await panel.getByTestId('escala-rehacer').innerText(), /solo había 1 frame .* ahora hay \d+/)
       await panel.getByRole('button', { name: 'Rehacer' }).click()
       assert.equal(await panel.getByTestId('escala-pocos-frames').count(), 0)
@@ -1278,6 +1297,104 @@ describe('la línea de posición no mueve los botones', () => {
   })
 })
 
+describe('pestañas de herramientas', () => {
+  it('«Marcar» es la abierta; cambiar de pestaña muestra sus paneles y oculta los de las demás', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
+    try {
+      const abierta = async () => p.locator('[role=tab][aria-selected=true]').innerText()
+      assert.equal(await abierta(), 'Marcar')
+      assert.ok(await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).isVisible())
+      assert.ok(!(await p.getByTestId('panel-filtro').isVisible()))
+
+      await p.getByRole('tab', { name: 'Análisis' }).click()
+      assert.equal(await abierta(), 'Análisis')
+      for (const id of ['panel-filtro', 'panel-cinematica', 'panel-exportar']) assert.ok(await p.getByTestId(id).isVisible(), id)
+      assert.ok(!(await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).isVisible()))
+
+      await p.getByRole('tab', { name: 'Escala' }).click()
+      assert.ok(await p.getByTestId('panel-escala').isVisible())
+      assert.ok(!(await p.getByTestId('panel-filtro').isVisible()))
+
+      await p.getByRole('tab', { name: 'Vídeo' }).click()
+      assert.ok(await p.getByRole('heading', { name: 'Datos del vídeo' }).isVisible())
+
+      // Lo que no se ve sigue montado: el ajuste del filtro no se pierde al cambiar de pestaña.
+      await p.getByRole('tab', { name: 'Análisis' }).click()
+      await p.getByRole('slider', { name: 'Frecuencia de corte del filtro' }).fill('9')
+      await p.getByRole('tab', { name: 'Marcar' }).click()
+      await p.getByRole('tab', { name: 'Análisis' }).click()
+      assert.equal(await p.getByRole('slider', { name: 'Frecuencia de corte del filtro' }).inputValue(), '9')
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('en el móvil también hay pestañas, entre el vídeo y la gráfica', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
+    try {
+      await p.evaluate(() => window.scrollTo(0, 0))
+      const video = await p.getByTestId('capa').boundingBox()
+      const pestanas = await p.getByRole('tablist').boundingBox()
+      const grafica = await p.getByTestId('panel-grafica').boundingBox()
+      assert.ok(video.y + video.height <= pestanas.y + 1, 'las pestañas quedan encima del vídeo')
+      assert.ok(pestanas.y < grafica.y, 'la gráfica queda por delante de las pestañas')
+      await p.getByRole('tab', { name: 'Escala' }).click()
+      assert.ok(await p.getByTestId('panel-escala').isVisible())
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('un punto en el nombre de una pestaña oculta avisa de huecos y de un cero que no parece quieto', async () => {
+    const { p } = await seguirVideo(videos.oculto, { ancho: 1280 })
+    try {
+      // Estando en «Marcar» no hace falta el punto; en las demás, sí.
+      assert.equal(await p.getByTestId('aviso-pestana-marcar').count(), 0)
+      await p.getByRole('tab', { name: 'Análisis' }).click()
+      await p.getByTestId('aviso-pestana-marcar').waitFor()
+      assert.equal(await p.getByTestId('aviso-pestana-analisis').count(), 0)
+      // Un cero que no es quieto (los primeros 2 s del movimiento): el punto sale en «Análisis» desde otra pestaña.
+      await p.getByRole('button', { name: 'Primeros 2 s' }).click()
+      await p.getByText(/no parece quieto/).waitFor()
+      assert.equal(await p.getByTestId('aviso-pestana-analisis').count(), 0)
+      await p.getByRole('tab', { name: 'Escala' }).click()
+      await p.getByTestId('aviso-pestana-analisis').waitFor()
+      assert.ok(await p.getByTestId('aviso-pestana-marcar').isVisible())
+      // El punto lleva su motivo para quien no lo ve (lectores de pantalla).
+      assert.match(await p.getByTestId('aviso-pestana-analisis').getAttribute('aria-label'), /no parece quieto/)
+      // Al abrir la pestaña, el punto se quita (el aviso ya está a la vista).
+      await p.getByRole('tab', { name: 'Análisis' }).click()
+      assert.equal(await p.getByTestId('aviso-pestana-analisis').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('a 1280 px la columna de herramientas tiene su propio scroll y el vídeo no se mueve', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
+    try {
+      // Una ventana baja para que los paneles no quepan.
+      await p.getByRole('tab', { name: 'Análisis' }).click()
+      await p.setViewportSize({ width: 1280, height: 480 })
+      const columna = p.getByTestId('columna-herramientas')
+      const hay = await columna.evaluate((el) => el.scrollHeight > el.clientHeight + 20)
+      assert.ok(hay, 'la columna cabe entera: la prueba no comprueba nada')
+      const antes = { video: await p.getByTestId('capa').boundingBox(), columna: await columna.boundingBox() }
+      await columna.evaluate((el) => (el.scrollTop = el.scrollHeight))
+      assert.ok((await columna.evaluate((el) => el.scrollTop)) > 100, 'la columna no se desplazó')
+      const despues = { video: await p.getByTestId('capa').boundingBox(), columna: await columna.boundingBox() }
+      assert.deepEqual(despues.video, antes.video, 'el vídeo se movió al recorrer los paneles')
+      assert.deepEqual(despues.columna, antes.columna, 'la columna se movió de sitio')
+      assert.equal(await p.evaluate(() => window.scrollY), 0, 'la página se desplazó')
+      // Y las pestañas siguen a mano arriba de la columna aunque se haya bajado.
+      const pestanas = await p.getByRole('tablist').boundingBox()
+      assert.ok(pestanas.y >= despues.columna.y - 1 && pestanas.y < despues.columna.y + 20, `las pestañas están en ${pestanas.y}`)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 /** Lee un CSV exportado: cabecera «# clave;valor», nombres de columna y filas. */
 function leerCsv(texto, sep = ';') {
   const lineas = texto.replace(/^\uFEFF/, '').split('\r\n').filter((l) => l !== '')
@@ -1294,8 +1411,10 @@ describe('exportación CSV', () => {
     const { p } = await seguirVideo(videos.verde)
     try {
       await esperarGuardado(p, verdad.length)
+      await abrirPestana(p, 'analisis')
       const panel = p.getByTestId('panel-exportar')
       const descargar = async () => {
+        await abrirPestana(p, 'analisis')
         const [descarga] = await Promise.all([p.waitForEvent('download'), panel.getByTestId('descargar-csv').click()])
         const { readFile } = await import('node:fs/promises')
         return { nombre: descarga.suggestedFilename(), texto: await readFile(await descarga.path(), 'utf8') }
@@ -1318,11 +1437,15 @@ describe('exportación CSV', () => {
       assert.equal(a.filas[0][a.columnas.findIndex((c) => c.endsWith('_vel_grados_s'))], '')
 
       // Con escala: 4 m en 400 px entre dos toques (10 mm por píxel).
+      await abrirPestana(p, 'escala')
       await p.getByTestId('panel-escala').getByRole('button', { name: 'Calibrar escala' }).click()
+      await abrirPestana(p, 'escala')
       await p.getByTestId('panel-escala').getByRole('radio', { name: 'Palo' }).click()
       await tocarVideo(p, 100, 300)
       await tocarVideo(p, 500, 300)
+      await abrirPestana(p, 'escala')
       await p.getByTestId('panel-escala').getByLabel('Longitud en cm').fill('400')
+      await abrirPestana(p, 'escala')
       await p.getByTestId('panel-escala').getByRole('button', { name: 'Guardar escala' }).click()
       const mm = await leerNumero(p, 'escala-mm-px')
       const tobillo = await idTobillo(p)

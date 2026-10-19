@@ -38,10 +38,11 @@ import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import ControlTrayectoria from './visor/ControlTrayectoria'
 import PanelGrafica from './visor/PanelGrafica'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
-import PanelCinematica from './visor/PanelCinematica'
+import PanelCinematica, { DESVIACION_AVISO } from './visor/PanelCinematica'
 import PanelExportar from './visor/PanelExportar'
 import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './visor/PanelEscala'
 import PanelFiltro from './visor/PanelFiltro'
+import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
@@ -804,9 +805,26 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const t = mostrado === null ? null : tabla.tiempos[mostrado]!
   const siguiendo = seguimiento.estado === 'siguiendo'
 
+  // Pestañas de herramientas. Un punto en el nombre avisa de lo que pide atención aunque no se vea.
+  const [pestana, setPestana] = useState('marcar')
+  const pestanasVisor = [
+    { id: 'marcar', nombre: 'Marcar', aviso: (resumen.huecos > 0 || huecosCortos.length > 0) && 'Hay huecos sin valor' },
+    { id: 'analisis', nombre: 'Análisis', aviso: !!cero && cero.desviacion > DESVIACION_AVISO && 'El cero de referencia no parece quieto' },
+    {
+      id: 'escala',
+      nombre: 'Escala',
+      aviso: !!calibracion?.entre && !!medicionGuardada?.ok && medicionGuardada.muestras > calibracion.entre.muestras && 'La escala se puede rehacer',
+    },
+    { id: 'video', nombre: 'Vídeo' },
+  ]
   return (
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-      <div className="flex flex-col gap-3">
+    <div
+      className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
+    >
+      {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
+          toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
+      <div className="contents lg:flex lg:flex-col lg:gap-3">
+      <div className="flex flex-col gap-3 max-lg:order-1">
         <div className="relative">
           <LienzoVideo
             ancho={info.ancho}
@@ -870,53 +888,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           </div>
         )}
 
-        {/* Siempre la misma altura: en el móvil, dos líneas fijas que no se parten. Si el texto
-            cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
-            y se perdía la pulsación mantenida. */}
-        <div className="flex flex-col font-mono text-sm tabular-nums sm:flex-row sm:items-baseline sm:justify-between sm:gap-x-3" data-testid="posicion">
-          <span className="whitespace-nowrap">
-            t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
-          </span>
-          <span className="truncate whitespace-nowrap text-texto-2">
-            frame {mostrado === null ? '—' : mostrado + 1} / {total}
-            {mostrado !== deseado && ' …'}
-            {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
-            {msDecodificar !== null && (
-              <span data-testid="ms-decodificar">
-                {' '}
-                · {fmt(msDecodificar, 0)} ms{lectura && (
-                  <>
-                    {' '}
-                    <span data-testid="lectura" className="text-xs">
-                      {lectura}
-                    </span>
-                  </>
-                )}
-              </span>
-            )}
-          </span>
-        </div>
-
-        {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
-            cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
-            partir, para no mover los botones (se perdería la pulsación mantenida). */}
-        <dl className="grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-1 font-mono tabular-nums" data-testid="lectura-rapida">
-          {(
-            [
-              ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
-              ['Relativo', cero && Number.isFinite(anguloFiltrado) ? `${grados(relativoAlCero(anguloFiltrado, cero))}°` : '—', 'rapida-relativo'],
-              ['°/s', valorEn(filtrado.derivadas.velocidad, mostrado, 1), 'rapida-velocidad'],
-              ['°/s²', valorEn(filtrado.derivadas.aceleracion, mostrado, 0), 'rapida-aceleracion'],
-            ] as const
-          ).map(([etiqueta, texto, id]) => (
-            <div key={id} className="min-w-0 text-center">
-              <dt className="truncate text-[0.65rem] text-texto-2">{etiqueta}</dt>
-              <dd className="truncate text-sm whitespace-nowrap" data-testid={id}>{texto}</dd>
-            </div>
-          ))}
-        </dl>
-
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 lg:order-1">
           <input
             type="range"
             min={0}
@@ -930,22 +902,75 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           <BandaFrames estados={estadosFrames} />
         </div>
 
-        <div className="flex gap-2">
-          <BotonPaso etiqueta={`Retroceder ${SALTO} frames`} accion={() => mover(-SALTO)}>
-            <ChevronDoubleLeftIcon className="size-6" />
-          </BotonPaso>
-          <BotonPaso etiqueta="Frame anterior" accion={() => mover(-1)}>
-            <ChevronLeftIcon className="size-7" />
-          </BotonPaso>
-          <BotonPaso etiqueta="Frame siguiente" accion={() => mover(1)}>
-            <ChevronRightIcon className="size-7" />
-          </BotonPaso>
-          <BotonPaso etiqueta={`Avanzar ${SALTO} frames`} accion={() => mover(SALTO)}>
-            <ChevronDoubleRightIcon className="size-6" />
-          </BotonPaso>
+        {/* Agrupa la línea de posición, los valores del frame y los botones (en la pantalla ancha, sin caja). */}
+        <div className="contents">
+          {/* Siempre la misma altura: en el móvil, dos líneas fijas que no se parten. Si el texto
+              cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
+              y se perdía la pulsación mantenida. */}
+          <div className="flex flex-col font-mono text-sm tabular-nums sm:flex-row sm:items-baseline sm:justify-between sm:gap-x-3" data-testid="posicion">
+            <span className="whitespace-nowrap">
+              t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
+            </span>
+            <span className="truncate whitespace-nowrap text-texto-2">
+              frame {mostrado === null ? '—' : mostrado + 1} / {total}
+              {mostrado !== deseado && ' …'}
+              {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
+              {msDecodificar !== null && (
+                <span data-testid="ms-decodificar">
+                  {' '}
+                  · {fmt(msDecodificar, 0)} ms{lectura && (
+                    <>
+                      {' '}
+                      <span data-testid="lectura" className="text-xs">
+                        {lectura}
+                      </span>
+                    </>
+                  )}
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
+              cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
+              partir, para no mover los botones (se perdería la pulsación mantenida). */}
+          <dl className="grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-1 font-mono tabular-nums" data-testid="lectura-rapida">
+            {(
+              [
+                ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
+                ['Relativo', cero && Number.isFinite(anguloFiltrado) ? `${grados(relativoAlCero(anguloFiltrado, cero))}°` : '—', 'rapida-relativo'],
+                ['°/s', valorEn(filtrado.derivadas.velocidad, mostrado, 1), 'rapida-velocidad'],
+                ['°/s²', valorEn(filtrado.derivadas.aceleracion, mostrado, 0), 'rapida-aceleracion'],
+              ] as const
+            ).map(([etiqueta, texto, id]) => (
+              <div key={id} className="min-w-0 text-center">
+                <dt className="truncate text-[0.65rem] text-texto-2">{etiqueta}</dt>
+                <dd className="truncate text-sm whitespace-nowrap" data-testid={id}>{texto}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="flex gap-2 lg:order-2">
+            <BotonPaso etiqueta={`Retroceder ${SALTO} frames`} accion={() => mover(-SALTO)}>
+              <ChevronDoubleLeftIcon className="size-6" />
+            </BotonPaso>
+            <BotonPaso etiqueta="Frame anterior" accion={() => mover(-1)}>
+              <ChevronLeftIcon className="size-7" />
+            </BotonPaso>
+            <BotonPaso etiqueta="Frame siguiente" accion={() => mover(1)}>
+              <ChevronRightIcon className="size-7" />
+            </BotonPaso>
+            <BotonPaso etiqueta={`Avanzar ${SALTO} frames`} accion={() => mover(SALTO)}>
+              <ChevronDoubleRightIcon className="size-6" />
+            </BotonPaso>
+          </div>
         </div>
 
-        <TextoGuardado g={guardado} />
+        <div className="lg:order-3">
+          <TextoGuardado g={guardado} />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 max-lg:order-3">
 
         <PanelGrafica
           tiempos={tabla.tiempos}
@@ -981,8 +1006,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
         {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
       </div>
+      </div>
 
-      <div className="flex flex-col gap-4">
+      {/* Columna de herramientas. En pantalla ancha va fija (sticky) con su propio scroll, para que
+          el vídeo y la gráfica no se muevan al recorrer los paneles. */}
+      <div className="flex flex-col gap-3 max-lg:order-2 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto" data-testid="columna-herramientas">
+        <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} />
+
+        <PanelPestana id="marcar" activa={pestana === 'marcar'}>
         <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Marcadores</h2>
@@ -1131,7 +1162,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </span>
           </div>
         </section>
+        </PanelPestana>
 
+        <PanelPestana id="analisis" activa={pestana === 'analisis'}>
         <PanelFiltro
           ajustes={ajustes}
           onCambiar={cambiarAjustes}
@@ -1139,26 +1172,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           fs={filtrado.fs}
           tramosCortos={filtrado.tramosCortos}
           anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
-          deshabilitado={siguiendo}
-        />
-
-        <PanelEscala
-          calibracion={calibracion}
-          borrador={borrador}
-          medicion={medicion}
-          framesTramo={framesTramo}
-          medicionGuardada={medicionGuardada}
-          segmentos={segmentos}
-          tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
-          constancia={constancia}
-          onIr={ir}
-          frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
-          onEmpezar={empezarEscala}
-          onBorrador={setBorrador}
-          onGuardar={guardarEscala}
-          onCancelar={() => setBorrador(null)}
-          onQuitar={quitarEscala}
-          onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
           deshabilitado={siguiendo}
         />
 
@@ -1195,6 +1208,32 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           deshabilitado={siguiendo}
         />
 
+        </PanelPestana>
+
+        <PanelPestana id="escala" activa={pestana === 'escala'}>
+        <PanelEscala
+          calibracion={calibracion}
+          borrador={borrador}
+          medicion={medicion}
+          framesTramo={framesTramo}
+          medicionGuardada={medicionGuardada}
+          segmentos={segmentos}
+          tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
+          constancia={constancia}
+          onIr={ir}
+          frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
+          onEmpezar={empezarEscala}
+          onBorrador={setBorrador}
+          onGuardar={guardarEscala}
+          onCancelar={() => setBorrador(null)}
+          onQuitar={quitarEscala}
+          onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
+          deshabilitado={siguiendo}
+        />
+
+        </PanelPestana>
+
+        <PanelPestana id="video" activa={pestana === 'video'}>
         <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
           <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
@@ -1221,6 +1260,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}</dd>
           </dl>
         </section>
+        </PanelPestana>
       </div>
     </div>
   )

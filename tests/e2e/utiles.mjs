@@ -114,16 +114,58 @@ export async function marcarTres(p, posiciones, desvio = 2) {
   for (const [i, q] of posiciones.entries()) await tocarVideo(p, q.x + (i % 2 ? -desvio : desvio), q.y + (i === 2 ? desvio : -desvio))
 }
 
-/** Pulsa «Seguir desde aquí» y espera a que termine. Devuelve el texto del aviso final. */
+/** Pulsa «Seguir desde aquí» y espera a que termine. Devuelve el texto del aviso final. La pestaña abierta queda como estaba. */
 export async function seguirHastaElFinal(p) {
+  const antes = await pestanaAbierta(p)
+  await abrirPestana(p, 'marcar')
   await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
   await p.getByTestId('aviso').waitFor({ timeout: 90000 })
-  return (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
+  const aviso = (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
+  await abrirPestana(p, antes)
+  return aviso
+}
+
+/** Abre una pestaña de herramientas del visor («marcar», «analisis», «escala», «video») si no es la abierta. */
+export async function abrirPestana(p, id) {
+  const pestana = p.getByTestId(`pestana-${id}`)
+  if ((await pestana.getAttribute('aria-selected')) !== 'true') await pestana.click()
+}
+
+/** Pestaña en que vive cada elemento que se lee por data-testid (lo que no está aquí no está en pestañas). */
+export function pestanaDe(testid) {
+  if (/^(angulo|huecos-cortos)$/.test(testid)) return 'marcar'
+  if (/^(corte|tramos-cortos|angulo-|cero-|velocidad-angular|aceleracion-angular|velocidad-marcador-)/.test(testid)) return 'analisis'
+  if (/^(escala-|constancia-)/.test(testid)) return 'escala'
+  return null
+}
+
+/** Pestaña abierta ahora. */
+async function pestanaAbierta(p) {
+  return p.locator('[role=tab][aria-selected=true]').getAttribute('data-testid').then((t) => t.replace('pestana-', ''))
+}
+
+/** Lee el texto de un elemento abriendo su pestaña y dejando abierta la que estaba (para no estorbar al resto de la prueba). */
+export async function textoDe(p, testid) {
+  const id = pestanaDe(testid)
+  const antes = id ? await pestanaAbierta(p) : null
+  if (id) await abrirPestana(p, id)
+  try {
+    return await p.getByTestId(testid).innerText()
+  } finally {
+    if (id && antes !== id) await abrirPestana(p, antes)
+  }
+}
+
+/** Caja del elemento con la gráfica centrada en la ventana: ni fuera de ella ni bajo la barra fija del móvil. */
+export async function cajaElemento(p, testid) {
+  const el = p.getByTestId(testid)
+  await el.evaluate((e) => e.scrollIntoView({ block: 'center' }))
+  return el.boundingBox()
 }
 
 /** Ángulo que muestra el panel (o el filtrado, con testid 'angulo-filtrado'), en grados (NaN si no hay valor). */
 export async function leerAngulo(p, testid = 'angulo') {
-  const texto = await p.getByTestId(testid).innerText()
+  const texto = await textoDe(p, testid)
   const m = /^(−|-)?([\d.,]+)°/.exec(texto.trim())
   return m ? (m[1] ? -1 : 1) * Number(m[2].replace(',', '.')) : NaN
 }
