@@ -827,6 +827,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const [barraRef, altoBarra] = useAltura<HTMLDivElement>()
   const [fijoRef, altoFijo] = useAltura<HTMLDivElement>()
   const anchoLg = useAnchoMinimo()
+  // La página deja debajo el sitio de la barra fija (`--alto-barra`, en la raíz: el pie de página también va debajo y
+  // cuelga de `main`, fuera de este componente; con el hueco dentro del visor, el pie quedaba tapado por la barra).
+  useEffect(() => {
+    document.documentElement.style.setProperty('--alto-barra', `${altoBarra}px`)
+    return () => {
+      document.documentElement.style.removeProperty('--alto-barra')
+    }
+  }, [altoBarra])
   // Vista en el móvil: la mixta de siempre, el vídeo grande para marcar o solo las gráficas. En pantalla ancha no existe.
   const [vista, setVista] = useState<'mixta' | 'video' | 'graficas'>('mixta')
   const enVideo = !anchoLg && vista === 'video'
@@ -847,7 +855,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
             // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
             // gomet) caía en el mensaje en vez de marcar.
-            <div data-testid="error-toque" className="flex flex-col gap-2 max-lg:order-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200">
+            <div data-testid="error-toque" className={`flex flex-col gap-2 max-lg:order-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200`}>
               <p>{errorToque.texto}</p>
               {errorToque.detalle && <p className="font-mono text-xs text-texto-2">{errorToque.detalle}</p>}
               <div className="flex flex-wrap gap-2">
@@ -875,6 +883,29 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               )}
             </div>
             )
+
+  // Deslizador de frames con la franja de estado: en el flujo de la página o, en el vídeo grande, dentro de él.
+  const nodoDeslizador = (
+    <div className={`flex flex-col gap-1 ${enVideo ? '' : `max-lg:order-3 lg:order-1 ${ampliada ? 'max-lg:hidden' : ''}`}`}>
+            {/* Una sola barra: la franja de estado de cada frame es la pista del deslizador y el tirador va encima.
+                La franja se mete la mitad del tirador por cada lado, para que su centro coincida con el frame. */}
+            <div className="relative h-7">
+              <div className="pointer-events-none absolute inset-x-[7px] top-1/2 -translate-y-1/2">
+                <BandaFrames estados={estadosFrames} className="h-2.5" />
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={total - 1}
+                step={1}
+                value={deseado}
+                onChange={(e) => ir(Number(e.target.value))}
+                aria-label="Posición en el vídeo"
+                className="deslizador-frames relative"
+              />
+            </div>
+    </div>
+  )
 
   // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
   const marcaManualElegida = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
@@ -963,12 +994,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
   return (
     <div
-      className="flex flex-col gap-4 max-lg:pb-(--alto-barra) lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
-      style={{ '--alto-barra': `${altoBarra}px`, '--alto-fijo': `${altoFijo}px` } as React.CSSProperties}
+      className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
+      style={{ '--alto-fijo': `${altoFijo}px` } as React.CSSProperties}
     >
       {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
           toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
-      <div className="contents lg:flex lg:flex-col lg:gap-3">
+      {/* Pantalla ancha: vídeo y controles a la izquierda y la gráfica a su lado, para que quepa en la altura de la ventana
+          (apilados no caben con un vídeo de tamaño razonable). La gráfica ocupa el alto de la columna de al lado. */}
+      <div className="contents lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-3">
         <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3">
           {/* Móvil: el vídeo (con altura limitada) y la gráfica del ángulo quedan pegados arriba mientras
               se desplazan las pestañas y los paneles. El elemento pegado tiene que colgar de la página
@@ -985,6 +1018,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           <div className="relative">
             <LienzoVideo
               llenar={enVideo}
+              topeLg="lg:max-h-[max(14rem,calc(100dvh-25rem))]"
               ancho={info.ancho}
               alto={info.alto}
               lienzo={lienzo}
@@ -1052,31 +1086,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             <>
               {nodoError}
               {tiraMarcado}
+              {nodoDeslizador}
             </>
           )}
           </div>
 
           {!enVideo && nodoError}
 
-          <div className={`flex flex-col gap-1 max-lg:order-3 lg:order-1 ${ampliada ? 'max-lg:hidden' : ''}`}>
-            {/* Una sola barra: la franja de estado de cada frame es la pista del deslizador y el tirador va encima.
-                La franja se mete la mitad del tirador por cada lado, para que su centro coincida con el frame. */}
-            <div className="relative h-7">
-              <div className="pointer-events-none absolute inset-x-[7px] top-1/2 -translate-y-1/2">
-                <BandaFrames estados={estadosFrames} className="h-2.5" />
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={total - 1}
-                step={1}
-                value={deseado}
-                onChange={(e) => ir(Number(e.target.value))}
-                aria-label="Posición en el vídeo"
-                className="deslizador-frames relative"
-              />
-            </div>
-          </div>
+          {!enVideo && nodoDeslizador}
 
           {/* Móvil: barra fija abajo con los botones, la línea de posición y los valores del frame, para
               no perderlos de vista al hacer scroll. Altura fija (nada de lo que contiene cambia de
@@ -1089,7 +1106,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             {/* Siempre la misma altura: una línea que no se parte (lo que no cabe se corta). Si el texto
                 cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
                 y se perdía la pulsación mantenida. En el móvil, sin «t =» ni «frame», para que quepa en una. */}
-            <div className="flex items-baseline justify-between gap-x-3 font-mono text-sm tabular-nums" data-testid="posicion">
+            <div className={`flex items-baseline justify-between gap-x-3 font-mono text-sm tabular-nums`} data-testid="posicion">
               <span className="shrink-0 whitespace-nowrap">
                 <span className="max-lg:hidden">t = </span>
                 <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
@@ -1118,7 +1135,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
                 cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
                 partir, para no mover los botones (se perdería la pulsación mantenida). */}
-            <dl className="grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-0.5 font-mono tabular-nums" data-testid="lectura-rapida">
+            <dl className={`grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-0.5 font-mono tabular-nums`} data-testid="lectura-rapida">
               {(
                 [
                   ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
@@ -1158,7 +1175,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             (oculta pero montada en las demás, para no perder qué series se ven) y en la mixta se ve la pequeña. */}
         <div
           data-testid="vista-graficas"
-          className={`flex flex-col gap-3 max-lg:order-7 ${
+          className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0 ${
             enGraficas ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
@@ -1179,7 +1196,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           )}
 
           <PanelGrafica
-            ampliada={enGraficas}
+            ampliada={enGraficas || anchoLg}
             tiempos={tabla.tiempos}
             indice={deseado < total ? deseado : null}
             onBuscar={buscarEnTiempo}

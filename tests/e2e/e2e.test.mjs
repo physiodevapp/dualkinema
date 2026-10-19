@@ -225,8 +225,8 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('el ángulo filtrado (6 Hz, coordenadas remuestreadas por el fps variable) coincide con el real', async () => {
     assert.match(await textoDe(p, 'corte'), /6,0 Hz/)
-    await abrirPestana(p, 'analisis')
-    assert.match(await p.getByText(/filtrado a 6,0 Hz/).innerText(), /filtrado a 6,0 Hz/)
+    // El corte aplicado se ve también en el botón de la serie filtrada de la gráfica.
+    assert.match(await p.getByTestId('serie-filtrado').innerText(), /Filtrado 6,0 Hz/)
     for (const i of FRAMES_A_COMPARAR) {
       await irAFrame(p, i)
       const filtrado = await leerAngulo(p, 'angulo-filtrado')
@@ -1312,6 +1312,9 @@ describe('la barra fija del móvil no mueve los botones', () => {
       // Lo último de la página (el panel de la pestaña abierta) queda entero por encima de la barra.
       const panel = await p.locator('[role=tabpanel]:visible').last().boundingBox()
       assert.ok(panel.y + panel.height <= despues.y + 1, `el panel acaba en ${panel.y + panel.height}, la barra empieza en ${despues.y}`)
+      // El pie de página (rama y commit) también queda por encima de la barra, no tapado por ella.
+      const pie = await p.getByTestId('pie').boundingBox()
+      assert.ok(pie.y + pie.height <= despues.y + 1, `el pie acaba en ${pie.y + pie.height}, la barra empieza en ${despues.y}`)
       // Los botones y los valores del frame siguen ahí aunque se haya bajado hasta el final.
       assert.ok(await p.getByRole('button', { name: 'Frame siguiente' }).isVisible())
       assert.ok(await p.getByTestId('rapida-angulo').isVisible())
@@ -1689,7 +1692,15 @@ describe('vistas ampliadas del móvil', () => {
       assert.ok(fijo.y <= 0.5 && Math.abs(fijo.y + fijo.height - barra.y) <= 1, `el vídeo grande ocupa de ${fijo.y} a ${fijo.y + fijo.height}; la barra empieza en ${barra.y}`)
       assert.equal(await p.getByRole('tablist').isVisible(), false)
       assert.equal(await p.getByTestId('minigrafica').count(), 0)
-      assert.equal(await p.getByRole('slider', { name: 'Posición en el vídeo' }).isVisible(), false)
+      // El deslizador de frames (con su franja de estado) va dentro del vídeo grande, bajo los controles de marcado.
+      const deslizador = p.getByRole('slider', { name: 'Posición en el vídeo' })
+      assert.ok(await deslizador.isVisible())
+      const caja = await deslizador.boundingBox()
+      const cajaMarcado = await p.getByTestId('marcado-compacto').boundingBox()
+      assert.ok(caja.y >= cajaMarcado.y + cajaMarcado.height - 1 && caja.y + caja.height <= barra.y + 1, 'el deslizador no queda entre los controles y la barra')
+      await irAFrame(p, 40)
+      assert.equal((await leerPosicion(p)).frame, 41)
+      await irAFrame(p, 0)
       assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
       assert.equal(await p.evaluate(() => getComputedStyle(document.body).overflow), 'hidden', 'la página de debajo se puede desplazar')
       // Lo necesario para marcar está dentro, y la barra de avance sigue.
@@ -1702,6 +1713,8 @@ describe('vistas ampliadas del móvil', () => {
       await p.getByTestId('marcado-compacto').getByText(/Seguimiento completado/).waitFor({ timeout: 90000 })
 
       // Al volver, todo lo hecho está en su sitio y el ángulo coincide con el real.
+      // La franja se ve ya aquí, en el propio vídeo grande, verde donde se siguió.
+      assert.ok((await colorFranja(p)).verde > (await colorFranja(p)).ancho * 0.9)
       await p.getByTestId('reducir-video').click()
       assert.ok(await p.getByRole('tablist').isVisible())
       assert.ok(await p.getByTestId('minigrafica').isVisible())
@@ -1891,6 +1904,47 @@ describe('deslizador de frames y franja de estado: una sola barra', () => {
       }
     }
   })
+})
+
+describe('escritorio: la pantalla cabe en la altura de la ventana', () => {
+  for (const [nombre, ancho, alto, vertical] of [
+    ['vídeo horizontal a 1280 × 900', 1280, 900, false],
+    ['vídeo vertical a 1280 × 900', 1280, 900, true],
+    ['vídeo horizontal a 1920 × 1000', 1920, 1000, false],
+    ['vídeo vertical a 1920 × 1000', 1920, 1000, true],
+  ]) {
+    it(`${nombre}: ni el vídeo, ni los controles, ni la gráfica obligan a desplazarse`, async () => {
+      const p = await abrirApp(navegador, { ancho })
+      try {
+        await p.setViewportSize({ width: ancho, height: alto })
+        const video = vertical ? videos.vertical : videos.verde
+        await cargarVideo(p, video.ruta)
+        if (!vertical) {
+          await marcarTres(p, videos.verde.verdad[0].ps)
+          await seguirHastaElFinal(p)
+        }
+        // También con los segmentos encendidos (tres paneles en la gráfica).
+        await p.locator('[data-testid^="serie-segmento-"]').first().click()
+        await p.waitForTimeout(300)
+        const medidas = await p.evaluate(() => ({ alto: document.documentElement.scrollHeight, ventana: window.innerHeight, ancho: document.documentElement.scrollWidth, anchoVentana: window.innerWidth }))
+        assert.ok(medidas.alto <= medidas.ventana + 1, `la página mide ${medidas.alto} px y la ventana ${medidas.ventana}`)
+        assert.ok(medidas.ancho <= medidas.anchoVentana, 'scroll horizontal')
+        // Vídeo, controles, gráfica y pie, enteros dentro de la ventana.
+        for (const id of ['lienzo', 'barra-fija', 'grafica-angulo-area', 'pie']) {
+          const caja = await p.getByTestId(id).boundingBox().catch(() => null)
+          if (!caja) continue
+          assert.ok(caja.y >= 0 && caja.y + caja.height <= alto + 1, `${id} está en ${caja.y}–${caja.y + caja.height}, la ventana mide ${alto}`)
+        }
+        const botones = await p.getByRole('button', { name: 'Frame siguiente' }).boundingBox()
+        assert.ok(botones.y + botones.height <= alto)
+        // El vídeo no queda diminuto: al menos 200 px de alto y un tercio del ancho de la columna.
+        const lienzo = await p.getByTestId('lienzo').boundingBox()
+        assert.ok(lienzo.height >= 200, `el vídeo mide ${lienzo.height} px de alto`)
+      } finally {
+        await p.close()
+      }
+    })
+  }
 })
 
 describe('escritorio', () => {

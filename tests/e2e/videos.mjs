@@ -9,7 +9,7 @@ import { join } from 'node:path'
 
 export const FPS = 30
 /** Súbelo si cambias cualquier generador: invalida la caché de vídeos. */
-const VERSION = 2
+const VERSION = 3
 
 export const VERDE = [40, 200, 90]
 export const ROJO = [210, 45, 55]
@@ -156,6 +156,15 @@ export const OCULTO = { desde: 1.5, hasta: 1.8 }
 /** Lo mismo en el vídeo «corto»: un hueco que se puede rellenar (≤ 0,2 s entre posiciones fiables). */
 export const OCULTO_CORTO = { desde: 1.5, hasta: 1.6 }
 
+/** Gira un vídeo 90° (de 640×360 a 360×640) conservando sus tiempos: para probar la distribución con un vídeo vertical. */
+async function girarVideo(entrada, salida) {
+  const ff = spawn('ffmpeg', ['-loglevel', 'error', '-y', '-i', entrada, '-vf', 'transpose=1', '-fps_mode', 'passthrough', '-c:v', 'libvpx-vp9', '-g', '30', '-b:v', '1500k', salida], {
+    stdio: 'inherit',
+  })
+  const [codigo] = await once(ff, 'close')
+  if (codigo !== 0) throw new Error(`ffmpeg ha fallado (${codigo}) al girar ${entrada}`)
+}
+
 // ------------------------------------------------------------------- conjunto
 
 /**
@@ -172,6 +181,7 @@ export async function asegurarVideos() {
     await generarRodilla(dir, 'rojo', ROJO)
     await generarRodilla(dir, 'oculto', VERDE, (t) => t > OCULTO.desde && t < OCULTO.hasta)
     await generarRodilla(dir, 'corto', VERDE, (t) => t > OCULTO_CORTO.desde && t < OCULTO_CORTO.hasta)
+    await girarVideo(join(dir, 'verde.webm'), join(dir, 'vertical.webm'))
     writeFileSync(marca, '')
   }
   const leer = (nombre) => JSON.parse(readFileSync(join(dir, `${nombre}.json`), 'utf8'))
@@ -181,5 +191,7 @@ export async function asegurarVideos() {
     rojo: { ruta: join(dir, 'rojo.webm'), verdad: leer('rojo') },
     oculto: { ruta: join(dir, 'oculto.webm'), verdad: leer('oculto') },
     corto: { ruta: join(dir, 'corto.webm'), verdad: leer('corto') },
+    // El vídeo «verde» girado 90° (360×640): solo para probar la distribución con un vídeo vertical, sin verdad conocida.
+    vertical: { ruta: join(dir, 'vertical.webm') },
   }
 }
