@@ -602,12 +602,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     congelado: seguimiento.estado === 'siguiendo',
   })
 
-  // Trayectoria completa de cada marcador, con lo filtrado: se prepara aquí, cuando
-  // cambian las trayectorias o el corte, y en cada frame solo se pinta.
+  // Trayectoria completa de cada marcador, con lo filtrado: se prepara aquí al
+  // encenderla y cuando cambian las trayectorias o el corte; en cada frame solo se pinta.
   const [trayectoriaCompleta, setTrayectoriaCompleta] = useState(false)
   const [conTrayectoria, setConTrayectoria] = useState<ReadonlySet<IdMarcador>>(() => new Set(ids))
   const caminos = useMemo(() => {
     const r = new Map<IdMarcador, { continuo: Path2D; trazos: Path2D }>()
+    if (!trayectoriaCompleta) return r
     for (const [id, f] of filtrado.porMarcador) {
       const c = { continuo: new Path2D(), trazos: new Path2D() }
       for (const l of polilineasTrayectoria(f.posiciones)) {
@@ -621,7 +622,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       r.set(id, c)
     }
     return r
-  }, [filtrado.porMarcador])
+  }, [filtrado.porMarcador, trayectoriaCompleta])
 
   // ---- Capa de dibujo ----
   const dibujar = useCallback(
