@@ -36,6 +36,9 @@ const TOLERANCIA_GRADOS = 0.5
 /** Frames donde se compara el ángulo medido con el real: incluye los que siguen a los huecos de fps. */
 const FRAMES_A_COMPARAR = [1, 20, 40, 41, 60, 80, 81, 100, 119]
 
+// Flexión real de los vídeos de rodilla: 45·(1 − cos(πt/2)); velocidad 45·(π/2)·sin(πt/2) °/s (pico 70,7 a t = 1 s).
+const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+
 let videos
 let navegador
 let pararServidor
@@ -238,7 +241,7 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('tocar la gráfica salta al frame más cercano a ese instante (±1 frame)', async () => {
     const tiempos = videos.verde.verdad.map((f) => f.t)
-    const caja = await p.locator('.u-over').boundingBox()
+    const caja = await p.getByTestId('grafica-angulo-area').boundingBox()
     for (const f of [0.25, 0.5, 0.75, 0.999]) {
       await p.mouse.click(caja.x + caja.width * f, caja.y + caja.height / 2)
       await esperarQuieto(p)
@@ -251,13 +254,58 @@ describe('seguimiento y gráfica con gomets verdes', () => {
 
   it('arrastrar sobre la gráfica mueve el vídeo con el dedo', async () => {
     const tiempos = videos.verde.verdad.map((f) => f.t)
-    const caja = await p.locator('.u-over').boundingBox()
+    const caja = await p.getByTestId('grafica-angulo-area').boundingBox()
     await p.mouse.move(caja.x + caja.width * 0.1, caja.y + caja.height / 2)
     await p.mouse.down()
     await p.mouse.move(caja.x + caja.width * 0.4, caja.y + caja.height / 2, { steps: 8 })
     await p.mouse.up()
     await esperarQuieto(p)
     const esperado = frameMasCercano(tiempos, tiempos[0] + 0.4 * (tiempos.at(-1) - tiempos[0])) + 1
+    assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
+  })
+
+  it('las series de la gráfica dan en cada frame el ángulo real (crudo y filtrado) y la velocidad real', async () => {
+    const verdad = videos.verde.verdad
+    for (const i of [10, 30, 41, 60, 81, 100, 110]) {
+      await irAFrame(p, i)
+      const crudo = await leerNumero(p, 'valor-serie-crudo')
+      const filtrado = await leerNumero(p, 'valor-serie-filtrado')
+      const v = await leerNumero(p, 'valor-serie-velocidad')
+      assert.ok(Math.abs(crudo - verdad[i].flexion) < TOLERANCIA_GRADOS, `frame ${i + 1}: crudo ${crudo}°, real ${verdad[i].flexion.toFixed(2)}°`)
+      assert.ok(Math.abs(filtrado - verdad[i].flexion) < TOLERANCIA_GRADOS, `frame ${i + 1}: filtrado ${filtrado}°`)
+      assert.ok(Math.abs(v - velReal(verdad[i].t)) < 3, `frame ${i + 1}: ${v} °/s, real ${velReal(verdad[i].t).toFixed(1)} °/s`)
+    }
+    // Sin derivada en el primer frame: la serie de velocidad no tiene valor (nunca 0).
+    await irAFrame(p, 0)
+    assert.equal(await p.getByTestId('valor-serie-velocidad').innerText(), '—')
+  })
+
+  it('cada interruptor oculta y muestra su serie; un panel sin series no se dibuja', async () => {
+    const velocidad = p.getByTestId('serie-velocidad')
+    assert.equal(await velocidad.getAttribute('aria-pressed'), 'true')
+    await velocidad.click()
+    assert.equal(await velocidad.getAttribute('aria-pressed'), 'false')
+    assert.equal(await p.getByTestId('grafica-velocidad').count(), 0)
+    await velocidad.click()
+    await p.getByTestId('grafica-velocidad').waitFor()
+    // Sin crudo ni filtrado, el panel del ángulo desaparece; con uno de los dos, vuelve.
+    await p.getByTestId('serie-crudo').click()
+    assert.equal(await p.getByTestId('grafica-angulo').count(), 1)
+    await p.getByTestId('serie-filtrado').click()
+    assert.equal(await p.getByTestId('grafica-angulo').count(), 0)
+    await p.getByTestId('serie-crudo').click()
+    await p.getByTestId('serie-filtrado').click()
+    await p.getByTestId('grafica-angulo').waitFor()
+  })
+
+  it('tocar la gráfica de velocidad también salta al frame más cercano', async () => {
+    const tiempos = videos.verde.verdad.map((f) => f.t)
+    const area = p.getByTestId('grafica-velocidad-area')
+    await area.scrollIntoViewIfNeeded()
+    const caja = await area.boundingBox()
+    await p.mouse.click(caja.x + caja.width * 0.6, caja.y + caja.height / 2)
+    await esperarQuieto(p)
+    const esperado = frameMasCercano(tiempos, tiempos[0] + 0.6 * (tiempos.at(-1) - tiempos[0])) + 1
     assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
   })
 })
@@ -733,9 +781,7 @@ async function esperarCerosGuardados(p, ceros) {
 }
 
 describe('velocidad y aceleración angulares, velocidad de los marcadores', () => {
-  // Flexión real 45·(1 − cos(πt/2)): velocidad 45·(π/2)·sin(πt/2) °/s (pico 70,7 a t = 1 s) y
-  // aceleración 45·(π/2)²·cos(πt/2) °/s². El tobillo gira a 120 px de la rodilla.
-  const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+  // Aceleración real 45·(π/2)²·cos(πt/2) °/s². El tobillo gira a 120 px de la rodilla.
   const acelReal = (t) => 45 * (Math.PI / 2) ** 2 * Math.cos((Math.PI * t) / 2)
   let p
   before(async () => {
@@ -1210,7 +1256,7 @@ describe('escritorio', () => {
     try {
       const { desborda } = await p.evaluate(() => ({ desborda: document.documentElement.scrollWidth > window.innerWidth }))
       assert.equal(desborda, false, 'la página tiene scroll horizontal')
-      assert.ok(await p.locator('.u-over').isVisible())
+      assert.ok(await p.getByTestId('grafica-angulo-area').isVisible())
     } finally {
       await p.close()
     }

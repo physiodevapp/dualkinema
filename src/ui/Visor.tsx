@@ -26,6 +26,7 @@ import { huecosInterpolables, HUECO_MAX_S, interpolarHueco } from '../core/segui
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import { resumirSerie } from '../core/graficas/rango'
+import { seriePorFrame } from '../core/graficas/series'
 import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
 import type { AlWorker, DelWorker, Hueco } from '../workers/protocolo'
@@ -33,7 +34,7 @@ import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { huellaDe } from './sesion'
 import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
-import GraficaAngulo from './visor/GraficaAngulo'
+import PanelGrafica from './visor/PanelGrafica'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
 import PanelCinematica from './visor/PanelCinematica'
 import PanelExportar from './visor/PanelExportar'
@@ -677,6 +678,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     metrosPorPx: calibracion ? metrosPorPx(calibracion) : null,
     congelado: seguimiento.estado === 'siguiendo',
   })
+  // Las series de la gráfica, un valor por frame.
+  const crudoPorFrame = useMemo(() => seriePorFrame(serie, tabla.tiempos), [serie, tabla])
+  const filtradoPorFrame = useMemo(() => seriePorFrame(filtrado.serie, tabla.tiempos), [filtrado.serie, tabla])
   const anguloFiltrado = mostrado === null ? NaN : filtrado.anguloEn(mostrado)
   const tramoEstatico = ceros[articulacion.id] ?? null
   const cero = useMemo(() => (tramoEstatico ? ceroDeReferencia(filtrado.serie, tramoEstatico) : null), [tramoEstatico, filtrado.serie])
@@ -895,41 +899,36 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
         <TextoGuardado g={guardado} />
 
-        <section className="rounded-2xl border border-borde bg-panel p-3">
-          <div className="mb-1 flex items-baseline justify-between gap-2 px-1">
-            <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">{articulacion.nombre.replace(/\s*\(.*\)$/, '')}</h2>
-            <span className="font-mono text-xs text-texto-2">{articulacion.positivo} +</span>
-          </div>
-          <GraficaAngulo
-            serie={serie}
-            filtrada={filtrado.serie}
-            desde={tabla.tiempos[0]!}
-            hasta={tabla.tiempos[total - 1]!}
-            tActual={deseado < total ? tabla.tiempos[deseado]! : null}
-            onBuscar={buscarEnTiempo}
-          />
-          <p className="mt-1 px-1 font-mono text-xs text-texto-2" data-testid="resumen-grafica">
-            {resumen.max && resumen.min ? (
-              <>
-                <span className="whitespace-nowrap">
-                  máx. {grados(resumen.max.valor)}° (t = {fmt(resumen.max.t, 2)} s)
-                </span>{' '}
-                ·{' '}
-                <span className="whitespace-nowrap">
-                  mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
-                </span>
-                {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
-                {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
-              </>
-            ) : (
-              'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
-            )}
-          </p>
-          <p className="mt-1 px-1 text-xs text-texto-2">
-            <span className="text-acento">Ámbar</span>: medido · <span className="text-texto">línea clara</span>: filtrado a{' '}
-            {fmt(filtrado.corte, 1)} Hz. Toca o arrastra la gráfica para ir a ese instante.
-          </p>
-        </section>
+        <PanelGrafica
+          tiempos={tabla.tiempos}
+          indice={deseado < total ? deseado : null}
+          onBuscar={buscarEnTiempo}
+          titulo={articulacion.nombre.replace(/\s*\(.*\)$/, '')}
+          positivo={articulacion.positivo}
+          crudo={crudoPorFrame}
+          filtrado={filtradoPorFrame}
+          velocidad={filtrado.derivadas.velocidad}
+          corte={filtrado.corte}
+          resumen={
+            <p className="font-mono text-xs text-texto-2" data-testid="resumen-grafica">
+              {resumen.max && resumen.min ? (
+                <>
+                  <span className="whitespace-nowrap">
+                    máx. {grados(resumen.max.valor)}° (t = {fmt(resumen.max.t, 2)} s)
+                  </span>{' '}
+                  ·{' '}
+                  <span className="whitespace-nowrap">
+                    mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
+                  </span>
+                  {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
+                  {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
+                </>
+              ) : (
+                'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
+              )}
+            </p>
+          }
+        />
 
         {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
       </div>
