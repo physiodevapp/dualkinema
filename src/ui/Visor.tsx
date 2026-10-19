@@ -37,12 +37,14 @@ import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import ControlTrayectoria from './visor/ControlTrayectoria'
 import PanelGrafica from './visor/PanelGrafica'
+import MiniGrafica from './visor/MiniGrafica'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
 import PanelCinematica, { DESVIACION_AVISO } from './visor/PanelCinematica'
 import PanelExportar from './visor/PanelExportar'
 import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './visor/PanelEscala'
 import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
+import { useAltura, useAnchoMinimo } from './visor/useAltura'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
@@ -817,28 +819,29 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     },
     { id: 'video', nombre: 'Vídeo' },
   ]
-  // La barra fija del móvil mide lo que mide su contenido; la página deja ese sitio debajo.
-  const barraRef = useRef<HTMLDivElement>(null)
-  const [altoBarra, setAltoBarra] = useState(0)
-  useEffect(() => {
-    const el = barraRef.current
-    if (!el) return
-    const medir = () => setAltoBarra(Math.ceil(el.getBoundingClientRect().height))
-    medir()
-    const o = new ResizeObserver(medir)
-    o.observe(el)
-    return () => o.disconnect()
-  }, [])
+  // Piezas fijas del móvil: la barra de abajo (la página deja su sitio debajo) y el vídeo con su
+  // gráfica de arriba (las pestañas se pegan justo debajo al desplazarse).
+  const [barraRef, altoBarra] = useAltura<HTMLDivElement>()
+  const [fijoRef, altoFijo] = useAltura<HTMLDivElement>()
+  const anchoLg = useAnchoMinimo()
 
   return (
     <div
       className="flex flex-col gap-4 max-lg:pb-(--alto-barra) lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
-      style={{ '--alto-barra': `${altoBarra}px` } as React.CSSProperties}
+      style={{ '--alto-barra': `${altoBarra}px`, '--alto-fijo': `${altoFijo}px` } as React.CSSProperties}
     >
       {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
           toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
       <div className="contents lg:flex lg:flex-col lg:gap-3">
-        <div className="flex flex-col gap-3 max-lg:order-1">
+        <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3">
+          {/* Móvil: el vídeo (con altura limitada) y la gráfica del ángulo quedan pegados arriba mientras
+              se desplazan las pestañas y los paneles. El elemento pegado tiene que colgar de la página
+              (por eso la columna de la izquierda es `contents`): un `sticky` solo dura lo que su padre. */}
+          <div
+            ref={fijoRef}
+            data-testid="visor-fijo"
+            className="flex flex-col gap-2 max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pb-2"
+          >
           <div className="relative">
             <LienzoVideo
               ancho={info.ancho}
@@ -868,12 +871,16 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               </p>
             )}
           </div>
+          {!anchoLg && (
+            <MiniGrafica tiempos={tabla.tiempos} indice={deseado < total ? deseado : null} onBuscar={buscarEnTiempo} crudo={crudoPorFrame} filtrado={filtradoPorFrame} />
+          )}
+          </div>
 
           {errorToque && (
             // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
             // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
             // gomet) caía en el mensaje en vez de marcar.
-            <div data-testid="error-toque" className="flex flex-col gap-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200">
+            <div data-testid="error-toque" className="flex flex-col gap-2 max-lg:order-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200">
               <p>{errorToque.texto}</p>
               {errorToque.detalle && <p className="font-mono text-xs text-texto-2">{errorToque.detalle}</p>}
               <div className="flex flex-wrap gap-2">
@@ -902,7 +909,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </div>
           )}
 
-          <div className="flex flex-col gap-1 lg:order-1">
+          <div className="flex flex-col gap-1 max-lg:order-3 lg:order-1">
             <input
               type="range"
               min={0}
@@ -985,12 +992,12 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </div>
           </div>
 
-          <div className="lg:order-3">
+          <div className="max-lg:order-4 lg:order-3">
             <TextoGuardado g={guardado} />
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 max-lg:order-3">
+        <div className="flex flex-col gap-3 max-lg:order-6">
 
           <PanelGrafica
             tiempos={tabla.tiempos}
@@ -1030,7 +1037,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
       {/* Columna de herramientas. En pantalla ancha va fija (sticky) con su propio scroll, para que
           el vídeo y la gráfica no se muevan al recorrer los paneles. */}
-      <div className="flex flex-col gap-3 max-lg:order-2 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto" data-testid="columna-herramientas">
+      <div className="flex flex-col gap-3 max-lg:order-5 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto" data-testid="columna-herramientas">
         <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} />
 
         <PanelPestana id="marcar" activa={pestana === 'marcar'}>

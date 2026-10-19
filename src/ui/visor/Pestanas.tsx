@@ -21,7 +21,7 @@ interface Props {
  */
 export default function Pestanas({ pestanas, activa, onElegir }: Props) {
   return (
-    <div role="tablist" aria-label="Herramientas" className="sticky top-0 z-20 grid grid-cols-4 gap-1 rounded-2xl border border-borde bg-fondo p-1">
+    <div role="tablist" aria-label="Herramientas" className="sticky z-20 grid max-lg:top-[calc(var(--alto-fijo)-2px)] lg:top-0 grid-cols-4 gap-1 rounded-2xl border border-borde bg-fondo p-1">
       {pestanas.map((p) => {
         const abierta = p.id === activa
         return (

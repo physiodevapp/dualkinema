@@ -1380,6 +1380,73 @@ describe('pestañas de herramientas', () => {
     }
   })
 
+  it('en el móvil el vídeo y la gráfica del ángulo siguen a la vista al desplazarse, y las pestañas se pegan debajo', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
+    try {
+      const alto = p.viewportSize().height
+      const cajas = async () => ({
+        video: await p.getByTestId('capa').boundingBox(),
+        mini: await p.getByTestId('minigrafica').boundingBox(),
+        pestanas: await p.getByRole('tablist').boundingBox(),
+        fijo: await p.getByTestId('visor-fijo').boundingBox(),
+      })
+      await p.evaluate(() => window.scrollTo(0, 300))
+      const a = await cajas()
+      await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      const b = await cajas()
+      assert.deepEqual(b.video, a.video, 'el vídeo se mueve al desplazarse')
+      assert.deepEqual(b.mini, a.mini, 'la gráfica se mueve al desplazarse')
+      assert.ok(b.video.y >= 0 && b.mini.y + b.mini.height <= b.fijo.y + b.fijo.height, 'vídeo y gráfica fuera de su zona pegada')
+      // El vídeo no se come la pantalla: más de un tercio de alto se lo quitaría a las herramientas.
+      assert.ok(b.video.height <= alto * 0.36, `el vídeo mide ${b.video.height} de ${alto} px`)
+      assert.ok(b.mini.y > b.video.y + b.video.height - 1, 'la gráfica va debajo del vídeo')
+      // Las pestañas se pegan justo debajo, no detrás del vídeo (mientras se recorren las herramientas: pasada la
+      // columna, se van con ella).
+      assert.ok(Math.abs(a.pestanas.y - (a.fijo.y + a.fijo.height)) <= 4, `pestañas en ${a.pestanas.y}, vídeo y gráfica acaban en ${a.fijo.y + a.fijo.height}`)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('la gráfica pequeña salta de frame al tocarla y su cursor no la redibuja', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
+    try {
+      const tiempos = videos.verde.verdad.map((f) => f.t)
+      const redibujos = () => p.getByTestId('minigrafica').getAttribute('data-redibujos')
+      await irAFrame(p, 20)
+      const antes = await redibujos()
+      assert.ok(Number(antes) > 0)
+      for (const i of [21, 22, 40, 90]) await irAFrame(p, i)
+      assert.equal(await redibujos(), antes, 'cambiar de frame redibuja la gráfica pequeña')
+      const caja = await cajaElemento(p, 'minigrafica-area')
+      for (const f of [0.3, 0.7]) {
+        await p.mouse.click(caja.x + caja.width * f, caja.y + caja.height / 2)
+        await esperarQuieto(p)
+        const esperado = frameMasCercano(tiempos, tiempos[0] + f * (tiempos.at(-1) - tiempos[0])) + 1
+        assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1, `al ${f * 100} %: frame ${(await leerPosicion(p)).frame}, esperado ${esperado}`)
+      }
+      // Su cursor está en el instante del frame.
+      const linea = await p.getByTestId('minigrafica-cursor').boundingBox()
+      const area = await p.getByTestId('minigrafica-area').boundingBox()
+      const { frame } = await leerPosicion(p)
+      const esperadoX = area.x + ((tiempos[frame - 1] - tiempos[0]) / (tiempos.at(-1) - tiempos[0])) * area.width
+      assert.ok(Math.abs(linea.x - esperadoX) <= 1.5, `cursor en ${linea.x}, esperado ${esperadoX}`)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('en pantalla ancha no hay gráfica pequeña ni vídeo pegado: la gráfica completa va a su sitio', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
+    try {
+      assert.equal(await p.getByTestId('minigrafica').count(), 0)
+      assert.notEqual(await p.getByTestId('visor-fijo').evaluate((el) => getComputedStyle(el).position), 'sticky')
+      assert.ok(await p.getByTestId('grafica-angulo-area').isVisible())
+    } finally {
+      await p.close()
+    }
+  })
+
   it('un punto en el nombre de una pestaña oculta avisa de huecos y de un cero que no parece quieto', async () => {
     const { p } = await seguirVideo(videos.oculto, { ancho: 1280 })
     try {

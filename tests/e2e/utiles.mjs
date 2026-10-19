@@ -156,10 +156,26 @@ export async function textoDe(p, testid) {
   }
 }
 
-/** Caja del elemento con la gráfica centrada en la ventana: ni fuera de ella ni bajo la barra fija del móvil. */
+/**
+ * Caja del elemento centrada en lo que queda libre de la ventana: ni fuera de ella ni bajo la
+ * barra fija de abajo ni bajo el vídeo pegado de arriba (en el móvil), donde el ratón de Playwright
+ * caería sobre ellos.
+ */
 export async function cajaElemento(p, testid) {
   const el = p.getByTestId(testid)
-  await el.evaluate((e) => e.scrollIntoView({ block: 'center' }))
+  await el.evaluate((e) => {
+    const pegado = (id, tipo) => {
+      const x = document.querySelector(`[data-testid=${id}]`)
+      return x && getComputedStyle(x).position === tipo ? x : null
+    }
+    e.scrollIntoView({ block: 'center' })
+    const fijo = pegado('visor-fijo', 'sticky')
+    const barra = pegado('barra-fija', 'fixed')
+    const arriba = fijo ? fijo.getBoundingClientRect().height : 0
+    const abajo = barra ? barra.getBoundingClientRect().top : window.innerHeight
+    const r = e.getBoundingClientRect()
+    window.scrollBy(0, r.top + r.height / 2 - (arriba + abajo) / 2)
+  })
   return el.boundingBox()
 }
 
