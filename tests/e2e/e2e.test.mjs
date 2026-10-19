@@ -1958,6 +1958,49 @@ describe('escritorio: la pantalla cabe en la altura de la ventana', () => {
   }
 })
 
+describe('escritorio: la columna de herramientas mide lo mismo que la tarjeta de la gráfica', () => {
+  for (const [ancho, alto] of [[1280, 900], [1920, 1000]]) {
+    it(`a ${ancho} × ${alto}, en las cuatro pestañas, con y sin la trayectoria`, async () => {
+      const { p } = await seguirVideo(videos.verde, { ancho })
+      try {
+        await p.setViewportSize({ width: ancho, height: alto })
+        await p.waitForTimeout(300)
+        const columna = p.getByTestId('columna-herramientas')
+        const tarjeta = p.getByTestId('panel-grafica')
+        const medir = async () => ({ c: await columna.boundingBox(), g: await tarjeta.boundingBox() })
+        let alturas = new Set()
+        for (const trayectoria of [false, true]) {
+          if (trayectoria) {
+            await abrirPestana(p, 'marcar')
+            await p.getByRole('button', { name: 'Trayectoria completa' }).click()
+          }
+          for (const pestana of ['marcar', 'analisis', 'escala', 'video']) {
+            await abrirPestana(p, pestana)
+            const { c, g } = await medir()
+            // Mismo alto y mismo borde de arriba: la caja de herramientas y la tarjeta de la gráfica.
+            assert.ok(Math.abs(c.height - g.height) <= 1.5, `${pestana}: herramientas ${c.height} px y gráfica ${g.height} px`)
+            assert.ok(Math.abs(c.y - g.y) <= 1.5 + 0.5, `${pestana}: herramientas empiezan en ${c.y} y la gráfica en ${g.y}`)
+            alturas.add(Math.round(c.height))
+            // Sin scroll, la tarjeta de herramientas llega hasta abajo, igual que la de la gráfica.
+            if (!(await columna.evaluate((el) => el.scrollHeight > el.clientHeight + 1))) {
+              const ultima = await p.locator('[role=tabpanel]:visible > *').last().boundingBox()
+              assert.ok(Math.abs(ultima.y + ultima.height - (g.y + g.height)) <= 8, `${pestana}: la tarjeta acaba en ${ultima.y + ultima.height} y la de la gráfica en ${g.y + g.height}`)
+            }
+          }
+        }
+        assert.equal(alturas.size, 1, `la altura cambia según la pestaña: ${[...alturas].join(', ')}`)
+        // El scroll aparece solo si el panel excede esa altura: «Análisis» (largo) sí, «Vídeo» (corto) no.
+        await abrirPestana(p, 'analisis')
+        assert.ok(await columna.evaluate((el) => el.scrollHeight > el.clientHeight + 1), 'Análisis debería desplazarse')
+        await abrirPestana(p, 'video')
+        assert.ok(await columna.evaluate((el) => el.scrollHeight <= el.clientHeight + 1), 'Vídeo no debería desplazarse')
+      } finally {
+        await p.close()
+      }
+    })
+  }
+})
+
 describe('barras de desplazamiento', () => {
   it('llevan el estilo del tema (finas y oscuras), no las del sistema', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 1280 })

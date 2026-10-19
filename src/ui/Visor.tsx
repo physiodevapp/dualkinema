@@ -994,14 +994,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
   return (
     <div
-      className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
+      className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-stretch"
       style={{ '--alto-fijo': `${altoFijo}px` } as React.CSSProperties}
     >
       {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
           toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
       {/* Pantalla ancha: vídeo y controles a la izquierda y la gráfica a su lado, para que quepa en la altura de la ventana
           (apilados no caben con un vídeo de tamaño razonable). La gráfica ocupa el alto de la columna de al lado. */}
-      <div className="contents lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-3">
+      <div className="contents lg:min-h-[34rem] lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-3">
         <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3">
           {/* Móvil: el vídeo (con altura limitada) y la gráfica del ángulo quedan pegados arriba mientras
               se desplazan las pestañas y los paneles. El elemento pegado tiene que colgar de la página
@@ -1237,10 +1237,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       {/* En el móvil la columna es `contents`: la tira de pestañas cuelga de la página (como el vídeo) y se
           queda pegada durante todo el desplazamiento, también al pasar a la gráfica de debajo; un `sticky`
           dentro de la columna se iría con ella al acabar sus paneles. */}
-      <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto" data-testid="columna-herramientas">
+      {/* Pantalla ancha: la columna mide lo mismo que la fila del vídeo y la gráfica (estira la rejilla) pero no la alarga: su contenido va
+          en una caja absoluta con su propio scroll, que solo aparece si el panel abierto excede esa altura. */}
+      <div className="max-lg:contents lg:relative">
+      <div className="max-lg:contents lg:absolute lg:inset-0 lg:flex lg:flex-col lg:gap-3 lg:overflow-y-auto lg:pr-1" data-testid="columna-herramientas">
         <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`} />
 
-        <div className={`flex flex-col gap-3 max-lg:order-6 ${ampliada ? 'max-lg:hidden' : ''}`}>
+        <div className={`flex flex-col gap-3 max-lg:order-6 lg:flex-1 ${ampliada ? 'max-lg:hidden' : ''}`}>
 
           <PanelPestana id="marcar" activa={pestana === 'marcar'}>
             <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
@@ -1491,6 +1494,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </section>
           </PanelPestana>
         </div>
+      </div>
       </div>
     </div>
   )

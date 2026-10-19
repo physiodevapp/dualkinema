@@ -63,10 +63,13 @@ export default function Pestanas({ pestanas, activa, onElegir, className = '' }:
   )
 }
 
-/** Contenido de una pestaña: sigue montado cuando no se ve, para no perder el estado de sus paneles. */
+/**
+ * Contenido de una pestaña: sigue montado cuando no se ve, para no perder el estado de sus paneles. En pantalla ancha ocupa el alto
+ * que queda en la columna y su última tarjeta lo rellena, de modo que la tarjeta de herramientas y la de la gráfica miden lo mismo.
+ */
 export function PanelPestana({ id, activa, children }: { id: string; activa: boolean; children: ReactNode }) {
   return (
-    <div role="tabpanel" id={`panel-${id}`} aria-labelledby={`pestana-${id}`} hidden={!activa} className="flex flex-col gap-4">
+    <div role="tabpanel" id={`panel-${id}`} aria-labelledby={`pestana-${id}`} hidden={!activa} className="flex flex-col gap-4 lg:flex-1 lg:[&>:last-child]:flex-1">
       {children}
     </div>
   )
