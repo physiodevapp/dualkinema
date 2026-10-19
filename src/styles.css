@@ -17,6 +17,16 @@
   --color-interpolado: #56b4e9;
 }
 
+/* Modo oscuro de los controles nativos y barras de desplazamiento finas con los colores del tema (sin esto salían las del
+   sistema: pista blanca con flechas, sobre todo en la columna de herramientas y en la fila de botones de la gráfica). */
+:root {
+  color-scheme: dark;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-texto-2) 45%, transparent) transparent;
+}
+
 html,
 body,
 #root {

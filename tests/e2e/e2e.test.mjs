@@ -1947,6 +1947,31 @@ describe('escritorio: la pantalla cabe en la altura de la ventana', () => {
   }
 })
 
+describe('barras de desplazamiento', () => {
+  it('llevan el estilo del tema (finas y oscuras), no las del sistema', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
+    try {
+      const estilos = await p.evaluate(() => {
+        const e = (sel) => document.querySelector(sel)
+        const g = (el) => getComputedStyle(el)
+        return {
+          esquema: g(document.documentElement).colorScheme,
+          columna: g(e('[data-testid=columna-herramientas]')).scrollbarWidth,
+          serie: g(e('[role=group][aria-label="Series de la gráfica"]')).scrollbarWidth,
+          color: g(e('[data-testid=columna-herramientas]')).scrollbarColor,
+        }
+      })
+      assert.equal(estilos.esquema, 'dark')
+      assert.equal(estilos.columna, 'thin')
+      assert.equal(estilos.serie, 'thin')
+      assert.match(estilos.color, /^color\(srgb|^rgba?\(/, `scrollbar-color: ${estilos.color}`)
+      assert.match(estilos.color, /transparent|rgba\(0, 0, 0, 0\)|\/ 0\)/, `la pista debe ser transparente: ${estilos.color}`)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('escritorio', () => {
   it('a 1280 px la gráfica y los controles caben sin desbordar la página', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 1280 })

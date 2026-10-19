@@ -90,7 +90,7 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 - Fuentes: Outfit (texto), DM Serif Display (marca y títulos), DM Mono (etiquetas y valores numéricos).
 - Iconos: `@heroicons/react/24/outline`, nunca sólidos.
 - Bordes: `rounded-2xl` en paneles, `rounded-md` en botones.
-- Modo oscuro por defecto.
+- Modo oscuro por defecto (`color-scheme: dark`), con barras de desplazamiento finas del color del tema (`scrollbar-width` y `scrollbar-color` en `styles.css`).
 - Color de acento de dualkinema: ámbar **`#f2a65a`** (decisión D6), distinto del `#5dadec` de physiq-kinematics y de los colores habituales de gomet. Tokens de color en `@theme` de `src/styles.css` (`fondo`, `panel`, `borde`, `texto`, `texto-2`, `acento`); usar esos, no colores sueltos.
 
 ## Modelo de datos (pensado para 3D desde el principio)
