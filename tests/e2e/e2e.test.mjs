@@ -1387,7 +1387,8 @@ describe('pestañas de herramientas', () => {
       const cajas = async () => ({
         video: await p.getByTestId('capa').boundingBox(),
         mini: await p.getByTestId('minigrafica').boundingBox(),
-        pestanas: await p.getByRole('tablist').boundingBox(),
+        // La caja con su aire, no solo las pestañas: es lo que queda pegado.
+        pestanas: await p.getByRole('tablist').locator('..').boundingBox(),
         fijo: await p.getByTestId('visor-fijo').boundingBox(),
       })
       await p.evaluate(() => window.scrollTo(0, 300))

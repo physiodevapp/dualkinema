@@ -22,10 +22,13 @@ interface Props {
  */
 export default function Pestanas({ pestanas, activa, onElegir, className = '' }: Props) {
   return (
-    // El contenedor es opaco y llega a los bordes: la tira es redondeada y, sola, dejaría ver por las
-    // esquinas y por debajo las tarjetas que se desplazan detrás.
-    <div className={`sticky z-20 bg-fondo pb-1.5 max-lg:top-[calc(var(--alto-fijo)-1px)] max-lg:-mx-4 max-lg:px-4 lg:top-0 ${className}`}>
-      <div role="tablist" aria-label="Herramientas" className="grid grid-cols-4 gap-1 rounded-2xl border border-borde bg-fondo p-1">
+    // El contenedor es opaco y llega a los bordes: así no se ven por las esquinas ni por debajo las tarjetas que se
+    // desplazan detrás. En el móvil, sin borde propio (queda la línea del vídeo de arriba) y con un degradado por debajo
+    // para que el texto no se corte en seco; en pantalla ancha, con su caja.
+    <div
+      className={`sticky z-20 bg-fondo pb-1 max-lg:top-[calc(var(--alto-fijo)-1px)] max-lg:-mx-4 max-lg:px-4 max-lg:pt-1.5 lg:top-0 ${className} after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-3 after:bg-linear-to-b after:from-fondo after:to-transparent`}
+    >
+      <div role="tablist" aria-label="Herramientas" className="grid grid-cols-4 gap-1 bg-fondo p-0 lg:rounded-2xl lg:border lg:border-borde lg:p-1">
         {pestanas.map((p) => {
           const abierta = p.id === activa
           return (
