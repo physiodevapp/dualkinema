@@ -1937,6 +1937,17 @@ describe('escritorio: la pantalla cabe en la altura de la ventana', () => {
         }
         const botones = await p.getByRole('button', { name: 'Frame siguiente' }).boundingBox()
         assert.ok(botones.y + botones.height <= alto)
+        // La columna de herramientas, más alta que el hueco (la trayectoria desplegada, el panel de análisis), se desplaza por dentro:
+        // no alarga la página ni empuja el pie hacia abajo.
+        await p.getByRole('button', { name: 'Trayectoria completa' }).click()
+        for (const pestana of ['marcar', 'analisis', 'escala', 'video']) {
+          await abrirPestana(p, pestana)
+          const m = await p.evaluate(() => ({ alto: document.documentElement.scrollHeight, ventana: window.innerHeight }))
+          assert.ok(m.alto <= m.ventana + 1, `pestaña ${pestana}: la página mide ${m.alto} px y la ventana ${m.ventana}`)
+          const pie = await p.getByTestId('pie').boundingBox()
+          assert.ok(pie.y + pie.height <= alto + 1, `pestaña ${pestana}: el pie está en ${pie.y}–${pie.y + pie.height}`)
+        }
+        await abrirPestana(p, 'marcar')
         // El vídeo no queda diminuto: al menos 200 px de alto y un tercio del ancho de la columna.
         const lienzo = await p.getByTestId('lienzo').boundingBox()
         assert.ok(lienzo.height >= 200, `el vídeo mide ${lienzo.height} px de alto`)

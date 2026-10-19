@@ -1237,7 +1237,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       {/* En el móvil la columna es `contents`: la tira de pestañas cuelga de la página (como el vídeo) y se
           queda pegada durante todo el desplazamiento, también al pasar a la gráfica de debajo; un `sticky`
           dentro de la columna se iría con ella al acabar sus paneles. */}
-      <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto" data-testid="columna-herramientas">
+      <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto" data-testid="columna-herramientas">
         <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`} />
 
         <div className={`flex flex-col gap-3 max-lg:order-6 ${ampliada ? 'max-lg:hidden' : ''}`}>
