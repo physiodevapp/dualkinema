@@ -1128,6 +1128,82 @@ describe('la línea de posición no mueve los botones', () => {
   })
 })
 
+/** Lee un CSV exportado: cabecera «# clave;valor», nombres de columna y filas. */
+function leerCsv(texto, sep = ';') {
+  const lineas = texto.replace(/^\uFEFF/, '').split('\r\n').filter((l) => l !== '')
+  const cabecera = lineas.filter((l) => l.startsWith('# '))
+  const [nombres, ...filas] = lineas.filter((l) => !l.startsWith('# '))
+  const columnas = nombres.split(sep)
+  return { cabecera, columnas, filas: filas.map((f) => f.split(sep)) }
+}
+
+describe('exportación CSV', () => {
+  it('sin escala (px) y con escala (m y m/s): una fila por frame, cabecera, vacío = sin valor y valores de la verdad', async () => {
+    const verdad = videos.verde.verdad
+    const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      await esperarGuardado(p, verdad.length)
+      const panel = p.getByTestId('panel-exportar')
+      const descargar = async () => {
+        const [descarga] = await Promise.all([p.waitForEvent('download'), panel.getByTestId('descargar-csv').click()])
+        const { readFile } = await import('node:fs/promises')
+        return { nombre: descarga.suggestedFilename(), texto: await readFile(await descarga.path(), 'utf8') }
+      }
+
+      // Sin escala: todo en píxeles, sin columnas en metros.
+      const sin = await descargar()
+      assert.match(sin.nombre, /\.csv$/)
+      const a = leerCsv(sin.texto)
+      assert.equal(a.filas.length, verdad.length)
+      assert.ok(a.cabecera.some((l) => l.startsWith('# escala;sin escala')))
+      assert.ok(a.columnas.some((c) => c.endsWith('_velocidad_px_s')))
+      assert.ok(!a.columnas.some((c) => c.endsWith('_x_m')))
+      const cCrudo = a.columnas.find((c) => c.endsWith('_crudo_grados'))
+      for (const i of FRAMES_A_COMPARAR) {
+        const medido = Number(a.filas[i - 1][a.columnas.indexOf(cCrudo)].replace(',', '.'))
+        assert.ok(Math.abs(medido - verdad[i - 1].flexion) < TOLERANCIA_GRADOS, `frame ${i}: crudo ${medido}°, real ${verdad[i - 1].flexion.toFixed(2)}°`)
+      }
+      // El primer frame no tiene velocidad angular (sin derivada en el extremo del tramo): vacío, nunca 0.
+      assert.equal(a.filas[0][a.columnas.findIndex((c) => c.endsWith('_vel_grados_s'))], '')
+
+      // Con escala: 4 m en 400 px entre dos toques (10 mm por píxel).
+      await p.getByTestId('panel-escala').getByRole('button', { name: 'Calibrar escala' }).click()
+      await p.getByTestId('panel-escala').getByRole('radio', { name: 'Palo' }).click()
+      await tocarVideo(p, 100, 300)
+      await tocarVideo(p, 500, 300)
+      await p.getByTestId('panel-escala').getByLabel('Longitud en cm').fill('400')
+      await p.getByTestId('panel-escala').getByRole('button', { name: 'Guardar escala' }).click()
+      const mm = await leerNumero(p, 'escala-mm-px')
+      const tobillo = await idTobillo(p)
+
+      const con = leerCsv((await descargar()).texto)
+      assert.equal(con.filas.length, verdad.length)
+      const linea = con.cabecera.find((l) => l.startsWith('# escala;'))
+      assert.match(linea, /400[,.]?\d* m|4,0000 m/)
+      assert.ok(con.cabecera.some((l) => l.startsWith('# escala: origen;')))
+      const col = (n) => con.columnas.indexOf(n)
+      assert.ok(col(`${tobillo}_filtrado_x_m`) >= 0 && col(`${tobillo}_velocidad_m_s`) >= 0)
+      const num = (f, n) => Number(f[col(n)].replace(',', '.'))
+      // Coherencia: metros = píxeles filtrados × m/px.
+      const f30 = con.filas[29]
+      assert.ok(Math.abs(num(f30, `${tobillo}_filtrado_x_m`) - num(f30, `${tobillo}_filtrado_x_px`) * (mm / 1000)) < 1e-4)
+      // Velocidad del tobillo en m/s frente a la real con la escala (±5 %).
+      const real = ((120 * velReal(verdad[29].t) * Math.PI) / 180) * (mm / 1000)
+      const v = num(f30, `${tobillo}_velocidad_m_s`)
+      assert.ok(Math.abs(v / real - 1) < 0.05, `tobillo ${v} m/s, real ${real.toFixed(3)} m/s`)
+
+      // Formato internacional: «,» y punto decimal.
+      await panel.getByRole('radio', { name: /Internacional/ }).check()
+      const intl = leerCsv((await descargar()).texto, ',')
+      assert.equal(intl.filas.length, verdad.length)
+      assert.match(intl.filas[29][intl.columnas.indexOf(`${tobillo}_filtrado_x_m`)], /^-?\d+\.\d{6}$/)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('escritorio', () => {
   it('a 1280 px la gráfica y los controles caben sin desbordar la página', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
