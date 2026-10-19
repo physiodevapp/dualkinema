@@ -4,6 +4,7 @@ import {
   ChevronDoubleRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ArrowTrendingUpIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
   CheckIcon,
@@ -875,6 +876,35 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </div>
             )
 
+  // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
+  const marcaManualElegida = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
+  const extrasCompactos =
+    !siguiendo &&
+    ((seleccionado && mostrado !== null && marcaManualElegida?.editadoManual) || huecosCortos.length > 0 || hayInterpolados || aviso?.irA !== undefined) ? (
+      <div className="flex flex-wrap gap-2" data-testid="extras-compactos">
+        {seleccionado && mostrado !== null && marcaManualElegida?.editadoManual && (
+          <button type="button" onClick={() => quitarManual(seleccionado, mostrado)} className="flex items-center gap-2 rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
+            <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
+          </button>
+        )}
+        {huecosCortos.length > 0 && (
+          <button type="button" onClick={rellenarHuecosCortos} className="flex items-center gap-2 rounded-md border border-interpolado/60 px-3 py-2 text-sm text-interpolado">
+            <SparklesIcon className="size-4" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto{huecosCortos.length === 1 ? '' : 's'}
+          </button>
+        )}
+        {hayInterpolados && (
+          <button type="button" onClick={quitarInterpolados} className="rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
+            Quitar lo interpolado
+          </button>
+        )}
+        {aviso?.irA !== undefined && (
+          <button type="button" onClick={() => ir(aviso.irA!)} className="rounded-md border border-borde px-3 py-2 text-sm">
+            Ir al primer frame con hueco ({aviso.irA + 1})
+          </button>
+        )}
+      </div>
+    ) : null
+
   // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
@@ -926,6 +956,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           <PlayIcon className="size-5" /> Seguir desde aquí
         </button>
       )}
+      {extrasCompactos}
       {aviso && <p className="line-clamp-2 text-xs text-texto-2">{aviso.texto}</p>}
     </div>
   )
@@ -990,6 +1021,19 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 className="absolute top-2 right-2 z-10 flex size-9 items-center justify-center rounded-md border border-borde bg-fondo/85 text-texto"
               >
                 {enVideo ? <ArrowsPointingInIcon className="size-5" /> : <ArrowsPointingOutIcon className="size-5" />}
+              </button>
+            )}
+            {enVideo && (
+              <button
+                type="button"
+                onClick={() => setTrayectoriaCompleta((t) => !t)}
+                aria-pressed={trayectoriaCompleta}
+                aria-label="Mostrar la trayectoria completa"
+                title="Mostrar la trayectoria completa"
+                data-testid="trayectoria-compacta"
+                className={`absolute top-14 right-2 z-10 flex size-9 items-center justify-center rounded-md border bg-fondo/85 ${trayectoriaCompleta ? 'border-acento text-acento' : 'border-borde text-texto'}`}
+              >
+                <ArrowTrendingUpIcon className="size-5" />
               </button>
             )}
           </div>

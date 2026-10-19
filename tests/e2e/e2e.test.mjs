@@ -1706,7 +1706,86 @@ describe('vistas ampliadas del móvil', () => {
       assert.ok(await p.getByRole('tablist').isVisible())
       assert.ok(await p.getByTestId('minigrafica').isVisible())
       assert.equal(await p.evaluate(() => getComputedStyle(document.body).overflow), 'visible')
+      // La franja de estado, dibujada mientras estaba oculta, se rehace al volver: verde (seguido), no un solo píxel estirado.
+      const franja = await colorFranja(p)
+      assert.ok(franja.verde > franja.ancho * 0.9, `franja: ${JSON.stringify(franja)}`)
       await compararAngulos(p, video.verdad)
+    } finally {
+      await p.close()
+    }
+  })
+
+  // Cuenta de colores de la franja de estado de los frames (verde = seguido, rojo = perdido, ámbar = a mano, azul = interpolado).
+  const colorFranja = (p) =>
+    p.getByRole('slider', { name: 'Posición en el vídeo' }).locator('..').locator('canvas').evaluate((c) => {
+      const d = c.getContext('2d').getImageData(0, 0, c.width, 1).data
+      const cuenta = { verde: 0, rojo: 0, ambar: 0, azul: 0, otros: 0, ancho: c.width }
+      for (let i = 0; i < d.length; i += 4) {
+        const [r, g, b, a] = [d[i], d[i + 1], d[i + 2], d[i + 3]]
+        if (a < 128) cuenta.otros++
+        else if (g > 180 && r < 100) cuenta.verde++
+        else if (r > 220 && g < 140) cuenta.rojo++
+        else if (r > 220 && g > 140 && b < 120) cuenta.ambar++
+        else if (b > 200 && r < 120) cuenta.azul++
+        else cuenta.otros++
+      }
+      return cuenta
+    })
+
+  it('vídeo grande: seguir con huecos, ir al primero, trayectoria completa y, al volver, la franja de estado correcta', async () => {
+    const video = videos.oculto
+    const tapados = video.verdad.flatMap((f, i) => (f.tobilloOculto ? [i] : []))
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await cargarVideo(p, video.ruta)
+      await p.getByTestId('ampliar-video').click()
+      await marcarTres(p, video.verdad[0].ps)
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      await p.getByTestId('marcado-compacto').getByText(/no tiene posición fiable/).waitFor({ timeout: 90000 })
+      // El botón para ir al primer hueco está dentro del vídeo grande y funciona.
+      await p.getByRole('button', { name: new RegExp(`Ir al primer frame con hueco \\(${tapados[0] + 1}\\)`) }).click()
+      await esperarQuieto(p)
+      assert.equal((await leerPosicion(p)).frame, tapados[0] + 1)
+      // La trayectoria completa se enciende desde el vídeo grande (y es la misma que la del panel «Marcar»).
+      const trayectoria = p.getByTestId('trayectoria-compacta')
+      assert.equal(await trayectoria.getAttribute('aria-pressed'), 'false')
+      await trayectoria.click()
+      assert.equal(await trayectoria.getAttribute('aria-pressed'), 'true')
+
+      // Al volver: la franja refleja lo seguido (verde), lo perdido (rojo) y lo marcado a mano (ámbar), no un solo color.
+      await p.getByTestId('reducir-video').click()
+      assert.equal(await p.getByRole('button', { name: 'Trayectoria completa' }).getAttribute('aria-pressed'), 'true')
+      await p.waitForFunction(() => {
+        const c = document.querySelector('input[aria-label="Posición en el vídeo"]')?.parentElement?.querySelector('canvas')
+        return !!c && c.width > 50
+      })
+      const franja = await colorFranja(p)
+      const total = video.verdad.length
+      assert.ok(franja.verde > franja.ancho * 0.7, `franja casi toda verde: ${JSON.stringify(franja)}`)
+      assert.ok(franja.rojo >= 1, `la franja no marca el hueco en rojo: ${JSON.stringify(franja)}`)
+      // El hueco ocupa tapados.length de total frames: su parte de la franja, con un píxel de margen por redondeo.
+      const esperado = (tapados.length / total) * franja.ancho
+      assert.ok(Math.abs(franja.rojo - esperado) <= 2 + esperado * 0.5, `rojo ${franja.rojo} px, esperado ≈ ${esperado.toFixed(1)}`)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('vídeo grande: un hueco corto se rellena y se quita desde ella', async () => {
+    const video = videos.corto
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await cargarVideo(p, video.ruta)
+      await p.getByTestId('ampliar-video').click()
+      await marcarTres(p, video.verdad[0].ps)
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      const extras = p.getByTestId('extras-compactos')
+      await extras.waitFor({ timeout: 90000 })
+      await extras.getByRole('button', { name: /Rellenar 1 hueco corto/ }).click()
+      await extras.getByRole('button', { name: 'Quitar lo interpolado' }).waitFor()
+      assert.equal(await extras.getByRole('button', { name: /Rellenar/ }).count(), 0)
+      await extras.getByRole('button', { name: 'Quitar lo interpolado' }).click()
+      await extras.getByRole('button', { name: /Rellenar 1 hueco corto/ }).waitFor()
     } finally {
       await p.close()
     }
