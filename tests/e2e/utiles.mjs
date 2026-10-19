@@ -119,7 +119,9 @@ export async function marcarTres(p, posiciones, desvio = 2) {
 export async function seguirHastaElFinal(p) {
   const antes = await pestanaAbierta(p)
   await abrirPestana(p, 'marcar')
-  await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+  const seguir = p.getByRole('button', { name: 'Seguir desde aquí' })
+  await centrarLibre(seguir)
+  await seguir.click()
   await p.getByTestId('aviso').waitFor({ timeout: 90000 })
   const aviso = (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
   await abrirPestana(p, antes)
@@ -158,13 +160,11 @@ export async function textoDe(p, testid) {
 }
 
 /**
- * Caja del elemento centrada en lo que queda libre de la ventana: ni fuera de ella ni bajo la
- * barra fija de abajo ni bajo el vídeo pegado de arriba (en el móvil), donde el ratón de Playwright
- * caería sobre ellos.
+ * Centra el elemento en lo que queda libre de la ventana: ni fuera de ella ni bajo la barra fija de
+ * abajo ni bajo el vídeo pegado de arriba (en el móvil), donde el ratón de Playwright caería sobre ellos.
  */
-export async function cajaElemento(p, testid) {
-  const el = p.getByTestId(testid)
-  await el.evaluate((e) => {
+export async function centrarLibre(locator) {
+  await locator.evaluate((e) => {
     const pegado = (id, tipo) => {
       const x = document.querySelector(`[data-testid=${id}]`)
       return x && getComputedStyle(x).position === tipo ? x : null
@@ -177,6 +177,12 @@ export async function cajaElemento(p, testid) {
     const r = e.getBoundingClientRect()
     window.scrollBy(0, r.top + r.height / 2 - (arriba + abajo) / 2)
   })
+}
+
+/** Caja de un elemento por `data-testid`, centrado en lo libre de la ventana (ver `centrarLibre`). */
+export async function cajaElemento(p, testid) {
+  const el = p.getByTestId(testid)
+  await centrarLibre(el)
   return el.boundingBox()
 }
 

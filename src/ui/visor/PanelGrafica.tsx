@@ -48,7 +48,7 @@ interface Props {
   segmentos: readonly SerieSegmento[]
   /** Resumen bajo la gráfica del ángulo. */
   resumen: ReactNode
-  /** Vista de solo gráficas (móvil): paneles más altos. */
+  /** Vista de solo gráficas (móvil y tablet en vertical): los paneles se reparten el alto que haya, sin desplazarse. */
   ampliada?: boolean
 }
 
@@ -137,13 +137,13 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
   const comun = { xs, desde, hasta, indice, onBuscar }
 
   return (
-    <section className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-3" data-testid="panel-grafica">
+    <section className={`flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-3 ${ampliada ? 'flex-1' : ''}`} data-testid="panel-grafica">
       <div className="flex items-baseline justify-between gap-2 px-1">
         <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">{titulo}</h2>
         <span className="font-mono text-xs text-texto-2">{positivo} +</span>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 px-1" role="group" aria-label="Series de la gráfica">
+      <div className={`flex gap-1.5 px-1 ${ampliada ? 'shrink-0 overflow-x-auto' : 'flex-wrap'}`} role="group" aria-label="Series de la gráfica">
         {interruptores.map((s) => {
           const activo = visible(s.id)
           return (
@@ -153,7 +153,7 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
               aria-pressed={activo}
               data-testid={`serie-${s.id}`}
               onClick={() => setVisibles((v) => ({ ...v, [s.id]: !v[s.id] }))}
-              className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${activo ? 'border-borde text-texto' : 'border-borde/60 text-texto-2 opacity-60'}`}
+              className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${activo ? 'border-borde text-texto' : 'border-borde/60 text-texto-2 opacity-60'}`}
             >
               <span
                 aria-hidden="true"
@@ -170,57 +170,67 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
       </div>
 
       {(visibles.crudo || visibles.filtrado) && (
-        <GraficaTiempo
-          {...comun}
-          series={seriesAngulo}
-          unidad={grados}
-          altoMinimo={20}
-          alto={ampliada ? 260 : 190}
-          etiqueta="Gráfica del ángulo en el tiempo"
-          testid="grafica-angulo"
-        />
-      )}
-      <div className="px-1">{resumen}</div>
-
-      {visibles.velocidad && (
-        <div className="flex flex-col gap-1 border-t border-borde pt-2">
-          <h3 className="px-1 font-mono text-xs text-texto-2">Velocidad angular (°/s)</h3>
+        <div className={ampliada ? 'relative min-h-[110px] flex-[1.2_1_0]' : ''}>
           <GraficaTiempo
             {...comun}
-            series={seriesVelocidad}
-            unidad={gradosPorS}
-            altoMinimo={40}
-            alto={ampliada ? 190 : 130}
-            etiqueta="Gráfica de la velocidad angular en el tiempo"
-            testid="grafica-velocidad"
+            series={seriesAngulo}
+            unidad={grados}
+            altoMinimo={20}
+            alto={ampliada ? 'llenar' : 190}
+            etiqueta="Gráfica del ángulo en el tiempo"
+            testid="grafica-angulo"
           />
+        </div>
+      )}
+      {!ampliada && <div className="px-1">{resumen}</div>}
+
+      {visibles.velocidad && (
+        <div className={`flex flex-col gap-1 border-t border-borde pt-2 ${ampliada ? 'min-h-[140px] flex-1' : ''}`}>
+          <h3 className="px-1 font-mono text-xs text-texto-2">Velocidad angular (°/s)</h3>
+          <div className={ampliada ? 'relative min-h-[110px] flex-1' : ''}>
+            <GraficaTiempo
+              {...comun}
+              series={seriesVelocidad}
+              unidad={gradosPorS}
+              altoMinimo={40}
+              alto={ampliada ? 'llenar' : 130}
+              etiqueta="Gráfica de la velocidad angular en el tiempo"
+              testid="grafica-velocidad"
+            />
+          </div>
         </div>
       )}
 
       {seriesSegmentos.some((x) => x.visible) && (
-        <div className="flex flex-col gap-1 border-t border-borde pt-2">
+        <div className={`flex flex-col gap-1 border-t border-borde pt-2 ${ampliada ? 'min-h-[140px] flex-1' : ''}`}>
           <h3 className="px-1 font-mono text-xs text-texto-2">Longitud de los segmentos (% frente a su mediana)</h3>
-          <GraficaTiempo
-            {...comun}
-            series={seriesSegmentos}
-            unidad={porcentaje}
-            altoMinimo={10}
-            banda={BANDA_SEGMENTOS}
-            alto={ampliada ? 190 : 130}
-            etiqueta="Gráfica de la longitud de los segmentos en el tiempo"
-            testid="grafica-segmentos"
-          />
-          <p className="px-1 text-xs text-texto-2">
-            Con los gomets en el plano de la cámara, la longitud no cambia. Fuera de la banda (±{fmt(UMBRAL_CONSTANCIA * 100, 0)} %), el segmento sale del
-            plano o los gomets se deslizan: ahí el ángulo es menos fiable.
-          </p>
+          <div className={ampliada ? 'relative min-h-[110px] flex-1' : ''}>
+            <GraficaTiempo
+              {...comun}
+              series={seriesSegmentos}
+              unidad={porcentaje}
+              altoMinimo={10}
+              banda={BANDA_SEGMENTOS}
+              alto={ampliada ? 'llenar' : 130}
+              etiqueta="Gráfica de la longitud de los segmentos en el tiempo"
+              testid="grafica-segmentos"
+            />
+          </div>
+          {!ampliada && (
+            <p className="px-1 text-xs text-texto-2">
+              Con los gomets en el plano de la cámara, la longitud no cambia. Fuera de la banda (±{fmt(UMBRAL_CONSTANCIA * 100, 0)} %), el segmento sale
+              del plano o los gomets se deslizan: ahí el ángulo es menos fiable.
+            </p>
+          )}
         </div>
       )}
 
-      <p className="px-1 text-xs text-texto-2">
-        Huecos sin línea; <span className="text-interpolado">a trazos</span>, lo interpolado. Ángulo filtrado a {fmt(corte, 1)} Hz. Toca o
-        arrastra la gráfica para ir a ese instante.
-      </p>
+      {!ampliada && (
+        <p className="px-1 text-xs text-texto-2">
+          Huecos sin línea; <span className="text-interpolado">a trazos</span>, lo interpolado. Ángulo filtrado a {fmt(corte, 1)} Hz. Toca o
+          arrastra la gráfica para ir a ese instante.
+        </p>
+      )}
     </section>
   )
 }

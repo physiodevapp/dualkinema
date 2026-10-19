@@ -35,7 +35,8 @@ interface Props {
   altoMinimo: number
   /** Banda sombreada [desde, hasta] en el eje Y (p. ej. ±3 %), siempre a la vista. */
   banda?: readonly [number, number]
-  alto: number
+  /** Alto en px, o `'llenar'` para ocupar todo el alto de su contenedor (que tiene que tener alto propio). */
+  alto: number | 'llenar'
   etiqueta: string
   testid: string
   /** El usuario toca o arrastra la gráfica: instante pedido. */
@@ -73,12 +74,14 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     const borde = color('texto-2')
     const rejilla = getComputedStyle(document.documentElement).getPropertyValue('--color-borde').trim() || '#2a2f38'
     let redibujos = 0
+    // Con `'llenar'` la gráfica mide lo que mida su contenedor (y se ajusta si cambia: girar el móvil, mostrar otra serie).
+    const alturaDe = () => (alto === 'llenar' ? Math.max(el.clientHeight, 60) : alto)
     const ejes = { stroke: borde, font: FUENTE, grid: { stroke: rejilla, width: 1 }, ticks: { stroke: rejilla, width: 1 } }
 
     const u = new uPlot(
       {
         width: Math.max(el.clientWidth, 100),
-        height: alto,
+        height: alturaDe(),
         padding: [10, 12, 0, 0],
         legend: { show: false },
         cursor: { show: false }, // el cursor es el frame actual, no el puntero
@@ -89,7 +92,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
         axes: [
           { ...ejes, size: 28, values: (_u, v) => v.map((n) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 1 })} s`) },
           // En un panel bajo, ticks más juntos: si no, solo queda el 0.
-          { ...ejes, size: 50, space: alto < 160 ? 18 : 30, values: (_u, v) => v.map((n) => vivo.current.unidad(n)) },
+          { ...ejes, size: 50, space: alturaDe() < 160 ? 18 : 30, values: (_u, v) => v.map((n) => vivo.current.unidad(n)) },
         ],
         series: [
           {},
@@ -186,7 +189,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     encima.addEventListener('pointerup', soltar)
     encima.addEventListener('pointercancel', soltar)
 
-    const obs = new ResizeObserver(() => u.setSize({ width: Math.max(el.clientWidth, 100), height: alto }))
+    const obs = new ResizeObserver(() => u.setSize({ width: Math.max(el.clientWidth, 100), height: alturaDe() }))
     obs.observe(el)
     return () => {
       obs.disconnect()
@@ -212,5 +215,13 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     cursor.current()
   }, [indice])
 
-  return <div ref={contenedor} data-testid={testid} className="w-full overflow-hidden" role="img" aria-label={etiqueta} />
+  return (
+    <div
+      ref={contenedor}
+      data-testid={testid}
+      className={alto === 'llenar' ? 'absolute inset-0 overflow-hidden' : 'w-full overflow-hidden'}
+      role="img"
+      aria-label={etiqueta}
+    />
+  )
 }

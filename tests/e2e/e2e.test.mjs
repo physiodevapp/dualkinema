@@ -1692,7 +1692,7 @@ describe('vistas ampliadas del móvil', () => {
       assert.ok(caja.y <= 0.5 && Math.abs(caja.y + caja.height - barra.y) <= 1, `las gráficas van de ${caja.y} a ${caja.y + caja.height}; la barra empieza en ${barra.y}`)
       assert.equal(await p.getByTestId('capa').isVisible(), false)
       assert.equal(await p.getByRole('tablist').isVisible(), false)
-      // Más altas que en la vista mixta (190 px de gráfica → unos 160 de zona táctil).
+      // Más altas que en la vista mixta (190 px de gráfica → unos 150 de zona táctil).
       assert.ok((await p.getByTestId('grafica-angulo-area').boundingBox()).height > 200)
       // Tocarla salta de frame; el cursor y los botones de avance siguen.
       const area = await cajaElemento(p, 'grafica-angulo-area')
@@ -1710,6 +1710,36 @@ describe('vistas ampliadas del móvil', () => {
       assert.equal(await p.getByTestId('grafica-angulo-area').boundingBox().then((b) => b.height > 200), false)
     } finally {
       await p.close()
+    }
+  })
+
+  it('solo gráficas se reparte el alto de la pantalla y no hace falta desplazarse (móvil, móvil grande y tablet en vertical)', async () => {
+    for (const [ancho, alto] of [[390, 844], [432, 960], [768, 1024]]) {
+      const { p } = await seguirVideo(videos.verde, { ancho })
+      try {
+        await p.setViewportSize({ width: ancho, height: alto })
+        await p.getByTestId('ampliar-graficas').click()
+        const vista = p.getByTestId('vista-graficas')
+        const sinScroll = () => vista.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)
+        assert.ok(await sinScroll(), `${ancho} × ${alto}: ángulo y velocidad no caben sin desplazarse`)
+        // Las dos gráficas se ven enteras y con altura útil.
+        for (const id of ['grafica-angulo-area', 'grafica-velocidad-area']) {
+          const caja = await p.getByTestId(id).boundingBox()
+          assert.ok(caja.height >= 70, `${ancho} × ${alto}: ${id} mide ${caja.height} px`)
+        }
+        // Con los segmentos encendidos son tres paneles: siguen cabiendo.
+        await p.locator('[data-testid^="serie-segmento-"]').first().click()
+        await p.getByTestId('grafica-segmentos-area').waitFor()
+        assert.ok(await sinScroll(), `${ancho} × ${alto}: con los segmentos no caben sin desplazarse`)
+        // Las gráficas se ajustan si cambia el alto (girar el móvil): más bajo, más corto, sin salirse.
+        const antes = (await p.getByTestId('grafica-angulo-area').boundingBox()).height
+        await p.setViewportSize({ width: ancho, height: alto - 200 })
+        await p.waitForTimeout(300)
+        const despues = (await p.getByTestId('grafica-angulo-area').boundingBox()).height
+        assert.ok(despues < antes, `${ancho} × ${alto}: la gráfica no se ajusta al alto (${antes} → ${despues})`)
+      } finally {
+        await p.close()
+      }
     }
   })
 
