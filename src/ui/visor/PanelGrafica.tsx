@@ -182,7 +182,7 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
           />
         </div>
       )}
-      {!ampliada && <div className="px-1">{resumen}</div>}
+      <div className="shrink-0 px-1">{resumen}</div>
 
       {visibles.velocidad && (
         <div className={`flex flex-col gap-1 border-t border-borde pt-2 ${ampliada ? 'min-h-[140px] flex-1' : ''}`}>

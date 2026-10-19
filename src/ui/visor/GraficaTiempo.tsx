@@ -57,6 +57,8 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
   const contenedor = useRef<HTMLDivElement>(null)
   const grafica = useRef<uPlot | null>(null)
   const cursor = useRef<() => void>(() => {})
+  // Datos que llegaron con la gráfica oculta (ancho 0): se pintan al mostrarla, no antes (mientras se sigue llegan por lotes).
+  const pendientes = useRef(false)
 
   const datos = useMemo<uPlot.AlignedData>(() => [xs as number[], ...series.map((s) => s.valores as (number | null)[])], [xs, series])
   // Si cambia qué series hay (no sus valores ni si se ven), se rehace la gráfica.
@@ -189,7 +191,13 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     encima.addEventListener('pointerup', soltar)
     encima.addEventListener('pointercancel', soltar)
 
-    const obs = new ResizeObserver(() => u.setSize({ width: Math.max(el.clientWidth, 100), height: alturaDe() }))
+    const obs = new ResizeObserver(() => {
+      u.setSize({ width: Math.max(el.clientWidth, 100), height: alturaDe() })
+      if (pendientes.current && el.clientWidth > 0) {
+        pendientes.current = false
+        u.setData(vivo.current.datos)
+      }
+    })
     obs.observe(el)
     return () => {
       obs.disconnect()
@@ -201,6 +209,11 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
 
   // Datos nuevos (el seguimiento los va añadiendo), series que se muestran u ocultan, y frame actual.
   useEffect(() => {
+    // Oculta (una pestaña o una vista que no se ve): no se redibuja con cada lote del seguimiento; al mostrarse, se pone al día.
+    if (contenedor.current && contenedor.current.clientWidth === 0) {
+      pendientes.current = true
+      return
+    }
     grafica.current?.setData(datos)
   }, [datos])
   const visibles = series.map((s) => (s.visible ? 1 : 0)).join('')

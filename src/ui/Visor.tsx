@@ -1110,11 +1110,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           </div>
         </div>
 
+        {/* La gráfica completa: en pantalla ancha, debajo del vídeo; en el móvil solo en la vista «Solo gráficas»
+            (oculta pero montada en las demás, para no perder qué series se ven) y en la mixta se ve la pequeña. */}
         <div
           data-testid="vista-graficas"
           className={`flex flex-col gap-3 max-lg:order-7 ${
             enGraficas ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
-          } ${enVideo ? 'max-lg:hidden' : ''}`}
+          } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
           {enGraficas && (
             <div className="flex items-center justify-between gap-2">

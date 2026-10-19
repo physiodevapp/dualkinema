@@ -206,11 +206,12 @@ describe('lupa: anillo donde quedará el marcador', () => {
   })
 })
 
+// La gráfica completa está siempre a la vista a 1280 px; en el móvil solo en «Solo gráficas» (probada en «vistas ampliadas del móvil»).
 describe('seguimiento y gráfica con gomets verdes', () => {
   let p
   let aviso
   before(async () => {
-    ;({ p, aviso } = await seguirVideo(videos.verde))
+    ;({ p, aviso } = await seguirVideo(videos.verde, { ancho: 1280 }))
   })
   after(() => p?.close())
 
@@ -1308,9 +1309,9 @@ describe('la barra fija del móvil no mueve los botones', () => {
       await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
       const despues = await p.getByTestId('barra-fija').boundingBox()
       assert.deepEqual(despues, antes, 'la barra se mueve con el scroll')
-      // Lo último de la página (la gráfica) queda entero por encima de la barra.
-      const grafica = await p.getByTestId('panel-grafica').boundingBox()
-      assert.ok(grafica.y + grafica.height <= despues.y + 1, `la gráfica acaba en ${grafica.y + grafica.height}, la barra empieza en ${despues.y}`)
+      // Lo último de la página (el panel de la pestaña abierta) queda entero por encima de la barra.
+      const panel = await p.locator('[role=tabpanel]:visible').last().boundingBox()
+      assert.ok(panel.y + panel.height <= despues.y + 1, `el panel acaba en ${panel.y + panel.height}, la barra empieza en ${despues.y}`)
       // Los botones y los valores del frame siguen ahí aunque se haya bajado hasta el final.
       assert.ok(await p.getByRole('button', { name: 'Frame siguiente' }).isVisible())
       assert.ok(await p.getByTestId('rapida-angulo').isVisible())
@@ -1364,17 +1365,46 @@ describe('pestañas de herramientas', () => {
     }
   })
 
-  it('en el móvil también hay pestañas, entre el vídeo y la gráfica', async () => {
+  it('en el móvil también hay pestañas, debajo del vídeo, y la gráfica completa no ocupa la página', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
       await p.evaluate(() => window.scrollTo(0, 0))
       const video = await p.getByTestId('capa').boundingBox()
       const pestanas = await p.getByRole('tablist').boundingBox()
-      const grafica = await p.getByTestId('panel-grafica').boundingBox()
       assert.ok(video.y + video.height <= pestanas.y + 1, 'las pestañas quedan encima del vídeo')
-      assert.ok(pestanas.y < grafica.y, 'la gráfica queda por delante de las pestañas')
+      // El panel abierto va justo debajo de las pestañas y la página acaba ahí: no hay otra pantalla de gráfica más abajo.
+      const panel = await p.locator('[role=tabpanel]:visible').first().boundingBox()
+      assert.ok(panel.y >= pestanas.y + pestanas.height - 1, 'el panel queda debajo de las pestañas')
+      assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
+      assert.ok(await p.getByTestId('minigrafica').isVisible(), 'queda la gráfica pequeña')
       await p.getByRole('tab', { name: 'Escala' }).click()
       assert.ok(await p.getByTestId('panel-escala').isVisible())
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('la gráfica completa oculta no se redibuja mientras se sigue y se pinta entera al abrirla', async () => {
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      await marcarTres(p, videos.verde.verdad[0].ps)
+      await seguirHastaElFinal(p)
+      // Oculta (la vista mixta del móvil): casi sin redibujos pese a los lotes del seguimiento.
+      const redibujos = Number(await p.getByTestId('grafica-angulo').getAttribute('data-redibujos'))
+      assert.ok(redibujos <= 2, `la gráfica oculta se ha redibujado ${redibujos} veces`)
+      // Al abrir «Solo gráficas» aparece con todos los datos: la curva (ámbar) está pintada.
+      await p.getByTestId('ampliar-graficas').click()
+      await p.getByTestId('grafica-angulo-area').waitFor()
+      await p.waitForFunction(() => {
+        const c = document.querySelector('[data-testid=grafica-angulo] canvas')
+        const ctx = c?.getContext('2d')
+        if (!c || !ctx) return false
+        const d = ctx.getImageData(0, 0, c.width, c.height).data
+        let n = 0
+        for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] > 120 && d[i + 1] < 200 && d[i + 2] < 140) n++
+        return n > 100
+      }, undefined, { timeout: 5000 })
     } finally {
       await p.close()
     }
@@ -1708,7 +1738,7 @@ describe('vistas ampliadas del móvil', () => {
       await p.getByTestId('reducir-graficas').click()
       assert.ok(await p.getByTestId('capa').isVisible())
       assert.ok(await p.getByTestId('minigrafica').isVisible())
-      assert.equal(await p.getByTestId('grafica-angulo-area').boundingBox().then((b) => b.height > 200), false)
+      assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
     } finally {
       await p.close()
     }
