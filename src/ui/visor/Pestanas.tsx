@@ -11,6 +11,7 @@ interface Props {
   pestanas: readonly Pestana[]
   activa: string
   onElegir: (id: string) => void
+  className?: string
 }
 
 /**
@@ -19,11 +20,11 @@ interface Props {
  * pide atención en una pestaña que no se está viendo (huecos, escala a rehacer, cero que no
  * parece quieto).
  */
-export default function Pestanas({ pestanas, activa, onElegir }: Props) {
+export default function Pestanas({ pestanas, activa, onElegir, className = '' }: Props) {
   return (
     // El contenedor es opaco y llega a los bordes: la tira es redondeada y, sola, dejaría ver por las
     // esquinas y por debajo las tarjetas que se desplazan detrás.
-    <div className="sticky z-20 bg-fondo pb-2 max-lg:top-[calc(var(--alto-fijo)-1px)] max-lg:-mx-4 max-lg:px-4 lg:top-0">
+    <div className={`sticky z-20 bg-fondo pb-2 max-lg:top-[calc(var(--alto-fijo)-1px)] max-lg:-mx-4 max-lg:px-4 lg:top-0 ${className}`}>
       <div role="tablist" aria-label="Herramientas" className="grid grid-cols-4 gap-1 rounded-2xl border border-borde bg-fondo p-1">
         {pestanas.map((p) => {
           const abierta = p.id === activa

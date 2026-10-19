@@ -1104,7 +1104,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
         <div
           data-testid="vista-graficas"
-          className={`flex flex-col gap-3 max-lg:order-6 ${
+          className={`flex flex-col gap-3 max-lg:order-7 ${
             enGraficas ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
           } ${enVideo ? 'max-lg:hidden' : ''}`}
         >
@@ -1163,257 +1163,263 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
       {/* Columna de herramientas. En pantalla ancha va fija (sticky) con su propio scroll, para que
           el vídeo y la gráfica no se muevan al recorrer los paneles. */}
-      <div className={`flex flex-col gap-3 max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''} lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto`} data-testid="columna-herramientas">
-        <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} />
+      {/* En el móvil la columna es `contents`: la tira de pestañas cuelga de la página (como el vídeo) y se
+          queda pegada durante todo el desplazamiento, también al pasar a la gráfica de debajo; un `sticky`
+          dentro de la columna se iría con ella al acabar sus paneles. */}
+      <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto" data-testid="columna-herramientas">
+        <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`} />
 
-        <PanelPestana id="marcar" activa={pestana === 'marcar'}>
-          <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Marcadores</h2>
-              <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
-            </div>
+        <div className={`flex flex-col gap-3 max-lg:order-6 ${ampliada ? 'max-lg:hidden' : ''}`}>
 
-            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
-              {modelo.marcadores.map((mk, k) => {
-                const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
-                const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
-                const activo = seleccionado === mk.id
+          <PanelPestana id="marcar" activa={pestana === 'marcar'}>
+            <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Marcadores</h2>
+                <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
+                {modelo.marcadores.map((mk, k) => {
+                  const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
+                  const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
+                  const activo = seleccionado === mk.id
+                  return (
+                    <button
+                      key={mk.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={activo}
+                      disabled={siguiendo}
+                      onClick={() => setSeleccionado(activo ? null : mk.id)}
+                      title={mk.nombre}
+                      className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
+                        {nombreCorto(mk.nombre)}
+                      </span>
+                      <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <p className="text-sm text-texto-2">
+                {siguiendo
+                  ? 'Siguiendo los gomets…'
+                  : seleccionado
+                    ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
+                    : listoParaSeguir
+                      ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
+                      : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
+              </p>
+
+              {(() => {
+                // Quitar una marca a mano equivocada del marcador elegido, en este frame.
+                const m = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
+                if (siguiendo || !seleccionado || mostrado === null || !m?.editadoManual) return null
                 return (
                   <button
-                    key={mk.id}
                     type="button"
-                    role="radio"
-                    aria-checked={activo}
-                    disabled={siguiendo}
-                    onClick={() => setSeleccionado(activo ? null : mk.id)}
-                    title={mk.nombre}
-                    className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
+                    onClick={() => quitarManual(seleccionado, mostrado)}
+                    className="flex items-center justify-center gap-2 self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2"
                   >
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
-                      {nombreCorto(mk.nombre)}
-                    </span>
-                    <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
+                    <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
                   </button>
                 )
-              })}
-            </div>
+              })()}
 
-            <p className="text-sm text-texto-2">
-              {siguiendo
-                ? 'Siguiendo los gomets…'
-                : seleccionado
-                  ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
-                  : listoParaSeguir
-                    ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
-                    : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
-            </p>
-
-            {(() => {
-              // Quitar una marca a mano equivocada del marcador elegido, en este frame.
-              const m = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
-              if (siguiendo || !seleccionado || mostrado === null || !m?.editadoManual) return null
-              return (
-                <button
-                  type="button"
-                  onClick={() => quitarManual(seleccionado, mostrado)}
-                  className="flex items-center justify-center gap-2 self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2"
-                >
-                  <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
-                </button>
-              )
-            })()}
-
-            {siguiendo ? (
-              <div className="flex flex-col gap-2">
-                <div className="h-2 overflow-hidden rounded-full bg-borde">
-                  <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
+              {siguiendo ? (
+                <div className="flex flex-col gap-2">
+                  <div className="h-2 overflow-hidden rounded-full bg-borde">
+                    <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
+                    className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3"
+                  >
+                    <StopIcon className="size-5" /> Parar
+                  </button>
                 </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
-                  className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3"
+                  onClick={seguirDesdeAqui}
+                  disabled={!listoParaSeguir}
+                  className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
                 >
-                  <StopIcon className="size-5" /> Parar
+                  <PlayIcon className="size-5" /> Seguir desde aquí
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={seguirDesdeAqui}
-                disabled={!listoParaSeguir}
-                className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
-              >
-                <PlayIcon className="size-5" /> Seguir desde aquí
-              </button>
-            )}
+              )}
 
-            {aviso && (
-              <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
-                <p data-testid="aviso">{aviso.texto}</p>
-                {aviso.detalle && (
-                  <details className="text-texto-2">
-                    <summary className="cursor-pointer">Por qué (para diagnosticar)</summary>
-                    <pre className="mt-1 font-mono text-xs whitespace-pre-wrap">{aviso.detalle}</pre>
-                  </details>
-                )}
-                {aviso.irA !== undefined && (
-                  <button type="button" onClick={() => ir(aviso.irA!)} className="self-start rounded-md border border-borde px-3 py-2">
-                    Ir al primer frame con hueco ({aviso.irA + 1})
-                  </button>
-                )}
-              </div>
-            )}
-
-            {!siguiendo && (huecosCortos.length > 0 || hayInterpolados) && (
-              <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="huecos-cortos">
-                {huecosCortos.length > 0 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={rellenarHuecosCortos}
-                      className="flex items-center justify-center gap-2 rounded-md border border-interpolado/60 px-4 py-3 text-interpolado"
-                    >
-                      <SparklesIcon className="size-5" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto
-                      {huecosCortos.length === 1 ? '' : 's'}
+              {aviso && (
+                <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
+                  <p data-testid="aviso">{aviso.texto}</p>
+                  {aviso.detalle && (
+                    <details className="text-texto-2">
+                      <summary className="cursor-pointer">Por qué (para diagnosticar)</summary>
+                      <pre className="mt-1 font-mono text-xs whitespace-pre-wrap">{aviso.detalle}</pre>
+                    </details>
+                  )}
+                  {aviso.irA !== undefined && (
+                    <button type="button" onClick={() => ir(aviso.irA!)} className="self-start rounded-md border border-borde px-3 py-2">
+                      Ir al primer frame con hueco ({aviso.irA + 1})
                     </button>
-                    <p className="text-xs text-texto-2">
-                      Huecos de {fmt(HUECO_MAX_S, 1)} s o menos entre dos posiciones fiables. Se rellenan con una curva suave que
-                      sigue el movimiento de antes y de después, y quedan marcados como interpolados.
-                    </p>
-                  </>
-                )}
-                {hayInterpolados && (
-                  <button type="button" onClick={quitarInterpolados} className="self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
-                    Quitar lo interpolado
-                  </button>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
 
-            <ControlTrayectoria
-              activa={trayectoriaCompleta}
-              onActiva={setTrayectoriaCompleta}
-              marcadores={modelo.marcadores.map((mk, k) => ({ id: mk.id, nombre: nombreCorto(mk.nombre), color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]! }))}
-              elegidos={conTrayectoria}
-              onElegir={(id) =>
-                setConTrayectoria((c) => {
-                  const n = new Set(c)
-                  if (!n.delete(id)) n.add(id)
-                  return n
-                })
-              }
+              {!siguiendo && (huecosCortos.length > 0 || hayInterpolados) && (
+                <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="huecos-cortos">
+                  {huecosCortos.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={rellenarHuecosCortos}
+                        className="flex items-center justify-center gap-2 rounded-md border border-interpolado/60 px-4 py-3 text-interpolado"
+                      >
+                        <SparklesIcon className="size-5" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto
+                        {huecosCortos.length === 1 ? '' : 's'}
+                      </button>
+                      <p className="text-xs text-texto-2">
+                        Huecos de {fmt(HUECO_MAX_S, 1)} s o menos entre dos posiciones fiables. Se rellenan con una curva suave que
+                        sigue el movimiento de antes y de después, y quedan marcados como interpolados.
+                      </p>
+                    </>
+                  )}
+                  {hayInterpolados && (
+                    <button type="button" onClick={quitarInterpolados} className="self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
+                      Quitar lo interpolado
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <ControlTrayectoria
+                activa={trayectoriaCompleta}
+                onActiva={setTrayectoriaCompleta}
+                marcadores={modelo.marcadores.map((mk, k) => ({ id: mk.id, nombre: nombreCorto(mk.nombre), color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]! }))}
+                elegidos={conTrayectoria}
+                onElegir={(id) =>
+                  setConTrayectoria((c) => {
+                    const n = new Set(c)
+                    if (!n.delete(id)) n.add(id)
+                    return n
+                  })
+                }
+              />
+
+              <div className="flex items-baseline justify-between border-t border-borde pt-3">
+                <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>
+                <span className="font-mono text-2xl" data-testid="angulo">
+                  {Number.isNaN(angulo) ? '—' : `${grados(angulo)}°`}
+                  {anguloRedondeado !== 0 && !Number.isNaN(angulo) && (
+                    <span className="ml-2 text-sm text-texto-2">{anguloRedondeado > 0 ? articulacion.positivo : articulacion.negativo}</span>
+                  )}
+                </span>
+              </div>
+            </section>
+          </PanelPestana>
+
+          <PanelPestana id="analisis" activa={pestana === 'analisis'}>
+            <PanelFiltro
+              ajustes={ajustes}
+              onCambiar={cambiarAjustes}
+              corte={filtrado.corte}
+              fs={filtrado.fs}
+              tramosCortos={filtrado.tramosCortos}
+              anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
+              deshabilitado={siguiendo}
             />
 
-            <div className="flex items-baseline justify-between border-t border-borde pt-3">
-              <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>
-              <span className="font-mono text-2xl" data-testid="angulo">
-                {Number.isNaN(angulo) ? '—' : `${grados(angulo)}°`}
-                {anguloRedondeado !== 0 && !Number.isNaN(angulo) && (
-                  <span className="ml-2 text-sm text-texto-2">{anguloRedondeado > 0 ? articulacion.positivo : articulacion.negativo}</span>
-                )}
-              </span>
-            </div>
-          </section>
-        </PanelPestana>
+            <PanelCinematica
+              angulo={anguloFiltrado}
+              relativo={cero ? relativoAlCero(anguloFiltrado, cero) : NaN}
+              velocidad={mostrado === null ? NaN : (filtrado.derivadas.velocidad[mostrado] ?? NaN)}
+              aceleracion={mostrado === null ? NaN : (filtrado.derivadas.aceleracion[mostrado] ?? NaN)}
+              marcadores={modelo.marcadores.map((mk, k) => {
+                const v = filtrado.velocidades.get(mk.id)
+                return {
+                  id: mk.id,
+                  nombre: nombreCorto(mk.nombre),
+                  color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]!,
+                  velocidad: mostrado === null || !v ? NaN : (v.modulo[mostrado] ?? NaN),
+                  unidad: v?.unidad ?? 'px/s',
+                }
+              })}
+              tramo={tramoEstatico}
+              cero={cero}
+              t={t}
+              t0={tabla.tiempos[0] ?? 0}
+              tn={tabla.tiempos[total - 1] ?? 0}
+              onTramo={cambiarTramo}
+              onPrimeros={() => cambiarTramo(tramoInicial(tabla.tiempos))}
+              deshabilitado={siguiendo}
+            />
 
-        <PanelPestana id="analisis" activa={pestana === 'analisis'}>
-          <PanelFiltro
-            ajustes={ajustes}
-            onCambiar={cambiarAjustes}
-            corte={filtrado.corte}
-            fs={filtrado.fs}
-            tramosCortos={filtrado.tramosCortos}
-            anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
-            deshabilitado={siguiendo}
-          />
+            <PanelExportar
+              generar={generarCsv}
+              resumen={`${total} frames · ${modelo.marcadores.length} marcadores · ${
+                calibracion ? 'posiciones en px y en m, velocidades en m/s' : 'sin escala: todo en píxeles'
+              }${orientacion.plano === articulacion.plano ? '' : ' · sin ángulo (la articulación es de otro plano)'}`}
+              deshabilitado={siguiendo}
+            />
 
-          <PanelCinematica
-            angulo={anguloFiltrado}
-            relativo={cero ? relativoAlCero(anguloFiltrado, cero) : NaN}
-            velocidad={mostrado === null ? NaN : (filtrado.derivadas.velocidad[mostrado] ?? NaN)}
-            aceleracion={mostrado === null ? NaN : (filtrado.derivadas.aceleracion[mostrado] ?? NaN)}
-            marcadores={modelo.marcadores.map((mk, k) => {
-              const v = filtrado.velocidades.get(mk.id)
-              return {
-                id: mk.id,
-                nombre: nombreCorto(mk.nombre),
-                color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]!,
-                velocidad: mostrado === null || !v ? NaN : (v.modulo[mostrado] ?? NaN),
-                unidad: v?.unidad ?? 'px/s',
-              }
-            })}
-            tramo={tramoEstatico}
-            cero={cero}
-            t={t}
-            t0={tabla.tiempos[0] ?? 0}
-            tn={tabla.tiempos[total - 1] ?? 0}
-            onTramo={cambiarTramo}
-            onPrimeros={() => cambiarTramo(tramoInicial(tabla.tiempos))}
-            deshabilitado={siguiendo}
-          />
+          </PanelPestana>
 
-          <PanelExportar
-            generar={generarCsv}
-            resumen={`${total} frames · ${modelo.marcadores.length} marcadores · ${
-              calibracion ? 'posiciones en px y en m, velocidades en m/s' : 'sin escala: todo en píxeles'
-            }${orientacion.plano === articulacion.plano ? '' : ' · sin ángulo (la articulación es de otro plano)'}`}
-            deshabilitado={siguiendo}
-          />
+          <PanelPestana id="escala" activa={pestana === 'escala'}>
+            <PanelEscala
+              calibracion={calibracion}
+              borrador={borrador}
+              medicion={medicion}
+              framesTramo={framesTramo}
+              medicionGuardada={medicionGuardada}
+              segmentos={segmentos}
+              tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
+              constancia={constancia}
+              onIr={ir}
+              frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
+              onEmpezar={empezarEscala}
+              onBorrador={setBorrador}
+              onGuardar={guardarEscala}
+              onCancelar={() => setBorrador(null)}
+              onQuitar={quitarEscala}
+              onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
+              deshabilitado={siguiendo}
+            />
 
-        </PanelPestana>
+          </PanelPestana>
 
-        <PanelPestana id="escala" activa={pestana === 'escala'}>
-          <PanelEscala
-            calibracion={calibracion}
-            borrador={borrador}
-            medicion={medicion}
-            framesTramo={framesTramo}
-            medicionGuardada={medicionGuardada}
-            segmentos={segmentos}
-            tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
-            constancia={constancia}
-            onIr={ir}
-            frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
-            onEmpezar={empezarEscala}
-            onBorrador={setBorrador}
-            onGuardar={guardarEscala}
-            onCancelar={() => setBorrador(null)}
-            onQuitar={quitarEscala}
-            onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
-            deshabilitado={siguiendo}
-          />
-
-        </PanelPestana>
-
-        <PanelPestana id="video" activa={pestana === 'video'}>
-          <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
-            <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
-            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-              <dt className="text-texto-2">Archivo</dt>
-              <dd className="truncate" title={info.nombre}>{info.nombre}</dd>
-              <dt className="text-texto-2">Formato</dt>
-              <dd>{info.formato} · {info.codec}</dd>
-              <dt className="text-texto-2">Tamaño</dt>
-              <dd>{info.ancho} × {info.alto} px{info.rotacion ? ` (girado ${info.rotacion}°)` : ''}</dd>
-              <dt className="text-texto-2">Duración</dt>
-              <dd>{fmt(info.duracion, 2)} s</dd>
-              <dt className="text-texto-2">Frames</dt>
-              <dd>{total}</dd>
-              <dt className="text-texto-2">fps medio</dt>
-              <dd>{Number.isNaN(est.fpsMedio) ? '—' : fmt(est.fpsMedio, 2)}</dd>
-              <dt className="text-texto-2">Entre frames</dt>
-              <dd>
-                {Number.isNaN(est.pasoMin) ? '—' : `${fmt(est.pasoMin * 1000, 1)}–${fmt(est.pasoMax * 1000, 1)} ms`}
-                {est.variable && <span className="text-acento"> · variable</span>}
-              </dd>
-              <dt className="text-texto-2">Persona</dt>
-              <dd>{orientacion.plano === 'sagital' ? `mira a la ${orientacion.mira}` : `vista desde ${orientacion.ve}`}</dd>
-              <dt className="text-texto-2">Decodificar</dt>
-              <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}</dd>
-            </dl>
-          </section>
-        </PanelPestana>
+          <PanelPestana id="video" activa={pestana === 'video'}>
+            <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
+              <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                <dt className="text-texto-2">Archivo</dt>
+                <dd className="truncate" title={info.nombre}>{info.nombre}</dd>
+                <dt className="text-texto-2">Formato</dt>
+                <dd>{info.formato} · {info.codec}</dd>
+                <dt className="text-texto-2">Tamaño</dt>
+                <dd>{info.ancho} × {info.alto} px{info.rotacion ? ` (girado ${info.rotacion}°)` : ''}</dd>
+                <dt className="text-texto-2">Duración</dt>
+                <dd>{fmt(info.duracion, 2)} s</dd>
+                <dt className="text-texto-2">Frames</dt>
+                <dd>{total}</dd>
+                <dt className="text-texto-2">fps medio</dt>
+                <dd>{Number.isNaN(est.fpsMedio) ? '—' : fmt(est.fpsMedio, 2)}</dd>
+                <dt className="text-texto-2">Entre frames</dt>
+                <dd>
+                  {Number.isNaN(est.pasoMin) ? '—' : `${fmt(est.pasoMin * 1000, 1)}–${fmt(est.pasoMax * 1000, 1)} ms`}
+                  {est.variable && <span className="text-acento"> · variable</span>}
+                </dd>
+                <dt className="text-texto-2">Persona</dt>
+                <dd>{orientacion.plano === 'sagital' ? `mira a la ${orientacion.mira}` : `vista desde ${orientacion.ve}`}</dd>
+                <dt className="text-texto-2">Decodificar</dt>
+                <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}</dd>
+              </dl>
+            </section>
+          </PanelPestana>
+        </div>
       </div>
     </div>
   )

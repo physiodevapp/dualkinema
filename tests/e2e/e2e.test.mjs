@@ -1400,9 +1400,11 @@ describe('pestañas de herramientas', () => {
       // El vídeo no se come la pantalla: más de un tercio de alto se lo quitaría a las herramientas.
       assert.ok(b.video.height <= alto * 0.36, `el vídeo mide ${b.video.height} de ${alto} px`)
       assert.ok(b.mini.y > b.video.y + b.video.height - 1, 'la gráfica va debajo del vídeo')
-      // Las pestañas se pegan justo debajo, no detrás del vídeo (mientras se recorren las herramientas: pasada la
-      // columna, se van con ella).
-      assert.ok(Math.abs(a.pestanas.y - (a.fijo.y + a.fijo.height)) <= 4, `pestañas en ${a.pestanas.y}, vídeo y gráfica acaban en ${a.fijo.y + a.fijo.height}`)
+      // Las pestañas se pegan justo debajo, no detrás del vídeo, y siguen ahí hasta el final de la página (también
+      // al pasar a la gráfica completa: no se van con la columna de paneles).
+      for (const [donde, c] of [['a mitad', a], ['al final', b]]) {
+        assert.ok(Math.abs(c.pestanas.y - (c.fijo.y + c.fijo.height)) <= 4, `${donde}: pestañas en ${c.pestanas.y}, vídeo y gráfica acaban en ${c.fijo.y + c.fijo.height}`)
+      }
     } finally {
       await p.close()
     }
@@ -1654,7 +1656,7 @@ describe('vistas ampliadas del móvil', () => {
       const fijo = await p.getByTestId('visor-fijo').boundingBox()
       const barra = await p.getByTestId('barra-fija').boundingBox()
       assert.ok(fijo.y <= 0.5 && Math.abs(fijo.y + fijo.height - barra.y) <= 1, `el vídeo grande ocupa de ${fijo.y} a ${fijo.y + fijo.height}; la barra empieza en ${barra.y}`)
-      assert.equal(await p.getByTestId('columna-herramientas').isVisible(), false)
+      assert.equal(await p.getByRole('tablist').isVisible(), false)
       assert.equal(await p.getByTestId('minigrafica').count(), 0)
       assert.equal(await p.getByRole('slider', { name: 'Posición en el vídeo' }).isVisible(), false)
       assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
@@ -1670,7 +1672,7 @@ describe('vistas ampliadas del móvil', () => {
 
       // Al volver, todo lo hecho está en su sitio y el ángulo coincide con el real.
       await p.getByTestId('reducir-video').click()
-      assert.ok(await p.getByTestId('columna-herramientas').isVisible())
+      assert.ok(await p.getByRole('tablist').isVisible())
       assert.ok(await p.getByTestId('minigrafica').isVisible())
       assert.equal(await p.evaluate(() => getComputedStyle(document.body).overflow), 'visible')
       await compararAngulos(p, video.verdad)
@@ -1689,7 +1691,7 @@ describe('vistas ampliadas del móvil', () => {
       const barra = await p.getByTestId('barra-fija').boundingBox()
       assert.ok(caja.y <= 0.5 && Math.abs(caja.y + caja.height - barra.y) <= 1, `las gráficas van de ${caja.y} a ${caja.y + caja.height}; la barra empieza en ${barra.y}`)
       assert.equal(await p.getByTestId('capa').isVisible(), false)
-      assert.equal(await p.getByTestId('columna-herramientas').isVisible(), false)
+      assert.equal(await p.getByRole('tablist').isVisible(), false)
       // Más altas que en la vista mixta (190 px de gráfica → unos 160 de zona táctil).
       assert.ok((await p.getByTestId('grafica-angulo-area').boundingBox()).height > 200)
       // Tocarla salta de frame; el cursor y los botones de avance siguen.
