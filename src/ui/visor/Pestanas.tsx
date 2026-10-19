@@ -24,7 +24,7 @@ export default function Pestanas({ pestanas, activa, onElegir, className = '' }:
   return (
     // El contenedor es opaco y llega a los bordes: la tira es redondeada y, sola, dejaría ver por las
     // esquinas y por debajo las tarjetas que se desplazan detrás.
-    <div className={`sticky z-20 bg-fondo pb-2 max-lg:top-[calc(var(--alto-fijo)-1px)] max-lg:-mx-4 max-lg:px-4 lg:top-0 ${className}`}>
+    <div className={`sticky z-20 bg-fondo pb-1.5 max-lg:top-[calc(var(--alto-fijo)-1px)] max-lg:-mx-4 max-lg:px-4 lg:top-0 ${className}`}>
       <div role="tablist" aria-label="Herramientas" className="grid grid-cols-4 gap-1 rounded-2xl border border-borde bg-fondo p-1">
         {pestanas.map((p) => {
           const abierta = p.id === activa
@@ -38,7 +38,7 @@ export default function Pestanas({ pestanas, activa, onElegir, className = '' }:
               aria-controls={`panel-${p.id}`}
               data-testid={`pestana-${p.id}`}
               onClick={() => onElegir(p.id)}
-              className={`relative flex min-h-11 touch-manipulation items-center justify-center rounded-md px-1 text-sm select-none ${
+              className={`relative flex min-h-10 touch-manipulation items-center justify-center rounded-md px-1 text-sm select-none ${
                 abierta ? 'bg-panel text-acento' : 'text-texto-2'
               }`}
             >

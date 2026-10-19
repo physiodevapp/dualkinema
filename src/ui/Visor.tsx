@@ -71,7 +71,7 @@ function BotonPaso({ etiqueta, accion, children }: { etiqueta: string; accion: (
       aria-label={etiqueta}
       title={etiqueta}
       {...manejadores}
-      className="flex h-12 flex-1 touch-manipulation lg:h-14 items-center justify-center rounded-md border border-borde bg-panel select-none active:border-acento active:text-acento"
+      className="flex h-11 flex-1 touch-manipulation lg:h-14 items-center justify-center rounded-md border border-borde bg-panel select-none active:border-acento active:text-acento"
     >
       {children}
     </button>
@@ -1034,17 +1034,19 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           <div
             ref={barraRef}
             data-testid="barra-fija"
-            className="max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:flex max-lg:flex-col max-lg:gap-2 max-lg:border-t max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pt-2 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:contents"
+            className="max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:flex max-lg:flex-col max-lg:gap-1.5 max-lg:border-t max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pt-1.5 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:contents"
           >
-            {/* Siempre la misma altura: en el móvil, dos líneas fijas que no se parten. Si el texto
+            {/* Siempre la misma altura: una línea que no se parte (lo que no cabe se corta). Si el texto
                 cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
-                y se perdía la pulsación mantenida. */}
-            <div className="flex flex-col font-mono text-sm tabular-nums sm:flex-row sm:items-baseline sm:justify-between sm:gap-x-3" data-testid="posicion">
-              <span className="whitespace-nowrap">
-                t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
+                y se perdía la pulsación mantenida. En el móvil, sin «t =» ni «frame», para que quepa en una. */}
+            <div className="flex items-baseline justify-between gap-x-3 font-mono text-sm tabular-nums" data-testid="posicion">
+              <span className="shrink-0 whitespace-nowrap">
+                <span className="max-lg:hidden">t = </span>
+                <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
               </span>
-              <span className="truncate whitespace-nowrap text-texto-2">
-                frame {mostrado === null ? '—' : mostrado + 1} / {total}
+              <span className="min-w-0 truncate whitespace-nowrap text-texto-2">
+                <span className="max-lg:hidden">frame </span>
+                {mostrado === null ? '—' : mostrado + 1} / {total}
                 {mostrado !== deseado && ' …'}
                 {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
                 {msDecodificar !== null && (
@@ -1066,7 +1068,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
                 cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
                 partir, para no mover los botones (se perdería la pulsación mantenida). */}
-            <dl className="grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-1 font-mono tabular-nums" data-testid="lectura-rapida">
+            <dl className="grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-0.5 font-mono tabular-nums" data-testid="lectura-rapida">
               {(
                 [
                   ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
@@ -1076,8 +1078,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 ] as const
               ).map(([etiqueta, texto, id]) => (
                 <div key={id} className="min-w-0 text-center">
-                  <dt className="truncate text-[0.65rem] text-texto-2">{etiqueta}</dt>
-                  <dd className="truncate text-sm whitespace-nowrap" data-testid={id}>{texto}</dd>
+                  <dt className="truncate text-[0.65rem] leading-tight text-texto-2">{etiqueta}</dt>
+                  <dd className="truncate text-sm leading-tight whitespace-nowrap" data-testid={id}>{texto}</dd>
                 </div>
               ))}
             </dl>

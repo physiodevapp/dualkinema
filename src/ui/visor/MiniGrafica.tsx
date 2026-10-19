@@ -108,7 +108,7 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
               aria-pressed={modo === m.id}
               data-testid={`minigrafica-modo-${m.id}`}
               onClick={() => setModo(m.id)}
-              className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${modo === m.id ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
+              className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs ${modo === m.id ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
             >
               {m.id !== 'ambas' && <span aria-hidden="true" className="inline-block h-0.5 w-3 rounded-full" style={{ backgroundColor: `var(--color-${m.color})` }} />}
               {m.id === 'ambas' && (
@@ -127,7 +127,7 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
           aria-label="Ver solo las gráficas"
           title="Ver solo las gráficas"
           data-testid="ampliar-graficas"
-          className="flex size-8 items-center justify-center rounded-md border border-borde text-texto-2"
+          className="flex size-7 items-center justify-center rounded-md border border-borde text-texto-2"
         >
           <ArrowsPointingOutIcon className="size-4" />
         </button>

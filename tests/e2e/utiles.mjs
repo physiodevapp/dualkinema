@@ -64,7 +64,8 @@ export async function esperarQuieto(p) {
 /** «frame 31 / 120» y «t = 1,000 s» del visor → { frame (1-based), total, t }. */
 export async function leerPosicion(p) {
   const texto = (await p.getByTestId('posicion').innerText()).replace(/\s+/g, ' ')
-  const m = /t = (-?[\d.,]+) s.*frame (\d+) \/ (\d+)/.exec(texto)
+  // En el móvil la línea va sin «t =» ni «frame» para caber en una: «18,346 s 550 / 603 · 12 ms caché».
+  const m = /(-?[\d.,]+) s\b.*?(\d+) \/ (\d+)/.exec(texto)
   if (!m) throw new Error(`No entiendo la posición del visor: «${texto}»`)
   return { t: Number(m[1].replace(',', '.')), frame: Number(m[2]), total: Number(m[3]) }
 }
