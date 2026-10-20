@@ -979,17 +979,30 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     </button>
   )
 
-  // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
-  const marcaManualElegida = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
-  const extrasCompactos =
-    !siguiendo &&
-    ((seleccionado && mostrado !== null && marcaManualElegida?.editadoManual) || huecosCortos.length > 0 || hayInterpolados || aviso?.irA !== undefined) ? (
-      <div className="flex flex-wrap gap-2" data-testid="extras-compactos">
-        {seleccionado && mostrado !== null && marcaManualElegida?.editadoManual && (
-          <button type="button" onClick={() => quitarManual(seleccionado, mostrado)} className="flex items-center gap-2 rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
-            <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
+  // Marcadores con una marca a mano en el frame actual: se pueden quitar sin tener que elegirlos antes.
+  const marcasManualesAqui = mostrado === null ? [] : modelo.marcadores.map((mk, k) => ({ mk, k })).filter(({ mk }) => muestra(mk.id, mostrado)?.editadoManual)
+  const botonesQuitarManual = (porDefecto: string) =>
+    siguiendo || mostrado === null
+      ? null
+      : marcasManualesAqui.map(({ mk, k }) => (
+          <button
+            key={mk.id}
+            type="button"
+            onClick={() => quitarManual(mk.id, mostrado)}
+            data-testid={`quitar-manual-${mk.id}`}
+            className={`flex items-center gap-2 rounded-md border border-borde px-3 py-2 text-sm text-texto-2 ${porDefecto}`}
+          >
+            <TrashIcon className="size-4" />
+            <span className="size-2.5 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
+            Quitar la marca a mano: {nombreCorto(mk.nombre)}
           </button>
-        )}
+        ))
+
+  // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
+  const extrasCompactos =
+    !siguiendo && (marcasManualesAqui.length > 0 || huecosCortos.length > 0 || hayInterpolados || aviso?.irA !== undefined) ? (
+      <div className="flex flex-wrap gap-2" data-testid="extras-compactos">
+        {botonesQuitarManual('')}
         {huecosCortos.length > 0 && (
           <button type="button" onClick={rellenarHuecosCortos} className="flex items-center gap-2 rounded-md border border-interpolado/60 px-3 py-2 text-sm text-interpolado">
             <SparklesIcon className="size-4" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto{huecosCortos.length === 1 ? '' : 's'}
@@ -1443,20 +1456,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
               {interruptorAOjo}
 
-              {(() => {
-                // Quitar una marca a mano equivocada del marcador elegido, en este frame.
-                const m = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
-                if (siguiendo || !seleccionado || mostrado === null || !m?.editadoManual) return null
-                return (
-                  <button
-                    type="button"
-                    onClick={() => quitarManual(seleccionado, mostrado)}
-                    className="flex items-center justify-center gap-2 self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2"
-                  >
-                    <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
-                  </button>
-                )
-              })()}
+              {/* Quitar una marca a mano equivocada de cualquier marcador, en este frame, sin elegirlo antes. */}
+              {marcasManualesAqui.length > 0 && !siguiendo && <div className="flex flex-wrap gap-2">{botonesQuitarManual('')}</div>}
 
               {nodoAnclas(false)}
 
