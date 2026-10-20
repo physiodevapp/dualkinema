@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { ALTO_MINI_PX, extraParaLlenar, siguienteGrande } from './miniGrande'
+import { ALTO_MINI_PX, EXTRA_MAXIMO_PX, extraParaLlenar, siguienteGrande } from './miniGrande'
 
 interface Opciones {
   /** Solo en el móvil con la vista mixta y el vídeo a la vista. */
@@ -12,6 +12,8 @@ interface Opciones {
   readonly barra: RefObject<HTMLElement | null>
   /** El vídeo con su gráfica (pegado arriba). */
   readonly fijo: RefObject<HTMLElement | null>
+  /** Lo más que puede crecer (px); por defecto `EXTRA_MAXIMO_PX`. */
+  readonly extraMaximo?: number
 }
 
 /**
@@ -23,7 +25,7 @@ interface Opciones {
  * del navegador lo desactiva el visor (`overflow-anchor`), porque si no «corregiría» el encogimiento y la página
  * volvería sola al principio.
  */
-export function useMiniGrande({ activo, caja, tira, barra, fijo }: Opciones) {
+export function useMiniGrande({ activo, caja, tira, barra, fijo, extraMaximo = EXTRA_MAXIMO_PX }: Opciones) {
   const [grande, setGrande] = useState(() => activo && window.scrollY <= 2)
   const [extra, setExtra] = useState(0)
   // Las transiciones empiezan tras la primera medida: al abrir, la gráfica no «crece» desde su alto de reposo.
@@ -41,8 +43,8 @@ export function useMiniGrande({ activo, caja, tira, barra, fijo }: Opciones) {
     if (!c || !t || !b || window.scrollY > 6) return null
     // Con la gráfica a medio camino, se vuelve al reposo en la cuenta: lo que sobra de su alto actual se resta.
     const bordeTira = t.getBoundingClientRect().bottom + window.scrollY - (c.getBoundingClientRect().height - ALTO_MINI_PX)
-    return extraParaLlenar(bordeTira, b.getBoundingClientRect().top)
-  }, [caja, tira, barra])
+    return extraParaLlenar(bordeTira, b.getBoundingClientRect().top, extraMaximo)
+  }, [caja, tira, barra, extraMaximo])
 
   const medir = useCallback(() => {
     const e = objetivo()

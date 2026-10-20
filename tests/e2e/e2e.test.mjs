@@ -2506,7 +2506,7 @@ describe('minigráfica grande arriba del todo (móvil)', () => {
     for (const id of ['analisis', 'marcar']) {
       await arriba()
       await p.getByTestId(`pestana-${id}`).click()
-      await p.waitForFunction(() => window.scrollY > 100)
+      await p.waitForFunction(() => window.scrollY > 40)
       await asentar()
       const c = await cajas()
       assert.equal(Math.round(await altoMini()), 76)
@@ -2521,5 +2521,97 @@ describe('minigráfica grande arriba del todo (móvil)', () => {
     await abrirPestana(p, 'video')
     await p.getByTestId('guardado').waitFor({ state: 'visible' })
     assert.equal(await p.getByTestId('guardado').count(), 1)
+  })
+})
+
+describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
+  let p
+  before(async () => {
+    // Vídeo vertical: es el que puede crecer en alto (uno horizontal llena antes el ancho).
+    p = await abrirApp(navegador, { ancho: 390 })
+    await cargarVideo(p, videos.vertical.ruta)
+  })
+  after(() => p?.close())
+
+  const asentar = async () => {
+    await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
+    await p.waitForFunction(() => document.getAnimations().length === 0, null, { timeout: 5000 })
+  }
+  const asa = () => p.getByTestId('separador-video')
+  const altoVideo = async () => (await p.getByTestId('lienzo').boundingBox()).height
+  const altoMini = async () => (await p.getByTestId('minigrafica-caja').boundingBox()).height
+  /** Arrastra el asa `dy` px y la suelta; devuelve el alto del vídeo justo antes de soltar. */
+  const arrastrar = async (dy) => {
+    const c = await asa().boundingBox()
+    const x = c.x + c.width / 2
+    const y = c.y + c.height / 2
+    await p.mouse.move(x, y)
+    await p.mouse.down()
+    await p.mouse.move(x, y + dy / 2, { steps: 4 })
+    await p.mouse.move(x, y + dy, { steps: 4 })
+    const durante = await altoVideo()
+    await p.mouse.up()
+    await asentar()
+    return durante
+  }
+  /** La tira de pestañas acaba justo sobre la barra fija (la gráfica grande llena lo que deja el vídeo). */
+  const tiraSobreLaBarra = async () => {
+    const tira = await p.getByRole('tablist').locator('..').boundingBox()
+    const barra = await p.getByTestId('barra-fija').boundingBox()
+    assert.ok(Math.abs(tira.y + tira.height - barra.y) <= 2, `tira hasta ${tira.y + tira.height}, barra desde ${barra.y}`)
+  }
+
+  it('de partida, el reparto de siempre: el vídeo, un 30 % de la ventana', async () => {
+    await p.evaluate(() => window.scrollTo(0, 0))
+    await asentar()
+    assert.equal(await asa().getAttribute('data-reparto'), 'normal')
+    assert.ok(Math.abs((await altoVideo()) - 0.3 * 844) <= 2, `el vídeo mide ${await altoVideo()} px`)
+    await tiraSobreLaBarra()
+  })
+
+  it('arrastrar hacia abajo agranda el vídeo, encaja en «vídeo grande» y la gráfica cede el sitio', async () => {
+    const miniAntes = await altoMini()
+    const durante = await arrastrar(90)
+    assert.ok(Math.abs(durante - (0.3 * 844 + 90)) <= 2, `durante el arrastre el vídeo mide ${durante} px`)
+    assert.equal(await asa().getAttribute('data-reparto'), 'video')
+    assert.ok(Math.abs((await altoVideo()) - 0.45 * 844) <= 2, `el vídeo mide ${await altoVideo()} px`)
+    assert.ok((await altoMini()) < miniAntes - 100, `la gráfica mide ${await altoMini()} px (antes ${miniAntes})`)
+    await tiraSobreLaBarra()
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoVideo')), 'video')
+  })
+
+  it('arrastrar hacia arriba agranda la gráfica', async () => {
+    const miniAntes = await altoMini()
+    await arrastrar(-300)
+    assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
+    assert.ok(Math.abs((await altoVideo()) - 0.2 * 844) <= 2, `el vídeo mide ${await altoVideo()} px`)
+    assert.ok((await altoMini()) > miniAntes + 60, `la gráfica mide ${await altoMini()} px (antes ${miniAntes})`)
+    await tiraSobreLaBarra()
+  })
+
+  it('dos toques vuelven al reparto de siempre; con el teclado, a la posición de al lado', async () => {
+    await asa().dblclick()
+    await asentar()
+    assert.equal(await asa().getAttribute('data-reparto'), 'normal')
+    assert.ok(Math.abs((await altoVideo()) - 0.3 * 844) <= 2)
+    await asa().focus()
+    await p.keyboard.press('ArrowDown')
+    assert.equal(await asa().getAttribute('data-reparto'), 'video')
+    await p.keyboard.press('ArrowUp')
+    await p.keyboard.press('ArrowUp')
+    assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
+  })
+
+  it('«Cambiar vídeo» en el móvil es solo un icono (con su nombre accesible)', async () => {
+    const b = p.getByRole('button', { name: 'Cambiar vídeo' })
+    const c = await b.boundingBox()
+    assert.ok(c.width <= 48 && c.height <= 48, `el botón mide ${c.width} × ${c.height} px`)
+  })
+
+  it('en pantalla ancha no hay asa', async () => {
+    const q = await abrirApp(navegador, { ancho: 1280 })
+    await cargarVideo(q, videos.vertical.ruta)
+    assert.equal(await q.getByTestId('separador-video').count(), 0)
+    await q.close()
   })
 })

@@ -24,10 +24,11 @@ export function siguienteGrande(grande: boolean, y: number): boolean {
 /**
  * Lo que tiene que crecer la minigráfica para que la tira de pestañas acabe justo sobre la barra fija.
  * `bordeTira` es el borde de abajo de la tira con la minigráfica en reposo y la página arriba del todo; `bordeBarra`, el
- * de arriba de la barra fija (los dos en px de la ventana). Nunca negativo (si no cabe, se queda en reposo) ni más que `EXTRA_MAXIMO_PX`.
+ * de arriba de la barra fija (los dos en px de la ventana). Nunca negativo (si no cabe, se queda en reposo) ni más que
+ * `maximo` (`EXTRA_MAXIMO_PX`, más lo que se haya quitado al vídeo al repartir el alto: ver `reparto.ts`).
  */
-export function extraParaLlenar(bordeTira: number, bordeBarra: number): number {
+export function extraParaLlenar(bordeTira: number, bordeBarra: number, maximo = EXTRA_MAXIMO_PX): number {
   const libre = bordeBarra - bordeTira
   if (!Number.isFinite(libre)) return 0
-  return Math.min(EXTRA_MAXIMO_PX, Math.max(0, Math.floor(libre)))
+  return Math.min(maximo, Math.max(0, Math.floor(libre)))
 }

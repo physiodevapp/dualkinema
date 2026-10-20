@@ -50,6 +50,9 @@ import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura, useAnchoMinimo } from './visor/useAltura'
 import { useMiniGrande } from './visor/useMiniGrande'
+import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
+import SeparadorVideo from './visor/SeparadorVideo'
+import { ALTO_VIDEO_DVH, esReparto, type Reparto } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
@@ -65,6 +68,18 @@ const valorEn = (serie: ArrayLike<number>, i: number | null, d: number) => {
   const v = i === null ? NaN : (serie[i] ?? NaN)
   return Number.isFinite(v) ? fmt(Math.round(v * 10 ** d) / 10 ** d + 0, d) : '—'
 }
+const CLAVE_REPARTO = 'dualkinema.repartoVideo'
+
+/** Reparto del alto entre el vídeo y la gráfica guardado en este dispositivo (el de siempre si no hay o no se puede leer). */
+function leerReparto(): Reparto {
+  try {
+    const v = localStorage.getItem(CLAVE_REPARTO)
+    return esReparto(v) ? v : 'normal'
+  } catch {
+    return 'normal'
+  }
+}
+
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
 function BotonPaso({ etiqueta, accion, children }: { etiqueta: string; accion: () => void; children: React.ReactNode }) {
@@ -897,8 +912,31 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   })
   // Arriba del todo la gráfica pequeña crece hasta llenar lo que queda sobre la barra fija: en la primera pantalla solo
   // vídeo, gráfica, pestañas y barra. Al bajar vuelve a su alto de siempre.
+  // Reparto del alto entre el vídeo y la gráfica pequeña (móvil, vista mixta): un asa entre los dos lo cambia y la
+  // gráfica grande llena lo que quede (ver `reparto.ts`). Se guarda en este dispositivo.
+  const [reparto, setReparto] = useState<Reparto>(leerReparto)
+  const [altoArrastre, setAltoArrastre] = useState<number | null>(null)
   const cajaMiniRef = useRef<HTMLDivElement>(null)
-  const mini = useMiniGrande({ activo: !anchoLg && vista === 'mixta', caja: cajaMiniRef, tira: tiraRef, barra: barraRef, fijo: fijoRef })
+  const mini = useMiniGrande({
+    activo: !anchoLg && vista === 'mixta',
+    caja: cajaMiniRef,
+    tira: tiraRef,
+    barra: barraRef,
+    fijo: fijoRef,
+    // Lo que se quita al vídeo lo puede ganar la gráfica, aunque pase de su tope de siempre.
+    extraMaximo:
+      reparto === 'grafica' || altoArrastre !== null
+        ? EXTRA_MAXIMO_PX + Math.ceil(((ALTO_VIDEO_DVH.normal - ALTO_VIDEO_DVH.grafica) / 100) * window.innerHeight)
+        : EXTRA_MAXIMO_PX,
+  })
+  const elegirReparto = useCallback((r: Reparto) => {
+    setReparto(r)
+    try {
+      localStorage.setItem(CLAVE_REPARTO, r)
+    } catch {
+      // Sin almacenamiento (modo privado): se usa solo esta vez.
+    }
+  }, [])
   // Con una vista ampliada, la página de debajo no se desplaza.
   useEffect(() => {
     if (!ampliada) return
@@ -1192,6 +1230,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             <LienzoVideo
               llenar={enVideo}
               topeLg="lg:max-h-[max(14rem,calc(100dvh-25rem))]"
+              topeMovil={!anchoLg && vista === 'mixta' ? (altoArrastre !== null ? `${altoArrastre}px` : `${ALTO_VIDEO_DVH[reparto]}dvh`) : undefined}
               ancho={info.ancho}
               alto={info.alto}
               lienzo={lienzo}
@@ -1246,6 +1285,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             )}
           </div>
           {!anchoLg && vista === 'mixta' && (
+            <SeparadorVideo reparto={reparto} onReparto={elegirReparto} onArrastre={setAltoArrastre} lienzo={lienzo} proporcion={info.alto / info.ancho} />
+          )}
+          {!anchoLg && vista === 'mixta' && (
             <MiniGrafica
               tiempos={tabla.tiempos}
               indice={deseado < total ? deseado : null}
@@ -1255,7 +1297,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               velocidad={filtrado.derivadas.velocidad}
               onAmpliar={() => setVista('graficas')}
               alto={mini.alto}
-              animable={mini.animable}
+              // Mientras se arrastra el asa, la gráfica sigue al vídeo sin retraso (la tira de pestañas no se mueve).
+              animable={mini.animable && altoArrastre === null}
               cajaRef={cajaMiniRef}
             />
           )}
