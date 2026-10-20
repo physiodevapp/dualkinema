@@ -64,7 +64,8 @@ export async function esperarQuieto(p) {
 /** «frame 31 / 120» y «t = 1,000 s» del visor → { frame (1-based), total, t }. */
 export async function leerPosicion(p) {
   const texto = (await p.getByTestId('posicion').innerText()).replace(/\s+/g, ' ')
-  const m = /t = (-?[\d.,]+) s.*frame (\d+) \/ (\d+)/.exec(texto)
+  // En el móvil la línea va sin «t =» ni «frame» para caber en una: «18,346 s 550 / 603 · 12 ms caché».
+  const m = /(-?[\d.,]+) s\b.*?(\d+) \/ (\d+)/.exec(texto)
   if (!m) throw new Error(`No entiendo la posición del visor: «${texto}»`)
   return { t: Number(m[1].replace(',', '.')), frame: Number(m[2]), total: Number(m[3]) }
 }
@@ -114,16 +115,80 @@ export async function marcarTres(p, posiciones, desvio = 2) {
   for (const [i, q] of posiciones.entries()) await tocarVideo(p, q.x + (i % 2 ? -desvio : desvio), q.y + (i === 2 ? desvio : -desvio))
 }
 
-/** Pulsa «Seguir desde aquí» y espera a que termine. Devuelve el texto del aviso final. */
+/** Pulsa «Seguir desde aquí» y espera a que termine. Devuelve el texto del aviso final. La pestaña abierta queda como estaba. */
 export async function seguirHastaElFinal(p) {
-  await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+  const antes = await pestanaAbierta(p)
+  await abrirPestana(p, 'marcar')
+  const seguir = p.getByRole('button', { name: 'Seguir desde aquí' })
+  await centrarLibre(seguir)
+  await seguir.click()
   await p.getByTestId('aviso').waitFor({ timeout: 90000 })
-  return (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
+  const aviso = (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
+  await abrirPestana(p, antes)
+  return aviso
+}
+
+/** Abre una pestaña de herramientas del visor («marcar», «analisis», «escala», «video») si no es la abierta. */
+export async function abrirPestana(p, id) {
+  const pestana = p.getByTestId(`pestana-${id}`)
+  if ((await pestana.getAttribute('aria-selected')) !== 'true') await pestana.click()
+}
+
+/** Pestaña en que vive cada elemento que se lee por data-testid (lo que no está aquí no está en pestañas). */
+export function pestanaDe(testid) {
+  if (/^(angulo|huecos-cortos)$/.test(testid)) return 'marcar'
+  if (/^(corte|tramos-cortos|angulo-|cero-|velocidad-angular|aceleracion-angular|velocidad-marcador-)/.test(testid)) return 'analisis'
+  if (/^(escala-|constancia-)/.test(testid)) return 'escala'
+  return null
+}
+
+/** Pestaña abierta ahora. */
+async function pestanaAbierta(p) {
+  return p.locator('[role=tab][aria-selected=true]').getAttribute('data-testid').then((t) => t.replace('pestana-', ''))
+}
+
+/** Lee el texto de un elemento abriendo su pestaña y dejando abierta la que estaba (para no estorbar al resto de la prueba). */
+export async function textoDe(p, testid) {
+  const id = pestanaDe(testid)
+  const antes = id ? await pestanaAbierta(p) : null
+  if (id) await abrirPestana(p, id)
+  try {
+    return await p.getByTestId(testid).innerText()
+  } finally {
+    if (id && antes !== id) await abrirPestana(p, antes)
+  }
+}
+
+/**
+ * Centra el elemento en lo que queda libre de la ventana: ni fuera de ella ni bajo la barra fija de
+ * abajo ni bajo el vídeo pegado de arriba (en el móvil), donde el ratón de Playwright caería sobre ellos.
+ */
+export async function centrarLibre(locator) {
+  await locator.evaluate((e) => {
+    const pegado = (id, tipo) => {
+      const x = document.querySelector(`[data-testid=${id}]`)
+      return x && getComputedStyle(x).position === tipo ? x : null
+    }
+    e.scrollIntoView({ block: 'center' })
+    const fijo = pegado('visor-fijo', 'sticky')
+    const barra = pegado('barra-fija', 'fixed')
+    const arriba = fijo ? fijo.getBoundingClientRect().height : 0
+    const abajo = barra ? barra.getBoundingClientRect().top : window.innerHeight
+    const r = e.getBoundingClientRect()
+    window.scrollBy(0, r.top + r.height / 2 - (arriba + abajo) / 2)
+  })
+}
+
+/** Caja de un elemento por `data-testid`, centrado en lo libre de la ventana (ver `centrarLibre`). */
+export async function cajaElemento(p, testid) {
+  const el = p.getByTestId(testid)
+  await centrarLibre(el)
+  return el.boundingBox()
 }
 
 /** Ángulo que muestra el panel (o el filtrado, con testid 'angulo-filtrado'), en grados (NaN si no hay valor). */
 export async function leerAngulo(p, testid = 'angulo') {
-  const texto = await p.getByTestId(testid).innerText()
+  const texto = await textoDe(p, testid)
   const m = /^(−|-)?([\d.,]+)°/.exec(texto.trim())
   return m ? (m[1] ? -1 : 1) * Number(m[2].replace(',', '.')) : NaN
 }

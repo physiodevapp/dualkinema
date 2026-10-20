@@ -150,7 +150,12 @@ export default function App() {
   )
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-6xl flex-col gap-6 px-4 py-6">
+    // El visor aprovecha pantallas anchas (vídeo, gráfica y herramientas lado a lado); la portada y los diálogos, no.
+    <main
+      className={`mx-auto flex min-h-dvh flex-col gap-6 px-4 pt-6 pb-[calc(1.5rem+var(--alto-barra,0px))] lg:pb-6 ${
+        estado.fase === 'visor' ? 'max-w-[90rem]' : 'max-w-6xl'
+      }`}
+    >
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-serif text-3xl">
           dual<span className="text-acento">kinema</span>
@@ -228,7 +233,7 @@ export default function App() {
         </Suspense>
       )}
 
-      <footer className="mt-auto font-mono text-xs text-texto-2">
+      <footer className="mt-auto font-mono text-xs text-texto-2" data-testid="pie">
         {__RAMA__} · {__COMMIT__}
       </footer>
     </main>

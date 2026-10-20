@@ -35,7 +35,8 @@ interface Props {
   altoMinimo: number
   /** Banda sombreada [desde, hasta] en el eje Y (p. ej. ±3 %), siempre a la vista. */
   banda?: readonly [number, number]
-  alto: number
+  /** Alto en px, o `'llenar'` para ocupar todo el alto de su contenedor (que tiene que tener alto propio). */
+  alto: number | 'llenar'
   etiqueta: string
   testid: string
   /** El usuario toca o arrastra la gráfica: instante pedido. */
@@ -56,6 +57,8 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
   const contenedor = useRef<HTMLDivElement>(null)
   const grafica = useRef<uPlot | null>(null)
   const cursor = useRef<() => void>(() => {})
+  // Datos que llegaron con la gráfica oculta (ancho 0): se pintan al mostrarla, no antes (mientras se sigue llegan por lotes).
+  const pendientes = useRef(false)
 
   const datos = useMemo<uPlot.AlignedData>(() => [xs as number[], ...series.map((s) => s.valores as (number | null)[])], [xs, series])
   // Si cambia qué series hay (no sus valores ni si se ven), se rehace la gráfica.
@@ -73,12 +76,14 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     const borde = color('texto-2')
     const rejilla = getComputedStyle(document.documentElement).getPropertyValue('--color-borde').trim() || '#2a2f38'
     let redibujos = 0
+    // Con `'llenar'` la gráfica mide lo que mida su contenedor (y se ajusta si cambia: girar el móvil, mostrar otra serie).
+    const alturaDe = () => (alto === 'llenar' ? Math.max(el.clientHeight, 60) : alto)
     const ejes = { stroke: borde, font: FUENTE, grid: { stroke: rejilla, width: 1 }, ticks: { stroke: rejilla, width: 1 } }
 
     const u = new uPlot(
       {
         width: Math.max(el.clientWidth, 100),
-        height: alto,
+        height: alturaDe(),
         padding: [10, 12, 0, 0],
         legend: { show: false },
         cursor: { show: false }, // el cursor es el frame actual, no el puntero
@@ -89,7 +94,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
         axes: [
           { ...ejes, size: 28, values: (_u, v) => v.map((n) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 1 })} s`) },
           // En un panel bajo, ticks más juntos: si no, solo queda el 0.
-          { ...ejes, size: 50, space: alto < 160 ? 18 : 30, values: (_u, v) => v.map((n) => vivo.current.unidad(n)) },
+          { ...ejes, size: 50, space: alturaDe() < 160 ? 18 : 30, values: (_u, v) => v.map((n) => vivo.current.unidad(n)) },
         ],
         series: [
           {},
@@ -140,6 +145,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     linea.dataset.testid = `${testid}-cursor`
     linea.className = 'pointer-events-none absolute top-0 bottom-0 left-0 w-px bg-white will-change-transform'
     const punto = document.createElement('div')
+    punto.dataset.testid = `${testid}-punto`
     punto.className = 'pointer-events-none absolute top-0 left-0 -mt-[5px] -ml-[5px] size-2.5 rounded-full border-2 bg-white will-change-transform'
     u.over.append(linea, punto)
     const colocarCursor = () => {
@@ -185,7 +191,13 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     encima.addEventListener('pointerup', soltar)
     encima.addEventListener('pointercancel', soltar)
 
-    const obs = new ResizeObserver(() => u.setSize({ width: Math.max(el.clientWidth, 100), height: alto }))
+    const obs = new ResizeObserver(() => {
+      u.setSize({ width: Math.max(el.clientWidth, 100), height: alturaDe() })
+      if (pendientes.current && el.clientWidth > 0) {
+        pendientes.current = false
+        u.setData(vivo.current.datos)
+      }
+    })
     obs.observe(el)
     return () => {
       obs.disconnect()
@@ -197,6 +209,11 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
 
   // Datos nuevos (el seguimiento los va añadiendo), series que se muestran u ocultan, y frame actual.
   useEffect(() => {
+    // Oculta (una pestaña o una vista que no se ve): no se redibuja con cada lote del seguimiento; al mostrarse, se pone al día.
+    if (contenedor.current && contenedor.current.clientWidth === 0) {
+      pendientes.current = true
+      return
+    }
     grafica.current?.setData(datos)
   }, [datos])
   const visibles = series.map((s) => (s.visible ? 1 : 0)).join('')
@@ -211,5 +228,13 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     cursor.current()
   }, [indice])
 
-  return <div ref={contenedor} data-testid={testid} className="w-full overflow-hidden" role="img" aria-label={etiqueta} />
+  return (
+    <div
+      ref={contenedor}
+      data-testid={testid}
+      className={alto === 'llenar' ? 'absolute inset-0 overflow-hidden' : 'w-full overflow-hidden'}
+      role="img"
+      aria-label={etiqueta}
+    />
+  )
 }

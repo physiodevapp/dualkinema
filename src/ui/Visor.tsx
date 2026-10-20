@@ -4,6 +4,9 @@ import {
   ChevronDoubleRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ArrowTrendingUpIcon,
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
   CheckIcon,
   ExclamationTriangleIcon,
   PlayIcon,
@@ -37,11 +40,14 @@ import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import ControlTrayectoria from './visor/ControlTrayectoria'
 import PanelGrafica from './visor/PanelGrafica'
+import MiniGrafica from './visor/MiniGrafica'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
-import PanelCinematica from './visor/PanelCinematica'
+import PanelCinematica, { DESVIACION_AVISO } from './visor/PanelCinematica'
 import PanelExportar from './visor/PanelExportar'
 import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './visor/PanelEscala'
 import PanelFiltro from './visor/PanelFiltro'
+import Pestanas, { PanelPestana } from './visor/Pestanas'
+import { useAltura, useAnchoMinimo } from './visor/useAltura'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
@@ -66,7 +72,7 @@ function BotonPaso({ etiqueta, accion, children }: { etiqueta: string; accion: (
       aria-label={etiqueta}
       title={etiqueta}
       {...manejadores}
-      className="flex h-14 flex-1 touch-manipulation items-center justify-center rounded-md border border-borde bg-panel select-none active:border-acento active:text-acento"
+      className="flex h-11 flex-1 touch-manipulation lg:h-14 items-center justify-center rounded-md border border-borde bg-panel select-none active:border-acento active:text-acento"
     >
       {children}
     </button>
@@ -804,423 +810,695 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const t = mostrado === null ? null : tabla.tiempos[mostrado]!
   const siguiendo = seguimiento.estado === 'siguiendo'
 
-  return (
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-      <div className="flex flex-col gap-3">
-        <div className="relative">
-          <LienzoVideo
-            ancho={info.ancho}
-            alto={info.alto}
-            lienzo={lienzo}
-            dibujar={dibujar}
-            interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
-            onToque={tocandoEscala ? tocarExtremo : colocar}
-            // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
-            previsualizar={!calibrando && seleccionado ? previsualizar : undefined}
-          />
-          {mostrado === null && !error && (
-            <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
-          )}
-          {tocandoEscala && !siguiendo && (
-            <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
-              Escala: {!borrador.a ? 'toca un extremo' : !borrador.b ? 'toca el otro extremo' : 'toca cerca de un extremo para moverlo'}
-            </p>
-          )}
-          {!calibrando && seleccionado && !siguiendo && (
-            <p className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-fondo/85 px-2 py-1 text-sm">
-              <span
-                className="size-3 rounded-full"
-                style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
-              />
-              Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
-            </p>
-          )}
-        </div>
+  // Pestañas de herramientas. Un punto en el nombre avisa de lo que pide atención aunque no se vea.
+  const [pestana, setPestana] = useState('marcar')
+  const pestanasVisor = [
+    { id: 'marcar', nombre: 'Marcar', aviso: (resumen.huecos > 0 || huecosCortos.length > 0) && 'Hay huecos sin valor' },
+    { id: 'analisis', nombre: 'Análisis', aviso: !!cero && cero.desviacion > DESVIACION_AVISO && 'El cero de referencia no parece quieto' },
+    {
+      id: 'escala',
+      nombre: 'Escala',
+      aviso: !!calibracion?.entre && !!medicionGuardada?.ok && medicionGuardada.muestras > calibracion.entre.muestras && 'La escala se puede rehacer',
+    },
+    { id: 'video', nombre: 'Vídeo' },
+  ]
+  // Piezas fijas del móvil: la barra de abajo (la página deja su sitio debajo) y el vídeo con su
+  // gráfica de arriba (las pestañas se pegan justo debajo al desplazarse).
+  const [barraRef, altoBarra] = useAltura<HTMLDivElement>()
+  const [fijoRef, altoFijo] = useAltura<HTMLDivElement>()
+  const anchoLg = useAnchoMinimo()
+  // La página deja debajo el sitio de la barra fija (`--alto-barra`, en la raíz: el pie de página también va debajo y
+  // cuelga de `main`, fuera de este componente; con el hueco dentro del visor, el pie quedaba tapado por la barra).
+  useEffect(() => {
+    document.documentElement.style.setProperty('--alto-barra', `${altoBarra}px`)
+    return () => {
+      document.documentElement.style.removeProperty('--alto-barra')
+    }
+  }, [altoBarra])
+  // Vista en el móvil: la mixta de siempre, el vídeo grande para marcar o solo las gráficas. En pantalla ancha no existe.
+  const [vista, setVista] = useState<'mixta' | 'video' | 'graficas'>('mixta')
+  const enVideo = !anchoLg && vista === 'video'
+  const enGraficas = !anchoLg && vista === 'graficas'
+  const ampliada = enVideo || enGraficas
+  // Con una vista ampliada, la página de debajo no se desplaza.
+  useEffect(() => {
+    if (!ampliada) return
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = antes
+    }
+  }, [ampliada])
 
-        {errorToque && (
-          // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
-          // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
-          // gomet) caía en el mensaje en vez de marcar.
-          <div data-testid="error-toque" className="flex flex-col gap-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200">
-            <p>{errorToque.texto}</p>
-            {errorToque.detalle && <p className="font-mono text-xs text-texto-2">{errorToque.detalle}</p>}
-            <div className="flex flex-wrap gap-2">
-              {errorToque.aOjo && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { id, i, x, y } = errorToque.aOjo!
-                    ponerManual(id, i, x, y)
-                  }}
-                  className="rounded-md border border-borde px-3 py-2 text-texto"
-                >
-                  Colocarlo aquí a ojo
-                </button>
-              )}
-              <button type="button" onClick={() => setErrorToque(null)} className="rounded-md border border-borde px-3 py-2 text-texto-2">
-                Cerrar
-              </button>
-            </div>
-            {errorToque.aOjo && (
-              <p className="text-xs text-texto-2">
-                A ojo: para un frame en que el gomet no se ve (tapado, movido). Queda como marcado a mano, justo donde has
-                soltado el dedo, sin ajustarlo al centro de ningún gomet.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Siempre la misma altura: en el móvil, dos líneas fijas que no se parten. Si el texto
-            cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
-            y se perdía la pulsación mantenida. */}
-        <div className="flex flex-col font-mono text-sm tabular-nums sm:flex-row sm:items-baseline sm:justify-between sm:gap-x-3" data-testid="posicion">
-          <span className="whitespace-nowrap">
-            t = <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
-          </span>
-          <span className="truncate whitespace-nowrap text-texto-2">
-            frame {mostrado === null ? '—' : mostrado + 1} / {total}
-            {mostrado !== deseado && ' …'}
-            {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
-            {msDecodificar !== null && (
-              <span data-testid="ms-decodificar">
-                {' '}
-                · {fmt(msDecodificar, 0)} ms{lectura && (
-                  <>
-                    {' '}
-                    <span data-testid="lectura" className="text-xs">
-                      {lectura}
-                    </span>
-                  </>
-                )}
-              </span>
-            )}
-          </span>
-        </div>
-
-        {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
-            cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
-            partir, para no mover los botones (se perdería la pulsación mantenida). */}
-        <dl className="grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-1 font-mono tabular-nums" data-testid="lectura-rapida">
-          {(
-            [
-              ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
-              ['Relativo', cero && Number.isFinite(anguloFiltrado) ? `${grados(relativoAlCero(anguloFiltrado, cero))}°` : '—', 'rapida-relativo'],
-              ['°/s', valorEn(filtrado.derivadas.velocidad, mostrado, 1), 'rapida-velocidad'],
-              ['°/s²', valorEn(filtrado.derivadas.aceleracion, mostrado, 0), 'rapida-aceleracion'],
-            ] as const
-          ).map(([etiqueta, texto, id]) => (
-            <div key={id} className="min-w-0 text-center">
-              <dt className="truncate text-[0.65rem] text-texto-2">{etiqueta}</dt>
-              <dd className="truncate text-sm whitespace-nowrap" data-testid={id}>{texto}</dd>
-            </div>
-          ))}
-        </dl>
-
-        <div className="flex flex-col gap-1">
-          <input
-            type="range"
-            min={0}
-            max={total - 1}
-            step={1}
-            value={deseado}
-            onChange={(e) => ir(Number(e.target.value))}
-            aria-label="Posición en el vídeo"
-            className="w-full accent-acento"
-          />
-          <BandaFrames estados={estadosFrames} />
-        </div>
-
-        <div className="flex gap-2">
-          <BotonPaso etiqueta={`Retroceder ${SALTO} frames`} accion={() => mover(-SALTO)}>
-            <ChevronDoubleLeftIcon className="size-6" />
-          </BotonPaso>
-          <BotonPaso etiqueta="Frame anterior" accion={() => mover(-1)}>
-            <ChevronLeftIcon className="size-7" />
-          </BotonPaso>
-          <BotonPaso etiqueta="Frame siguiente" accion={() => mover(1)}>
-            <ChevronRightIcon className="size-7" />
-          </BotonPaso>
-          <BotonPaso etiqueta={`Avanzar ${SALTO} frames`} accion={() => mover(SALTO)}>
-            <ChevronDoubleRightIcon className="size-6" />
-          </BotonPaso>
-        </div>
-
-        <TextoGuardado g={guardado} />
-
-        <PanelGrafica
-          tiempos={tabla.tiempos}
-          indice={deseado < total ? deseado : null}
-          onBuscar={buscarEnTiempo}
-          titulo={articulacion.nombre.replace(/\s*\(.*\)$/, '')}
-          positivo={articulacion.positivo}
-          crudo={crudoPorFrame}
-          filtrado={filtradoPorFrame}
-          velocidad={filtrado.derivadas.velocidad}
-          corte={filtrado.corte}
-          segmentos={seriesSegmentos}
-          resumen={
-            <p className="font-mono text-xs text-texto-2" data-testid="resumen-grafica">
-              {resumen.max && resumen.min ? (
-                <>
-                  <span className="whitespace-nowrap">
-                    máx. {grados(resumen.max.valor)}° (t = {fmt(resumen.max.t, 2)} s)
-                  </span>{' '}
-                  ·{' '}
-                  <span className="whitespace-nowrap">
-                    mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
-                  </span>
-                  {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
-                  {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
-                </>
-              ) : (
-                'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
-              )}
-            </p>
-          }
-        />
-
-        {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
-      </div>
-
-      <div className="flex flex-col gap-4">
-        <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Marcadores</h2>
-            <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
-            {modelo.marcadores.map((mk, k) => {
-              const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
-              const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
-              const activo = seleccionado === mk.id
-              return (
-                <button
-                  key={mk.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={activo}
-                  disabled={siguiendo}
-                  onClick={() => setSeleccionado(activo ? null : mk.id)}
-                  title={mk.nombre}
-                  className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
-                    {nombreCorto(mk.nombre)}
-                  </span>
-                  <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          <p className="text-sm text-texto-2">
-            {siguiendo
-              ? 'Siguiendo los gomets…'
-              : seleccionado
-                ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
-                : listoParaSeguir
-                  ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
-                  : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
-          </p>
-
-          {(() => {
-            // Quitar una marca a mano equivocada del marcador elegido, en este frame.
-            const m = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
-            if (siguiendo || !seleccionado || mostrado === null || !m?.editadoManual) return null
-            return (
-              <button
-                type="button"
-                onClick={() => quitarManual(seleccionado, mostrado)}
-                className="flex items-center justify-center gap-2 self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2"
-              >
-                <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
-              </button>
-            )
-          })()}
-
-          {siguiendo ? (
-            <div className="flex flex-col gap-2">
-              <div className="h-2 overflow-hidden rounded-full bg-borde">
-                <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
-              </div>
-              <button
-                type="button"
-                onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
-                className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3"
-              >
-                <StopIcon className="size-5" /> Parar
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={seguirDesdeAqui}
-              disabled={!listoParaSeguir}
-              className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
-            >
-              <PlayIcon className="size-5" /> Seguir desde aquí
-            </button>
-          )}
-
-          {aviso && (
-            <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
-              <p data-testid="aviso">{aviso.texto}</p>
-              {aviso.detalle && (
-                <details className="text-texto-2">
-                  <summary className="cursor-pointer">Por qué (para diagnosticar)</summary>
-                  <pre className="mt-1 font-mono text-xs whitespace-pre-wrap">{aviso.detalle}</pre>
-                </details>
-              )}
-              {aviso.irA !== undefined && (
-                <button type="button" onClick={() => ir(aviso.irA!)} className="self-start rounded-md border border-borde px-3 py-2">
-                  Ir al primer frame con hueco ({aviso.irA + 1})
-                </button>
-              )}
-            </div>
-          )}
-
-          {!siguiendo && (huecosCortos.length > 0 || hayInterpolados) && (
-            <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="huecos-cortos">
-              {huecosCortos.length > 0 && (
-                <>
+  // Debajo del vídeo (en la vista de vídeo grande, dentro de ella: lo de fuera queda tapado).
+  const nodoError = errorToque && (
+            // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
+            // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
+            // gomet) caía en el mensaje en vez de marcar.
+            <div data-testid="error-toque" className={`flex flex-col gap-2 max-lg:order-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200`}>
+              <p>{errorToque.texto}</p>
+              {errorToque.detalle && <p className="font-mono text-xs text-texto-2">{errorToque.detalle}</p>}
+              <div className="flex flex-wrap gap-2">
+                {errorToque.aOjo && (
                   <button
                     type="button"
-                    onClick={rellenarHuecosCortos}
-                    className="flex items-center justify-center gap-2 rounded-md border border-interpolado/60 px-4 py-3 text-interpolado"
+                    onClick={() => {
+                      const { id, i, x, y } = errorToque.aOjo!
+                      ponerManual(id, i, x, y)
+                    }}
+                    className="rounded-md border border-borde px-3 py-2 text-texto"
                   >
-                    <SparklesIcon className="size-5" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto
-                    {huecosCortos.length === 1 ? '' : 's'}
+                    Colocarlo aquí a ojo
                   </button>
-                  <p className="text-xs text-texto-2">
-                    Huecos de {fmt(HUECO_MAX_S, 1)} s o menos entre dos posiciones fiables. Se rellenan con una curva suave que
-                    sigue el movimiento de antes y de después, y quedan marcados como interpolados.
-                  </p>
-                </>
-              )}
-              {hayInterpolados && (
-                <button type="button" onClick={quitarInterpolados} className="self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
-                  Quitar lo interpolado
+                )}
+                <button type="button" onClick={() => setErrorToque(null)} className="rounded-md border border-borde px-3 py-2 text-texto-2">
+                  Cerrar
                 </button>
+              </div>
+              {errorToque.aOjo && (
+                <p className="text-xs text-texto-2">
+                  A ojo: para un frame en que el gomet no se ve (tapado, movido). Queda como marcado a mano, justo donde has
+                  soltado el dedo, sin ajustarlo al centro de ningún gomet.
+                </p>
               )}
+            </div>
+            )
+
+  // Deslizador de frames con la franja de estado: en el flujo de la página o, en el vídeo grande, dentro de él.
+  const nodoDeslizador = (
+    <div className={`flex flex-col gap-1 ${enVideo ? '' : `max-lg:order-3 lg:order-1 ${ampliada ? 'max-lg:hidden' : ''}`}`}>
+            {/* Una sola barra: la franja de estado de cada frame es la pista del deslizador y el tirador va encima.
+                La franja se mete la mitad del tirador por cada lado, para que su centro coincida con el frame. */}
+            <div className="relative h-7">
+              <div className="pointer-events-none absolute inset-x-[7px] top-1/2 -translate-y-1/2">
+                <BandaFrames estados={estadosFrames} className="h-2.5" />
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={total - 1}
+                step={1}
+                value={deseado}
+                onChange={(e) => ir(Number(e.target.value))}
+                aria-label="Posición en el vídeo"
+                className="deslizador-frames relative"
+              />
+            </div>
+    </div>
+  )
+
+  // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
+  const marcaManualElegida = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
+  const extrasCompactos =
+    !siguiendo &&
+    ((seleccionado && mostrado !== null && marcaManualElegida?.editadoManual) || huecosCortos.length > 0 || hayInterpolados || aviso?.irA !== undefined) ? (
+      <div className="flex flex-wrap gap-2" data-testid="extras-compactos">
+        {seleccionado && mostrado !== null && marcaManualElegida?.editadoManual && (
+          <button type="button" onClick={() => quitarManual(seleccionado, mostrado)} className="flex items-center gap-2 rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
+            <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
+          </button>
+        )}
+        {huecosCortos.length > 0 && (
+          <button type="button" onClick={rellenarHuecosCortos} className="flex items-center gap-2 rounded-md border border-interpolado/60 px-3 py-2 text-sm text-interpolado">
+            <SparklesIcon className="size-4" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto{huecosCortos.length === 1 ? '' : 's'}
+          </button>
+        )}
+        {hayInterpolados && (
+          <button type="button" onClick={quitarInterpolados} className="rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
+            Quitar lo interpolado
+          </button>
+        )}
+        {aviso?.irA !== undefined && (
+          <button type="button" onClick={() => ir(aviso.irA!)} className="rounded-md border border-borde px-3 py-2 text-sm">
+            Ir al primer frame con hueco ({aviso.irA + 1})
+          </button>
+        )}
+      </div>
+    ) : null
+
+  // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
+  const tiraMarcado = (
+    <div className="flex flex-col gap-2" data-testid="marcado-compacto">
+      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
+        {modelo.marcadores.map((mk, k) => {
+          const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
+          const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
+          const activo = seleccionado === mk.id
+          return (
+            <button
+              key={mk.id}
+              type="button"
+              role="radio"
+              aria-checked={activo}
+              disabled={siguiendo}
+              onClick={() => setSeleccionado(activo ? null : mk.id)}
+              title={mk.nombre}
+              className={`flex flex-col items-center rounded-md border px-1 py-1.5 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
+                {nombreCorto(mk.nombre)}
+              </span>
+              <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
+            </button>
+          )
+        })}
+      </div>
+      {siguiendo ? (
+        <div className="flex items-center gap-2">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-borde">
+            <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
+          </div>
+          <button
+            type="button"
+            onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
+            className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-2"
+          >
+            <StopIcon className="size-5" /> Parar
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={seguirDesdeAqui}
+          disabled={!listoParaSeguir}
+          className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-2.5 font-medium text-fondo disabled:opacity-40"
+        >
+          <PlayIcon className="size-5" /> Seguir desde aquí
+        </button>
+      )}
+      {extrasCompactos}
+      {aviso && <p className="line-clamp-2 text-xs text-texto-2">{aviso.texto}</p>}
+    </div>
+  )
+
+  return (
+    <div
+      className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-stretch"
+      style={{ '--alto-fijo': `${altoFijo}px` } as React.CSSProperties}
+    >
+      {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
+          toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
+      {/* Pantalla ancha: vídeo y controles a la izquierda y la gráfica a su lado, para que quepa en la altura de la ventana
+          (apilados no caben con un vídeo de tamaño razonable). La gráfica ocupa el alto de la columna de al lado. */}
+      <div className="contents lg:min-h-[34rem] lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-3">
+        <div className="max-lg:contents lg:flex lg:flex-col lg:gap-3">
+          {/* Móvil: el vídeo (con altura limitada) y la gráfica del ángulo quedan pegados arriba mientras
+              se desplazan las pestañas y los paneles. El elemento pegado tiene que colgar de la página
+              (por eso la columna de la izquierda es `contents`): un `sticky` solo dura lo que su padre. */}
+          <div
+            ref={fijoRef}
+            data-testid="visor-fijo"
+            className={`flex flex-col gap-2 max-lg:z-30 max-lg:bg-fondo ${
+              enVideo
+                ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
+                : 'max-lg:sticky max-lg:top-0 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:px-4 max-lg:pb-2'
+            } ${enGraficas ? 'max-lg:hidden' : ''}`}
+          >
+          <div className="relative">
+            <LienzoVideo
+              llenar={enVideo}
+              topeLg="lg:max-h-[max(14rem,calc(100dvh-25rem))]"
+              ancho={info.ancho}
+              alto={info.alto}
+              lienzo={lienzo}
+              dibujar={dibujar}
+              interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
+              onToque={tocandoEscala ? tocarExtremo : colocar}
+              // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
+              previsualizar={!calibrando && seleccionado ? previsualizar : undefined}
+            />
+            {mostrado === null && !error && (
+              <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
+            )}
+            {tocandoEscala && !siguiendo && (
+              <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
+                Escala: {!borrador.a ? 'toca un extremo' : !borrador.b ? 'toca el otro extremo' : 'toca cerca de un extremo para moverlo'}
+              </p>
+            )}
+            {!calibrando && seleccionado && !siguiendo && (
+              <p className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-fondo/85 px-2 py-1 text-sm">
+                <span
+                  className="size-3 rounded-full"
+                  style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
+                />
+                Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
+              </p>
+            )}
+            {!anchoLg && (
+              <button
+                type="button"
+                onClick={() => setVista(enVideo ? 'mixta' : 'video')}
+                aria-label={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
+                title={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
+                data-testid={enVideo ? 'reducir-video' : 'ampliar-video'}
+                className="absolute top-2 right-2 z-10 flex size-9 items-center justify-center rounded-md border border-borde bg-fondo/85 text-texto"
+              >
+                {enVideo ? <ArrowsPointingInIcon className="size-5" /> : <ArrowsPointingOutIcon className="size-5" />}
+              </button>
+            )}
+            {enVideo && (
+              <button
+                type="button"
+                onClick={() => setTrayectoriaCompleta((t) => !t)}
+                aria-pressed={trayectoriaCompleta}
+                aria-label="Mostrar la trayectoria completa"
+                title="Mostrar la trayectoria completa"
+                data-testid="trayectoria-compacta"
+                className={`absolute top-14 right-2 z-10 flex size-9 items-center justify-center rounded-md border bg-fondo/85 ${trayectoriaCompleta ? 'border-acento text-acento' : 'border-borde text-texto'}`}
+              >
+                <ArrowTrendingUpIcon className="size-5" />
+              </button>
+            )}
+          </div>
+          {!anchoLg && vista === 'mixta' && (
+            <MiniGrafica
+              tiempos={tabla.tiempos}
+              indice={deseado < total ? deseado : null}
+              onBuscar={buscarEnTiempo}
+              crudo={crudoPorFrame}
+              filtrado={filtradoPorFrame}
+              velocidad={filtrado.derivadas.velocidad}
+              onAmpliar={() => setVista('graficas')}
+            />
+          )}
+          {enVideo && (
+            <>
+              {nodoError}
+              {tiraMarcado}
+              {nodoDeslizador}
+            </>
+          )}
+          </div>
+
+          {!enVideo && nodoError}
+
+          {!enVideo && nodoDeslizador}
+
+          {/* Móvil: barra fija abajo con los botones, la línea de posición y los valores del frame, para
+              no perderlos de vista al hacer scroll. Altura fija (nada de lo que contiene cambia de
+              altura). En pantalla ancha no existe como caja (contents): queda en su sitio de siempre. */}
+          <div
+            ref={barraRef}
+            data-testid="barra-fija"
+            className="max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:flex max-lg:flex-col max-lg:gap-1.5 max-lg:border-t max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pt-1.5 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:contents"
+          >
+            {/* Siempre la misma altura: una línea que no se parte (lo que no cabe se corta). Si el texto
+                cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
+                y se perdía la pulsación mantenida. En el móvil, sin «t =» ni «frame», para que quepa en una. */}
+            <div className={`flex items-baseline justify-between gap-x-3 font-mono text-sm tabular-nums`} data-testid="posicion">
+              <span className="shrink-0 whitespace-nowrap">
+                <span className="max-lg:hidden">t = </span>
+                <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
+              </span>
+              <span className="min-w-0 truncate whitespace-nowrap text-texto-2">
+                <span className="max-lg:hidden">frame </span>
+                {mostrado === null ? '—' : mostrado + 1} / {total}
+                {mostrado !== deseado && ' …'}
+                {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
+                {msDecodificar !== null && (
+                  <span data-testid="ms-decodificar">
+                    {' '}
+                    · {fmt(msDecodificar, 0)} ms{lectura && (
+                      <>
+                        {' '}
+                        <span data-testid="lectura" className="text-xs">
+                          {lectura}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
+                cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
+                partir, para no mover los botones (se perdería la pulsación mantenida). */}
+            <dl className={`grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-0.5 font-mono tabular-nums`} data-testid="lectura-rapida">
+              {(
+                [
+                  ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
+                  ['Relativo', cero && Number.isFinite(anguloFiltrado) ? `${grados(relativoAlCero(anguloFiltrado, cero))}°` : '—', 'rapida-relativo'],
+                  ['°/s', valorEn(filtrado.derivadas.velocidad, mostrado, 1), 'rapida-velocidad'],
+                  ['°/s²', valorEn(filtrado.derivadas.aceleracion, mostrado, 0), 'rapida-aceleracion'],
+                ] as const
+              ).map(([etiqueta, texto, id]) => (
+                <div key={id} className="min-w-0 text-center">
+                  <dt className="truncate text-[0.65rem] leading-tight text-texto-2">{etiqueta}</dt>
+                  <dd className="truncate text-sm leading-tight whitespace-nowrap" data-testid={id}>{texto}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="flex gap-2 lg:order-2">
+              <BotonPaso etiqueta={`Retroceder ${SALTO} frames`} accion={() => mover(-SALTO)}>
+                <ChevronDoubleLeftIcon className="size-6" />
+              </BotonPaso>
+              <BotonPaso etiqueta="Frame anterior" accion={() => mover(-1)}>
+                <ChevronLeftIcon className="size-7" />
+              </BotonPaso>
+              <BotonPaso etiqueta="Frame siguiente" accion={() => mover(1)}>
+                <ChevronRightIcon className="size-7" />
+              </BotonPaso>
+              <BotonPaso etiqueta={`Avanzar ${SALTO} frames`} accion={() => mover(SALTO)}>
+                <ChevronDoubleRightIcon className="size-6" />
+              </BotonPaso>
+            </div>
+          </div>
+
+          <div className={`max-lg:order-4 lg:order-3 ${ampliada ? 'max-lg:hidden' : ''}`}>
+            <TextoGuardado g={guardado} />
+          </div>
+        </div>
+
+        {/* La gráfica completa: en pantalla ancha, debajo del vídeo; en el móvil solo en la vista «Solo gráficas»
+            (oculta pero montada en las demás, para no perder qué series se ven) y en la mixta se ve la pequeña. */}
+        <div
+          data-testid="vista-graficas"
+          className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0 ${
+            enGraficas ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
+          } ${enGraficas ? '' : 'max-lg:hidden'}`}
+        >
+          {enGraficas && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-xs tracking-wider text-texto-2 uppercase">Solo gráficas</span>
+              <button
+                type="button"
+                onClick={() => setVista('mixta')}
+                aria-label="Volver a la vista con vídeo"
+                title="Volver a la vista con vídeo"
+                data-testid="reducir-graficas"
+                className="flex size-9 items-center justify-center rounded-md border border-borde text-texto"
+              >
+                <ArrowsPointingInIcon className="size-5" />
+              </button>
             </div>
           )}
 
-          <ControlTrayectoria
-            activa={trayectoriaCompleta}
-            onActiva={setTrayectoriaCompleta}
-            marcadores={modelo.marcadores.map((mk, k) => ({ id: mk.id, nombre: nombreCorto(mk.nombre), color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]! }))}
-            elegidos={conTrayectoria}
-            onElegir={(id) =>
-              setConTrayectoria((c) => {
-                const n = new Set(c)
-                if (!n.delete(id)) n.add(id)
-                return n
-              })
+          <PanelGrafica
+            ampliada={enGraficas || anchoLg}
+            tiempos={tabla.tiempos}
+            indice={deseado < total ? deseado : null}
+            onBuscar={buscarEnTiempo}
+            titulo={articulacion.nombre.replace(/\s*\(.*\)$/, '')}
+            positivo={articulacion.positivo}
+            crudo={crudoPorFrame}
+            filtrado={filtradoPorFrame}
+            velocidad={filtrado.derivadas.velocidad}
+            corte={filtrado.corte}
+            segmentos={seriesSegmentos}
+            resumen={
+              <p className="font-mono text-xs text-texto-2" data-testid="resumen-grafica">
+                {resumen.max && resumen.min ? (
+                  <>
+                    <span className="whitespace-nowrap">
+                      máx. {grados(resumen.max.valor)}° (t = {fmt(resumen.max.t, 2)} s)
+                    </span>{' '}
+                    ·{' '}
+                    <span className="whitespace-nowrap">
+                      mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
+                    </span>
+                    {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
+                    {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
+                  </>
+                ) : (
+                  'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
+                )}
+              </p>
             }
           />
 
-          <div className="flex items-baseline justify-between border-t border-borde pt-3">
-            <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>
-            <span className="font-mono text-2xl" data-testid="angulo">
-              {Number.isNaN(angulo) ? '—' : `${grados(angulo)}°`}
-              {anguloRedondeado !== 0 && !Number.isNaN(angulo) && (
-                <span className="ml-2 text-sm text-texto-2">{anguloRedondeado > 0 ? articulacion.positivo : articulacion.negativo}</span>
+          {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
+        </div>
+      </div>
+
+      {/* Columna de herramientas. En pantalla ancha va fija (sticky) con su propio scroll, para que
+          el vídeo y la gráfica no se muevan al recorrer los paneles. */}
+      {/* En el móvil la columna es `contents`: la tira de pestañas cuelga de la página (como el vídeo) y se
+          queda pegada durante todo el desplazamiento, también al pasar a la gráfica de debajo; un `sticky`
+          dentro de la columna se iría con ella al acabar sus paneles. */}
+      {/* Pantalla ancha: la columna mide lo mismo que la fila del vídeo y la gráfica (estira la rejilla) pero no la alarga: va en una caja
+          absoluta. Debajo de las pestañas, UNA tarjeta (esquinas redondeadas siempre) que es la que se desplaza por dentro si el panel
+          abierto excede esa altura; los paneles de dentro pierden su caja propia y se separan con una línea. */}
+      <div className="max-lg:contents lg:relative">
+      <div className="max-lg:contents lg:absolute lg:inset-0 lg:flex lg:flex-col lg:gap-3" data-testid="columna-herramientas">
+        <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`} />
+
+        <div
+          data-testid="panel-herramientas"
+          className={`flex flex-col gap-3 max-lg:order-6 lg:relative lg:min-h-0 lg:flex-1 lg:gap-0 lg:overflow-y-auto lg:rounded-2xl lg:border lg:border-borde lg:bg-panel lg:p-4 lg:[&_section]:rounded-none lg:[&_section]:border-0 lg:[&_section]:bg-transparent lg:[&_section]:p-0 lg:[&_section+section]:mt-4 lg:[&_section+section]:border-t lg:[&_section+section]:border-borde lg:[&_section+section]:pt-4 ${ampliada ? 'max-lg:hidden' : ''}`}
+        >
+
+          <PanelPestana id="marcar" activa={pestana === 'marcar'}>
+            <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Marcadores</h2>
+                <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
+                {modelo.marcadores.map((mk, k) => {
+                  const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
+                  const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
+                  const activo = seleccionado === mk.id
+                  return (
+                    <button
+                      key={mk.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={activo}
+                      disabled={siguiendo}
+                      onClick={() => setSeleccionado(activo ? null : mk.id)}
+                      title={mk.nombre}
+                      className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
+                        {nombreCorto(mk.nombre)}
+                      </span>
+                      <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <p className="text-sm text-texto-2">
+                {siguiendo
+                  ? 'Siguiendo los gomets…'
+                  : seleccionado
+                    ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
+                    : listoParaSeguir
+                      ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
+                      : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
+              </p>
+
+              {(() => {
+                // Quitar una marca a mano equivocada del marcador elegido, en este frame.
+                const m = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
+                if (siguiendo || !seleccionado || mostrado === null || !m?.editadoManual) return null
+                return (
+                  <button
+                    type="button"
+                    onClick={() => quitarManual(seleccionado, mostrado)}
+                    className="flex items-center justify-center gap-2 self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2"
+                  >
+                    <TrashIcon className="size-4" /> Quitar la marca a mano de este frame
+                  </button>
+                )
+              })()}
+
+              {siguiendo ? (
+                <div className="flex flex-col gap-2">
+                  <div className="h-2 overflow-hidden rounded-full bg-borde">
+                    <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
+                    className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3"
+                  >
+                    <StopIcon className="size-5" /> Parar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={seguirDesdeAqui}
+                  disabled={!listoParaSeguir}
+                  className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
+                >
+                  <PlayIcon className="size-5" /> Seguir desde aquí
+                </button>
               )}
-            </span>
-          </div>
-        </section>
 
-        <PanelFiltro
-          ajustes={ajustes}
-          onCambiar={cambiarAjustes}
-          corte={filtrado.corte}
-          fs={filtrado.fs}
-          tramosCortos={filtrado.tramosCortos}
-          anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
-          deshabilitado={siguiendo}
-        />
+              {aviso && (
+                <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
+                  <p data-testid="aviso">{aviso.texto}</p>
+                  {aviso.detalle && (
+                    <details className="text-texto-2">
+                      <summary className="cursor-pointer">Por qué (para diagnosticar)</summary>
+                      <pre className="mt-1 font-mono text-xs whitespace-pre-wrap">{aviso.detalle}</pre>
+                    </details>
+                  )}
+                  {aviso.irA !== undefined && (
+                    <button type="button" onClick={() => ir(aviso.irA!)} className="self-start rounded-md border border-borde px-3 py-2">
+                      Ir al primer frame con hueco ({aviso.irA + 1})
+                    </button>
+                  )}
+                </div>
+              )}
 
-        <PanelEscala
-          calibracion={calibracion}
-          borrador={borrador}
-          medicion={medicion}
-          framesTramo={framesTramo}
-          medicionGuardada={medicionGuardada}
-          segmentos={segmentos}
-          tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
-          constancia={constancia}
-          onIr={ir}
-          frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
-          onEmpezar={empezarEscala}
-          onBorrador={setBorrador}
-          onGuardar={guardarEscala}
-          onCancelar={() => setBorrador(null)}
-          onQuitar={quitarEscala}
-          onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
-          deshabilitado={siguiendo}
-        />
+              {!siguiendo && (huecosCortos.length > 0 || hayInterpolados) && (
+                <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="huecos-cortos">
+                  {huecosCortos.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={rellenarHuecosCortos}
+                        className="flex items-center justify-center gap-2 rounded-md border border-interpolado/60 px-4 py-3 text-interpolado"
+                      >
+                        <SparklesIcon className="size-5" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto
+                        {huecosCortos.length === 1 ? '' : 's'}
+                      </button>
+                      <p className="text-xs text-texto-2">
+                        Huecos de {fmt(HUECO_MAX_S, 1)} s o menos entre dos posiciones fiables. Se rellenan con una curva suave que
+                        sigue el movimiento de antes y de después, y quedan marcados como interpolados.
+                      </p>
+                    </>
+                  )}
+                  {hayInterpolados && (
+                    <button type="button" onClick={quitarInterpolados} className="self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
+                      Quitar lo interpolado
+                    </button>
+                  )}
+                </div>
+              )}
 
-        <PanelCinematica
-          angulo={anguloFiltrado}
-          relativo={cero ? relativoAlCero(anguloFiltrado, cero) : NaN}
-          velocidad={mostrado === null ? NaN : (filtrado.derivadas.velocidad[mostrado] ?? NaN)}
-          aceleracion={mostrado === null ? NaN : (filtrado.derivadas.aceleracion[mostrado] ?? NaN)}
-          marcadores={modelo.marcadores.map((mk, k) => {
-            const v = filtrado.velocidades.get(mk.id)
-            return {
-              id: mk.id,
-              nombre: nombreCorto(mk.nombre),
-              color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]!,
-              velocidad: mostrado === null || !v ? NaN : (v.modulo[mostrado] ?? NaN),
-              unidad: v?.unidad ?? 'px/s',
-            }
-          })}
-          tramo={tramoEstatico}
-          cero={cero}
-          t={t}
-          t0={tabla.tiempos[0] ?? 0}
-          tn={tabla.tiempos[total - 1] ?? 0}
-          onTramo={cambiarTramo}
-          onPrimeros={() => cambiarTramo(tramoInicial(tabla.tiempos))}
-          deshabilitado={siguiendo}
-        />
+              <ControlTrayectoria
+                activa={trayectoriaCompleta}
+                onActiva={setTrayectoriaCompleta}
+                marcadores={modelo.marcadores.map((mk, k) => ({ id: mk.id, nombre: nombreCorto(mk.nombre), color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]! }))}
+                elegidos={conTrayectoria}
+                onElegir={(id) =>
+                  setConTrayectoria((c) => {
+                    const n = new Set(c)
+                    if (!n.delete(id)) n.add(id)
+                    return n
+                  })
+                }
+              />
 
-        <PanelExportar
-          generar={generarCsv}
-          resumen={`${total} frames · ${modelo.marcadores.length} marcadores · ${
-            calibracion ? 'posiciones en px y en m, velocidades en m/s' : 'sin escala: todo en píxeles'
-          }${orientacion.plano === articulacion.plano ? '' : ' · sin ángulo (la articulación es de otro plano)'}`}
-          deshabilitado={siguiendo}
-        />
+              <div className="flex items-baseline justify-between border-t border-borde pt-3">
+                <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>
+                <span className="font-mono text-2xl" data-testid="angulo">
+                  {Number.isNaN(angulo) ? '—' : `${grados(angulo)}°`}
+                  {anguloRedondeado !== 0 && !Number.isNaN(angulo) && (
+                    <span className="ml-2 text-sm text-texto-2">{anguloRedondeado > 0 ? articulacion.positivo : articulacion.negativo}</span>
+                  )}
+                </span>
+              </div>
+            </section>
+          </PanelPestana>
 
-        <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
-          <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
-          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            <dt className="text-texto-2">Archivo</dt>
-            <dd className="truncate" title={info.nombre}>{info.nombre}</dd>
-            <dt className="text-texto-2">Formato</dt>
-            <dd>{info.formato} · {info.codec}</dd>
-            <dt className="text-texto-2">Tamaño</dt>
-            <dd>{info.ancho} × {info.alto} px{info.rotacion ? ` (girado ${info.rotacion}°)` : ''}</dd>
-            <dt className="text-texto-2">Duración</dt>
-            <dd>{fmt(info.duracion, 2)} s</dd>
-            <dt className="text-texto-2">Frames</dt>
-            <dd>{total}</dd>
-            <dt className="text-texto-2">fps medio</dt>
-            <dd>{Number.isNaN(est.fpsMedio) ? '—' : fmt(est.fpsMedio, 2)}</dd>
-            <dt className="text-texto-2">Entre frames</dt>
-            <dd>
-              {Number.isNaN(est.pasoMin) ? '—' : `${fmt(est.pasoMin * 1000, 1)}–${fmt(est.pasoMax * 1000, 1)} ms`}
-              {est.variable && <span className="text-acento"> · variable</span>}
-            </dd>
-            <dt className="text-texto-2">Persona</dt>
-            <dd>{orientacion.plano === 'sagital' ? `mira a la ${orientacion.mira}` : `vista desde ${orientacion.ve}`}</dd>
-            <dt className="text-texto-2">Decodificar</dt>
-            <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}</dd>
-          </dl>
-        </section>
+          <PanelPestana id="analisis" activa={pestana === 'analisis'}>
+            <PanelFiltro
+              ajustes={ajustes}
+              onCambiar={cambiarAjustes}
+              corte={filtrado.corte}
+              fs={filtrado.fs}
+              tramosCortos={filtrado.tramosCortos}
+              anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
+              deshabilitado={siguiendo}
+            />
+
+            <PanelCinematica
+              angulo={anguloFiltrado}
+              relativo={cero ? relativoAlCero(anguloFiltrado, cero) : NaN}
+              velocidad={mostrado === null ? NaN : (filtrado.derivadas.velocidad[mostrado] ?? NaN)}
+              aceleracion={mostrado === null ? NaN : (filtrado.derivadas.aceleracion[mostrado] ?? NaN)}
+              marcadores={modelo.marcadores.map((mk, k) => {
+                const v = filtrado.velocidades.get(mk.id)
+                return {
+                  id: mk.id,
+                  nombre: nombreCorto(mk.nombre),
+                  color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]!,
+                  velocidad: mostrado === null || !v ? NaN : (v.modulo[mostrado] ?? NaN),
+                  unidad: v?.unidad ?? 'px/s',
+                }
+              })}
+              tramo={tramoEstatico}
+              cero={cero}
+              t={t}
+              t0={tabla.tiempos[0] ?? 0}
+              tn={tabla.tiempos[total - 1] ?? 0}
+              onTramo={cambiarTramo}
+              onPrimeros={() => cambiarTramo(tramoInicial(tabla.tiempos))}
+              deshabilitado={siguiendo}
+            />
+
+            <PanelExportar
+              generar={generarCsv}
+              resumen={`${total} frames · ${modelo.marcadores.length} marcadores · ${
+                calibracion ? 'posiciones en px y en m, velocidades en m/s' : 'sin escala: todo en píxeles'
+              }${orientacion.plano === articulacion.plano ? '' : ' · sin ángulo (la articulación es de otro plano)'}`}
+              deshabilitado={siguiendo}
+            />
+
+          </PanelPestana>
+
+          <PanelPestana id="escala" activa={pestana === 'escala'}>
+            <PanelEscala
+              calibracion={calibracion}
+              borrador={borrador}
+              medicion={medicion}
+              framesTramo={framesTramo}
+              medicionGuardada={medicionGuardada}
+              segmentos={segmentos}
+              tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
+              constancia={constancia}
+              onIr={ir}
+              frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
+              onEmpezar={empezarEscala}
+              onBorrador={setBorrador}
+              onGuardar={guardarEscala}
+              onCancelar={() => setBorrador(null)}
+              onQuitar={quitarEscala}
+              onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
+              deshabilitado={siguiendo}
+            />
+
+          </PanelPestana>
+
+          <PanelPestana id="video" activa={pestana === 'video'}>
+            <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
+              <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                <dt className="text-texto-2">Archivo</dt>
+                <dd className="truncate" title={info.nombre}>{info.nombre}</dd>
+                <dt className="text-texto-2">Formato</dt>
+                <dd>{info.formato} · {info.codec}</dd>
+                <dt className="text-texto-2">Tamaño</dt>
+                <dd>{info.ancho} × {info.alto} px{info.rotacion ? ` (girado ${info.rotacion}°)` : ''}</dd>
+                <dt className="text-texto-2">Duración</dt>
+                <dd>{fmt(info.duracion, 2)} s</dd>
+                <dt className="text-texto-2">Frames</dt>
+                <dd>{total}</dd>
+                <dt className="text-texto-2">fps medio</dt>
+                <dd>{Number.isNaN(est.fpsMedio) ? '—' : fmt(est.fpsMedio, 2)}</dd>
+                <dt className="text-texto-2">Entre frames</dt>
+                <dd>
+                  {Number.isNaN(est.pasoMin) ? '—' : `${fmt(est.pasoMin * 1000, 1)}–${fmt(est.pasoMax * 1000, 1)} ms`}
+                  {est.variable && <span className="text-acento"> · variable</span>}
+                </dd>
+                <dt className="text-texto-2">Persona</dt>
+                <dd>{orientacion.plano === 'sagital' ? `mira a la ${orientacion.mira}` : `vista desde ${orientacion.ve}`}</dd>
+                <dt className="text-texto-2">Decodificar</dt>
+                <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}</dd>
+              </dl>
+            </section>
+          </PanelPestana>
+        </div>
+      </div>
       </div>
     </div>
   )
