@@ -905,7 +905,39 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   }, [ampliada])
 
   // Debajo del vídeo (en la vista de vídeo grande, dentro de ella: lo de fuera queda tapado).
-  const nodoError = errorToque && (
+  // En el vídeo grande, el aviso va justo debajo del vídeo (sin `order`: con `order-2` quedaba el último, tras los marcadores,
+  // el botón de seguir y el deslizador, fuera de pantalla), corto, con el detalle plegado y sus botones a la vista.
+  const frasePrincipal = (texto: string) => `${texto.split(/[:.]/)[0]!.trim()}.`
+  const nodoError =
+    errorToque &&
+    (enVideo ? (
+      <div data-testid="error-toque" role="alert" className="flex flex-col gap-1.5 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200">
+        <p>{frasePrincipal(errorToque.texto)}</p>
+        <div className="flex flex-wrap gap-2">
+          {errorToque.aOjo && (
+            <button
+              type="button"
+              onClick={() => {
+                const { id, i, x, y } = errorToque.aOjo!
+                ponerManual(id, i, x, y)
+              }}
+              className="rounded-md border border-borde px-3 py-1.5 text-texto"
+            >
+              Colocarlo aquí a ojo
+            </button>
+          )}
+          <button type="button" onClick={() => setErrorToque(null)} className="rounded-md border border-borde px-3 py-1.5 text-texto-2">
+            Cerrar
+          </button>
+        </div>
+        <details className="text-xs text-texto-2">
+          <summary className="cursor-pointer">Por qué</summary>
+          <p className="mt-1">{errorToque.texto}</p>
+          {errorToque.detalle && <p className="mt-1 font-mono">{errorToque.detalle}</p>}
+          {errorToque.aOjo && <p className="mt-1">A ojo: queda como marcado a mano justo donde has soltado el dedo, sin ajustarlo a ningún gomet. Para varios frames seguidos, activa «Colocar a ojo».</p>}
+        </details>
+      </div>
+    ) : (
             // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
             // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
             // gomet) caía en el mensaje en vez de marcar.
@@ -936,7 +968,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 </p>
               )}
             </div>
-            )
+    ))
 
   // Deslizador de frames con la franja de estado: en el flujo de la página o, en el vídeo grande, dentro de él.
   const nodoDeslizador = (
