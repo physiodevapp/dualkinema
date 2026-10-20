@@ -951,6 +951,23 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     </div>
   )
 
+  // Mientras se sigue, el avance se ve en la franja del deslizador (se va poniendo verde);
+  // el botón lleva el porcentaje, con ancho fijo para que no cambie de tamaño.
+  const botonParar = (alto: string) => (
+    <button
+      type="button"
+      onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
+      className={`flex items-center justify-center gap-2 rounded-md border border-borde px-4 ${alto}`}
+    >
+      <StopIcon className="size-5" /> Parar
+      {seguimiento.estado === 'siguiendo' && (
+        <span className="inline-block w-[5ch] text-right font-mono text-sm text-texto-2" data-testid="progreso-seguimiento">
+          {Math.round(seguimiento.progreso * 100)} %
+        </span>
+      )}
+    </button>
+  )
+
   // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
   const marcaManualElegida = seleccionado && mostrado !== null ? muestra(seleccionado, mostrado) : undefined
   const extrasCompactos =
@@ -1009,18 +1026,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         })}
       </div>
       {siguiendo ? (
-        <div className="flex items-center gap-2">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-borde">
-            <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
-          </div>
-          <button
-            type="button"
-            onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
-            className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-2"
-          >
-            <StopIcon className="size-5" /> Parar
-          </button>
-        </div>
+        botonParar('py-2')
       ) : (
         <button
           type="button"
@@ -1352,18 +1358,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               })()}
 
               {siguiendo ? (
-                <div className="flex flex-col gap-2">
-                  <div className="h-2 overflow-hidden rounded-full bg-borde">
-                    <div className="h-full bg-acento" style={{ width: `${Math.round(seguimiento.progreso * 100)}%` }} />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
-                    className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3"
-                  >
-                    <StopIcon className="size-5" /> Parar
-                  </button>
-                </div>
+                botonParar('py-3')
               ) : (
                 <button
                   type="button"

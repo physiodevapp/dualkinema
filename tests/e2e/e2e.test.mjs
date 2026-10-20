@@ -387,6 +387,24 @@ describe('seguimiento y gráfica con gomets verdes', () => {
   })
 })
 
+describe('progreso del seguimiento: en la franja del deslizador y en «Parar»', () => {
+  it('mientras se sigue, «Parar» lleva el porcentaje y la franja se va poniendo verde', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      await marcarTres(p, videos.verde.verdad[0].ps)
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      const parar = p.getByRole('button', { name: /^Parar/ })
+      await parar.waitFor()
+      assert.match(await parar.innerText(), /Parar\s+\d+ %/)
+      await p.getByTestId('aviso').waitFor({ timeout: 90000 })
+      assert.equal(await p.getByTestId('progreso-seguimiento').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('seguimiento con gomets rojos sobre piel', () => {
   let p
   let aviso
