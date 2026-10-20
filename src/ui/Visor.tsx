@@ -13,6 +13,7 @@ import {
   SparklesIcon,
   StopIcon,
   TrashIcon,
+  VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import { CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
@@ -47,6 +48,7 @@ import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './v
 import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura, useAnchoMinimo } from './visor/useAltura'
+import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
 
@@ -872,6 +874,18 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const enVideo = !anchoLg && vista === 'video'
   const enGraficas = !anchoLg && vista === 'graficas'
   const ampliada = enVideo || enGraficas
+  // Al bajar por las tarjetas, el vídeo y su gráfica se esconden (y vuelven al subir, al cambiar de frame o de pestaña,
+  // y mientras se calibra tocando el vídeo); las pestañas suben a ocupar su sitio.
+  const tiraRef = useRef<HTMLDivElement>(null)
+  const tarjetasRef = useRef<HTMLDivElement>(null)
+  const [, altoTira] = useAltura<HTMLDivElement>(tiraRef)
+  const { oculto: videoOculto, ver: verVideo } = useOcultarAlBajar({
+    activo: !anchoLg && vista === 'mixta',
+    tarjetas: tarjetasRef,
+    altoTira,
+    forzarVisible: tocandoEscala,
+    reinicio: `${deseado}|${pestana}`,
+  })
   // Con una vista ampliada, la página de debajo no se desplaza.
   useEffect(() => {
     if (!ampliada) return
@@ -1034,7 +1048,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   return (
     <div
       className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-stretch"
-      style={{ '--alto-fijo': `${altoFijo}px` } as React.CSSProperties}
+      style={{ '--alto-fijo': videoOculto ? '0px' : `${altoFijo}px` } as React.CSSProperties}
     >
       {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
           toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
@@ -1048,10 +1062,15 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           <div
             ref={fijoRef}
             data-testid="visor-fijo"
+            data-oculto={videoOculto}
+            inert={videoOculto}
             className={`flex flex-col gap-2 max-lg:z-30 max-lg:bg-fondo ${
               enVideo
                 ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
-                : 'max-lg:sticky max-lg:top-0 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:px-4 max-lg:pb-2'
+                : videoOculto
+                  ? // Oculto: fuera del flujo (las tarjetas ganan su sitio), pero con su tamaño, para no desmontar ni medir 0.
+                    'max-lg:invisible max-lg:pointer-events-none max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:px-4 max-lg:pb-2'
+                  : 'max-lg:sticky max-lg:top-0 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:px-4 max-lg:pb-2'
             } ${enGraficas ? 'max-lg:hidden' : ''}`}
           >
           <div className="relative">
@@ -1281,10 +1300,30 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           abierto excede esa altura; los paneles de dentro pierden su caja propia y se separan con una línea. */}
       <div className="max-lg:contents lg:relative">
       <div className="max-lg:contents lg:absolute lg:inset-0 lg:flex lg:flex-col lg:gap-3" data-testid="columna-herramientas">
-        <Pestanas pestanas={pestanasVisor} activa={pestana} onElegir={setPestana} className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`} />
+        <Pestanas
+          pestanas={pestanasVisor}
+          activa={pestana}
+          onElegir={setPestana}
+          contenedorRef={tiraRef}
+          className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`}
+          debajo={
+            videoOculto && (
+              <button
+                type="button"
+                onClick={verVideo}
+                data-testid="mostrar-video"
+                aria-label="Mostrar el vídeo y mantenerlo a la vista"
+                className="absolute top-full right-4 z-10 mt-1 flex h-8 items-center gap-1.5 rounded-md border border-borde bg-fondo/90 px-2.5 text-xs text-texto-2 lg:hidden"
+              >
+                <VideoCameraIcon className="size-4" /> Vídeo
+              </button>
+            )
+          }
+        />
 
         <div
           data-testid="panel-herramientas"
+          ref={tarjetasRef}
           className={`flex flex-col gap-3 max-lg:order-6 lg:relative lg:min-h-0 lg:flex-1 lg:gap-0 lg:overflow-y-auto lg:rounded-2xl lg:border lg:border-borde lg:bg-panel lg:p-4 lg:[&_section]:rounded-none lg:[&_section]:border-0 lg:[&_section]:bg-transparent lg:[&_section]:p-0 lg:[&_section+section]:mt-4 lg:[&_section+section]:border-t lg:[&_section+section]:border-borde lg:[&_section+section]:pt-4 ${ampliada ? 'max-lg:hidden' : ''}`}
         >
 

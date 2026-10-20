@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 
 /**
  * Altura de un elemento en px, al día cuando cambia de tamaño. La usan las piezas fijas del
@@ -6,8 +6,9 @@ import { useEffect, useRef, useState } from 'react'
  * deje sitio o se pegue justo a su lado. En pantalla ancha, donde no son cajas propias, da 0
  * o lo que mida su contenido: se usa solo bajo `max-lg:`.
  */
-export function useAltura<T extends HTMLElement>() {
-  const ref = useRef<T>(null)
+export function useAltura<T extends HTMLElement>(externa?: RefObject<T | null>) {
+  const propia = useRef<T>(null)
+  const ref = externa ?? propia
   const [alto, setAlto] = useState(0)
   useEffect(() => {
     const el = ref.current
@@ -17,7 +18,7 @@ export function useAltura<T extends HTMLElement>() {
     const o = new ResizeObserver(medir)
     o.observe(el)
     return () => o.disconnect()
-  }, [])
+  }, [ref])
   return [ref, alto] as const
 }
 
