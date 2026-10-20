@@ -15,6 +15,7 @@ import ElegirOrientacion from './ElegirOrientacion'
 import RecuperarSesion, { type Candidata } from './RecuperarSesion'
 import SesionesGuardadas from './SesionesGuardadas'
 import { fechaCorta, huellaDe, textoResumen } from './sesion'
+import { useVersionNueva } from './useVersionNueva'
 import type { SesionAbierta } from './visor/useGuardado'
 // El visor (con la gráfica y uPlot) solo se descarga al abrir un vídeo.
 const Visor = lazy(() => import('./Visor'))
@@ -73,6 +74,7 @@ async function prepararRecuperacion(video: VideoAbierto, elegida: CabeceraSesion
 export default function App() {
   const [estado, setEstado] = useState<Estado>({ fase: 'inicio' })
   const selector = useRef<HTMLInputElement>(null)
+  const versionNueva = useVersionNueva()
   // Identifica cada apertura de un vídeo: el visor se monta de cero aunque se
   // vuelva a abrir un archivo con el mismo nombre (antes la clave era el nombre).
   const aperturas = useRef(0)
@@ -163,6 +165,18 @@ export default function App() {
         estado.fase === 'visor' ? 'max-w-[90rem]' : 'max-w-6xl'
       }`}
     >
+      {versionNueva && (
+        <div role="status" data-testid="version-nueva" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-acento/60 bg-panel px-3 py-2 text-sm">
+          <span>
+            Hay una versión nueva.
+            {estado.fase === 'visor' && ' El trabajo se guarda solo; al recargar tendrás que volver a abrir el vídeo.'}
+          </span>
+          <button type="button" onClick={() => location.reload()} className="rounded-md bg-acento px-3 py-1.5 font-medium text-fondo">
+            Recargar
+          </button>
+        </div>
+      )}
+
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-serif text-3xl">
           dual<span className="text-acento">kinema</span>

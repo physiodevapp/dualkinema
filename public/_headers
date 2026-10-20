@@ -3,6 +3,10 @@
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(self), microphone=(self), geolocation=()
 
+# Se vuelve a pedir siempre: dice si hay una versión más nueva publicada.
+/version.json
+  Cache-Control: no-cache
+
 # Vite pone un hash en el nombre de estos archivos: si cambian, cambia el nombre.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

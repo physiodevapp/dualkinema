@@ -6,6 +6,7 @@ import type { Vec3 } from '../geometria/vector'
 import type { IdMarcador, Muestra2D } from '../modelo/tipos'
 import { aTiemposReales, derivadasAngulares, derivarRejilla, derivarTramo, velocidadMarcador } from './derivadas'
 import { filtrarTrayectoria, rejillaUniforme, type TrayectoriaFiltrada } from './tramos'
+import { crearTablaFrames, fpsMediano } from '../tiempo/tablaFrames'
 
 // ---- Utilidades de prueba ----
 
@@ -88,6 +89,31 @@ describe('derivadas: diferencias centrales en la rejilla', () => {
 })
 
 // ---- Velocidad lineal de un marcador ----
+
+describe('derivadas con fps constantes y tiempos reales de archivo', () => {
+  // Con fps constantes, solo el primer y el último frame de cada tramo quedan sin derivada.
+  // Antes, el primer nodo interior de la rejilla salía un pelo por encima del tiempo del
+  // segundo frame (o el último por debajo del penúltimo) y esos frames se quedaban sin valor
+  // en un 10–30 % de los tramos, según la escala de tiempos del archivo.
+  it.each([
+    ['escala 90000 (29,97 fps)', (k: number) => (k * 3003) / 90000],
+    ['escala 15360 (30 fps)', (k: number) => (k * 512) / 15360],
+    ['k / 30', (k: number) => k / 30],
+  ])('%s: el segundo y el penúltimo frame de cada tramo tienen velocidad', (_, tiempo) => {
+    const fs = fpsMediano(crearTablaFrames(rango(300, tiempo)))
+    let sinValor = 0
+    for (let inicio = 0; inicio < 120; inicio++) {
+      for (const n of [10, 11, 20, 37, 61]) {
+        const ts = rango(n, (k) => tiempo(k + inicio))
+        const v = velocidadMarcador(filtrarTrayectoria(ts.map((t) => muestra(t, 100 * t, 0)), fs))
+        expect(Number.isNaN(v.vx[0]!) && Number.isNaN(v.vx[n - 1]!)).toBe(true)
+        if (!Number.isFinite(v.vx[1]!) || !Number.isFinite(v.vx[n - 2]!)) sinValor++
+        else expect(v.vx[1]).toBeCloseTo(100, 1)
+      }
+    }
+    expect(sinValor).toBe(0)
+  })
+})
 
 describe('velocidad lineal de un marcador', () => {
   // Giro de 1 Hz y 100 px de radio: rapidez constante de 2π·100 ≈ 628 px/s.

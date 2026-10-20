@@ -7,6 +7,7 @@ import {
   DISTANCIA_MIN_PX,
   distanciaPx,
   esCalibracion,
+  escalaDesfasada,
   ERROR_MEDIA_MARCADOR_PX,
   incertidumbreEscala,
   incertidumbreRelativa,
@@ -15,6 +16,7 @@ import {
   metrosDesdeCm,
   metrosPorPx,
   type EscalaPlano,
+  UMBRAL_DESFASE,
 } from './escala'
 
 const escala = (a: { x: number; y: number }, b: { x: number; y: number }, longitudM: number): EscalaPlano => {
@@ -152,6 +154,58 @@ describe('escala entre dos marcadores', () => {
     expect(r.ok && r.muestras).toBe(7)
     expect(r.ok && r.a.y).toBeCloseTo(100, 0)
     expect(medirEntreMarcadores(rodilla, tobillo, { desde: 10, hasta: 11 })).toMatchObject({ ok: false, motivo: /tramo/ })
+  })
+
+  it('lo interpolado no cuenta: no es una medida de la distancia', () => {
+    const b = tobillo.map((x, i) => (i === 5 || i === 6 ? { ...x, y: 300, interpolado: true } : x))
+    const r = medirEntreMarcadores(rodilla, b, { desde: 0, hasta: 9 / 30 })
+    expect(r.ok && r.muestras).toBe(8)
+    expect(r.ok && distanciaPx(r.a, r.b)).toBeCloseTo(160, 9)
+  })
+
+  describe('escalaDesfasada: la escala guardada frente a lo seguido ahora', () => {
+    const tramo = { desde: 0, hasta: 29 / 30 }
+    type Serie = readonly (Muestra2D | undefined)[]
+    const guardar = (rs: Serie, ts: Serie): EscalaPlano => {
+      const r = medirEntreMarcadores(rs, ts, tramo)
+      if (!r.ok) throw new Error(r.motivo)
+      const e = crearEscala({ objeto: 'marcadores', a: r.a, b: r.b, longitudM: 0.4, t: 0, entre: { desde: 'r', hasta: 't', tramo, muestras: r.muestras, dispersionPx: r.dispersionPx } })
+      if (!e.ok) throw new Error(e.motivo)
+      return e.valor
+    }
+    const ahora = (rs: Serie, ts: Serie) => medirEntreMarcadores(rs, ts, tramo)
+
+    it('sin cambios sigue valiendo; una escala de dos toques nunca está desfasada', () => {
+      const e = guardar(rodilla, tobillo)
+      expect(escalaDesfasada(e, ahora(rodilla, tobillo))).toBeNull()
+      expect(escalaDesfasada({ a: e.a, b: e.b }, ahora(rodilla, tobillo))).toBeNull()
+    })
+
+    it('con más frames (se siguió después de calibrar) o con menos (se quitaron marcas)', () => {
+      const soloUno = tobillo.map((x, i) => (i === 0 ? x : undefined))
+      const e = guardar(rodilla, soloUno)
+      expect(escalaDesfasada(e, ahora(rodilla, tobillo))).toEqual({ motivo: 'frames', antes: 1, ahora: 30 })
+      const todo = guardar(rodilla, tobillo)
+      const menos = tobillo.map((x, i) => (i < 10 ? undefined : x))
+      expect(escalaDesfasada(todo, ahora(rodilla, menos))).toEqual({ motivo: 'frames', antes: 30, ahora: 20 })
+    })
+
+    it('mismos frames pero marcadores corregidos: avisa si la distancia media cambia más del umbral', () => {
+      const e = guardar(rodilla, tobillo)
+      // Tobillo corregido 2 px más abajo en todo el tramo: 162 px en vez de 160 (+1,25 %).
+      const corregido = tobillo.map((x) => ({ ...x, y: x.y + 2 }))
+      const d = escalaDesfasada(e, ahora(rodilla, corregido))
+      expect(d).toMatchObject({ motivo: 'distancia' })
+      expect(d?.motivo === 'distancia' && d.cambio).toBeCloseTo(2 / 160, 9)
+      // Una corrección mínima (por debajo del umbral) no avisa.
+      const casi = tobillo.map((x) => ({ ...x, y: x.y + 160 * UMBRAL_DESFASE * 0.5 }))
+      expect(escalaDesfasada(e, ahora(rodilla, casi))).toBeNull()
+    })
+
+    it('si ya no están los dos marcadores en el tramo', () => {
+      const e = guardar(rodilla, tobillo)
+      expect(escalaDesfasada(e, ahora(rodilla, []))).toEqual({ motivo: 'sin-marcadores' })
+    })
   })
 
   it('crearEscala y esCalibracion exigen el origen con «marcadores» y solo con él', () => {

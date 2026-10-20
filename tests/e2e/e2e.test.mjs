@@ -21,6 +21,7 @@ import {
   esperarFiltroGuardado,
   esperarGuardado,
   esperarQuieto,
+  esperarVideoAsentado,
   frameMasCercano,
   irAFrame,
   lanzarNavegador,
@@ -1168,6 +1169,20 @@ describe('escala entre dos marcadores y longitud de los segmentos', () => {
       assert.equal(await textoDe(p, 'escala-objeto'), texto)
       await abrirPestana(p, 'escala')
       await p.getByText(/Posición media de los dos gomets/).waitFor()
+      assert.equal(await panel.getByTestId('escala-rehacer').count(), 0)
+
+      // Corregir el tobillo en un frame del tramo (mismo número de frames, otra distancia):
+      // la escala ya no corresponde a lo seguido y se avisa, también desde otra pestaña.
+      await abrirPestana(p, 'marcar')
+      await irAFrame(p, 10)
+      await elegirMarcador(p, 'Maléolo')
+      const t10 = verdad[10].ps[2]
+      await tocarVideo(p, t10.x + (t10.x > 320 ? -80 : 80), t10.y)
+      await p.getByTestId('error-toque').waitFor()
+      await p.getByRole('button', { name: 'Colocarlo aquí a ojo' }).click()
+      assert.ok(await p.getByTestId('aviso-pestana-escala').isVisible())
+      await abrirPestana(p, 'escala')
+      assert.match(await panel.getByTestId('escala-rehacer').innerText(), /han cambiado desde que se guardó/)
     } finally {
       await p.close()
     }
@@ -1477,7 +1492,7 @@ describe('pestañas de herramientas', () => {
     }
   })
 
-  it('en el móvil el vídeo y la gráfica del ángulo siguen a la vista al desplazarse, y las pestañas se pegan debajo', async () => {
+  it('en el móvil el vídeo y la gráfica del ángulo quedan a la vista al desplazarse, y las pestañas se pegan debajo', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
       const alto = p.viewportSize().height
@@ -1488,24 +1503,132 @@ describe('pestañas de herramientas', () => {
         pestanas: await p.getByRole('tablist').locator('..').boundingBox(),
         fijo: await p.getByTestId('visor-fijo').boundingBox(),
       })
+      // Desplazándose hasta el final de la pestaña «Marcar» (corta), el vídeo no se oculta: no hay tarjetas que ganar sitio.
       await p.evaluate(() => window.scrollTo(0, 300))
       const a = await cajas()
       await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      await p.waitForTimeout(300)
       const b = await cajas()
+      assert.equal(await p.getByTestId('visor-fijo').getAttribute('data-oculto'), 'false')
       assert.deepEqual(b.video, a.video, 'el vídeo se mueve al desplazarse')
       assert.deepEqual(b.mini, a.mini, 'la gráfica se mueve al desplazarse')
       assert.ok(b.video.y >= 0 && b.mini.y + b.mini.height <= b.fijo.y + b.fijo.height, 'vídeo y gráfica fuera de su zona pegada')
       // El vídeo no se come la pantalla: más de un tercio de alto se lo quitaría a las herramientas.
       assert.ok(b.video.height <= alto * 0.36, `el vídeo mide ${b.video.height} de ${alto} px`)
       assert.ok(b.mini.y > b.video.y + b.video.height - 1, 'la gráfica va debajo del vídeo')
-      // Las pestañas se pegan justo debajo, no detrás del vídeo, y siguen ahí hasta el final de la página (también
-      // al pasar a la gráfica completa: no se van con la columna de paneles).
+      // Las pestañas se pegan justo debajo, no detrás del vídeo, y siguen ahí hasta el final de la página.
       for (const [donde, c] of [['a mitad', a], ['al final', b]]) {
         assert.ok(Math.abs(c.pestanas.y - (c.fijo.y + c.fijo.height)) <= 4, `${donde}: pestañas en ${c.pestanas.y}, vídeo y gráfica acaban en ${c.fijo.y + c.fijo.height}`)
       }
     } finally {
       await p.close()
     }
+  })
+
+  describe('el vídeo se oculta al bajar por tarjetas largas (pestaña «Análisis»)', () => {
+    let p
+    before(async () => {
+      ;({ p } = await seguirVideo(videos.verde, { ancho: 390 }))
+      await abrirPestana(p, 'analisis')
+    })
+    after(() => p?.close())
+
+    const oculto = async () => (await p.getByTestId('visor-fijo').getAttribute('data-oculto')) === 'true'
+    const arribaTarjetas = async () => (await p.getByTestId('panel-herramientas').boundingBox()).y
+    const bajar = async (y) => {
+      await p.evaluate((y) => window.scrollTo(0, y), y)
+      await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
+    }
+
+    it('con el vídeo a la vista, las tarjetas tienen menos de la mitad de la pantalla', async () => {
+      await bajar(300)
+      assert.equal(await oculto(), false)
+      const barra = (await p.getByTestId('barra-fija').boundingBox()).y
+      const tira = await p.getByRole('tablist').locator('..').boundingBox()
+      const libre = barra - (tira.y + tira.height)
+      assert.ok(libre < p.viewportSize().height * 0.5, `sitio para las tarjetas con el vídeo: ${libre} px`)
+    })
+
+    it('mientras las tarjetas no han subido bajo las pestañas no se oculta (dejaría un hueco vacío)', async () => {
+      await bajar(0)
+      for (const y of [100, 250, 400, 480]) {
+        await bajar(y)
+        assert.equal(await oculto(), false, `oculto a y = ${y}`)
+      }
+    })
+
+    it('al seguir bajando se oculta, las pestañas suben y las tarjetas no se mueven (solo se descubre lo que tapaba el vídeo)', async () => {
+      await bajar(500)
+      assert.equal(await oculto(), false)
+      const antes = await arribaTarjetas()
+      await bajar(540)
+      await esperarVideoAsentado(p, true)
+      assert.equal(await oculto(), true)
+      // Lo que se mira no salta: las tarjetas subieron los 40 px que se bajó, no los ~340 del hueco del vídeo.
+      const despues = await arribaTarjetas()
+      assert.ok(Math.abs(despues - (antes - 40)) <= 3, `las tarjetas saltaron: de ${antes} a ${despues}`)
+      // Las pestañas suben a lo más alto y las tarjetas ganan el sitio del vídeo.
+      const tira = await p.getByRole('tablist').locator('..').boundingBox()
+      assert.ok(tira.y >= -2 && tira.y <= 2, `las pestañas están en y = ${tira.y}`)
+      const barra = (await p.getByTestId('barra-fija').boundingBox()).y
+      const libre = barra - (tira.y + tira.height)
+      assert.ok(libre >= p.viewportSize().height * 0.7, `queda ${libre} px para las tarjetas`)
+      // Oculto de verdad: no recibe toques ni foco, y sigue montado (el lienzo y la gráfica conservan su estado).
+      assert.equal(await p.getByTestId('visor-fijo').evaluate((e) => e.inert), true)
+      assert.equal(await p.getByTestId('lienzo').count(), 1)
+    })
+
+    it('al subir un poco vuelve, y tampoco salta nada', async () => {
+      const antes = await arribaTarjetas()
+      await p.evaluate(() => window.scrollBy(0, -60))
+      await esperarVideoAsentado(p, false)
+      const despues = await arribaTarjetas()
+      assert.ok(Math.abs(despues - (antes + 60)) <= 3, `las tarjetas saltaron: de ${antes} a ${despues}`)
+      const fijo = await p.getByTestId('visor-fijo').boundingBox()
+      assert.ok(fijo.y >= 0 && fijo.y < 4, 'el vídeo vuelve pegado arriba')
+    })
+
+    it('vuelve al cambiar de frame con la barra y al cambiar de pestaña', async () => {
+      await bajar(0)
+      await bajar(500)
+      await bajar(560)
+      await esperarVideoAsentado(p, true)
+      await p.getByRole('button', { name: 'Frame siguiente' }).click()
+      await esperarVideoAsentado(p, false)
+      await bajar(500)
+      await bajar(560)
+      await esperarVideoAsentado(p, true)
+      await p.getByTestId('pestana-escala').click()
+      await esperarVideoAsentado(p, false)
+      await abrirPestana(p, 'analisis')
+    })
+
+    it('con el botón «Vídeo» se ve y se queda por mucho que se baje, hasta volver al principio', async () => {
+      await bajar(0)
+      await bajar(500)
+      await bajar(560)
+      await esperarVideoAsentado(p, true)
+      const antes = await arribaTarjetas()
+      await p.getByTestId('mostrar-video').click()
+      await esperarVideoAsentado(p, false)
+      assert.ok(Math.abs((await arribaTarjetas()) - antes) <= 3, 'al mostrar el vídeo con el botón, las tarjetas saltan')
+      await p.evaluate(() => window.scrollBy(0, 200))
+      await p.waitForTimeout(300)
+      assert.equal(await oculto(), false, 'anclado, el vídeo no se oculta solo')
+      await bajar(0)
+      await bajar(560)
+      await esperarVideoAsentado(p, true)
+    })
+
+    it('mientras se calibra tocando el vídeo, no se oculta al bajar', async () => {
+      await bajar(0)
+      await abrirPestana(p, 'escala')
+      await p.getByTestId('panel-escala').getByRole('button', { name: 'Calibrar escala' }).click()
+      await bajar(300)
+      await bajar(700)
+      await p.waitForTimeout(300)
+      assert.equal(await oculto(), false)
+    })
   })
 
   it('la gráfica pequeña salta de frame al tocarla y su cursor no la redibuja', async () => {
@@ -2104,6 +2227,62 @@ describe('escritorio', () => {
       const { desborda } = await p.evaluate(() => ({ desborda: document.documentElement.scrollWidth > window.innerWidth }))
       assert.equal(desborda, false, 'la página tiene scroll horizontal')
       assert.ok(await p.getByTestId('grafica-angulo-area').isVisible())
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('aviso de versión nueva', () => {
+  const publicar = (p, commit) => p.route('**/version.json', (r) => r.fulfill({ json: { commit, rama: 'prueba' } }))
+
+  it('con lo publicado igual a lo abierto no avisa', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      // Build local: el commit de la app y el de version.json son el mismo («dev»).
+      const publicada = await (await p.request.get(new URL('/version.json', p.url()).href)).json()
+      assert.ok(publicada.commit)
+      await p.reload()
+      await p.waitForTimeout(500)
+      assert.equal(await p.getByTestId('version-nueva').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('con otro commit publicado, avisa y «Recargar» vuelve a cargar la app; también al volver a verla', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await publicar(p, 'commit-nuevo')
+      await p.reload()
+      const aviso = p.getByTestId('version-nueva')
+      await aviso.waitFor()
+      assert.match(await aviso.innerText(), /Hay una versión nueva/)
+      // Recargar: la página se vuelve a cargar (y, sin el aviso simulado, desaparece).
+      await p.unroute('**/version.json')
+      await Promise.all([p.waitForEvent('load'), aviso.getByRole('button', { name: 'Recargar' }).click()])
+      await p.waitForTimeout(500)
+      assert.equal(await p.getByTestId('version-nueva').count(), 0)
+
+      // Comprobación al volver a la app: aparece sin recargar la página.
+      await publicar(p, 'otro-commit')
+      await p.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await p.getByTestId('version-nueva').waitFor()
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('un version.json que no es una versión (p. ej. sin conexión o una página) no avisa', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await p.route('**/version.json', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html></html>' }))
+      await p.reload()
+      await p.waitForTimeout(500)
+      assert.equal(await p.getByTestId('version-nueva').count(), 0)
     } finally {
       await p.close()
     }

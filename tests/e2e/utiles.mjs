@@ -61,6 +61,24 @@ export async function esperarQuieto(p) {
   )
 }
 
+/**
+ * Espera a que el vídeo pegado del móvil esté oculto (`true`) o a la vista (`false`) tras bajar o subir por las
+ * tarjetas, y a que lo que hay en la página haya vuelto a su sitio (el visor compensa el scroll en el mismo fotograma,
+ * dos fotogramas bastan). En pantalla ancha no hay nada que esperar.
+ */
+export async function esperarVideoAsentado(p, oculto) {
+  await p.waitForFunction(
+    (esperado) => {
+      const fijo = document.querySelector('[data-testid=visor-fijo]')
+      if (!fijo || getComputedStyle(fijo).position === 'static') return true
+      return esperado === undefined || (fijo.dataset.oculto === 'true') === esperado
+    },
+    oculto,
+    { timeout: 5000 },
+  )
+  await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
+}
+
 /** «frame 31 / 120» y «t = 1,000 s» del visor → { frame (1-based), total, t }. */
 export async function leerPosicion(p) {
   const texto = (await p.getByTestId('posicion').innerText()).replace(/\s+/g, ' ')
@@ -101,6 +119,12 @@ export function leerFrameDibujado(p, { bits, ladoBloque }) {
 export async function cajaVideo(p) {
   const capa = p.getByTestId('capa')
   await capa.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  // Desplazar la página puede haber ocultado el vídeo (en el móvil se oculta al bajar por las tarjetas): se
+  // vuelve a ver con su botón, como haría la persona, y así no se vuelve a ocultar al seguir.
+  await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
+  const mostrar = p.getByTestId('mostrar-video')
+  if (await mostrar.count()) await mostrar.click()
+  await esperarVideoAsentado(p, false)
   return capa.boundingBox()
 }
 
@@ -172,7 +196,9 @@ export async function centrarLibre(locator) {
     e.scrollIntoView({ block: 'center' })
     const fijo = pegado('visor-fijo', 'sticky')
     const barra = pegado('barra-fija', 'fixed')
-    const arriba = fijo ? fijo.getBoundingClientRect().height : 0
+    // Con el vídeo oculto al bajar, lo que queda arriba es la tira de pestañas.
+    const tira = document.querySelector('[role=tablist]')?.parentElement
+    const arriba = fijo ? (fijo.dataset.oculto === 'true' ? (tira?.getBoundingClientRect().bottom ?? 0) : fijo.getBoundingClientRect().height) : 0
     const abajo = barra ? barra.getBoundingClientRect().top : window.innerHeight
     const r = e.getBoundingClientRect()
     window.scrollBy(0, r.top + r.height / 2 - (arriba + abajo) / 2)
