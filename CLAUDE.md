@@ -76,7 +76,7 @@ El detalle de cómo quedó cada pieza (y por qué) está en `docs/plan-fase-1.md
 **Seguimiento y marcado** (fase 1 §6, fase 2 §5)
 - Un marcador perdido tiene posición NaN y calidad 0: el seguidor nunca inventa ni interpola. Dos marcadores en la misma mancha quedan los dos sin posición.
 - Lo marcado a mano no se sobrescribe al seguir y es un **ancla**: «Seguir desde aquí» se lo manda al worker, que toma esa posición como cierta y vuelve a aprender el gomet.
-- «Seguir desde aquí» quita lo seguido después (no lo marcado a mano), pero si el seguimiento no llega a arrancar (gomet no reconocido, error del worker) lo devuelve.
+- «Seguir desde aquí» quita lo seguido después (no lo marcado a mano), pero si el seguimiento no llega a arrancar (gomet no reconocido, error del worker) lo devuelve. Antes de seguir se avisa de las marcas a mano posteriores (`core/seguimiento/manuales.ts`; en el panel «Marcar» y en el vídeo grande) con un botón para quitarlas: una marca de prueba o a ojo lejos del gomet hace perder el gomet desde ahí (franja en rojo hasta el final).
 - Un solo umbral decide qué posición es utilizable para el análisis: `CALIDAD_MINIMA` (0,5). Lo usan ángulo, franja, gráfica, filtrado y recuento de huecos. El seguidor acepta desde `CALIDAD_PERDIDO` (0,3) solo para no perder la continuidad; esas detecciones son «dudosas».
 - Huecos cortos: solo a petición, entre dos posiciones fiables y de `HUECO_MAX_S` (0,2 s) como mucho; lo rellenado lleva `interpolado: true`, se ve siempre distinto (azul, a trazos) y se puede quitar.
 

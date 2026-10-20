@@ -753,6 +753,35 @@ describe('corrección manual: arrastrar, a ojo, quitar y anclas', () => {
     assert.equal(await estadoMarcador(p, 'Maléolo'), '—')
     assert.ok(Number.isNaN(await leerAngulo(p)))
   })
+
+  it('antes de seguir avisa de las marcas a mano posteriores (serán anclas) y deja quitarlas', async () => {
+    // Queda la del trocánter en el frame 31 (la que se arrastró con la lupa).
+    await irAFrame(p, 0)
+    const aviso = p.getByTestId('aviso-anclas')
+    await aviso.waitFor()
+    assert.match(await aviso.innerText(), /Hay marcas a mano más adelante \(frames 31\)/)
+    // Desde un frame posterior a todas, no hay nada que avisar.
+    await irAFrame(p, 60)
+    assert.equal(await p.getByTestId('aviso-anclas').count(), 0)
+    await irAFrame(p, 0)
+    // También en el vídeo grande (versión corta), que es donde se marca y se sigue.
+    await p.getByTestId('ampliar-video').click()
+    const compacto = p.getByTestId('marcado-compacto').getByTestId('aviso-anclas')
+    await compacto.waitFor()
+    assert.match(await compacto.innerText(), /frames 31\): se usan como anclas/)
+    await p.getByTestId('reducir-video').click()
+    await aviso.getByRole('button', { name: 'Quitar las marcas a mano posteriores' }).click()
+    assert.equal(await p.getByTestId('aviso-anclas').count(), 0)
+    assert.match(await p.getByTestId('aviso').innerText(), /Quitadas 1 marca a mano posteriores al frame 1/)
+    await irAFrame(p, 30)
+    assert.equal(await estadoMarcador(p, 'Trocánter'), '—')
+    // Y se puede volver a seguir: el hueco se rehace y ya no hay anclas.
+    await irAFrame(p, 0)
+    const texto = await seguirHastaElFinal(p)
+    assert.match(texto, /Maléolo no tiene posición fiable en \d+ frames/)
+    await irAFrame(p, 30)
+    assert.equal(await estadoMarcador(p, 'Trocánter'), 'seguido')
+  })
 })
 
 describe('huecos cortos: rellenar a petición', () => {
