@@ -7,6 +7,7 @@ import {
   metrosPorPx,
   OBJETOS_CALIBRACION,
   type CalibracionVista,
+  type Desfase,
   type EntreMarcadores,
   type ObjetoCalibracion,
   type Punto2D,
@@ -103,8 +104,8 @@ interface Props {
   medicion: ResultadoEntre | null
   /** Frames del vídeo en el tramo del borrador (con o sin marcadores). */
   framesTramo: number | null
-  /** La escala guardada entre marcadores, medida otra vez con lo seguido ahora (para ofrecer rehacerla). */
-  medicionGuardada: ResultadoEntre | null
+  /** Por qué la escala guardada entre marcadores ya no corresponde a lo seguido ahora (null: sigue valiendo). */
+  desfase: Desfase | null
   /** Segmentos que se pueden usar para calibrar y cuya longitud se vigila. */
   segmentos: readonly Segmento[]
   /** Tramos que se ofrecen para promediar: el del cero de referencia, los primeros 2 s y el frame actual. */
@@ -159,7 +160,7 @@ export default function PanelEscala({
   borrador,
   medicion,
   framesTramo,
-  medicionGuardada,
+  desfase,
   segmentos,
   tramos,
   constancia,
@@ -335,10 +336,15 @@ export default function PanelEscala({
                 esos marcadores, pulsa «Rehacer».
               </p>
             )}
-            {calibracion.entre && medicionGuardada?.ok && medicionGuardada.muestras > calibracion.entre.muestras && (
+            {desfase && (
               <p className="text-xs text-acento" data-testid="escala-rehacer">
-                Al guardar solo había {calibracion.entre.muestras} frame{calibracion.entre.muestras === 1 ? '' : 's'} con los dos marcadores en
-                el tramo; ahora hay {medicionGuardada.muestras}. Pulsa «Rehacer» y guarda para promediarlos todos.
+                {desfase.motivo === 'sin-marcadores'
+                  ? 'Ya no están los dos marcadores en el tramo de la escala: las velocidades en m/s siguen usando la distancia de cuando se guardó. Rehazla en otro tramo o quítala.'
+                  : desfase.motivo === 'frames'
+                    ? desfase.ahora > desfase.antes
+                      ? `Al guardar solo había ${desfase.antes} frame${desfase.antes === 1 ? '' : 's'} con los dos marcadores en el tramo; ahora hay ${desfase.ahora}. Pulsa «Rehacer» y guarda para promediarlos todos.`
+                      : `Al guardar había ${desfase.antes} frames con los dos marcadores en el tramo; ahora hay ${desfase.ahora} (se han quitado marcas o lo interpolado, que no cuenta). Pulsa «Rehacer» y guarda.`
+                    : `Los marcadores del tramo han cambiado desde que se guardó: la distancia media es ahora ${fmt(desfase.ahoraPx, 1)} px (era ${fmt(desfase.antesPx, 1)}, ${desfase.cambio > 0 ? '+' : '−'}${fmt(Math.abs(desfase.cambio) * 100, 1)} %). Pulsa «Rehacer» y guarda.`}
               </p>
             )}
             <Precision c={calibracion} cinta={!!calibracion.entre} />

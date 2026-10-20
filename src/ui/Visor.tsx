@@ -18,7 +18,7 @@ import { CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
 import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
-import { distanciaPx, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
+import { distanciaPx, escalaDesfasada, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
 import { constanciaSegmento } from '../core/calibracion/segmentos'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
@@ -523,6 +523,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     if (!entre) return null
     return medirEntreMarcadores(trayectorias.current.get(entre.desde) ?? [], trayectorias.current.get(entre.hasta) ?? [], entre.tramo)
   }, [calibracion, version])
+  // Si lo seguido cambió en el tramo desde que se guardó (más o menos frames, marcadores corregidos), se avisa.
+  const desfase = useMemo(() => (calibracion ? escalaDesfasada(calibracion, medicionGuardada) : null), [calibracion, medicionGuardada])
   const framesTramo = useMemo(() => {
     const tr = borrador?.tramo
     if (!tr) return null
@@ -848,7 +850,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     {
       id: 'escala',
       nombre: 'Escala',
-      aviso: !!calibracion?.entre && !!medicionGuardada?.ok && medicionGuardada.muestras > calibracion.entre.muestras && 'La escala se puede rehacer',
+      aviso: !!desfase && 'La escala ya no corresponde a lo seguido: se puede rehacer',
     },
     { id: 'video', nombre: 'Vídeo' },
   ]
@@ -1478,7 +1480,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               borrador={borrador}
               medicion={medicion}
               framesTramo={framesTramo}
-              medicionGuardada={medicionGuardada}
+              desfase={desfase}
               segmentos={segmentos}
               tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
               constancia={constancia}

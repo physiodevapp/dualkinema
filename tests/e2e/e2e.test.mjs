@@ -1168,6 +1168,20 @@ describe('escala entre dos marcadores y longitud de los segmentos', () => {
       assert.equal(await textoDe(p, 'escala-objeto'), texto)
       await abrirPestana(p, 'escala')
       await p.getByText(/Posición media de los dos gomets/).waitFor()
+      assert.equal(await panel.getByTestId('escala-rehacer').count(), 0)
+
+      // Corregir el tobillo en un frame del tramo (mismo número de frames, otra distancia):
+      // la escala ya no corresponde a lo seguido y se avisa, también desde otra pestaña.
+      await abrirPestana(p, 'marcar')
+      await irAFrame(p, 10)
+      await elegirMarcador(p, 'Maléolo')
+      const t10 = verdad[10].ps[2]
+      await tocarVideo(p, t10.x + (t10.x > 320 ? -80 : 80), t10.y)
+      await p.getByTestId('error-toque').waitFor()
+      await p.getByRole('button', { name: 'Colocarlo aquí a ojo' }).click()
+      assert.ok(await p.getByTestId('aviso-pestana-escala').isVisible())
+      await abrirPestana(p, 'escala')
+      assert.match(await panel.getByTestId('escala-rehacer').innerText(), /han cambiado desde que se guardó/)
     } finally {
       await p.close()
     }

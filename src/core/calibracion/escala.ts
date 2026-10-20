@@ -123,11 +123,14 @@ export type ResultadoEntre =
   | { readonly ok: true; readonly a: Punto2D; readonly b: Punto2D; readonly muestras: number; readonly dispersionPx: number }
   | { readonly ok: false; readonly motivo: string }
 
-const utilizable = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x) && Number.isFinite(m.y)
+/** Una posición medida (no rellenada a petición) y utilizable: lo interpolado no mide la distancia real. */
+const medida = (m: Muestra2D | undefined): m is Muestra2D =>
+  !!m && m.calidad >= CALIDAD_MINIMA && !m.interpolado && Number.isFinite(m.x) && Number.isFinite(m.y)
 
 /**
  * Distancia media entre dos marcadores en un tramo (extremos incluidos), con
- * los frames en que los dos tienen posición utilizable, y su desviación
+ * los frames en que los dos tienen posición utilizable y medida (no
+ * interpolada), y su desviación
  * típica frame a frame (cuánto se deslizaron o salieron del plano). Las
  * series van por frame, como en el visor.
  *
@@ -149,7 +152,7 @@ export function medirEntreMarcadores(
   for (let i = 0; i < Math.min(serieA.length, serieB.length); i++) {
     const ma = serieA[i]
     const mb = serieB[i]
-    if (!utilizable(ma) || !utilizable(mb) || ma.t < tramo.desde || ma.t > tramo.hasta) continue
+    if (!medida(ma) || !medida(mb) || ma.t < tramo.desde || ma.t > tramo.hasta) continue
     n++
     ax += ma.x
     ay += ma.y
@@ -167,6 +170,34 @@ export function medirEntreMarcadores(
   // Si las posiciones medias coinciden (un giro completo), la dirección no importa.
   const [ux, uy] = norma > 1e-9 ? [dx / norma, dy / norma] : [0, 1]
   return { ok: true, a, b: { x: a.x + ux * media, y: a.y + uy * media }, muestras: n, dispersionPx }
+}
+
+/** Cambio de la distancia media entre marcadores a partir del cual la escala guardada ya no corresponde a lo seguido. */
+export const UMBRAL_DESFASE = 0.001
+
+/** Por qué una escala entre marcadores ya no corresponde a lo seguido ahora. */
+export type Desfase =
+  | { readonly motivo: 'sin-marcadores' }
+  | { readonly motivo: 'frames'; readonly antes: number; readonly ahora: number }
+  | { readonly motivo: 'distancia'; readonly antesPx: number; readonly ahoraPx: number; readonly cambio: number }
+
+/**
+ * Compara una escala entre marcadores con la misma medida hecha con lo seguido
+ * ahora (`medirEntreMarcadores` con sus marcadores y su tramo). Ha quedado
+ * desfasada si ya no están los dos marcadores en el tramo, si cambió el número
+ * de frames (se siguió después de calibrar, se quitaron marcas o lo
+ * interpolado) o si la distancia media cambió más de `UMBRAL_DESFASE` (se
+ * corrigieron los marcadores del tramo). null si sigue valiendo o no es entre
+ * marcadores.
+ */
+export function escalaDesfasada(c: Pick<EscalaPlano, 'a' | 'b' | 'entre'>, ahora: ResultadoEntre | null): Desfase | null {
+  if (!c.entre || !ahora) return null
+  if (!ahora.ok) return { motivo: 'sin-marcadores' }
+  if (ahora.muestras !== c.entre.muestras) return { motivo: 'frames', antes: c.entre.muestras, ahora: ahora.muestras }
+  const antesPx = distanciaPx(c.a, c.b)
+  const ahoraPx = distanciaPx(ahora.a, ahora.b)
+  const cambio = ahoraPx / antesPx - 1
+  return Math.abs(cambio) > UMBRAL_DESFASE ? { motivo: 'distancia', antesPx, ahoraPx, cambio } : null
 }
 
 export type ResultadoEscala = { readonly ok: true; readonly valor: EscalaPlano } | { readonly ok: false; readonly motivo: string }
