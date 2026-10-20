@@ -211,3 +211,41 @@ Vídeos del usuario (H.264 desde un Android, Chrome para Android), sentadillas d
 - **Longitud de los segmentos:** muslo 288,7 px, varía ±5,8 % (máx. −12,7 % en t ≈ 14,1 s); pierna 290,3 px, ±4,1 % (máx. −8,9 % en t ≈ 18,2 s); unos 220 de 603 frames pasan del 3 %. Los máximos caen en el fondo de las sentadillas y **los dos segmentos se acortan a la vez**: lo más probable es que la rodilla salga hacia la cámara (rodillas hacia fuera), no que se deslice el gomet (que alargaría uno y acortaría el otro). Si todo fuera eso, son unos 18–20 cm de desplazamiento lateral y la flexión real en el fondo sería del orden de 10° mayor que la medida en 2D. Es la limitación del 2D que resuelven la vista frontal (fase 3) y el 3D (fase 5). Prueba propuesta para separar las causas: sentadilla con las rodillas en el plano, o una extensión de rodilla sentado.
 - **Interfaz en el móvil:** barra fija, pestañas pegadas, vídeo grande y solo gráficas, probados a lo largo del paso 8 (ver §9).
 - **Pendiente con los vídeos del cierre:** <!-- completar con los vídeos que dé el usuario: avance mantenido (ms por frame con caché, seguido y clave), CSV abierto en Excel, recuperar tras recargar, pantalla externa. -->
+
+### Limitaciones conocidas
+
+**Cálculo y datos** (ver también A–G de la revisión, pendientes de decisión):
+
+1. **2D en un plano.** Los ángulos y la escala solo valen para lo que se mueve en el plano de la cámara. En las sentadillas reales los segmentos se acortan hasta un 13 % en el fondo (rodilla hacia la cámara): ahí la flexión real es del orden de 10° mayor que la medida. Lo resuelven la vista frontal (fase 3) y el 3D (fase 5); la app lo avisa con la longitud de los segmentos.
+2. **Un solo modelo:** rodilla sagital con 3 gomets. No hay editor de modelos ni vista frontal en la interfaz (el núcleo ya la tiene, con tests).
+3. **Sin corrección de lente** (fase 6): los bordes de la imagen tienen algo de distorsión, que afecta a la escala y a los ángulos lejos del centro.
+4. **Un solo corte para todo.** La aceleración es muy sensible al ruido (±20 °/s² a 6 Hz en el vídeo sintético); no hay un corte propio para las derivadas ni el análisis de residuos de Winter.
+5. **No se puede empezar a seguir desde un frame con un gomet marcado a ojo:** el seguidor necesita reconocer el gomet en el frame de partida. Desde el paso 9 no se pierde nada (se avisa y se devuelve lo que había), pero hay que empezar en otro frame.
+6. **Dos sesiones del mismo vídeo son independientes,** y dos pestañas abiertas sobre la misma sesión se sobrescriben: gana la última que guarda, sin aviso.
+
+**Interfaz:**
+
+7. **Vídeo grande en el móvil, solo en vertical.** No hay una versión pensada para girar el móvil a horizontal: girado, se usa el diseño del móvil (o el de escritorio si el ancho llega a 1024 px) sin aprovechar el ancho para el vídeo.
+8. **Las notas de la gráfica completa ya no se ven en ningún sitio** (huecos sin línea, interpolado a trazos, corte del filtro, qué significa salirse de la banda de los segmentos): en el escritorio y en «Solo gráficas» la gráfica va ampliada y sin notas, y en el móvil no se muestra de otra forma. Irán al glosario.
+9. **No se guarda en la sesión** la pestaña abierta, las series de la gráfica que se ven, la trayectoria completa ni el modo de la gráfica pequeña (que además vuelve a «Ángulo» al salir de una vista ampliada, porque se desmonta). Al reabrir, todo vuelve a lo de por defecto.
+10. **Faltan en la gráfica** la aceleración angular, la velocidad de cada marcador y el ángulo relativo al cero (están en el panel y en el CSV); no hay zoom.
+11. **Al mantener pulsado, la gráfica y la fila de valores pueden ir un frame desfasadas** (la gráfica sigue el frame pedido y la fila el dibujado); al soltar coinciden.
+12. **Accesibilidad básica, no completa:** las pestañas no se recorren con flechas, al abrir una vista ampliada el foco no pasa a ella y lo que queda debajo sigue alcanzable con el tabulador.
+
+**Pruebas y dispositivos:**
+
+13. **Tablet en horizontal:** usa el diseño de escritorio y solo se ha probado con Chromium emulado, no en dispositivos reales. Lo mismo la tablet en vertical (diseño del móvil).
+14. **Sin pruebas automáticas con H.264 ni HEVC reales** (el Chromium de Playwright no los trae): solo en el móvil del usuario. Pocos vídeos reales: un usuario, un Android, ningún iPhone.
+15. **Vídeo vertical en el escritorio:** probado con el vídeo sintético girado, no con uno real.
+16. **Rendimiento con 4K o vídeos largos sin medir** en el móvil (memoria de la caché y tiempo de seguimiento).
+
+**Despliegue:**
+
+17. **Una previsualización vieja quedó en la caché del móvil.** No son las cabeceras: Cloudflare ya sirve `index.html` con `Cache-Control: public, max-age=0, must-revalidate` y su `ETag`, así que el navegador lo vuelve a pedir cada vez que carga la página (los archivos de `/assets/` llevan un hash en el nombre y pueden ser `immutable`). Lo más probable es que Chrome para Android no recargue la pestaña al volver a ella (la conserva en memoria o en la caché de ida y vuelta), y que la app abierta siga siendo la anterior hasta recargar a mano. Por eso no se cambia `public/_headers`. Propuesta para la fase 3 o un paso suelto (Sonnet): al volver a la página (`visibilitychange`, `pageshow` con `persisted`), pedir `index.html` sin caché, compararlo con el commit con que se construyó la app (el del pie) y, si hay versión nueva, ofrecer «Hay una versión nueva: recargar». El paso 9 ya evita lo peor de una versión nueva con la app abierta: si el worker ya no carga, se avisa y no se pierde nada.
+
+### Pendientes y propuestas
+
+- **Decidir A–G de la revisión** (cálculo y datos). A, B y D son cortos y con test; recomendados antes de la fase 3, porque la fase 3 compara curvas de dos vistas.
+- **Glosario o wiki dentro de la app** (parámetros y avisos, con enlaces desde cada aviso o valor; todo local). Recomendación: **un paso propio al principio de la fase 3** (Sonnet), porque la fase 3 añade conceptos que también hay que explicar (desfase entre vistas, sincronización por evento o por audio) y así se recuperan las notas de la gráfica (limitación 8). Alternativa: fase 6, junto a la validación, pero entonces la limitación 8 se arrastra tres fases.
+- **Partir `Visor.tsx`** (§11) al empezar la fase 3, antes de duplicar nada para la segunda vista.
+- **Vídeo grande en horizontal en el móvil** y **recordar pestaña y series en la sesión** (limitaciones 7 y 9): pasos de interfaz (Sonnet), cuando el usuario los necesite.
