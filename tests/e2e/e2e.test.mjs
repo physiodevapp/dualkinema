@@ -666,8 +666,8 @@ describe('persistencia: recuperar a medio marcar', () => {
       const [cadera] = videos.verde.verdad[0].ps
       await tocarVideo(p, cadera.x, cadera.y)
       await esperarGuardado(p, 1)
-      await elegirMarcador(p, 'Trocánter')
-      await p.getByRole('button', { name: 'Quitar la marca a mano de este frame' }).click()
+      // Sin elegir el marcador antes: el botón sale solo en el frame con la marca a mano.
+      await p.getByRole('button', { name: /Quitar la marca a mano: Trocánter/ }).click()
       await esperarGuardado(p, 0)
     } finally {
       await p.close()
@@ -748,8 +748,9 @@ describe('corrección manual: arrastrar, a ojo, quitar y anclas', () => {
 
   it('una marca a mano equivocada se puede quitar', async () => {
     await irAFrame(p, ocultos()[2])
-    await elegirMarcador(p, 'Maléolo')
-    await p.getByRole('button', { name: 'Quitar la marca a mano de este frame' }).click()
+    // Aunque no sea el marcador elegido: sale un botón por cada marcador con marca a mano en el frame.
+    await elegirMarcador(p, 'Epicóndilo')
+    await p.getByRole('button', { name: /Quitar la marca a mano: Maléolo/ }).click()
     assert.equal(await estadoMarcador(p, 'Maléolo'), '—')
     assert.ok(Number.isNaN(await leerAngulo(p)))
   })
@@ -1533,6 +1534,8 @@ describe('pestañas de herramientas', () => {
         fijo: await p.getByTestId('visor-fijo').boundingBox(),
       })
       // Desplazándose hasta el final de la pestaña «Marcar» (corta), el vídeo no se oculta: no hay tarjetas que ganar sitio.
+      // En un frame sin marcas a mano (el primero lleva un botón de quitar por marcador y la haría más larga).
+      await irAFrame(p, 60)
       await p.evaluate(() => window.scrollTo(0, 300))
       const a = await cajas()
       await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
@@ -2081,6 +2084,9 @@ describe('vistas ampliadas del móvil', () => {
       assert.equal(await p.getByTestId('error-toque').count(), 0)
       assert.equal(await estadoMarcador(p, 'Maléolo'), 'a mano')
       assert.ok(Math.abs((await leerAngulo(p)) - verdad[tapados[2]].flexion) < 1.5)
+      // Ya no hay marcador elegido, pero el botón para quitar la marca a mano está a la vista en el vídeo grande.
+      assert.equal(await p.getByRole('radio', { checked: true }).count(), 0)
+      await p.getByTestId('extras-compactos').getByRole('button', { name: /Quitar la marca a mano: Maléolo/ }).waitFor()
       // No se ajusta a ningún gomet: un toque 40 px más abajo se queda ahí (con el interruptor apagado se iría al gomet).
       await elegirMarcador(p, 'Maléolo')
       await tocarVideo(p, real.x, real.y + 40)
