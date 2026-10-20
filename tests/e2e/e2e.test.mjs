@@ -1559,9 +1559,17 @@ describe('pestañas de herramientas', () => {
 
   describe('el vídeo se oculta al bajar por tarjetas largas (pestaña «Análisis»)', () => {
     let p
+    // Posición de scroll a la que las tarjetas llegan a la tira de pestañas (y el vídeo empieza a poder ocultarse): depende de
+    // lo que haya sobre ellas (vídeo, barra, deslizador), así que se mide en vez de fijarla.
+    let U
     before(async () => {
       ;({ p } = await seguirVideo(videos.verde, { ancho: 390 }))
       await abrirPestana(p, 'analisis')
+      U = await p.evaluate(() => {
+        const tarjetas = document.querySelector('[data-testid=panel-herramientas]').getBoundingClientRect().top + window.scrollY
+        const tira = document.querySelector('[role=tablist]').parentElement.getBoundingClientRect().height
+        return Math.round(tarjetas - tira - 4)
+      })
     })
     after(() => p?.close())
 
@@ -1590,10 +1598,10 @@ describe('pestañas de herramientas', () => {
     })
 
     it('al seguir bajando se oculta, las pestañas suben y las tarjetas no se mueven (solo se descubre lo que tapaba el vídeo)', async () => {
-      await bajar(500)
+      await bajar(U - 27)
       assert.equal(await oculto(), false)
       const antes = await arribaTarjetas()
-      await bajar(540)
+      await bajar(U + 13)
       await esperarVideoAsentado(p, true)
       assert.equal(await oculto(), true)
       // Lo que se mira no salta: las tarjetas subieron los 40 px que se bajó, no los ~340 del hueco del vídeo.
@@ -1612,21 +1620,21 @@ describe('pestañas de herramientas', () => {
 
     it('el cambio es suave: las pestañas se deslizan y el vídeo se desvanece, en vez de saltar', async () => {
       await bajar(0)
-      await bajar(500)
+      await bajar(U - 27)
       // Al ocultarse (y al volver), mientras dura el cambio hay animaciones en la tira de pestañas y en el vídeo.
       const animaciones = () =>
         p.evaluate(() => ({
           tira: document.querySelector('[role=tablist]').parentElement.getAnimations().length,
           video: document.querySelector('[data-testid=visor-fijo]').getAnimations().length,
         }))
-      const ocultar = await p.evaluate(async () => {
-        window.scrollTo(0, 545)
+      const ocultar = await p.evaluate(async (y) => {
+        window.scrollTo(0, y)
         await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))
         return {
           tira: document.querySelector('[role=tablist]').parentElement.getAnimations().length,
           video: document.querySelector('[data-testid=visor-fijo]').getAnimations().length,
         }
-      })
+      }, U + 18)
       assert.ok(ocultar.tira > 0, 'las pestañas saltan en vez de deslizarse al ocultar el vídeo')
       assert.ok(ocultar.video > 0, 'el vídeo no se desvanece al ocultarse')
       await esperarVideoAsentado(p, true)
@@ -1656,13 +1664,13 @@ describe('pestañas de herramientas', () => {
 
     it('vuelve al cambiar de frame con la barra y al cambiar de pestaña', async () => {
       await bajar(0)
-      await bajar(500)
-      await bajar(560)
+      await bajar(U - 27)
+      await bajar(U + 33)
       await esperarVideoAsentado(p, true)
       await p.getByRole('button', { name: 'Frame siguiente' }).click()
       await esperarVideoAsentado(p, false)
-      await bajar(500)
-      await bajar(560)
+      await bajar(U - 27)
+      await bajar(U + 33)
       await esperarVideoAsentado(p, true)
       await p.getByTestId('pestana-escala').click()
       await esperarVideoAsentado(p, false)
@@ -1671,8 +1679,8 @@ describe('pestañas de herramientas', () => {
 
     it('con el botón «Vídeo» se ve y se queda por mucho que se baje, hasta volver al principio', async () => {
       await bajar(0)
-      await bajar(500)
-      await bajar(560)
+      await bajar(U - 27)
+      await bajar(U + 33)
       await esperarVideoAsentado(p, true)
       const antes = await arribaTarjetas()
       await p.getByTestId('mostrar-video').click()
@@ -1682,7 +1690,7 @@ describe('pestañas de herramientas', () => {
       await p.waitForTimeout(300)
       assert.equal(await oculto(), false, 'anclado, el vídeo no se oculta solo')
       await bajar(0)
-      await bajar(560)
+      await bajar(U + 33)
       await esperarVideoAsentado(p, true)
     })
 
@@ -1953,12 +1961,14 @@ describe('vistas ampliadas del móvil', () => {
       assert.ok(fijo.y <= 0.5 && Math.abs(fijo.y + fijo.height - barra.y) <= 1, `el vídeo grande ocupa de ${fijo.y} a ${fijo.y + fijo.height}; la barra empieza en ${barra.y}`)
       assert.equal(await p.getByRole('tablist').isVisible(), false)
       assert.equal(await p.getByTestId('minigrafica').count(), 0)
-      // El deslizador de frames (con su franja de estado) va dentro del vídeo grande, bajo los controles de marcado.
+      // El deslizador de frames (con su franja de estado) va en la barra de abajo, en la fila de la posición, en todas las vistas.
       const deslizador = p.getByRole('slider', { name: 'Posición en el vídeo' })
       assert.ok(await deslizador.isVisible())
       const caja = await deslizador.boundingBox()
-      const cajaMarcado = await p.getByTestId('marcado-compacto').boundingBox()
-      assert.ok(caja.y >= cajaMarcado.y + cajaMarcado.height - 1 && caja.y + caja.height <= barra.y + 1, 'el deslizador no queda entre los controles y la barra')
+      assert.ok(caja.y >= barra.y - 1 && caja.y + caja.height <= barra.y + barra.height + 1, 'el deslizador no está en la barra de abajo')
+      const fila = await p.getByTestId('posicion').boundingBox()
+      assert.ok(caja.y >= fila.y - 2 && caja.y + caja.height <= fila.y + fila.height + 2, 'el deslizador no va en la fila de la posición')
+      assert.equal(await p.getByTestId('marcado-compacto').getByRole('slider').count(), 0)
       await irAFrame(p, 40)
       assert.equal((await leerPosicion(p)).frame, 41)
       await irAFrame(p, 0)
