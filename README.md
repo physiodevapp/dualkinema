@@ -32,7 +32,7 @@ npm run test:e2e   # pruebas en navegador (necesita build, ffmpeg y Chromium de 
 
 ## Instalar en el móvil
 
-Desde Chrome para Android, menú ⋮ → «Instalar aplicación» (o «Añadir a la pantalla de inicio»), sobre la dirección de producción. Se abre sin la barra de direcciones y se actualiza sola al abrirla: no hay que reinstalar con cada versión. Las sesiones guardadas se comparten con las del navegador en esa misma dirección.
+Desde Chrome para Android, menú ⋮ → «Instalar aplicación» (o «Añadir a la pantalla de inicio»), sobre la dirección de producción. Se abre sin la barra de direcciones y se actualiza sola al abrirla: no hay que reinstalar con cada versión. Si hay una versión nueva con la app ya abierta, avisa con un botón «Recargar». Las sesiones guardadas se comparten con las del navegador en esa misma dirección.
 
 ## Despliegue
 

@@ -2124,6 +2124,62 @@ describe('escritorio', () => {
   })
 })
 
+describe('aviso de versión nueva', () => {
+  const publicar = (p, commit) => p.route('**/version.json', (r) => r.fulfill({ json: { commit, rama: 'prueba' } }))
+
+  it('con lo publicado igual a lo abierto no avisa', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      // Build local: el commit de la app y el de version.json son el mismo («dev»).
+      const publicada = await (await p.request.get(new URL('/version.json', p.url()).href)).json()
+      assert.ok(publicada.commit)
+      await p.reload()
+      await p.waitForTimeout(500)
+      assert.equal(await p.getByTestId('version-nueva').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('con otro commit publicado, avisa y «Recargar» vuelve a cargar la app; también al volver a verla', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await publicar(p, 'commit-nuevo')
+      await p.reload()
+      const aviso = p.getByTestId('version-nueva')
+      await aviso.waitFor()
+      assert.match(await aviso.innerText(), /Hay una versión nueva/)
+      // Recargar: la página se vuelve a cargar (y, sin el aviso simulado, desaparece).
+      await p.unroute('**/version.json')
+      await Promise.all([p.waitForEvent('load'), aviso.getByRole('button', { name: 'Recargar' }).click()])
+      await p.waitForTimeout(500)
+      assert.equal(await p.getByTestId('version-nueva').count(), 0)
+
+      // Comprobación al volver a la app: aparece sin recargar la página.
+      await publicar(p, 'otro-commit')
+      await p.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await p.getByTestId('version-nueva').waitFor()
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('un version.json que no es una versión (p. ej. sin conexión o una página) no avisa', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await p.route('**/version.json', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html></html>' }))
+      await p.reload()
+      await p.waitForTimeout(500)
+      assert.equal(await p.getByTestId('version-nueva').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('app instalable', () => {
   it('el manifiesto está enlazado, es válido y sus iconos existen con el tamaño que dicen', async () => {
     const p = await abrirApp(navegador)
