@@ -16,6 +16,7 @@ import {
   cajaElemento,
   cajaVideo,
   cargarVideo,
+  centrarLibre,
   elegirArchivoDesde,
   errores,
   esperarFiltroGuardado,
@@ -782,6 +783,68 @@ describe('corrección manual: arrastrar, a ojo, quitar y anclas', () => {
     assert.match(texto, /Maléolo no tiene posición fiable en \d+ frames/)
     await irAFrame(p, 30)
     assert.equal(await estadoMarcador(p, 'Trocánter'), 'seguido')
+  })
+})
+
+describe('mientras se sigue, lo filtrado se rehace (no se queda en la pasada anterior)', () => {
+  let p
+  const verdad = () => videos.verde.verdad
+  before(async () => {
+    p = await abrirApp(navegador, { ancho: 1280 })
+    // El seguimiento del vídeo sintético dura menos de un segundo: con cada lectura de píxeles del worker
+    // frenada 15 ms, dura varios y da tiempo a mirar a medias (frenar la CPU no frena el worker).
+    await p.context().route('**/seguimiento.worker-*.js', async (ruta) => {
+      const r = await ruta.fetch()
+      const freno = `{ const g = OffscreenCanvasRenderingContext2D.prototype.getImageData
+        OffscreenCanvasRenderingContext2D.prototype.getImageData = function (...a) {
+          const fin = performance.now() + 15; while (performance.now() < fin); return g.apply(this, a) } }\n`
+      await ruta.fulfill({ response: r, body: freno + (await r.text()) })
+    })
+    await cargarVideo(p, videos.verde.ruta)
+    await marcarTres(p, verdad()[0].ps)
+  })
+  after(() => p?.close())
+
+  const siguiendo = async () => (await p.getByTestId('progreso-seguimiento').count()) > 0
+  async function pulsarSeguir() {
+    await abrirPestana(p, 'marcar')
+    const seguir = p.getByRole('button', { name: 'Seguir desde aquí' })
+    await centrarLibre(seguir)
+    await seguir.click()
+    await p.getByTestId('progreso-seguimiento').waitFor()
+  }
+  /** Toca la gráfica en el instante del frame i (se puede mientras se sigue). */
+  async function tocarFrame(i) {
+    const ts = verdad().map((f) => f.t)
+    const caja = await cajaElemento(p, 'grafica-angulo-area')
+    await p.mouse.click(caja.x + (caja.width * (ts[i] - ts[0])) / (ts.at(-1) - ts[0]), caja.y + caja.height / 2)
+    await esperarQuieto(p)
+  }
+
+  it('la primera vez, el ángulo filtrado aparece antes de acabar de seguir y da el real', async () => {
+    await pulsarSeguir()
+    await tocarFrame(20)
+    // Antes, lo filtrado era lo de antes de seguir (solo el frame 0) hasta parar: «—» todo el seguimiento.
+    await p.waitForFunction(() => /\d/.test(document.querySelector('[data-testid=valor-serie-filtrado]')?.textContent ?? ''), null, { timeout: 15000 })
+    const filtrado = await leerNumero(p, 'valor-serie-filtrado')
+    assert.ok(await siguiendo(), 'el ángulo filtrado no apareció hasta acabar de seguir')
+    assert.ok(Math.abs(filtrado - verdad()[20].flexion) < 1, `filtrado ${filtrado}°, real ${verdad()[20].flexion.toFixed(2)}°`)
+    await p.getByTestId('aviso').waitFor({ timeout: 90000 })
+  })
+
+  it('al seguir de nuevo desde un frame intermedio, no queda ángulo filtrado donde ya no hay nada seguido', async () => {
+    await irAFrame(p, 30)
+    await pulsarSeguir()
+    await tocarFrame(115)
+    // Primero lo filtrado y después lo crudo: si lo filtrado tiene valor, el frame ya estaba seguido al filtrar.
+    const filtrado = await p.getByTestId('valor-serie-filtrado').innerText()
+    const crudo = await p.getByTestId('valor-serie-crudo').innerText()
+    assert.ok(await siguiendo(), 'el seguimiento acabó antes de poder mirar: la prueba no dice nada')
+    assert.equal(crudo.trim(), '—', 'el frame 116 aún no se ha vuelto a seguir')
+    assert.equal(filtrado.trim(), '—', `ángulo filtrado ${filtrado} en un frame sin nada seguido (lo de la pasada anterior)`)
+    await p.getByTestId('aviso').waitFor({ timeout: 90000 })
+    await esperarQuieto(p)
+    assert.ok(Math.abs((await leerNumero(p, 'valor-serie-filtrado')) - verdad()[115].flexion) < TOLERANCIA_GRADOS)
   })
 })
 

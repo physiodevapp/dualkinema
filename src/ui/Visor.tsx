@@ -655,7 +655,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     articulacion,
     orientacion,
     metrosPorPx: calibracion ? metrosPorPx(calibracion) : null,
-    congelado: seguimiento.estado === 'siguiendo',
+    siguiendo: seguimiento.estado === 'siguiendo',
   })
 
   // Trayectoria completa de cada marcador, con lo filtrado: se prepara aquí al

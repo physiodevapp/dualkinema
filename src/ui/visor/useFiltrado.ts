@@ -1,4 +1,4 @@
-import { useMemo, useRef, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { serieAngular, type MuestraAngulo } from '../../core/articulaciones/calculo'
 import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
 import { corteEfectivo } from '../../core/filtros/butterworth'
@@ -7,6 +7,7 @@ import { comoMuestras, filtrarTrayectoria, type AjustesFiltro, type TrayectoriaF
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
 import { fpsMediano, type TablaFrames } from '../../core/tiempo/tablaFrames'
+import { esperaRefiltrado } from './refiltrado'
 
 interface Opciones {
   readonly trayectorias: RefObject<Map<IdMarcador, (Muestra2D | undefined)[]>>
@@ -20,10 +21,10 @@ interface Opciones {
   /** Escala de la vista (m/px); null = sin escala, velocidades en px/s. */
   readonly metrosPorPx: number | null
   /**
-   * Mientras se sigue, las trayectorias cambian con cada lote del worker:
-   * se conserva lo último filtrado y se rehace al parar.
+   * Mientras se sigue, las trayectorias cambian con cada lote del worker: se
+   * refiltra a intervalos (`esperaRefiltrado`), no con cada lote, y al parar.
    */
-  readonly congelado?: boolean
+  readonly siguiendo?: boolean
 }
 
 export interface Filtrado {
@@ -46,16 +47,27 @@ export interface Filtrado {
 /**
  * Filtra las coordenadas de cada marcador y calcula con ellas el ángulo, sus
  * derivadas y la velocidad de cada marcador.
- * Se rehace cuando cambian las trayectorias o el corte (salvo `congelado`);
+ * Se rehace cuando cambian las trayectorias o el corte (mientras se sigue, a intervalos);
  * es lineal en el número de frames: unos 8 ms por marcador con 3600 frames
  * (2 min a 30 fps) en un ordenador, varias veces más en un móvil.
  */
-export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articulacion, orientacion, metrosPorPx, congelado }: Opciones): Filtrado {
+export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articulacion, orientacion, metrosPorPx, siguiendo }: Opciones): Filtrado {
   const fs = useMemo(() => fpsMediano(tabla), [tabla])
-  const ultimo = useRef<Omit<Filtrado, 'velocidades'> | null>(null)
+  // Mientras se sigue se filtra con la versión «pedida», que alcanza a la
+  // actual como mucho cada `esperaRefiltrado`; parado, con la actual.
+  const [pedida, setPedida] = useState(version)
+  const vigente = siguiendo ? pedida : version
+  // Inicio y coste (ms) de la última pasada.
+  const ultima = useRef({ inicio: -Infinity, coste: 0 })
+  useEffect(() => {
+    if (!siguiendo || pedida === version) return
+    const espera = esperaRefiltrado(performance.now(), ultima.current.inicio, ultima.current.coste)
+    const id = setTimeout(() => setPedida(version), espera)
+    return () => clearTimeout(id)
+  }, [siguiendo, pedida, version])
   const filtrado = useMemo(() => {
-    void version
-    if (congelado && ultimo.current) return ultimo.current
+    void vigente
+    const inicio = performance.now()
     const porMarcador = new Map<IdMarcador, TrayectoriaFiltrada>()
     let tramosCortos = 0
     if (Number.isFinite(fs)) {
@@ -70,9 +82,9 @@ export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articu
         ? serieAngular(articulacion, Object.fromEntries([...porMarcador].map(([id, f]) => [id, comoMuestras(f)])), orientacion)
         : []
     const derivadas = derivadasAngulares(articulacion, porMarcador, orientacion, fs)
+    ultima.current = { inicio, coste: performance.now() - inicio }
     return { porMarcador, serie, fs, corte: corteEfectivo(ajustes.corteHz, fs), tramosCortos, derivadas }
-  }, [version, fs, ids, trayectorias, ajustes, articulacion, orientacion, congelado])
-  ultimo.current = filtrado
+  }, [vigente, fs, ids, trayectorias, ajustes, articulacion, orientacion])
   // Aparte: cambiar la escala no obliga a volver a filtrar.
   const velocidades = useMemo(
     () => new Map([...filtrado.porMarcador].map(([id, f]) => [id, velocidadMarcador(f, metrosPorPx)])),
