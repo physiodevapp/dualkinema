@@ -49,6 +49,7 @@ import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './v
 import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura, useAnchoMinimo } from './visor/useAltura'
+import { useMiniGrande } from './visor/useMiniGrande'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
@@ -861,7 +862,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       nombre: 'Escala',
       aviso: !!desfase && 'La escala ya no corresponde a lo seguido: se puede rehacer',
     },
-    { id: 'video', nombre: 'Vídeo' },
+    { id: 'video', nombre: 'Vídeo', aviso: guardado.estado === 'error' && 'No se ha podido guardar' },
   ]
   // Piezas fijas del móvil: la barra de abajo (la página deja su sitio debajo) y el vídeo con su
   // gráfica de arriba (las pestañas se pegan justo debajo al desplazarse).
@@ -894,6 +895,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     forzarVisible: tocandoEscala,
     reinicio: `${deseado}|${pestana}`,
   })
+  // Arriba del todo la gráfica pequeña crece hasta llenar lo que queda sobre la barra fija: en la primera pantalla solo
+  // vídeo, gráfica, pestañas y barra. Al bajar vuelve a su alto de siempre.
+  const cajaMiniRef = useRef<HTMLDivElement>(null)
+  const mini = useMiniGrande({ activo: !anchoLg && vista === 'mixta', caja: cajaMiniRef, tira: tiraRef, barra: barraRef, fijo: fijoRef })
   // Con una vista ampliada, la página de debajo no se desplaza.
   useEffect(() => {
     if (!ampliada) return
@@ -1171,6 +1176,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             ref={fijoRef}
             data-testid="visor-fijo"
             data-oculto={videoOculto}
+            data-grande={mini.grande}
             inert={videoOculto}
             className={`flex flex-col gap-2 max-lg:z-30 max-lg:bg-fondo max-lg:transition-[opacity,visibility] max-lg:duration-200 motion-reduce:transition-none ${
               enVideo
@@ -1248,6 +1254,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               filtrado={filtradoPorFrame}
               velocidad={filtrado.derivadas.velocidad}
               onAmpliar={() => setVista('graficas')}
+              alto={mini.alto}
+              animable={mini.animable}
+              cajaRef={cajaMiniRef}
             />
           )}
           {enVideo && (
@@ -1335,9 +1344,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </div>
           </div>
 
-          <div className={`max-lg:order-4 lg:order-3 ${ampliada ? 'max-lg:hidden' : ''}`}>
-            <TextoGuardado g={guardado} />
-          </div>
+          {/* En el móvil el estado del guardado va en la pestaña «Vídeo» (aquí quitaba una línea a la primera pantalla); un punto
+              en esa pestaña avisa si falla. */}
+          {anchoLg && (
+            <div className="lg:order-3">
+              <TextoGuardado g={guardado} />
+            </div>
+          )}
         </div>
 
         {/* La gráfica completa: en pantalla ancha, debajo del vídeo; en el móvil solo en la vista «Solo gráficas»
@@ -1414,7 +1427,11 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         <Pestanas
           pestanas={pestanasVisor}
           activa={pestana}
-          onElegir={setPestana}
+          onElegir={(id) => {
+            setPestana(id)
+            // Con la gráfica grande (arriba del todo), las tarjetas están bajo la pantalla: se sube hasta ellas.
+            mini.irALasTarjetas()
+          }}
           contenedorRef={tiraRef}
           className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`}
           accion={
@@ -1646,6 +1663,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           </PanelPestana>
 
           <PanelPestana id="video" activa={pestana === 'video'}>
+            {!anchoLg && <TextoGuardado g={guardado} />}
             <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
               <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
               <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">

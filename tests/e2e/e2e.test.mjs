@@ -535,7 +535,7 @@ describe('persistencia: marcar, seguir, recargar y recuperar', () => {
     await irAFrame(p, 5)
     await p.getByRole('radio', { name: /Trocánter/ }).click()
     await tocarVideo(p, videos.verde.verdad[5].ps[0].x + 1, videos.verde.verdad[5].ps[0].y - 1)
-    await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo' }).waitFor({ timeout: 10000 })
+    await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo' }).waitFor({ state: 'attached', timeout: 10000 })
     await p.reload()
     await p.getByTestId('sesion-guardada').waitFor()
     assert.equal(await p.getByTestId('sesion-guardada').count(), 1)
@@ -816,7 +816,7 @@ describe('huecos cortos: rellenar a petición', () => {
   })
 
   it('lo interpolado se guarda y se recupera como interpolado', async () => {
-    await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo a las' }).waitFor({ timeout: 10000 })
+    await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo a las' }).waitFor({ state: 'attached', timeout: 10000 })
     await p.reload()
     assert.match(await p.getByTestId('sesion-guardada').innerText(), new RegExp(`${ocultos().length} interpolados`))
     await elegirArchivoDesde(p, p.getByRole('button', { name: 'Continuar' }), videos.corto.ruta)
@@ -1565,6 +1565,10 @@ describe('pestañas de herramientas', () => {
     before(async () => {
       ;({ p } = await seguirVideo(videos.verde, { ancho: 390 }))
       await abrirPestana(p, 'analisis')
+      // Se mide con la gráfica pequeña en su alto de reposo (arriba del todo crece y las tarjetas quedan más abajo).
+      await p.evaluate(() => window.scrollTo(0, 20))
+      await p.waitForFunction(() => document.querySelector('[data-testid=visor-fijo]').dataset.grande === 'false')
+      await esperarVideoAsentado(p, false)
       U = await p.evaluate(() => {
         const tarjetas = document.querySelector('[data-testid=panel-herramientas]').getBoundingClientRect().top + window.scrollY
         const tira = document.querySelector('[role=tablist]').parentElement.getBoundingClientRect().height
@@ -1591,7 +1595,7 @@ describe('pestañas de herramientas', () => {
 
     it('mientras las tarjetas no han subido bajo las pestañas no se oculta (dejaría un hueco vacío)', async () => {
       await bajar(0)
-      for (const y of [100, 250, 400, 480]) {
+      for (const y of [100, 250, U - 60, U - 40]) {
         await bajar(y)
         assert.equal(await oculto(), false, `oculto a y = ${y}`)
       }
@@ -2449,4 +2453,73 @@ describe('app instalable', () => {
 
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
+})
+
+describe('minigráfica grande arriba del todo (móvil)', () => {
+  let p
+  before(async () => {
+    ;({ p } = await seguirVideo(videos.verde, { ancho: 390 }))
+  })
+  after(() => p?.close())
+
+  const asentar = async () => {
+    await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
+    await p.waitForFunction(() => document.getAnimations().length === 0, null, { timeout: 5000 })
+  }
+  const arriba = async () => {
+    await p.evaluate(() => window.scrollTo(0, 0))
+    await asentar()
+  }
+  const altoMini = async () => (await p.getByTestId('minigrafica-caja').boundingBox()).height
+  const cajas = async () => ({
+    tira: await p.getByRole('tablist').locator('..').boundingBox(),
+    barra: await p.getByTestId('barra-fija').boundingBox(),
+    tarjetas: await p.getByTestId('panel-herramientas').boundingBox(),
+    video: await p.getByTestId('lienzo').boundingBox(),
+  })
+
+  it('arriba del todo la primera pantalla es vídeo, gráfica, pestañas y barra: no asoma ninguna tarjeta', async () => {
+    await arriba()
+    const c = await cajas()
+    assert.ok((await altoMini()) > 120, `la gráfica mide ${await altoMini()} px`)
+    // La tira acaba justo sobre la barra y las tarjetas empiezan por debajo de ella (fuera de la pantalla visible).
+    assert.ok(Math.abs(c.tira.y + c.tira.height - c.barra.y) <= 2, `tira hasta ${c.tira.y + c.tira.height}, barra desde ${c.barra.y}`)
+    assert.ok(c.tarjetas.y >= c.barra.y, `las tarjetas asoman: empiezan en ${c.tarjetas.y}, la barra en ${c.barra.y}`)
+    assert.ok(c.video.y >= 0 && c.video.y + c.video.height <= c.tira.y, 'el vídeo cabe sobre la gráfica y la tira')
+    assert.equal(await p.getByTestId('visor-fijo').getAttribute('data-grande'), 'true')
+  })
+
+  it('al bajar un poco vuelve a su alto de siempre y no vuelve sola arriba (sin saltos)', async () => {
+    await arriba()
+    await p.evaluate(() => window.scrollTo(0, 120))
+    await asentar()
+    assert.equal(await p.getByTestId('visor-fijo').getAttribute('data-grande'), 'false')
+    assert.equal(Math.round(await altoMini()), 76)
+    // El scroll se queda donde se dejó (el navegador no lo «corrige» al encogerse la gráfica).
+    assert.equal(await p.evaluate(() => Math.round(window.scrollY)), 120)
+    // Vuelve a crecer al llegar arriba del todo.
+    await arriba()
+    assert.ok((await altoMini()) > 120)
+  })
+
+  it('tocar una pestaña desplaza hasta sus tarjetas: la tira queda pegada bajo el vídeo y las tarjetas se ven', async () => {
+    for (const id of ['analisis', 'marcar']) {
+      await arriba()
+      await p.getByTestId(`pestana-${id}`).click()
+      await p.waitForFunction(() => window.scrollY > 100)
+      await asentar()
+      const c = await cajas()
+      assert.equal(Math.round(await altoMini()), 76)
+      assert.ok(c.tarjetas.y < c.barra.y - 100, `${id}: las tarjetas empiezan en ${c.tarjetas.y} y la barra en ${c.barra.y}`)
+      // La tira pegada bajo el vídeo con la gráfica en reposo.
+      const fijo = await p.getByTestId('visor-fijo').boundingBox()
+      assert.ok(Math.abs(c.tira.y - (fijo.y + fijo.height)) <= 4, `la tira está en ${c.tira.y} y el vídeo acaba en ${fijo.y + fijo.height}`)
+    }
+  })
+
+  it('el estado del guardado está en la pestaña «Vídeo» en el móvil', async () => {
+    await abrirPestana(p, 'video')
+    await p.getByTestId('guardado').waitFor({ state: 'visible' })
+    assert.equal(await p.getByTestId('guardado').count(), 1)
+  })
 })
