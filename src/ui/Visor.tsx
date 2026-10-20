@@ -25,7 +25,7 @@ import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import type { LeerVentana } from '../core/seguimiento/imagen'
 import type { MotivoHueco } from '../core/seguimiento/huecos'
-import { huecosInterpolables, HUECO_MAX_S, interpolarHueco } from '../core/seguimiento/interpolar'
+import { huecosInterpolables, HUECO_MAX_S, interpolarHueco, quitarInterpolados as quitarInterpoladosDe } from '../core/seguimiento/interpolar'
 import { framesConMarcaManual, quitarMarcasManuales } from '../core/seguimiento/manuales'
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
@@ -592,12 +592,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   }
 
   const quitarInterpolados = () => {
-    // Vuelven a ser huecos: frames sin posición fiable, como los dejó el seguidor.
-    for (const serie of trayectorias.current.values()) {
-      serie.forEach((m, i) => {
-        if (m?.interpolado) serie[i] = { t: m.t, x: NaN, y: NaN, calidad: 0, editadoManual: false }
-      })
-    }
+    // Vuelven a ser huecos, con lo que había antes de rellenar (perdido, dudoso o nada).
+    quitarInterpoladosDe(trayectorias.current.values())
     setAviso({ texto: 'Quitado lo interpolado: esos frames vuelven a ser huecos.' })
     setVersion((v) => v + 1)
   }

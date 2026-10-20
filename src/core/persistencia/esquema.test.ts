@@ -49,6 +49,35 @@ declare const structuredClone: <T>(v: T) => T
 const comoIDB = <T,>(v: T): T => structuredClone(v)
 
 describe('trayectorias guardadas', () => {
+  it('lo interpolado guarda y recupera lo que sustituyó (perdido, dudoso o nada)', () => {
+    const interp = (t: number, sustituida: Muestra2D | null): Muestra2D => ({ ...m(t, 7, 8), interpolado: true, sustituida })
+    const serie: (Muestra2D | undefined)[] = [
+      m(0, 1, 2),
+      interp(0.0333, m(0.0333, NaN, NaN, 0)),
+      interp(0.0667, m(0.0667, 3.25, 4.5, 0.42)),
+      interp(0.1, null),
+      { ...m(0.1333, 9, 9), interpolado: true }, // rellenado sin apuntarlo (de antes)
+      undefined,
+    ]
+    const g = comoIDB(empaquetarTrayectoria(serie))
+    expect(errorTrayectoria(g, FRAMES)).toBeNull()
+    const vuelta = desempaquetarTrayectoria(g, FRAMES)
+    expect(vuelta).toEqual(serie)
+    expect(vuelta[3]!.sustituida).toBeNull()
+    expect(vuelta[4]).not.toHaveProperty('sustituida')
+    expect(vuelta[0]).not.toHaveProperty('sustituida')
+  })
+
+  it('una trayectoria sin lo sustituido (guardada antes) es válida; a medias o en un frame no interpolado, no', () => {
+    const { sustituidaX, sustituidaY, sustituidaCalidad, ...antigua } = empaquetarTrayectoria(serieCadera)
+    expect(errorTrayectoria(antigua, FRAMES)).toBeNull()
+    expect(desempaquetarTrayectoria(antigua, FRAMES)).toEqual(serieCadera)
+    expect(errorTrayectoria({ ...antigua, sustituidaX, sustituidaY }, FRAMES)).toMatch(/a medias/)
+    const c = Float64Array.from(sustituidaCalidad!)
+    c[1] = 0.5
+    expect(errorTrayectoria({ ...antigua, sustituidaX, sustituidaY, sustituidaCalidad: c }, FRAMES)).toMatch(/no interpolado/)
+  })
+
   it('ida y vuelta exacta: a mano, seguido, perdido y sin muestra', () => {
     const vuelta = desempaquetarTrayectoria(comoIDB(empaquetarTrayectoria(serieCadera)), FRAMES)
     expect(vuelta).toHaveLength(FRAMES)
