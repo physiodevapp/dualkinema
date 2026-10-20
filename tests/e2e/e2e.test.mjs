@@ -1166,6 +1166,18 @@ describe('escala en metros: dos extremos y la longitud', () => {
       assert.equal(await panel.getByTestId('escala-aviso-corto').count(), 0)
       // Tocar al calibrar no mueve ningún marcador.
       assert.equal(await leerAngulo(p), anguloAntes)
+      // Los dos extremos, del mismo frame: un toque en otro frame empieza de nuevo (el objeto podría moverse).
+      await irAFrame(p, 31)
+      await tocarVideo(p, 120, 300)
+      assert.match(await panel.getByTestId('escala-estado').innerText(), /Has cambiado de frame/)
+      assert.match(await p.getByTestId('toca-escala').innerText(), /otro frame, empieza de nuevo/)
+      assert.ok(await panel.getByRole('button', { name: 'Guardar escala' }).isDisabled())
+      // De vuelta en el frame 30, los dos extremos otra vez (a 400 px).
+      await irAFrame(p, 30)
+      await tocarVideo(p, 100, 300)
+      await tocarVideo(p, 500, 300)
+      const d2 = Number(/a ([\d.,]+) px/.exec(await panel.getByTestId('escala-estado').innerText())[1].replace(',', '.'))
+      assert.ok(Math.abs(d2 - d) < 0.5, `extremos a ${d2} px, antes ${d} px`)
 
       await panel.getByLabel('Longitud en cm').fill('400')
       await panel.getByRole('button', { name: 'Guardar escala' }).click()
