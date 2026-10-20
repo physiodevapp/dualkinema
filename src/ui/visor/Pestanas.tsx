@@ -14,8 +14,8 @@ interface Props {
   className?: string
   /** Para saber desde fuera si la tira ya está pegada. */
   contenedorRef?: Ref<HTMLDivElement>
-  /** Algo que cuelga justo debajo de la tira, pegado a ella (el botón de mostrar el vídeo). */
-  debajo?: ReactNode
+  /** Un botón de un icono a la derecha de las pestañas, en el móvil (el de mostrar el vídeo); reserva su sitio. */
+  accion?: ReactNode
 }
 
 /**
@@ -24,7 +24,7 @@ interface Props {
  * pide atención en una pestaña que no se está viendo (huecos, escala a rehacer, cero que no
  * parece quieto).
  */
-export default function Pestanas({ pestanas, activa, onElegir, className = '', contenedorRef, debajo }: Props) {
+export default function Pestanas({ pestanas, activa, onElegir, className = '', contenedorRef, accion }: Props) {
   return (
     // El contenedor es opaco y llega a los bordes: así no se ven por las esquinas ni por debajo las tarjetas que se
     // desplazan detrás. En el móvil, sin borde propio (queda la línea del vídeo de arriba) y con un degradado por debajo
@@ -33,7 +33,11 @@ export default function Pestanas({ pestanas, activa, onElegir, className = '', c
       ref={contenedorRef}
       className={`sticky z-20 bg-fondo pb-1 max-lg:top-[max(0px,calc(var(--alto-fijo)-1px))] max-lg:-mx-4 max-lg:px-4 max-lg:pt-1.5 lg:top-0 ${className} after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-3 after:bg-linear-to-b after:from-fondo after:to-transparent`}
     >
-      <div role="tablist" aria-label="Herramientas" className="grid grid-cols-4 gap-1 bg-fondo p-0 lg:rounded-2xl lg:border lg:border-borde lg:p-1">
+      <div
+        role="tablist"
+        aria-label="Herramientas"
+        className={`grid grid-cols-4 gap-1 bg-fondo p-0 lg:rounded-2xl lg:border lg:border-borde lg:p-1 ${accion ? 'max-lg:mr-11' : ''}`}
+      >
         {pestanas.map((p) => {
           const abierta = p.id === activa
           return (
@@ -64,7 +68,8 @@ export default function Pestanas({ pestanas, activa, onElegir, className = '', c
           )
         })}
       </div>
-      {debajo}
+      {/* Fuera de la lista de pestañas (no es una pestaña): una celda a su derecha, del ancho de un icono. */}
+      {accion && <div className="absolute top-1.5 right-4 size-10 lg:hidden">{accion}</div>}
     </div>
   )
 }

@@ -1578,6 +1578,40 @@ describe('pestañas de herramientas', () => {
       assert.equal(await p.getByTestId('lienzo').count(), 1)
     })
 
+    it('el cambio es suave: las pestañas se deslizan y el vídeo se desvanece, en vez de saltar', async () => {
+      await bajar(0)
+      await bajar(500)
+      // Al ocultarse (y al volver), mientras dura el cambio hay animaciones en la tira de pestañas y en el vídeo.
+      const animaciones = () =>
+        p.evaluate(() => ({
+          tira: document.querySelector('[role=tablist]').parentElement.getAnimations().length,
+          video: document.querySelector('[data-testid=visor-fijo]').getAnimations().length,
+        }))
+      const ocultar = await p.evaluate(async () => {
+        window.scrollTo(0, 545)
+        await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))
+        return {
+          tira: document.querySelector('[role=tablist]').parentElement.getAnimations().length,
+          video: document.querySelector('[data-testid=visor-fijo]').getAnimations().length,
+        }
+      })
+      assert.ok(ocultar.tira > 0, 'las pestañas saltan en vez de deslizarse al ocultar el vídeo')
+      assert.ok(ocultar.video > 0, 'el vídeo no se desvanece al ocultarse')
+      await esperarVideoAsentado(p, true)
+      assert.deepEqual(await animaciones(), { tira: 0, video: 0 })
+      const volver = await p.evaluate(async () => {
+        window.scrollBy(0, -60)
+        await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))
+        return {
+          tira: document.querySelector('[role=tablist]').parentElement.getAnimations().length,
+          video: document.querySelector('[data-testid=visor-fijo]').getAnimations().length,
+        }
+      })
+      assert.ok(volver.tira > 0, 'las pestañas saltan en vez de deslizarse al volver el vídeo')
+      assert.ok(volver.video > 0, 'el vídeo no aparece con un fundido')
+      await esperarVideoAsentado(p, false)
+    })
+
     it('al subir un poco vuelve, y tampoco salta nada', async () => {
       const antes = await arribaTarjetas()
       await p.evaluate(() => window.scrollBy(0, -60))

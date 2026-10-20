@@ -63,8 +63,8 @@ export async function esperarQuieto(p) {
 
 /**
  * Espera a que el vídeo pegado del móvil esté oculto (`true`) o a la vista (`false`) tras bajar o subir por las
- * tarjetas, y a que lo que hay en la página haya vuelto a su sitio (el visor compensa el scroll en el mismo fotograma,
- * dos fotogramas bastan). En pantalla ancha no hay nada que esperar.
+ * tarjetas, y a que acaben el fundido del vídeo y el deslizamiento de las pestañas (200 ms): medir cajas mientras se
+ * mueven da posiciones distintas para cada elemento. En pantalla ancha no hay nada que esperar.
  */
 export async function esperarVideoAsentado(p, oculto) {
   await p.waitForFunction(
@@ -77,6 +77,7 @@ export async function esperarVideoAsentado(p, oculto) {
     { timeout: 5000 },
   )
   await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
+  await p.waitForFunction(() => document.getAnimations().length === 0, null, { timeout: 5000 })
 }
 
 /** «frame 31 / 120» y «t = 1,000 s» del visor → { frame (1-based), total, t }. */
