@@ -63,9 +63,13 @@ export function aTiemposReales(rejilla: ArrayLike<number>, valores: ArrayLike<nu
     const s = splineNatural(nodosT, nodosV)
     const desde = nodosT[0]!
     const hasta = nodosT[nodosT.length - 1]!
+    // Un nodo de la rejilla (t0 + k·h) puede salir un pelo por encima o por debajo del
+    // tiempo del frame que le corresponde: con fps constantes, el segundo o el penúltimo
+    // frame se quedaban sin derivada. Margen de una millonésima del paso, sin extrapolar.
+    const margen = 1e-6 * (rejilla.length > 1 ? Math.abs(rejilla[1]! - rejilla[0]!) : 0)
     for (let i = 0; i < ts.length; i++) {
       const t = ts[i]!
-      if (t >= desde && t <= hasta) r[i] = s(t)
+      if (t >= desde - margen && t <= hasta + margen) r[i] = s(Math.min(hasta, Math.max(desde, t)))
     }
     k = fin + 1
   }
