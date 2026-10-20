@@ -2097,7 +2097,19 @@ describe('vistas ampliadas del móvil', () => {
       await interruptor.click()
       assert.equal(await interruptor.getAttribute('aria-checked'), 'false')
       await tocarVideo(p, 60, 300)
-      await p.getByTestId('error-toque').waitFor()
+      const error = p.getByTestId('error-toque')
+      await error.waitFor()
+      // En el vídeo grande el aviso es corto, va justo debajo del vídeo (antes de los marcadores) y no hace falta desplazarse.
+      assert.ok((await error.locator('> p').innerText()).length < 60, 'el aviso del vídeo grande es largo')
+      assert.equal(await error.getByRole('button', { name: 'Colocarlo aquí a ojo' }).isVisible(), true)
+      const cajaError = await error.boundingBox()
+      const cajaMarcadores = await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).boundingBox()
+      const cajaVideoGrande = await p.getByTestId('capa').boundingBox()
+      const barra = await p.getByTestId('barra-fija').boundingBox()
+      assert.ok(cajaError.y >= cajaVideoGrande.y + cajaVideoGrande.height - 1 && cajaError.y + cajaError.height <= cajaMarcadores.y + 1, 'el aviso no está entre el vídeo y los marcadores')
+      assert.ok(cajaError.y + cajaError.height <= barra.y, 'el aviso queda tapado por la barra de abajo')
+      // El detalle técnico y la explicación están plegados.
+      assert.equal(await error.locator('details').getAttribute('open'), null)
     } finally {
       await p.close()
     }
