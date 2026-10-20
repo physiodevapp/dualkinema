@@ -882,6 +882,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const { oculto: videoOculto, ver: verVideo } = useOcultarAlBajar({
     activo: !anchoLg && vista === 'mixta',
     tarjetas: tarjetasRef,
+    tira: tiraRef,
     altoTira,
     forzarVisible: tocandoEscala,
     reinicio: `${deseado}|${pestana}`,
@@ -1064,12 +1065,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             data-testid="visor-fijo"
             data-oculto={videoOculto}
             inert={videoOculto}
-            className={`flex flex-col gap-2 max-lg:z-30 max-lg:bg-fondo ${
+            className={`flex flex-col gap-2 max-lg:z-30 max-lg:bg-fondo max-lg:transition-[opacity,visibility] max-lg:duration-200 motion-reduce:transition-none ${
               enVideo
                 ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
                 : videoOculto
                   ? // Oculto: fuera del flujo (las tarjetas ganan su sitio), pero con su tamaño, para no desmontar ni medir 0.
-                    'max-lg:invisible max-lg:pointer-events-none max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:px-4 max-lg:pb-2'
+                    // Se desvanece (la visibilidad cambia al acabar el fundido) mientras las pestañas suben.
+                    'max-lg:invisible max-lg:opacity-0 max-lg:pointer-events-none max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:px-4 max-lg:pb-2'
                   : 'max-lg:sticky max-lg:top-0 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:px-4 max-lg:pb-2'
             } ${enGraficas ? 'max-lg:hidden' : ''}`}
           >
@@ -1306,17 +1308,21 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           onElegir={setPestana}
           contenedorRef={tiraRef}
           className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`}
-          debajo={
-            videoOculto && (
+          accion={
+            // Con el vídeo oculto, un botón con su icono lo trae y lo deja fijo; con el vídeo a la vista, su sitio queda libre.
+            videoOculto ? (
               <button
                 type="button"
                 onClick={verVideo}
                 data-testid="mostrar-video"
                 aria-label="Mostrar el vídeo y mantenerlo a la vista"
-                className="absolute top-full right-4 z-10 mt-1 flex h-8 items-center gap-1.5 rounded-md border border-borde bg-fondo/90 px-2.5 text-xs text-texto-2 lg:hidden"
+                title="Mostrar el vídeo y mantenerlo a la vista"
+                className="flex size-10 items-center justify-center rounded-md border border-borde bg-fondo text-texto-2"
               >
-                <VideoCameraIcon className="size-4" /> Vídeo
+                <VideoCameraIcon className="size-5" />
               </button>
+            ) : (
+              <span aria-hidden className="block size-10" />
             )
           }
         />
