@@ -32,6 +32,17 @@ export function indiceEnTiempo(tabla: TablaFrames, t: number): number {
   return lo
 }
 
+/** Margen para casar el tiempo de un frame decodificado con su entrada de la tabla (redondeos de la escala de tiempos). */
+const MARGEN_FRAME_S = 1e-6
+
+/**
+ * Índice en la tabla del frame que entrega el decodificador con este tiempo.
+ * Un tiempo un pelo por debajo del de la tabla (redondeo) es ese frame, no el anterior.
+ */
+export function indiceDeFrame(tabla: TablaFrames, timestamp: number): number {
+  return indiceEnTiempo(tabla, timestamp + MARGEN_FRAME_S)
+}
+
 /**
  * Índice del frame cuyo tiempo está más cerca de t (para tocar una gráfica:
  * el frame más próximo al punto, no el último anterior). Con la tabla vacía, −1.

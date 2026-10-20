@@ -4,7 +4,15 @@ Análisis cinemático diferido a partir de vídeo, siguiendo marcadores colocado
 
 **Todo el procesamiento ocurre en el navegador**: los vídeos y los datos nunca salen del dispositivo.
 
-Estado: fase 1 cerrada ([`docs/plan-fase-1.md`](docs/plan-fase-1.md)); fase 2 (calibración y cálculos) en curso ([`docs/plan-fase-2.md`](docs/plan-fase-2.md)). El trabajo se guarda solo en el dispositivo (IndexedDB), sin el vídeo: al volver a abrir el mismo archivo se puede recuperar. Cómo grabar y colocar los gomets: [`docs/grabacion.md`](docs/grabacion.md).
+Estado: fases 1 (base y prototipo, [`docs/plan-fase-1.md`](docs/plan-fase-1.md)) y 2 (calibración y cálculos, [`docs/plan-fase-2.md`](docs/plan-fase-2.md)) cerradas; siguiente, la fase 3 (dos vistas sincronizadas).
+
+Qué hace hoy, con una vista de perfil y 3 gomets en la pierna (rodilla en el plano sagital):
+- avance frame a frame con el tiempo real de cada frame (también con fps variable), seguimiento de los gomets por color, corrección a mano con lupa y relleno de huecos cortos solo a petición;
+- ángulo de rodilla crudo y filtrado (Butterworth de fase cero), velocidad y aceleración angulares, cero de referencia en un tramo estático;
+- escala en metros (con un objeto de longitud conocida o entre dos gomets medidos con cinta), velocidad de cada gomet en m/s y comprobación de la longitud de los segmentos;
+- gráficas en segundos y trayectoria sobre el vídeo; exportación a CSV (Excel en español o formato internacional).
+
+El trabajo se guarda solo en el dispositivo (IndexedDB), sin el vídeo: al volver a abrir el mismo archivo se puede recuperar. Cómo grabar y colocar los gomets: [`docs/grabacion.md`](docs/grabacion.md).
 
 ## Desarrollo
 
@@ -22,6 +30,10 @@ npm run test:e2e   # pruebas en navegador (necesita build, ffmpeg y Chromium de 
 
 `src/core/` es el núcleo de cálculo: TypeScript puro, sin React ni DOM, con tests. ESLint y `tsconfig.core.json` impiden que dependa del resto de la app.
 
+## Instalar en el móvil
+
+Desde Chrome para Android, menú ⋮ → «Instalar aplicación» (o «Añadir a la pantalla de inicio»), sobre la dirección de producción. Se abre sin la barra de direcciones y se actualiza sola al abrirla: no hay que reinstalar con cada versión. Las sesiones guardadas se comparten con las del navegador en esa misma dirección.
+
 ## Despliegue
 
-Cloudflare Workers con archivos estáticos (`wrangler.jsonc`), conectado al repositorio con Workers Builds: `main` → https://dualkinema.edu-gamboa-rodriguez.workers.dev, y cada rama tiene su previsualización en `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`. GitHub Actions solo comprueba (lint, tipos, tests y build) en cada PR.
+Cloudflare Workers con archivos estáticos (`wrangler.jsonc`), conectado al repositorio con Workers Builds: `main` → https://dualkinema.edu-gamboa-rodriguez.workers.dev, y cada rama tiene su previsualización en `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`. GitHub Actions comprueba cada PR y `main`: lint, tipos, tests, build y las pruebas en navegador.

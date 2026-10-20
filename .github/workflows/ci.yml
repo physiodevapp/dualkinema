@@ -35,7 +35,15 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # Los vídeos sintéticos tardan unos 4 min en generarse (VP9): se guardan entre
+      # ejecuciones y solo se rehacen si cambia su generador (tests/e2e/videos.mjs).
+      - id: videos
+        uses: actions/cache@v4
+        with:
+          path: /tmp/dualkinema-e2e-v*
+          key: videos-e2e-${{ hashFiles('tests/e2e/videos.mjs') }}
+      - if: steps.videos.outputs.cache-hit != 'true'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:e2e

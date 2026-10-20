@@ -50,7 +50,8 @@ interface Opciones {
  * Guarda la sesión en el dispositivo sin que haya que pedirlo: ESPERA_MS
  * después del último cambio (MAXIMO_MS como mucho mientras sigue), y en
  * seguida al ocultar la página (cambiar de app, apagar la pantalla) o al
- * cerrar el visor. No crea la sesión hasta que hay algo marcado o una escala.
+ * cerrar el visor. No crea la sesión hasta que hay algo marcado o una escala;
+ * una vez creada, quitarlo todo también se guarda (si no, volvería al recuperar).
  */
 export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias, filtro, ceros, calibracion, version, recuperada }: Opciones): EstadoGuardado {
   const [estado, setEstado] = useState<EstadoGuardado>({ estado: recuperada ? 'recuperado' : 'nada' })
@@ -61,6 +62,8 @@ export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias,
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null)
   const primerCambio = useRef(0)
   const persistenciaPedida = useRef(false)
+  // La sesión ya está en el dispositivo: a partir de ahí, quitarlo todo también se guarda.
+  const existe = useRef(recuperada)
   // Lo que se lee al guardar: siempre lo último, sin rehacer los efectos.
   const datos = useRef({ sesion, huella, orientacion, modelo, filtro, ceros, calibracion })
   datos.current = { sesion, huella, orientacion, modelo, filtro, ceros, calibracion }
@@ -73,7 +76,7 @@ export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias,
     const series = trayectorias.current
     // Calibrar antes de marcar también es trabajo que no se debe perder.
     const hayAlgo = datos.current.calibracion !== null || [...series.values()].some((s) => s.some((m) => m !== undefined))
-    if (!hayAlgo) {
+    if (!hayAlgo && !existe.current) {
       guardada.current = v
       setEstado({ estado: 'nada' })
       return
@@ -90,6 +93,7 @@ export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias,
       vistas: [{ id: sesion.vistaId, huella, orientacion, series, ceros, calibracion }],
     })
     guardada.current = v
+    existe.current = true
     guardarSesion(cabecera, tray).then(
       () => {
         if (!persistenciaPedida.current) {

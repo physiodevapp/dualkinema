@@ -131,6 +131,19 @@ describe('visor: frame exacto con fps variable', () => {
     assert.equal((await leerPosicion(p)).frame, 1)
   })
 
+  it('las flechas sobre el corte del filtro cambian el corte, no el frame', async () => {
+    await irAFrame(p, 50)
+    await abrirPestana(p, 'analisis')
+    const corte = p.getByRole('slider', { name: 'Frecuencia de corte del filtro' })
+    const antes = await textoDe(p, 'corte')
+    await corte.focus()
+    await p.keyboard.press('ArrowRight')
+    await esperarQuieto(p)
+    assert.equal((await leerPosicion(p)).frame, 51)
+    assert.notEqual(await textoDe(p, 'corte'), antes)
+    await corte.blur()
+  })
+
   it('mantener pulsado «siguiente» avanza seguido y se para al soltar', async () => {
     await irAFrame(p, 0)
     const caja = await p.getByRole('button', { name: 'Frame siguiente' }).boundingBox()
@@ -167,6 +180,14 @@ describe('marcado: errores sobre el vídeo y siguiente marcador', () => {
     const error = await p.getByTestId('error-toque').boundingBox()
     const imagen = await cajaVideo(p)
     assert.ok(error.y >= imagen.y + imagen.height - 1, `el error empieza en y=${error.y} y la imagen acaba en ${imagen.y + imagen.height}`)
+  })
+
+  it('cambiar de frame quita el error (y con él «Colocarlo aquí a ojo», que marcaría el frame anterior)', async () => {
+    await irAFrame(p, 5)
+    assert.equal(await p.getByTestId('error-toque').count(), 0)
+    await irAFrame(p, 0)
+    await tocarVideo(p, 60, 300)
+    await p.getByTestId('error-toque').waitFor()
   })
 
   it('un toque correcto limpia el error y pasa al siguiente marcador', async () => {
@@ -363,6 +384,24 @@ describe('seguimiento y gráfica con gomets verdes', () => {
     await esperarQuieto(p)
     const esperado = frameMasCercano(tiempos, tiempos[0] + 0.6 * (tiempos.at(-1) - tiempos[0])) + 1
     assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
+  })
+})
+
+describe('progreso del seguimiento: en la franja del deslizador y en «Parar»', () => {
+  it('mientras se sigue, «Parar» lleva el porcentaje y la franja se va poniendo verde', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      await marcarTres(p, videos.verde.verdad[0].ps)
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      const parar = p.getByRole('button', { name: /^Parar/ })
+      await parar.waitFor()
+      assert.match(await parar.innerText(), /Parar\s+\d+ %/)
+      await p.getByTestId('aviso').waitFor({ timeout: 90000 })
+      assert.equal(await p.getByTestId('progreso-seguimiento').count(), 0)
+    } finally {
+      await p.close()
+    }
   })
 })
 
@@ -618,6 +657,21 @@ describe('persistencia: recuperar a medio marcar', () => {
       await p.close()
     }
   })
+
+  it('quitar lo único que había también se guarda (no vuelve al recuperar)', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      const [cadera] = videos.verde.verdad[0].ps
+      await tocarVideo(p, cadera.x, cadera.y)
+      await esperarGuardado(p, 1)
+      await elegirMarcador(p, 'Trocánter')
+      await p.getByRole('button', { name: 'Quitar la marca a mano de este frame' }).click()
+      await esperarGuardado(p, 0)
+    } finally {
+      await p.close()
+    }
+  })
 })
 
 /** Elige un marcador (sin desmarcarlo si ya estaba elegido). */
@@ -679,6 +733,16 @@ describe('corrección manual: arrastrar, a ojo, quitar y anclas', () => {
     assert.equal(await estadoMarcador(p, 'Maléolo'), 'a mano')
     await irAFrame(p, 30)
     assert.equal(await estadoMarcador(p, 'Trocánter'), 'a mano')
+  })
+
+  it('si no se puede arrancar desde un frame (gomet a ojo, tapado), lo seguido después se conserva', async () => {
+    const despues = ocultos().at(-1) + 3
+    await irAFrame(p, ocultos()[2])
+    const texto = await seguirHastaElFinal(p)
+    assert.match(texto, /No reconozco Maléolo/)
+    await irAFrame(p, despues)
+    assert.equal(await estadoMarcador(p, 'Maléolo'), 'seguido')
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.oculto.verdad[despues].flexion) < TOLERANCIA_GRADOS)
   })
 
   it('una marca a mano equivocada se puede quitar', async () => {
@@ -2040,6 +2104,38 @@ describe('escritorio', () => {
       const { desborda } = await p.evaluate(() => ({ desborda: document.documentElement.scrollWidth > window.innerWidth }))
       assert.equal(desborda, false, 'la página tiene scroll horizontal')
       assert.ok(await p.getByTestId('grafica-angulo-area').isVisible())
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('app instalable', () => {
+  it('el manifiesto está enlazado, es válido y sus iconos existen con el tamaño que dicen', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      const href = await p.locator('link[rel=manifest]').getAttribute('href')
+      assert.ok(href, 'falta <link rel="manifest">')
+      const url = new URL(href, p.url()).href
+      const respuesta = await p.request.get(url)
+      assert.ok(respuesta.ok())
+      const m = await respuesta.json()
+      // Sin la barra del navegador y con la URL de siempre (sin service worker: siempre la última versión).
+      assert.equal(m.display, 'standalone')
+      assert.equal(new URL(m.start_url, url).pathname, '/')
+      assert.ok(m.name && m.short_name)
+      const medidas = m.icons.map((i) => i.sizes)
+      assert.ok(medidas.includes('192x192') && medidas.includes('512x512'), 'faltan los iconos de 192 y 512 px')
+      assert.ok(m.icons.some((i) => i.purpose === 'maskable'), 'falta un icono maskable')
+      for (const icono of m.icons) {
+        const r = await p.request.get(new URL(icono.src, url).href)
+        assert.ok(r.ok(), `no se sirve ${icono.src}`)
+        assert.match(r.headers()['content-type'], /image\/png/)
+        const png = await r.body()
+        // Cabecera PNG: ancho y alto en los bytes 16–23.
+        const [ancho, alto] = [png.readUInt32BE(16), png.readUInt32BE(20)]
+        assert.equal(`${ancho}x${alto}`, icono.sizes, `${icono.src} no mide lo que dice el manifiesto`)
+      }
     } finally {
       await p.close()
     }

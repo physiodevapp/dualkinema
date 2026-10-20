@@ -8,7 +8,7 @@ import type { Imagen, LeerVentana } from '../core/seguimiento/imagen'
 import { SeguidorMultiple, type Ancla } from '../core/seguimiento/multiple'
 import { RecuentoHuecos } from '../core/seguimiento/huecos'
 import { aprenderMarcador, ErrorMarcado, type EstadoMarcador } from '../core/seguimiento/seguidor'
-import { crearTablaFrames, indiceEnTiempo } from '../core/tiempo/tablaFrames'
+import { crearTablaFrames, indiceDeFrame } from '../core/tiempo/tablaFrames'
 import type { AlWorker, DelWorker, MuestraFrame } from './protocolo'
 
 declare const self: DedicatedWorkerGlobalScope
@@ -70,7 +70,7 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
       // Como en el visor: si el decodificador devolviera algún frame anterior al
       // de partida, se descarta (aprender en otro frame daría posiciones falsas).
       if (frame.timestamp < t0 - 1e-6) continue
-      const indice = indiceEnTiempo(tabla, frame.timestamp)
+      const indice = indiceDeFrame(tabla, frame.timestamp)
       const leer = lectorDe(frame.canvas)
 
       if (!seguidor) {
@@ -102,7 +102,8 @@ async function seguirVideo(m: Extract<AlWorker, { tipo: 'seguir' }>) {
       // Un marcador perdido no detiene el resto: se sigue buscando y, si
       // reaparece, se recupera. Sus frames sin encontrar quedan como huecos.
       const res = seguidor.procesar(frame.timestamp, leer, anclas.get(indice))
-      lote.push({ indice, t: frame.timestamp, marcadores: [...res].map(([id, r]) => ({ id, x: r.x, y: r.y, calidad: r.calidad })) })
+      // El t de la tabla: el mismo que usa el visor al marcar a mano y la gráfica para emparejar por t.
+      lote.push({ indice, t: tabla.tiempos[indice]!, marcadores: [...res].map(([id, r]) => ({ id, x: r.x, y: r.y, calidad: r.calidad })) })
       for (const [id, r] of res) huecos.registrar(indice, id, r)
       if (performance.now() - ultimoEnvio > 150) {
         vaciar(indice)
