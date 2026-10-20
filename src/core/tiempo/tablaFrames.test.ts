@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { crearTablaFrames, estadisticas, indiceEnTiempo, indiceMasCercano, limitarIndice, fpsMediano } from './tablaFrames'
+import { crearTablaFrames, estadisticas, indiceDeFrame, indiceEnTiempo, indiceMasCercano, limitarIndice, fpsMediano } from './tablaFrames'
 
 describe('crearTablaFrames', () => {
   it('ordena los pts (frames B llegan desordenados) y quita duplicados y no finitos', () => {
     expect(crearTablaFrames([0.1, 0, 0.0667, 0.0333, 0.1, NaN, Infinity]).tiempos).toEqual([0, 0.0333, 0.0667, 0.1])
+  })
+})
+
+describe('indiceDeFrame', () => {
+  it('un tiempo decodificado un pelo por debajo del de la tabla es ese frame, no el anterior', () => {
+    const pts = [0, 3003 / 90000, (2 * 3003) / 90000, (3 * 3003) / 90000]
+    const tabla = crearTablaFrames(pts)
+    for (let k = 0; k < pts.length; k++) {
+      const abajo = pts[k]! - 1e-12
+      expect(indiceDeFrame(tabla, abajo)).toBe(k)
+      expect(indiceDeFrame(tabla, pts[k]!)).toBe(k)
+    }
+    // Sin el margen, el de abajo caería en el anterior.
+    expect(indiceEnTiempo(tabla, pts[2]! - 1e-12)).toBe(1)
   })
 })
 

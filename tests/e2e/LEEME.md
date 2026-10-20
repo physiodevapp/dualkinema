@@ -11,7 +11,7 @@ Necesitan `ffmpeg` (con libvpx-vp9) y el Chromium de Playwright (`npx playwright
 
 ## Vídeos sintéticos (`videos.mjs`)
 
-Se generan con Node + ffmpeg en la carpeta temporal del sistema (`dualkinema-e2e-v<VERSIÓN>`) y no entran en el repositorio. Súbele `VERSION` a `videos.mjs` si cambias un generador. Son VP9 en WebM porque el Chromium de Playwright no trae H.264 (por eso H.264 y HEVC reales solo se prueban en un móvil).
+Se generan con Node + ffmpeg en la carpeta temporal del sistema (`dualkinema-e2e-v<VERSIÓN>`) y no entran en el repositorio. Súbele `VERSION` a `videos.mjs` si cambias un generador. Generarlos lleva unos 4 minutos (la suite, con ellos hechos, unos 3): la CI los guarda en su caché con la huella de `videos.mjs` y solo los rehace (e instala ffmpeg) cuando cambia. Son VP9 en WebM porque el Chromium de Playwright no trae H.264 (por eso H.264 y HEVC reales solo se prueban en un móvil).
 
 | Vídeo | Qué es | Para qué |
 |---|---|---|

@@ -296,6 +296,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       if (destino !== pedido.current) setSentido(destino > pedido.current ? 1 : -1)
       pedido.current = destino
       setDeseado(destino)
+      // El error de un toque es de su frame: «Colocarlo aquí a ojo» marcaría el anterior.
+      setErrorToque((e) => (e?.aOjo?.i === destino ? e : null))
       void pintar()
     },
     [tabla, pintar],
@@ -304,7 +306,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return
+      // Las flechas de otro campo son suyas (el corte del filtro, los de texto); las del
+      // deslizador de frames, de los botones y de las pestañas mueven el frame.
+      const el = e.target instanceof Element ? e.target : null
+      if (el?.closest('input, select, textarea') && el.getAttribute('aria-label') !== 'Posición en el vídeo') return
       const paso = e.shiftKey ? SALTO : 1
       if (e.key === 'ArrowRight') mover(paso)
       else if (e.key === 'ArrowLeft') mover(-paso)
@@ -319,12 +324,29 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
   // ---- Worker de seguimiento ----
   const worker = useRef<Worker | null>(null)
+  // Lo seguido que «Seguir desde aquí» quitó, hasta que llega el primer lote: si el
+  // seguimiento no arranca (gomet no reconocido, error), se devuelve tal cual.
+  const quitadoAlSeguir = useRef<Map<IdMarcador, (Muestra2D | undefined)[]> | null>(null)
+  const devolverQuitado = useCallback(() => {
+    const quitado = quitadoAlSeguir.current
+    quitadoAlSeguir.current = null
+    if (!quitado) return
+    for (const [id, antes] of quitado) {
+      const serie = trayectorias.current.get(id)
+      if (!serie) continue
+      antes.forEach((m, i) => {
+        if (m !== undefined && serie[i] === undefined) serie[i] = m
+      })
+    }
+    setVersion((v) => v + 1)
+  }, [])
   useEffect(() => {
     const w = new Worker(new URL('../workers/seguimiento.worker.ts', import.meta.url), { type: 'module' })
     worker.current = w
     w.onmessage = (e: MessageEvent<DelWorker>) => {
       const m = e.data
       if (m.tipo === 'muestras') {
+        if (m.lote.length) quitadoAlSeguir.current = null
         for (const f of m.lote) {
           for (const mk of f.marcadores) {
             const serie = trayectorias.current.get(mk.id)
@@ -336,6 +358,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         setVersion((v) => v + 1)
       } else if (m.tipo === 'fin') {
         setSeguimiento({ estado: 'parado' })
+        devolverQuitado()
         const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((x) => x.id === id)?.nombre ?? id)
         if (m.motivo === 'inicio') {
           setAviso({
@@ -358,11 +381,20 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         }
       } else {
         setSeguimiento({ estado: 'parado' })
+        devolverQuitado()
         setAviso({ texto: `Error en el seguimiento: ${m.mensaje}` })
       }
     }
+    // Si el worker no llega a cargar (p. ej. una versión nueva publicada con la app abierta)
+    // o el navegador lo cierra, no llegaría ningún mensaje y el visor quedaría «siguiendo».
+    w.onerror = (ev) => {
+      ev.preventDefault()
+      setSeguimiento({ estado: 'parado' })
+      devolverQuitado()
+      setAviso({ texto: `Error en el seguimiento: ${ev.message || 'no se ha podido cargar el proceso de seguimiento. Recarga la página.'}` })
+    }
     return () => w.terminate()
-  }, [modelo, ir])
+  }, [modelo, ir, devolverQuitado])
 
   const posicionesEn = useCallback(
     (i: number) => ids.map((id) => ({ id, m: muestra(id, i) })),
@@ -373,11 +405,22 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const seguirDesdeAqui = () => {
     if (mostrado === null || !listoParaSeguir) return
     // Lo seguido antes a partir de aquí se descarta; lo marcado a mano se conserva.
-    for (const serie of trayectorias.current.values()) {
-      for (let i = mostrado + 1; i < total; i++) if (!serie[i]?.editadoManual) serie[i] = undefined
+    // Se guarda una copia por si el seguimiento no llega a arrancar.
+    const quitado = new Map<IdMarcador, (Muestra2D | undefined)[]>()
+    for (const [id, serie] of trayectorias.current) {
+      const antes = new Array<Muestra2D | undefined>(total)
+      for (let i = mostrado + 1; i < total; i++) {
+        if (!serie[i]?.editadoManual) {
+          antes[i] = serie[i]
+          serie[i] = undefined
+        }
+      }
+      quitado.set(id, antes)
     }
+    quitadoAlSeguir.current = quitado
     setVersion((v) => v + 1)
     setAviso(null)
+    setErrorToque(null)
     setSeguimiento({ estado: 'siguiendo', progreso: mostrado / Math.max(1, total - 1) })
     // Lo marcado a mano más adelante son anclas: el seguidor las respeta y sigue desde ellas.
     const anclas: { indice: number; id: IdMarcador; x: number; y: number }[] = []
@@ -855,7 +898,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
             // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
             // gomet) caía en el mensaje en vez de marcar.
-            <div data-testid="error-toque" className={`flex flex-col gap-2 max-lg:order-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200`}>
+            <div data-testid="error-toque" role="alert" className={`flex flex-col gap-2 max-lg:order-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200`}>
               <p>{errorToque.texto}</p>
               {errorToque.detalle && <p className="font-mono text-xs text-texto-2">{errorToque.detalle}</p>}
               <div className="flex flex-wrap gap-2">
@@ -901,6 +944,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 value={deseado}
                 onChange={(e) => ir(Number(e.target.value))}
                 aria-label="Posición en el vídeo"
+                aria-valuetext={`frame ${deseado + 1} de ${total}, ${fmt(tabla.tiempos[deseado]!, 3)} s`}
                 className="deslizador-frames relative"
               />
             </div>

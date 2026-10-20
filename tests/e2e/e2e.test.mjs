@@ -131,6 +131,19 @@ describe('visor: frame exacto con fps variable', () => {
     assert.equal((await leerPosicion(p)).frame, 1)
   })
 
+  it('las flechas sobre el corte del filtro cambian el corte, no el frame', async () => {
+    await irAFrame(p, 50)
+    await abrirPestana(p, 'analisis')
+    const corte = p.getByRole('slider', { name: 'Frecuencia de corte del filtro' })
+    const antes = await textoDe(p, 'corte')
+    await corte.focus()
+    await p.keyboard.press('ArrowRight')
+    await esperarQuieto(p)
+    assert.equal((await leerPosicion(p)).frame, 51)
+    assert.notEqual(await textoDe(p, 'corte'), antes)
+    await corte.blur()
+  })
+
   it('mantener pulsado «siguiente» avanza seguido y se para al soltar', async () => {
     await irAFrame(p, 0)
     const caja = await p.getByRole('button', { name: 'Frame siguiente' }).boundingBox()
@@ -167,6 +180,14 @@ describe('marcado: errores sobre el vídeo y siguiente marcador', () => {
     const error = await p.getByTestId('error-toque').boundingBox()
     const imagen = await cajaVideo(p)
     assert.ok(error.y >= imagen.y + imagen.height - 1, `el error empieza en y=${error.y} y la imagen acaba en ${imagen.y + imagen.height}`)
+  })
+
+  it('cambiar de frame quita el error (y con él «Colocarlo aquí a ojo», que marcaría el frame anterior)', async () => {
+    await irAFrame(p, 5)
+    assert.equal(await p.getByTestId('error-toque').count(), 0)
+    await irAFrame(p, 0)
+    await tocarVideo(p, 60, 300)
+    await p.getByTestId('error-toque').waitFor()
   })
 
   it('un toque correcto limpia el error y pasa al siguiente marcador', async () => {
@@ -618,6 +639,21 @@ describe('persistencia: recuperar a medio marcar', () => {
       await p.close()
     }
   })
+
+  it('quitar lo único que había también se guarda (no vuelve al recuperar)', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      const [cadera] = videos.verde.verdad[0].ps
+      await tocarVideo(p, cadera.x, cadera.y)
+      await esperarGuardado(p, 1)
+      await elegirMarcador(p, 'Trocánter')
+      await p.getByRole('button', { name: 'Quitar la marca a mano de este frame' }).click()
+      await esperarGuardado(p, 0)
+    } finally {
+      await p.close()
+    }
+  })
 })
 
 /** Elige un marcador (sin desmarcarlo si ya estaba elegido). */
@@ -679,6 +715,16 @@ describe('corrección manual: arrastrar, a ojo, quitar y anclas', () => {
     assert.equal(await estadoMarcador(p, 'Maléolo'), 'a mano')
     await irAFrame(p, 30)
     assert.equal(await estadoMarcador(p, 'Trocánter'), 'a mano')
+  })
+
+  it('si no se puede arrancar desde un frame (gomet a ojo, tapado), lo seguido después se conserva', async () => {
+    const despues = ocultos().at(-1) + 3
+    await irAFrame(p, ocultos()[2])
+    const texto = await seguirHastaElFinal(p)
+    assert.match(texto, /No reconozco Maléolo/)
+    await irAFrame(p, despues)
+    assert.equal(await estadoMarcador(p, 'Maléolo'), 'seguido')
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.oculto.verdad[despues].flexion) < TOLERANCIA_GRADOS)
   })
 
   it('una marca a mano equivocada se puede quitar', async () => {

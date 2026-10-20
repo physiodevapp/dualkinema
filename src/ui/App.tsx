@@ -50,8 +50,10 @@ const sesionNueva = (video: VideoAbierto): SesionAbierta => ({
 })
 
 /** Lee una sesión guardada y prepara el visor tal como se dejó. */
-async function prepararRecuperacion(video: VideoAbierto, cabecera: CabeceraSesion) {
-  const { datos } = await leerSesion(cabecera.id)
+async function prepararRecuperacion(video: VideoAbierto, elegida: CabeceraSesion) {
+  // La cabecera recién leída, no la de la lista: otra pestaña puede haberla cambiado
+  // (escala, cero, filtro) y mezclarla con las trayectorias nuevas las desemparejaría.
+  const { cabecera, datos } = await leerSesion(elegida.id)
   const vista = cabecera.vistas[0]!
   const total = video.tabla.tiempos.length
   const inicial = new Map<IdMarcador, (Muestra2D | undefined)[]>()
@@ -85,13 +87,14 @@ export default function App() {
 
   const cargar = useCallback(async (archivo: File, buscada: CabeceraSesion | null) => {
     setEstado({ fase: 'cargando', nombre: archivo.name })
+    // Desde ya: una recuperación a medias del vídeo anterior deja de valer.
+    const apertura = ++aperturas.current
     let video: VideoAbierto | null = null
     try {
       // Mediabunny solo se descarga al abrir el primer vídeo: la portada carga rápido.
       const { VideoAbierto } = await import('../media/video')
       video = await VideoAbierto.abrir(archivo)
       const huella = huellaDe(video)
-      const apertura = ++aperturas.current
       if (buscada) {
         // «Continuar» desde la lista: solo vale el vídeo de esa sesión.
         const guardada = buscada.vistas[0]!.huella
@@ -126,8 +129,12 @@ export default function App() {
   const recuperar = useCallback(async (video: VideoAbierto, apertura: number, candidatas: Candidata[], cabecera: CabeceraSesion) => {
     setEstado({ fase: 'recuperar', video, apertura, candidatas, ocupado: true })
     try {
-      setEstado({ fase: 'visor', video, apertura, ...(await prepararRecuperacion(video, cabecera)) })
+      const preparada = await prepararRecuperacion(video, cabecera)
+      // Mientras se leía se pudo cambiar de vídeo: entonces esto ya no vale.
+      if (aperturas.current !== apertura) return
+      setEstado({ fase: 'visor', video, apertura, ...preparada })
     } catch (e) {
+      if (aperturas.current !== apertura) return
       setEstado({ fase: 'recuperar', video, apertura, candidatas, error: e instanceof Error ? e.message : String(e) })
     }
   }, [])

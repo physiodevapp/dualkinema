@@ -1,5 +1,5 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input, type WrappedCanvas } from 'mediabunny'
-import { crearTablaFrames, indiceEnTiempo, type TablaFrames } from '../core/tiempo/tablaFrames'
+import { crearTablaFrames, indiceDeFrame, type TablaFrames } from '../core/tiempo/tablaFrames'
 import { CacheFrames, capacidadCache } from './cacheFrames'
 import { planificarLectura } from './planLectura'
 
@@ -83,7 +83,7 @@ export class VideoAbierto {
       }
       const tabla = crearTablaFrames(pts)
       if (tabla.tiempos.length === 0) throw new ErrorVideo('El vídeo no tiene frames.')
-      const claves = [...new Set(ptsClave.map((t) => indiceEnTiempo(tabla, t + 1e-6)))].sort((a, b) => a - b)
+      const claves = [...new Set(ptsClave.map((t) => indiceDeFrame(tabla, t)))].sort((a, b) => a - b)
 
       const formato = await entrada.getFormat()
       const info: InfoVideo = {
@@ -152,10 +152,10 @@ export class VideoAbierto {
       }
       // Cada frame decodificado, también los de paso, va a la caché con su
       // índice en la tabla (el del frame visible en su instante).
-      this.cache.guardar(indiceEnTiempo(this.tabla, r.value.timestamp + 1e-6), r.value)
+      this.cache.guardar(indiceDeFrame(this.tabla, r.value.timestamp), r.value)
       // El decodificador siempre va hacia delante: el próximo es el siguiente
       // al que acaba de entregar.
-      this.siguienteDelIterador = indiceEnTiempo(this.tabla, r.value.timestamp + 1e-6) + 1
+      this.siguienteDelIterador = indiceDeFrame(this.tabla, r.value.timestamp) + 1
       if (r.value.timestamp >= objetivo - 1e-6) {
         this.ultimaLectura = { modo, frames }
         return r.value
