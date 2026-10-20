@@ -23,12 +23,19 @@ import { splineNatural } from './spline'
  * Tramos: frames consecutivos con posición utilizable (la misma regla que el
  * ángulo: calidad ≥ CALIDAD_MINIMA; lo marcado a mano y lo interpolado a
  * petición entran y conservan su marca). Nunca se filtra a través de un
- * hueco. Un tramo con menos de MUESTRAS_MINIMAS se filtra igual (con la
+ * hueco, tampoco de uno en el tiempo: si el móvil se salta frames y dos
+ * seguidos se separan más de SALTO_MAX_PASOS veces el paso de referencia, el
+ * tramo se corta ahí (el spline cruzaría el salto inventando el movimiento). Un tramo con menos de MUESTRAS_MINIMAS se filtra igual (con la
  * reflexión que permite su longitud) pero queda marcado `corto`: sus bordes
  * no son fiables y no se derivan.
  */
 
 export const CORTE_DEFECTO_HZ = 6
+/**
+ * Separación máxima entre dos frames de un mismo tramo, en pasos de 1/fs.
+ * Un frame saltado (2 pasos) no corta; dos o más seguidos (3 pasos), sí.
+ */
+export const SALTO_MAX_PASOS = 2.5
 export const CORTE_MIN_HZ = 2
 export const CORTE_MAX_HZ = 15
 
@@ -84,18 +91,23 @@ export interface TrayectoriaFiltrada {
   readonly rejillas: readonly RejillaTramo[]
 }
 
-/** Tramos de frames consecutivos con posición utilizable. */
-export function tramosUtiles(serie: readonly (Muestra2D | undefined)[]): Tramo[] {
+/**
+ * Tramos de frames consecutivos con posición utilizable, cortados también
+ * donde dos frames seguidos se separan más de `saltoMax` segundos.
+ */
+export function tramosUtiles(serie: readonly (Muestra2D | undefined)[], saltoMax = Infinity): Tramo[] {
   const r: Tramo[] = []
   let inicio = -1
+  const cerrar = (fin: number) => {
+    const muestras = fin - inicio
+    r.push({ primero: inicio, ultimo: fin - 1, muestras, corto: muestras < MUESTRAS_MINIMAS })
+    inicio = -1
+  }
   for (let i = 0; i <= serie.length; i++) {
     const util = i < serie.length && esUtil(serie[i])
+    if (util && inicio >= 0 && serie[i]!.t - serie[i - 1]!.t > saltoMax) cerrar(i)
     if (util && inicio < 0) inicio = i
-    if (!util && inicio >= 0) {
-      const muestras = i - inicio
-      r.push({ primero: inicio, ultimo: i - 1, muestras, corto: muestras < MUESTRAS_MINIMAS })
-      inicio = -1
-    }
+    if (!util && inicio >= 0) cerrar(i)
   }
   return r
 }
@@ -168,7 +180,8 @@ export function filtrarTramo(
 
 /**
  * Filtra la trayectoria de un marcador (una muestra o nada por frame), tramo
- * a tramo. `fs`: mediana de los fps del vídeo (`fpsMediano`).
+ * a tramo. `fs`: mediana de los fps del vídeo (`fpsMediano`); también fija
+ * el salto en el tiempo que corta un tramo.
  */
 export function filtrarTrayectoria(
   serie: readonly (Muestra2D | undefined)[],
@@ -176,7 +189,7 @@ export function filtrarTrayectoria(
   ajustes: AjustesFiltro = AJUSTES_FILTRO_DEFECTO,
 ): TrayectoriaFiltrada {
   const posiciones: (PosicionFiltrada | undefined)[] = new Array(serie.length)
-  const tramos = tramosUtiles(serie)
+  const tramos = tramosUtiles(serie, SALTO_MAX_PASOS / fs)
   const rejillas: RejillaTramo[] = []
   for (const tramo of tramos) {
     const ms: Muestra2D[] = []

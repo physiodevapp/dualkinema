@@ -83,7 +83,7 @@ El detalle de cómo quedó cada pieza (y por qué) está en `docs/plan-fase-1.md
 
 **Cálculo** (fase 2 §1–4)
 - Se filtran las coordenadas (Butterworth de 2.º orden ida y vuelta, corrección de Winter sobre la frecuencia ya deformada por la bilineal); ángulos y derivadas salen de lo filtrado. Corte de 6 Hz por defecto, de 2 a 15 Hz, limitado a 0,4·fps.
-- **Nunca se filtra ni se deriva a través de un hueco**: cada tramo de frames con posición utilizable va por separado, remuestreado con spline a una rejilla uniforme sin extrapolar; extremos por reflexión impar. Un tramo de menos de `MUESTRAS_MINIMAS` (10) se filtra pero queda `corto` y no se deriva.
+- **Nunca se filtra ni se deriva a través de un hueco**, tampoco de un salto en el tiempo (dos frames seguidos a más de `SALTO_MAX_PASOS`, 2,5 pasos de 1/fps): cada tramo de frames con posición utilizable va por separado, remuestreado con spline a una rejilla uniforme sin extrapolar; extremos por reflexión impar. Un tramo de menos de `MUESTRAS_MINIMAS` (10) se filtra pero queda `corto` y no se deriva.
 - Sin valor = NaN (celda vacía, «—», línea cortada), **nunca 0**: bordes de cada tramo en las derivadas, tramos cortos, huecos.
 - **Una sola serie del ángulo** por articulación (`serieAngular`: desenrollada y centrada con `centrarVueltas`): de ella leen la gráfica, la fila de valores, los paneles, el cero y el CSV. No recalcular el ángulo de un frame por otro camino (normalizado, podía quedar 360° desplazado de la curva).
 - Cero de referencia: se guarda el **tramo** y la media se recalcula, en la misma vuelta que la serie; el relativo es la resta directa (no se normaliza). Siempre se muestran el ángulo sin cero y el relativo, nunca uno en lugar del otro sin decirlo.
