@@ -26,6 +26,7 @@ import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tip
 import type { LeerVentana } from '../core/seguimiento/imagen'
 import type { MotivoHueco } from '../core/seguimiento/huecos'
 import { huecosInterpolables, HUECO_MAX_S, interpolarHueco } from '../core/seguimiento/interpolar'
+import { framesConMarcaManual, quitarMarcasManuales } from '../core/seguimiento/manuales'
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import { resumirSerie } from '../core/graficas/rango'
@@ -1001,6 +1002,41 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       </div>
     ) : null
 
+  // Marcas a mano más adelante: «Seguir desde aquí» las toma como anclas y sigue desde ellas. Una marca de prueba o puesta
+  // «a ojo» lejos del gomet hace que el seguimiento lo pierda desde ahí (frames en rojo hasta el final): se avisa antes.
+  const framesAnclas = useMemo(() => {
+    void version
+    return mostrado === null ? [] : framesConMarcaManual(trayectorias.current, mostrado)
+  }, [version, mostrado])
+  const quitarMarcasPosteriores = () => {
+    if (mostrado === null) return
+    const n = quitarMarcasManuales(trayectorias.current, mostrado)
+    setVersion((v) => v + 1)
+    setAviso({
+      texto: `Quitadas ${n} marca${n === 1 ? '' : 's'} a mano posteriores al frame ${mostrado + 1}. Los frames quedan sin posición: pulsa «Seguir desde aquí» para volver a seguirlos.`,
+    })
+  }
+  const nodoAnclas = (compacto: boolean) => {
+    if (siguiendo || framesAnclas.length === 0) return null
+    const lista = framesAnclas.slice(0, 3).map((i) => i + 1).join(', ') + (framesAnclas.length > 3 ? ` y ${framesAnclas.length - 3} más` : '')
+    return (
+      <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-2 text-xs" data-testid="aviso-anclas">
+        <p>
+          {compacto
+            ? `Hay marcas a mano más adelante (frames ${lista}): se usan como anclas.`
+            : `Hay marcas a mano más adelante (frames ${lista}). «Seguir desde aquí» las toma como ciertas y sigue desde ellas: si eran de prueba o están lejos del gomet, el seguimiento lo puede perder desde ahí.`}
+        </p>
+        <button
+          type="button"
+          onClick={quitarMarcasPosteriores}
+          className="flex items-center justify-center gap-2 self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2"
+        >
+          <TrashIcon className="size-4" /> Quitar las marcas a mano posteriores
+        </button>
+      </div>
+    )
+  }
+
   // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
@@ -1029,6 +1065,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           )
         })}
       </div>
+      {nodoAnclas(true)}
       {siguiendo ? (
         botonParar('py-2')
       ) : (
@@ -1390,6 +1427,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                   </button>
                 )
               })()}
+
+              {nodoAnclas(false)}
 
               {siguiendo ? (
                 botonParar('py-3')
