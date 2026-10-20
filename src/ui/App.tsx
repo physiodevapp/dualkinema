@@ -146,6 +146,7 @@ export default function App() {
     selector.current?.click()
   }
 
+  // Botón de la portada (sin vídeo abierto). Con un vídeo abierto, el de cambiarlo va en la cabecera.
   const botonCargar = (
     <button
       type="button"
@@ -153,15 +154,17 @@ export default function App() {
       disabled={estado.fase === 'cargando'}
       className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
     >
-      {videoActual ? <ArrowPathIcon className="size-5" /> : <FilmIcon className="size-5" />}
-      {videoActual ? 'Cambiar vídeo' : 'Cargar vídeo'}
+      <FilmIcon className="size-5" />
+      Cargar vídeo
     </button>
   )
 
   return (
     // El visor aprovecha pantallas anchas (vídeo, gráfica y herramientas lado a lado); la portada y los diálogos, no.
     <main
-      className={`mx-auto flex min-h-dvh flex-col gap-6 px-4 pt-6 pb-[calc(1.5rem+var(--alto-barra,0px))] lg:pb-6 ${
+      className={`mx-auto flex min-h-dvh flex-col px-4 pb-[calc(1.5rem+var(--alto-barra,0px))] lg:gap-6 lg:pt-6 lg:pb-6 ${
+        videoActual ? 'gap-3 pt-3' : 'gap-6 pt-6'
+      } ${
         estado.fase === 'visor' ? 'max-w-[90rem]' : 'max-w-6xl'
       }`}
     >
@@ -177,11 +180,25 @@ export default function App() {
         </div>
       )}
 
+      {/* Con un vídeo abierto, la cabecera es baja en el móvil: el sitio es para el vídeo y la gráfica. Cambiar de vídeo
+          se hace poco, así que su botón es secundario (sin el ámbar, que queda para lo que se está usando) y en el
+          móvil solo lleva el icono. */}
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-serif text-3xl">
+        <h1 className={`font-serif ${videoActual ? 'text-2xl lg:text-3xl' : 'text-3xl'}`}>
           dual<span className="text-acento">kinema</span>
         </h1>
-        {videoActual && botonCargar}
+        {videoActual && (
+          <button
+            type="button"
+            onClick={() => elegirArchivo(null)}
+            title="Cambiar vídeo"
+            data-testid="cambiar-video"
+            className="flex items-center justify-center gap-2 rounded-md border border-borde text-texto max-lg:size-11 lg:px-4 lg:py-2"
+          >
+            <ArrowPathIcon className="size-5" />
+            <span className="max-lg:sr-only">Cambiar vídeo</span>
+          </button>
+        )}
       </header>
 
       <input
