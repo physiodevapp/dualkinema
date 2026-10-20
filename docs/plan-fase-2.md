@@ -277,3 +277,26 @@ Las pruebas e2e van primero para que cada paso siguiente quede cubierto. La pers
 | D6 | Persistencia | IndexedDB sin el vídeo; al reabrir el mismo archivo, recuperar el trabajo |
 | D7 | Formato CSV | `;` y coma decimal por defecto; el internacional como opción |
 | D8 | Pruebas e2e | En el repo y en la CI |
+
+## Propuesta: partir `Visor.tsx` sin cambiar el comportamiento (paso 9; no hecho)
+
+`src/ui/Visor.tsx` tiene unas 1.500 líneas: navegación por frames, worker de seguimiento, marcado, escala, filtrado, guardado, distribución del móvil y del escritorio y el JSX de todo. Funciona y está cubierto por las e2e, pero cada cambio obliga a leerlo entero y React reconcilia todo el árbol en cada frame (ningún panel usa `memo`). Propuesta en pasos pequeños, **un PR cada uno o dos**, cada uno sin cambiar nada visible:
+
+Reglas para todos los pasos: se conservan todos los `data-testid`, el orden del DOM y las clases; los envoltorios `max-lg:contents` / `lg:contents` no admiten cajas nuevas (los componentes nuevos devuelven fragmentos); cada paso pasa `lint`, `typecheck`, `test`, `build` y `test:e2e`.
+
+| Paso | Qué sale de `Visor.tsx` | Riesgo | Coste | Lo protegen (e2e) | Modelo |
+|---|---|---|---|---|---|
+| 0 | Ayudas sueltas: `visor/formato.ts` (`fmt`, `grados`, `valorEn`, `hora`, motivos de hueco), `visor/capa.ts` (`lectorDeCanvas`, `dibujarSegmentoEscala`), `BotonPaso` y `TextoGuardado` | nulo | 30 min | todas | Sonnet |
+| 1 | Componentes sin estado que hoy están **dos veces** (tira compacta del vídeo grande y panel «Marcar»): `SelectorMarcadores`, `BotonSeguir`, `AccionesHuecos`; y `ErrorToque`, `DeslizadorFrames`, `ResumenGrafica`, `DatosVideo` | bajo | 1–2 h | marcado, lupa, corrección manual, huecos cortos, vistas ampliadas, deslizador | Sonnet |
+| 2 | Funciones puras: `dibujarCapa` (estela, marcadores, escala), `caminosTrayectoria` y `datosCsv` (este a `core/exportacion`, con tests de Vitest) | bajo | 1 h | estela, trayectoria, escala, CSV | Sonnet |
+| 3 | `useVistaMovil`: vista (`mixta`/`video`/`graficas`), ancho `lg`, alturas medidas (`--alto-barra`, `--alto-fijo`), bloqueo del scroll | medio (distribución) | 1 h | barra fija 340–440 px, pestañas en el móvil, vídeo pegado, vistas ampliadas, escritorio sin scroll | Sonnet |
+| 4 | `useNavegacionFrames(video)`: lienzo, pedido / mostrado / deseado, «el último gana», ms y modo de lectura, sentido, teclado | medio (asíncrono: se mueve tal cual) | 1 h | frame exacto con fps variable, teclado, mantener pulsado, caché al retroceder, avanzar saltando | Opus |
+| 5 | `useTrayectorias`: la ref, `version` y mutadores que suben la versión por dentro (`poner`, `quitar`, `aplicarLote`, `borrarDespuesDe`, `rellenarCortos`, `quitarInterpolados`); estados de frame, huecos cortos | medio | 1–2 h | huecos cortos, corrección manual, gomet tapado, persistencia | Opus |
+| 6 | `useAnalisis`: ajustes del filtro, ceros, serie, filtrado, cero, constancia de segmentos y series de la gráfica. Es el sitio para que la fila de valores y la gráfica lean **la misma** serie (hoy el ángulo crudo y el filtrado se calculan por dos caminos) | medio | 1–2 h | ángulo y filtrado frente a la verdad, velocidad, cero, segmentos, CSV | Opus |
+| 7 | `useEscala`: calibración, borrador, toques en los extremos, medida entre marcadores y su «Rehacer» | medio | 1 h | los tres bloques de escala y el CSV con escala | Opus |
+| 8 | `useSeguimiento` (worker creado una vez, mensajes, devolver lo quitado si no arranca) y `useMarcado` (marcador elegido, error del toque, colocar, previsualizar, quitar) | medio-alto (worker y cierres) | 2–3 h | seguimiento verde y rojo, gomet tapado, anclas, «no arranca», persistencia a medio marcar, vistas ampliadas | Opus |
+| 9 | Componentes grandes: `PanelMarcar`, `PanelAnalisis`, `BarraPosicion` (altura fija); después, `memo` en los paneles con props estables | alto (distribución) | 2 h | barra fija, pestañas, columna de herramientas, escritorio sin scroll, barras de desplazamiento | Sonnet |
+
+Total: unos 2–3 días repartidos. Orden recomendado: 0–2 primero (quitan la duplicación sin tocar estado), luego 4, 5 y 8, que son los que más se tocarán en la fase 3 (dos vídeos = dos navegaciones, dos juegos de trayectorias y un seguimiento por vista). **Recomendación: hacerlo al empezar la fase 3, antes de duplicar nada por la segunda vista**, no como tarea suelta.
+
+Antes del paso 8 conviene añadir las e2e que hoy faltan: «Parar» a mitad (lotes y aviso), seguir de nuevo desde un frame intermedio de un vídeo ya seguido, y que la gráfica pequeña conserve su modo.
