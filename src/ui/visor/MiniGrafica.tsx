@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type Ref } from 'react'
 import { ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { partirInterpolado, type SeriePorFrame } from '../../core/graficas/series'
 import GraficaTiempo, { type SerieGrafica, type TokenColor } from './GraficaTiempo'
@@ -24,6 +24,12 @@ interface Props {
   velocidad: ArrayLike<number>
   /** Pasa a la vista de solo gráficas. */
   onAmpliar: () => void
+  /** Alto de la gráfica, px (crece con la página arriba del todo; ver `miniGrande.ts`). */
+  alto: number
+  /** Si el cambio de alto se anima. */
+  animable: boolean
+  /** La caja de la gráfica, para medir desde fuera. */
+  cajaRef: Ref<HTMLDivElement>
 }
 
 const grados = (v: number) => `${Math.round(v)}°`
@@ -49,7 +55,7 @@ const dividir = (v: ArrayLike<number>, d: number) => Float64Array.from(v, (x) =>
  * para ver si coinciden en el tiempo, no para leer valores; esos, en la gráfica completa).
  * Mismos huecos y mismo cursor que la completa; tocar o arrastrar salta de frame.
  */
-export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado, velocidad, onAmpliar }: Props) {
+export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado, velocidad, onAmpliar, alto, animable, cajaRef }: Props) {
   const [modo, setModo] = useState<Modo>('angulo')
   const xs = useMemo(() => Array.from(tiempos), [tiempos])
   const n = xs.length
@@ -132,25 +138,27 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
           <ArrowsPointingOutIcon className="size-4" />
         </button>
       </div>
-      <GraficaTiempo
-        xs={xs}
-        series={series}
-        desde={xs[0] ?? 0}
-        hasta={xs.at(-1) ?? 1}
-        indice={indice}
-        onBuscar={onBuscar}
-        unidad={unidad}
-        altoMinimo={altoMinimo}
-        alto={76}
-        etiqueta={
-          modo === 'ambas'
-            ? 'Gráfica del ángulo y de la velocidad angular, normalizadas, en el tiempo'
-            : modo === 'velocidad'
-              ? 'Gráfica de la velocidad angular en el tiempo, resumida'
-              : 'Gráfica del ángulo en el tiempo, resumida'
-        }
-        testid="minigrafica"
-      />
+      <div ref={cajaRef} data-testid="minigrafica-caja" className={`relative ${animable ? 'transition-[height] duration-200 motion-reduce:transition-none' : ''}`} style={{ height: alto }}>
+        <GraficaTiempo
+          xs={xs}
+          series={series}
+          desde={xs[0] ?? 0}
+          hasta={xs.at(-1) ?? 1}
+          indice={indice}
+          onBuscar={onBuscar}
+          unidad={unidad}
+          altoMinimo={altoMinimo}
+          alto="llenar"
+          etiqueta={
+            modo === 'ambas'
+              ? 'Gráfica del ángulo y de la velocidad angular, normalizadas, en el tiempo'
+              : modo === 'velocidad'
+                ? 'Gráfica de la velocidad angular en el tiempo, resumida'
+                : 'Gráfica del ángulo en el tiempo, resumida'
+          }
+          testid="minigrafica"
+        />
+      </div>
       {modo === 'ambas' && <p className="text-[0.65rem] leading-tight text-texto-2">Normalizadas (% del máximo de cada una): para ver si coinciden en el tiempo, no para leer valores.</p>}
     </div>
   )

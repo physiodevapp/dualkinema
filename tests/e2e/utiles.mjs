@@ -252,7 +252,7 @@ export async function esperarGuardado(p, conDatos) {
     conDatos,
     { timeout: 20000, polling: 200 },
   )
-  await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo' }).waitFor({ timeout: 10000 })
+  await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo' }).waitFor({ state: 'attached', timeout: 10000 })
 }
 
 /** Elige `ruta` desde un botón que abre el selector de archivos (p. ej. «Continuar» de la lista). */
