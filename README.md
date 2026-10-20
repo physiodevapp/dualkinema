@@ -30,6 +30,10 @@ npm run test:e2e   # pruebas en navegador (necesita build, ffmpeg y Chromium de 
 
 `src/core/` es el núcleo de cálculo: TypeScript puro, sin React ni DOM, con tests. ESLint y `tsconfig.core.json` impiden que dependa del resto de la app.
 
+## Instalar en el móvil
+
+Desde Chrome para Android, menú ⋮ → «Instalar aplicación» (o «Añadir a la pantalla de inicio»), sobre la dirección de producción. Se abre sin la barra de direcciones y se actualiza sola al abrirla: no hay que reinstalar con cada versión. Las sesiones guardadas se comparten con las del navegador en esa misma dirección.
+
 ## Despliegue
 
 Cloudflare Workers con archivos estáticos (`wrangler.jsonc`), conectado al repositorio con Workers Builds: `main` → https://dualkinema.edu-gamboa-rodriguez.workers.dev, y cada rama tiene su previsualización en `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`. GitHub Actions comprueba cada PR y `main`: lint, tipos, tests, build y las pruebas en navegador.

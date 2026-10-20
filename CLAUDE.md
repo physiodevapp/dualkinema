@@ -119,6 +119,7 @@ Estas decisiones pueden revisarse si hay buenos motivos; si cambian, actualiza e
   - Producción: `main` → `https://dualkinema.edu-gamboa-rodriguez.workers.dev`.
   - Previsualización de cada rama: `https://<rama>-dualkinema.edu-gamboa-rodriguez.workers.dev`, con la rama en minúsculas y los caracteres que no sean letras ni números cambiados por `-` (p. ej. `feat/visor` → `feat-visor-dualkinema.edu-gamboa-rodriguez.workers.dev`). Cloudflare la publica también como comentario en el PR. Indica siempre esta URL al terminar una tarea.
   - La app muestra al pie la rama y el commit con que se construyó (`WORKERS_CI_BRANCH`, `WORKERS_CI_COMMIT_SHA`), para comprobar que la previsualización abierta es la última.
+  - **App instalable** (`public/manifest.webmanifest`, `display: standalone`, iconos PNG de 192 y 512 px y uno maskable): instalada desde Chrome se abre sin su barra de direcciones. **Sin service worker, a propósito:** no hay copia guardada que se quede vieja (limitación 17 de la fase 2), así que la app instalada carga siempre la última versión y no hay que reinstalar tras cada cambio. Se instala **solo producción**: cada previsualización es otro sitio para Chrome (otro acceso y otro almacén). Los iconos se generan del motivo de `favicon.svg`.
   - Cabeceras en `public/_headers` (Workers las aplica a los archivos estáticos; permitirá COOP/COEP si algún día hace falta `SharedArrayBuffer`).
   - Desde el entorno en la nube de Claude Code, `*.workers.dev` puede no ser accesible: la comprobación en el navegador la hace el usuario.
 

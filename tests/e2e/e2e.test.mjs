@@ -2092,6 +2092,38 @@ describe('escritorio', () => {
   })
 })
 
+describe('app instalable', () => {
+  it('el manifiesto está enlazado, es válido y sus iconos existen con el tamaño que dicen', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      const href = await p.locator('link[rel=manifest]').getAttribute('href')
+      assert.ok(href, 'falta <link rel="manifest">')
+      const url = new URL(href, p.url()).href
+      const respuesta = await p.request.get(url)
+      assert.ok(respuesta.ok())
+      const m = await respuesta.json()
+      // Sin la barra del navegador y con la URL de siempre (sin service worker: siempre la última versión).
+      assert.equal(m.display, 'standalone')
+      assert.equal(new URL(m.start_url, url).pathname, '/')
+      assert.ok(m.name && m.short_name)
+      const medidas = m.icons.map((i) => i.sizes)
+      assert.ok(medidas.includes('192x192') && medidas.includes('512x512'), 'faltan los iconos de 192 y 512 px')
+      assert.ok(m.icons.some((i) => i.purpose === 'maskable'), 'falta un icono maskable')
+      for (const icono of m.icons) {
+        const r = await p.request.get(new URL(icono.src, url).href)
+        assert.ok(r.ok(), `no se sirve ${icono.src}`)
+        assert.match(r.headers()['content-type'], /image\/png/)
+        const png = await r.body()
+        // Cabecera PNG: ancho y alto en los bytes 16–23.
+        const [ancho, alto] = [png.readUInt32BE(16), png.readUInt32BE(20)]
+        assert.equal(`${ancho}x${alto}`, icono.sizes, `${icono.src} no mide lo que dice el manifiesto`)
+      }
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })
