@@ -103,6 +103,13 @@ describe('serieAngular', () => {
     expect(serie.map((s) => Math.round(s.valor))).toEqual([170, 185, 190])
   })
 
+  it('una serie que empieza por encima de 180° no queda 360° por debajo (la gráfica y cada frame coinciden)', () => {
+    // De 185° a 0°: el primer frame, por separado, da −175°; desenrollada desde ahí acabaría en −360°.
+    const flexiones = [185, 150, 100, 50, 0]
+    const serie = serieAngular(rodilla, unir(...flexiones.map((k, i) => frame(i / 10, rodillaEnImagen(k)))), o)
+    flexiones.forEach((k, i) => expect(serie[i]!.valor).toBeCloseTo(k, 6))
+  })
+
   it('el tiempo es el del vídeo, aunque los frames no estén equiespaciados', () => {
     const serie = serieAngular(rodilla, unir(frame(0, rodillaEnImagen(0)), frame(0.0333, rodillaEnImagen(5)), frame(0.0712, rodillaEnImagen(9))), o)
     expect(serie.map((s) => s.t)).toEqual([0, 0.0333, 0.0712])

@@ -1,4 +1,4 @@
-import { anguloConSigno, desenrollar, normalizarGrados } from '../geometria/angulo'
+import { anguloConSigno, centrarVueltas, desenrollar, normalizarGrados } from '../geometria/angulo'
 import { aCanonico, NORMAL_CANONICA, type OrientacionVista } from '../geometria/canonico'
 import { segmento, type Vec3 } from '../geometria/vector'
 import type { IdMarcador, Muestra2D } from '../modelo/tipos'
@@ -39,7 +39,9 @@ export const CALIDAD_MINIMA = 0.5
  * Serie temporal de una articulación en una vista 2D. Las trayectorias salen
  * de la misma tabla de frames, así que se emparejan por `t` exacto. Un instante
  * en el que falta algún marcador o su calidad es baja queda como hueco (NaN),
- * nunca interpolado. La serie se desenrolla para que no salte ±360°.
+ * nunca interpolado. La serie se desenrolla para que no salte ±360° y se
+ * centra (su mediana en (−180°, 180°]): es la serie de referencia del ángulo,
+ * y la gráfica, la fila de valores, el cero y el CSV leen todos de ella.
  */
 export function serieAngular(
   def: DefinicionArticulacion,
@@ -78,6 +80,6 @@ export function serieAngular(
     return valor
   })
 
-  const continuos = desenrollar(crudos)
+  const continuos = centrarVueltas(desenrollar(crudos))
   return ordenados.map((t, i) => ({ t, valor: continuos[i] ?? NaN, interpolado: interpolados[i]! }))
 }

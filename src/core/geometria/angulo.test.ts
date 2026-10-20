@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anguloConSigno, desenrollar, normalizarGrados } from './angulo'
+import { anguloConSigno, centrarVueltas, desenrollar, normalizarGrados } from './angulo'
 import { vec3 } from './vector'
 
 const Z = vec3(0, 0, 1)
@@ -79,3 +79,24 @@ describe('anguloConSigno con una normal cualquiera', () => {
     expect(Object.is(anguloConSigno(vec3(0, -1), vec3(0, -2), vec3(0, 0, 1)), -0)).toBe(false)
   })
 })
+
+describe('centrarVueltas', () => {
+  it('una serie desenrollada desde −175° que acaba en −360° vuelve a 185° → 0°', () => {
+    const crudos = [185, 120, 60, 0].map(normalizarGrados) // lo que da cada frame por separado: −175, 120, 60, 0
+    const continua = desenrollar(crudos)
+    expect(continua).toEqual([-175, -240, -300, -360])
+    expect(centrarVueltas(continua)).toEqual([185, 120, 60, 0])
+  })
+
+  it('no toca una serie cuyo recorrido ya está centrado en (−180°, 180°], aunque pase de 180°', () => {
+    expect(centrarVueltas([170, 185, 190])).toEqual([170, 185, 190])
+    expect(centrarVueltas([-10, 40, 90])).toEqual([-10, 40, 90])
+  })
+
+  it('conserva los huecos y una serie sin ningún valor', () => {
+    expect(centrarVueltas([NaN, -400, NaN, -380])).toEqual([NaN, -40, NaN, -20])
+    expect(centrarVueltas([NaN, NaN])).toEqual([NaN, NaN])
+    expect(centrarVueltas([])).toEqual([])
+  })
+})
+

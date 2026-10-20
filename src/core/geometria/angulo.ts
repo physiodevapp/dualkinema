@@ -53,3 +53,25 @@ export function desenrollar(grados: readonly number[]): number[] {
   }
   return salida
 }
+
+/**
+ * Resta a toda la serie el múltiplo de 360° que deja el centro de su recorrido
+ * ((mín + máx) / 2) en [−180°, 180°]. `desenrollar` parte del primer valor, así
+ * que una serie que empieza a 185° (un hombro arriba) y baja a 0° salía de
+ * −175° a −360°; con esto sale de 185° a 0°, lo mismo que da cada frame por
+ * separado donde no hay vuelta. Una serie cuyo centro ya está en ese intervalo
+ * no se toca (de 170° a 190° sigue así). No cambia la forma ni las derivadas.
+ */
+export function centrarVueltas(grados: readonly number[]): number[] {
+  let min = Infinity
+  let max = -Infinity
+  for (const g of grados) {
+    if (!Number.isFinite(g)) continue
+    if (g < min) min = g
+    if (g > max) max = g
+  }
+  const centro = (min + max) / 2
+  if (!Number.isFinite(centro) || Math.abs(centro) <= 180) return [...grados]
+  const vueltas = 360 * Math.round(centro / 360)
+  return grados.map((g) => g - vueltas)
+}

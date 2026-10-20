@@ -14,14 +14,13 @@ import {
   StopIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline'
-import { anguloArticular, CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
-import { angulosPorFrame, construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
+import { CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
+import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
 import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
 import { distanciaPx, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
 import { constanciaSegmento } from '../core/calibracion/segmentos'
-import { aCanonico, type OrientacionVista } from '../core/geometria/canonico'
-import type { Vec3 } from '../core/geometria/vector'
+import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import type { LeerVentana } from '../core/seguimiento/imagen'
 import type { MotivoHueco } from '../core/seguimiento/huecos'
@@ -613,21 +612,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     return r
   }, [version, total, ids, muestra])
 
-  const angulo = useMemo(() => {
-    void version
-    if (mostrado === null) return NaN
-    const puntos = new Map<IdMarcador, Vec3>()
-    for (const id of ids) {
-      const m = muestra(id, mostrado)
-      if (valida(m)) puntos.set(id, aCanonico(m.x, m.y, orientacion))
-    }
-    return anguloArticular(articulacion, puntos)
-  }, [version, mostrado, ids, muestra, orientacion, articulacion])
-
-  // Redondeado a la décima que se muestra (+ 0 evita «−0,0»), para que la etiqueta
-  // (flexión / hiperextensión) concuerde con el número visible.
-  const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
-
   // Serie completa del ángulo para la gráfica: misma regla de huecos que el valor
   // en directo (marcador ausente o perdido = sin valor). Lo interpolado a
   // petición tiene valor, pero va marcado y se dibuja aparte.
@@ -768,7 +752,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // Las series de la gráfica, un valor por frame.
   const crudoPorFrame = useMemo(() => seriePorFrame(serie, tabla.tiempos), [serie, tabla])
   const filtradoPorFrame = useMemo(() => seriePorFrame(filtrado.serie, tabla.tiempos), [filtrado.serie, tabla])
-  const anguloFiltrado = mostrado === null ? NaN : filtrado.anguloEn(mostrado)
+  // El valor del frame sale de las mismas series que la gráfica y el CSV (una sola
+  // fuente: antes se recalculaba aparte y podía quedar 360° desplazado de la curva).
+  const angulo = mostrado === null ? NaN : (crudoPorFrame.valores[mostrado] ?? NaN)
+  const anguloFiltrado = mostrado === null ? NaN : (filtradoPorFrame.valores[mostrado] ?? NaN)
+  // Redondeado a la décima que se muestra (+ 0 evita «−0,0»), para que la etiqueta
+  // (flexión / hiperextensión) concuerde con el número visible.
+  const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
   const tramoEstatico = ceros[articulacion.id] ?? null
   const cero = useMemo(() => (tramoEstatico ? ceroDeReferencia(filtrado.serie, tramoEstatico) : null), [tramoEstatico, filtrado.serie])
   // Longitud de cada segmento a lo largo del vídeo, con lo filtrado (menos ruido que lo crudo).
@@ -794,9 +784,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const generarCsv = useCallback(
     (formato: FormatoCsv) => {
       const mismoPlano = orientacion.plano === articulacion.plano
-      const n = total
-      const filtradoPorFrame = new Float64Array(n)
-      for (let i = 0; i < n; i++) filtradoPorFrame[i] = filtrado.anguloEn(i)
       const texto = construirCsv(
         {
           tiempos: tabla.tiempos,
@@ -813,9 +800,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 nombre: articulacion.nombre,
                 positivo: articulacion.positivo,
                 negativo: articulacion.negativo,
-                crudo: angulosPorFrame(serie, tabla.tiempos),
-                filtrado: filtradoPorFrame,
-                relativo: cero ? filtradoPorFrame.map((v) => relativoAlCero(v, cero)) : null,
+                crudo: crudoPorFrame.valores,
+                filtrado: filtradoPorFrame.valores,
+                relativo: cero ? filtradoPorFrame.valores.map((v) => relativoAlCero(v, cero)) : null,
                 velocidad: filtrado.derivadas.velocidad,
                 aceleracion: filtrado.derivadas.aceleracion,
                 cero,
@@ -840,7 +827,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       )
       return { nombre: nombreArchivoCsv(info.nombre, mismoPlano ? articulacion.id : null), texto }
     },
-    [orientacion, articulacion, total, filtrado, tabla, modelo, serie, cero, calibracion, info, est, ajustes],
+    [orientacion, articulacion, filtrado, tabla, modelo, crudoPorFrame, filtradoPorFrame, cero, calibracion, info, est, ajustes],
   )
   const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(

@@ -1,4 +1,4 @@
-import { desenrollar, normalizarGrados } from '../geometria/angulo'
+import { desenrollar } from '../geometria/angulo'
 import type { MuestraAngulo } from './calculo'
 
 /*
@@ -29,7 +29,7 @@ export function esTramoEstatico(v: unknown): v is TramoEstatico {
 
 export interface CeroReferencia {
   readonly tramo: TramoEstatico
-  /** Ángulo medio en el tramo (°), en (−180, 180]. */
+  /** Ángulo medio en el tramo (°), en la misma vuelta que la serie de la que sale. */
   readonly media: number
   /** Desviación típica en el tramo (°): cuánto se movió durante la toma estática. */
   readonly desviacion: number
@@ -47,12 +47,16 @@ export function ceroDeReferencia(serie: readonly MuestraAngulo[], tramo: TramoEs
   if (valores.length === 0) return null
   const media = valores.reduce((s, v) => s + v, 0) / valores.length
   const desviacion = Math.sqrt(valores.reduce((s, v) => s + (v - media) ** 2, 0) / valores.length)
-  return { tramo, media: normalizarGrados(media), desviacion, muestras: valores.length }
+  return { tramo, media, desviacion, muestras: valores.length }
 }
 
-/** Ángulo relativo al cero de referencia, en (−180, 180]. NaN si no hay ángulo. */
+/**
+ * Ángulo relativo al cero de referencia. NaN si no hay ángulo. `valor` sale de
+ * la misma serie continua que el cero, así que la resta es directa: un
+ * movimiento que se aleja más de 180° del cero (un hombro) no da la vuelta.
+ */
 export function relativoAlCero(valor: number, cero: CeroReferencia): number {
-  return Number.isFinite(valor) ? normalizarGrados(valor - cero.media) : NaN
+  return Number.isFinite(valor) ? valor - cero.media : NaN
 }
 
 /**

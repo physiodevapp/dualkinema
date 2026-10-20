@@ -32,7 +32,15 @@ describe('cero de referencia (toma estática)', () => {
     const c = ceroDeReferencia(serie([[0, 179], [0.1, -179], [0.2, 179], [0.3, -179]]), { desde: 0, hasta: 1 })!
     expect(Math.abs(c.media)).toBeCloseTo(180, 9)
     expect(c.desviacion).toBeCloseTo(1, 9)
-    expect(relativoAlCero(-178, c)).toBeCloseTo(2, 9)
+    // El valor sale de la misma serie continua que el cero: tras 180° viene 182°, no −178°.
+    expect(relativoAlCero(182, c)).toBeCloseTo(2, 9)
+  })
+
+  it('un movimiento que se aleja más de 180° del cero no da la vuelta', () => {
+    // Hombro: cero de pie a −2°, brazo arriba a 185° (misma serie continua) → 187° relativo, no −173°.
+    const c = ceroDeReferencia(serie([[0, -2], [0.1, -2]]), { desde: 0, hasta: 0.1 })!
+    expect(c.media).toBeCloseTo(-2, 12)
+    expect(relativoAlCero(185, c)).toBeCloseTo(187, 12)
   })
 
   it('un tramo sin ningún ángulo no da cero', () => {
