@@ -27,4 +27,8 @@ describe('minigráfica grande: cuánto', () => {
     expect(extraParaLlenar(300, 2000)).toBe(EXTRA_MAXIMO_PX)
     expect(extraParaLlenar(NaN, 705)).toBe(0)
   })
+
+  it('el tope puede subir (al quitar alto al vídeo)', () => {
+    expect(extraParaLlenar(300, 2000, EXTRA_MAXIMO_PX + 80)).toBe(EXTRA_MAXIMO_PX + 80)
+  })
 })
