@@ -970,29 +970,29 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             </div>
     ))
 
-  // Deslizador de frames con la franja de estado: en el flujo de la página o, en el vídeo grande, dentro de él.
-  const nodoDeslizador = (
-    <div className={`flex flex-col gap-1 ${enVideo ? '' : `max-lg:order-3 lg:order-1 ${ampliada ? 'max-lg:hidden' : ''}`}`}>
-            {/* Una sola barra: la franja de estado de cada frame es la pista del deslizador y el tirador va encima.
-                La franja se mete la mitad del tirador por cada lado, para que su centro coincida con el frame. */}
-            <div className="relative h-7">
-              <div className="pointer-events-none absolute inset-x-[7px] top-1/2 -translate-y-1/2">
-                <BandaFrames estados={estadosFrames} className="h-2.5" />
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={total - 1}
-                step={1}
-                value={deseado}
-                onChange={(e) => ir(Number(e.target.value))}
-                aria-label="Posición en el vídeo"
-                aria-valuetext={`frame ${deseado + 1} de ${total}, ${fmt(tabla.tiempos[deseado]!, 3)} s`}
-                className="deslizador-frames relative"
-              />
-            </div>
+  // Deslizador de frames con la franja de estado. Una sola barra: la franja de cada frame es la pista del deslizador y el
+  // tirador va encima (la franja se mete la mitad del tirador por cada lado, para que su centro coincida con el frame).
+  // En el móvil va en la fila de posición de la barra de abajo (a mano desde cualquier pestaña y vista); desde `lg`, en el
+  // flujo de la página, bajo el vídeo. Es el mismo control dibujado en los dos sitios y solo se ve uno.
+  const controlDeslizador = (
+    <div className="relative h-7">
+      <div className="pointer-events-none absolute inset-x-[7px] top-1/2 -translate-y-1/2">
+        <BandaFrames estados={estadosFrames} className="h-2.5" />
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={total - 1}
+        step={1}
+        value={deseado}
+        onChange={(e) => ir(Number(e.target.value))}
+        aria-label="Posición en el vídeo"
+        aria-valuetext={`frame ${deseado + 1} de ${total}, ${fmt(tabla.tiempos[deseado]!, 3)} s`}
+        className="deslizador-frames relative"
+      />
     </div>
   )
+  const nodoDeslizador = <div className="flex flex-col gap-1 max-lg:hidden lg:order-1">{controlDeslizador}</div>
 
   // Mientras se sigue, el avance se ve en la franja del deslizador (se va poniendo verde);
   // el botón lleva el porcentaje, con ancho fijo para que no cambie de tamaño.
@@ -1254,14 +1254,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             <>
               {nodoError}
               {tiraMarcado}
-              {nodoDeslizador}
             </>
           )}
           </div>
 
           {!enVideo && nodoError}
 
-          {!enVideo && nodoDeslizador}
+          {nodoDeslizador}
 
           {/* Móvil: barra fija abajo con los botones, la línea de posición y los valores del frame, para
               no perderlos de vista al hacer scroll. Altura fija (nada de lo que contiene cambia de
@@ -1273,19 +1272,21 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           >
             {/* Siempre la misma altura: una línea que no se parte (lo que no cabe se corta). Si el texto
                 cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
-                y se perdía la pulsación mantenida. En el móvil, sin «t =» ni «frame», para que quepa en una. */}
-            <div className={`flex items-baseline justify-between gap-x-3 font-mono text-sm tabular-nums`} data-testid="posicion">
+                y se perdía la pulsación mantenida. En el móvil, sin «t =» ni «frame» y sin los ms (están en la pestaña
+                «Vídeo»), con el deslizador de frames en medio: tiempo, deslizador y «frame / total» en una sola fila. */}
+            <div className={`flex items-center gap-x-2 font-mono text-sm tabular-nums max-lg:h-7 lg:items-baseline lg:justify-between lg:gap-x-3`} data-testid="posicion">
               <span className="shrink-0 whitespace-nowrap">
                 <span className="max-lg:hidden">t = </span>
                 <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
               </span>
-              <span className="min-w-0 truncate whitespace-nowrap text-texto-2">
+              <div className="min-w-0 flex-1 lg:hidden">{controlDeslizador}</div>
+              <span className="min-w-0 truncate whitespace-nowrap text-texto-2 max-lg:shrink-0">
                 <span className="max-lg:hidden">frame </span>
                 {mostrado === null ? '—' : mostrado + 1} / {total}
                 {mostrado !== deseado && ' …'}
                 {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
                 {msDecodificar !== null && (
-                  <span data-testid="ms-decodificar">
+                  <span data-testid="ms-decodificar" className="max-lg:hidden">
                     {' '}
                     · {fmt(msDecodificar, 0)} ms{lectura && (
                       <>
@@ -1668,7 +1669,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 <dt className="text-texto-2">Persona</dt>
                 <dd>{orientacion.plano === 'sagital' ? `mira a la ${orientacion.mira}` : `vista desde ${orientacion.ve}`}</dd>
                 <dt className="text-texto-2">Decodificar</dt>
-                <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}</dd>
+                <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}{lectura && ` · ${lectura}`}</dd>
               </dl>
             </section>
           </PanelPestana>
