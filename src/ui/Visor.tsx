@@ -210,6 +210,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     inicial ? (ids.find((id) => !valida(inicial.get(id)?.[0])) ?? null) : (ids[0] ?? null),
   )
   const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
+  // «Colocar a ojo»: cada toque deja el marcador justo donde se suelta el dedo, sin buscar el gomet (gomet tapado o movido).
+  const [colocarAOjo, setColocarAOjo] = useState(false)
   const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
   const huella = useMemo(() => huellaDe(video), [video])
   // Ajuste del filtro: se guarda con la sesión. `revAjustes` cuenta sus cambios
@@ -475,6 +477,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
   const colocar = (x: number, y: number, radio: number) => {
     if (mostrado === null || !seleccionado || !ultimoFrame.current) return
+    if (colocarAOjo) {
+      ponerManual(seleccionado, mostrado, x, y)
+      return
+    }
     const t = tabla.tiempos[mostrado]!
     try {
       // Se lleva el marcador al centro del gomet que se ve en la lupa (el mismo que marcaba el anillo).
@@ -1037,6 +1043,24 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     )
   }
 
+  const interruptorAOjo = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={colocarAOjo}
+      disabled={siguiendo}
+      onClick={() => setColocarAOjo((v) => !v)}
+      data-testid="colocar-a-ojo"
+      title="Cada toque deja el marcador justo donde sueltas el dedo, sin buscar el gomet (gomet tapado o movido)"
+      className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm disabled:opacity-50 ${colocarAOjo ? 'border-acento text-acento' : 'border-borde text-texto-2'}`}
+    >
+      <span>Colocar a ojo</span>
+      <span aria-hidden className={`relative h-5 w-9 shrink-0 rounded-full border ${colocarAOjo ? 'border-acento bg-acento/30' : 'border-borde bg-fondo'}`}>
+        <span className={`absolute top-0.5 size-3.5 rounded-full transition-[left] motion-reduce:transition-none ${colocarAOjo ? 'left-[1.1rem] bg-acento' : 'left-0.5 bg-texto-2'}`} />
+      </span>
+    </button>
+  )
+
   // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
@@ -1065,6 +1089,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           )
         })}
       </div>
+      {interruptorAOjo}
       {nodoAnclas(true)}
       {siguiendo ? (
         botonParar('py-2')
@@ -1123,7 +1148,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
               onToque={tocandoEscala ? tocarExtremo : colocar}
               // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
-              previsualizar={!calibrando && seleccionado ? previsualizar : undefined}
+              previsualizar={!calibrando && seleccionado && !colocarAOjo ? previsualizar : undefined}
             />
             {mostrado === null && !error && (
               <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
@@ -1140,6 +1165,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                   style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
                 />
                 Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
+                {colocarAOjo && <span className="text-texto-2">· a ojo</span>}
               </p>
             )}
             {!anchoLg && (
@@ -1406,12 +1432,16 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               <p className="text-sm text-texto-2">
                 {siguiendo
                   ? 'Siguiendo los gomets…'
-                  : seleccionado
-                    ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
-                    : listoParaSeguir
-                      ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
-                      : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
+                  : seleccionado && colocarAOjo
+                    ? `A ojo: el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} queda justo donde sueltas el dedo, sin ajustarse a ningún gomet. Usa la lupa para afinar.`
+                    : seleccionado
+                      ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
+                      : listoParaSeguir
+                        ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
+                        : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
               </p>
+
+              {interruptorAOjo}
 
               {(() => {
                 // Quitar una marca a mano equivocada del marcador elegido, en este frame.

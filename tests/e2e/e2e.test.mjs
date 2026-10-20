@@ -2062,6 +2062,41 @@ describe('vistas ampliadas del móvil', () => {
     }
   })
 
+  it('vídeo grande: «Colocar a ojo» deja el marcador justo donde se toca, sin buscar el gomet', async () => {
+    const { p } = await seguirVideo(videos.oculto, { ancho: 390 })
+    const verdad = videos.oculto.verdad
+    const tapados = verdad.flatMap((f, i) => (f.tobilloOculto ? [i] : []))
+    try {
+      await irAFrame(p, tapados[2])
+      await p.getByTestId('ampliar-video').click()
+      // El del panel «Marcar» sigue montado pero oculto: se usa el de la tira del vídeo grande.
+      const interruptor = p.getByTestId('marcado-compacto').getByTestId('colocar-a-ojo')
+      assert.equal(await interruptor.getAttribute('aria-checked'), 'false')
+      await elegirMarcador(p, 'Maléolo')
+      await interruptor.click()
+      assert.equal(await interruptor.getAttribute('aria-checked'), 'true')
+      // Con el gomet tapado, un toque en su sitio queda a mano sin que salga el error de «no veo un gomet».
+      const real = verdad[tapados[2]].ps[2]
+      await tocarVideo(p, real.x, real.y)
+      assert.equal(await p.getByTestId('error-toque').count(), 0)
+      assert.equal(await estadoMarcador(p, 'Maléolo'), 'a mano')
+      assert.ok(Math.abs((await leerAngulo(p)) - verdad[tapados[2]].flexion) < 1.5)
+      // No se ajusta a ningún gomet: un toque 40 px más abajo se queda ahí (con el interruptor apagado se iría al gomet).
+      await elegirMarcador(p, 'Maléolo')
+      await tocarVideo(p, real.x, real.y + 40)
+      assert.equal(await estadoMarcador(p, 'Maléolo'), 'a mano')
+      assert.ok(Math.abs((await leerAngulo(p)) - verdad[tapados[2]].flexion) > 3, 'el marcador se ha pegado al gomet')
+      // Apagado, vuelve a buscar el gomet: tocar lejos de todos da el aviso.
+      await elegirMarcador(p, 'Maléolo')
+      await interruptor.click()
+      assert.equal(await interruptor.getAttribute('aria-checked'), 'false')
+      await tocarVideo(p, 60, 300)
+      await p.getByTestId('error-toque').waitFor()
+    } finally {
+      await p.close()
+    }
+  })
+
   it('solo gráficas: la completa ocupa el espacio, tocarla salta de frame y la barra sigue', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
