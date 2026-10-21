@@ -52,6 +52,7 @@ import { useAltura, useAnchoMinimo } from './visor/useAltura'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
 import SeparadorVideo from './visor/SeparadorVideo'
+import AsaVolver from './visor/AsaVolver'
 import { ALTO_VIDEO_DVH, AMPLIAR_PX, esReparto, type Reparto } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useFiltrado } from './visor/useFiltrado'
@@ -1307,6 +1308,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           )}
           {enVideo && (
             <>
+              <AsaVolver sentido="arriba" destino="volver a la vista con gráfica" onVolver={() => setVista('mixta')} testid="asa-volver-video" />
               {nodoError}
               {tiraMarcado}
             </>
@@ -1407,6 +1409,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             enGraficas ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
+          {enGraficas && <AsaVolver sentido="abajo" destino="volver a la vista con vídeo" onVolver={() => setVista('mixta')} testid="asa-volver-graficas" />}
           {enGraficas && (
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono text-xs tracking-wider text-texto-2 uppercase">Solo gráficas</span>
