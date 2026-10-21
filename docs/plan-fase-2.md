@@ -145,7 +145,7 @@ Junto al número de frame se ven los ms y cómo salió (`caché`, `seguido`, `cl
 | D7 | Formato CSV | `;` y coma decimal por defecto; el internacional como opción |
 | D8 | Pruebas e2e | En el repo y en la CI |
 
-## 11. Propuesta: partir `Visor.tsx` sin cambiar el comportamiento (en curso: pasos 0, 1a y 1b hechos)
+## 11. Propuesta: partir `Visor.tsx` sin cambiar el comportamiento (en curso: pasos 0, 1 y 2 hechos)
 
 `src/ui/Visor.tsx` tiene unas 1.500 líneas: navegación por frames, worker de seguimiento, marcado, escala, filtrado, guardado, distribución del móvil y del escritorio y el JSX de todo. Funciona y está cubierto por las e2e, pero cada cambio obliga a leerlo entero y React reconcilia todo el árbol en cada frame (ningún panel usa `memo`). Propuesta en pasos pequeños, **un PR cada uno o dos**, cada uno sin cambiar nada visible:
 
@@ -171,6 +171,8 @@ Total: unos 2–3 días repartidos. Orden recomendado: 0–2 primero (quitan la 
 **Hecho — paso 1a** (las piezas que se pintaban dos veces, con la prop `compacto` para la tira del vídeo grande; props = valores y callbacks, nada del estado entero): `visor/SelectorMarcadores.tsx`, `BotonSeguir.tsx` («Seguir desde aquí» / «Parar» con su progreso), `InterruptorAOjo.tsx`, `BotonesQuitarManual.tsx`, `AvisoAnclas.tsx`, `AccionesHuecos.tsx` («Rellenar N huecos cortos» y «Quitar lo interpolado»; el contenedor lo pone quien lo usa) y `BotonIrAlHueco.tsx`. Lo que se movió tal cual y se podría limpiar más adelante, apuntado y sin tocar: en `BotonSeguir` el `{siguiendo && …}` del porcentaje es redundante (ya está dentro de la rama «siguiendo»); `BotonesQuitarManual` conserva el parámetro `claseExtra` (siempre `''`) porque deja un espacio al final de la clase y el DOM debe salir idéntico; el estado de cada marcador (`estadosMarcadores`) se calcula en `Visor.tsx` en cada render aunque la tira compacta no se vea.
 
 **Hecho — paso 1b** (las piezas sueltas): `visor/ErrorToque.tsx` (el aviso del toque fallido, corto en el vídeo grande y completo bajo el vídeo; exporta `ErrorDeToque`), `DeslizadorFrames.tsx` (franja de estado + `range`), `ResumenGrafica.tsx` (máx., mín., huecos e interpolados) y `DatosVideo.tsx` (tarjeta de la pestaña «Vídeo»). `Visor.tsx` queda en unas 1.370 líneas. Con esto el paso 1 está completo.
+
+**Hecho — paso 2** (funciones puras): `dibujarCapa` (segmentos, trayectoria completa, estela, marcadores y escala; recibe un `EstadoCapa` por parámetro, incluida `valida`, que sigue en `Visor.tsx`) y `caminosTrayectoria` (usa `Path2D`, por eso no va al núcleo) en `ui/visor/capa.ts`, y `datosCsv` en `core/exportacion/datos.ts`, con `datos.test.ts` (valor conocido: relativo = filtrado − media, NaN que no pasa a 0, sin cero no hay relativo, otro plano no hay ángulo, celdas vacías en el CSV; rompiendo a propósito el NaN → 0 el test falla). `datosCsv` recibe la hora de exportación (`exportado`) en vez de leer el reloj, para ser pura. Además del DOM, se comparó el lienzo de la capa píxel a píxel (hash del `toDataURL`) entre `main` y el paso en marcados, seguido (3 frames), retroceso, trayectoria completa y escala en borrador: idéntico. Pendiente apuntado: `valida` pasa por parámetro a `dibujarCapa`; si se mueve a un sitio común (o se unifica con `esUtil` del núcleo) sobra ese parámetro.
 
 Antes del paso 8 conviene añadir las e2e que hoy faltan: «Parar» a mitad (lotes y aviso), seguir de nuevo desde un frame intermedio de un vídeo ya seguido, y que la gráfica pequeña conserve su modo.
 
@@ -262,6 +264,7 @@ Vídeos del usuario (H.264 desde un Android, Chrome para Android), sentadillas d
 - **Glosario o wiki dentro de la app** (parámetros y avisos, con enlaces desde cada aviso o valor; todo local). Recomendación: **un paso propio al principio de la fase 3** (Sonnet), porque la fase 3 añade conceptos que también hay que explicar (desfase entre vistas, sincronización por evento o por audio) y así se recuperan las notas de la gráfica (limitación 8). Alternativa: fase 6, junto a la validación, pero entonces la limitación 8 se arrastra tres fases.
 - **Partir `Visor.tsx`** (§11) al empezar la fase 3, antes de duplicar nada para la segunda vista.
 - **Vídeo grande en horizontal en el móvil** y **recordar pestaña y series en la sesión** (limitaciones 7 y 9): pasos de interfaz (Sonnet), cuando el usuario los necesite.
+- **Botón de la trayectoria completa también en la vista mixta del móvil** (tarea aparte, Sonnet, cambio visible): hoy el atajo sobre el vídeo (`trayectoria-compacta`) solo sale en el vídeo grande, donde las pestañas están ocultas; en la vista mixta el interruptor está en la pestaña «Marcar» (`ControlTrayectoria`, con los marcadores a elegir), lejos del vídeo. Falta decidir dónde cabe: arriba a la derecha ya está el botón de ampliar y el vídeo mide el 30 % de la ventana.
 
 ### Después del cierre: app instalable
 
