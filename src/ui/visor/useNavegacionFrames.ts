@@ -56,6 +56,7 @@ export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number)
 
   // Primer frame al montar. pintar() solo cambia el estado tras decodificar
   // (asíncrono), no de forma síncrona dentro del efecto.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => void pintar(), [pintar])
 
   // Sentido de la última navegación: la estela va por detrás del marcador, hacia los frames

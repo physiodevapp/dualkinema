@@ -1,3 +1,7 @@
+/* eslint-disable react-hooks/refs, react-hooks/immutability --
+ * Las trayectorias viven en una ref que se lee y se modifica durante el render (con `version` para avisar a React):
+ * es el diseño de la §11 y de la persistencia, y los mutadores de este hook son quienes la modifican. Se resolverá,
+ * o se encapsulará mejor, al duplicar las trayectorias por vista en la fase 3. */
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
 import { huecosInterpolables, interpolarHueco, quitarInterpolados as quitarInterpoladosDe } from '../../core/seguimiento/interpolar'

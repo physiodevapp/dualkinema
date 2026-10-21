@@ -11,7 +11,7 @@ export default tseslint.config(
     languageOptions: { ecmaVersion: 2023, globals: globals.browser },
   },
   {
-    files: ['src/**/*.tsx'],
+    files: ['src/**/*.tsx', 'src/ui/**/*.ts'],
     extends: [reactHooks.configs.flat.recommended],
   },
   {

@@ -1,3 +1,6 @@
+/* eslint-disable react-hooks/preserve-manual-memoization --
+ * El compilador de React no puede conservar sus `useCallback` porque dependen de refs de elementos del DOM. Código
+ * anterior al refactor. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { ALTO_MINI_PX, EXTRA_MAXIMO_PX, extraParaLlenar, siguienteGrande } from './miniGrande'
 

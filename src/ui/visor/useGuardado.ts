@@ -1,3 +1,7 @@
+/* eslint-disable react-hooks/refs --
+ * Patrón «lo último en una ref» (`actual`, `datos`): el guardado lee siempre lo último al disparar sin rehacer los
+ * efectos, y la transacción tiene que crearse de forma síncrona (ver CLAUDE.md, «Persistencia»). Código anterior al
+ * refactor. */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
