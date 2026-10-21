@@ -9,7 +9,8 @@ import {
   MUESTRAS_MINIMAS,
 } from './butterworth'
 import { splineNatural } from './spline'
-import { comoMuestras, esAjustesFiltro, filtrarTramo, filtrarTrayectoria, tramosUtiles } from './tramos'
+import { velocidadMarcador } from './derivadas'
+import { comoMuestras, esAjustesFiltro, filtrarTramo, filtrarTrayectoria, SALTO_MAX_PASOS, tramosUtiles } from './tramos'
 
 // ---- Utilidades de prueba ----
 
@@ -212,6 +213,37 @@ describe('filtrado por tramos', () => {
       expect(f.posiciones[i]!.x - (i >= 52 ? 200 : 0)).toBeCloseTo(esperada(t, 30, 6), 0)
       expect(f.posiciones[i]!.y).toBeCloseTo(-esperada(t, 30, 6), 0)
     }
+  })
+
+  it('un salto en el tiempo dentro de lo seguido corta el tramo: ni el filtro ni la derivada lo cruzan', () => {
+    // 30 fps; el móvil se salta 0,5 s tras el frame 39 y, mientras, el marcador
+    // pasa de 100 a 300 px. Quieto a cada lado: lo correcto es 100 y 300 exactos y velocidad 0.
+    const tiempos = rango(80, (i) => (i < 40 ? i : i + 15) / 30)
+    const serie = tiempos.map((t, i) => muestra(t, i < 40 ? 100 : 300, 50))
+    const f = filtrarTrayectoria(serie, 30, { corteHz: 6 })
+    expect(f.tramos.map((t) => [t.primero, t.ultimo, t.corto])).toEqual([
+      [0, 39, false],
+      [40, 79, false],
+    ])
+    for (let i = 0; i < 80; i++) expect(f.posiciones[i]!.x).toBeCloseTo(i < 40 ? 100 : 300, 6)
+    const v = velocidadMarcador(f)
+    // Sin derivada en los bordes del salto (NaN, nunca 0), y 0 dentro de cada tramo.
+    expect(Number.isNaN(v.vx[39]!)).toBe(true)
+    expect(Number.isNaN(v.vx[40]!)).toBe(true)
+    for (const i of [5, 38, 41, 75]) expect(v.vx[i]).toBeCloseTo(0, 6)
+  })
+
+  it('un frame saltado (dos pasos) no corta el tramo; tres pasos, sí', () => {
+    expect(SALTO_MAX_PASOS).toBe(2.5)
+    const conSalto = (pasos: number) => rango(30, (i) => (i < 15 ? i : i + pasos - 1) / 30)
+    const serie = (ts: number[]) => ts.map((t) => muestra(t, 1, 1))
+    expect(tramosUtiles(serie(conSalto(2)), SALTO_MAX_PASOS / 30)).toHaveLength(1)
+    expect(tramosUtiles(serie(conSalto(3)), SALTO_MAX_PASOS / 30).map((t) => [t.primero, t.ultimo])).toEqual([
+      [0, 14],
+      [15, 29],
+    ])
+    // Sin límite (por defecto), solo cortan los huecos.
+    expect(tramosUtiles(serie(conSalto(3)))).toHaveLength(1)
   })
 
   it('un perdido o una calidad baja cortan el tramo; lo marcado a mano y lo interpolado entran y siguen marcados', () => {
