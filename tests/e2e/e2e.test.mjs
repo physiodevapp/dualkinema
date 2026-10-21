@@ -2708,6 +2708,9 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await p.mouse.move(x, y + 300, { steps: 8 })
     assert.equal(await asa().getAttribute('data-desborde'), 'video')
     await p.getByTestId('aviso-ampliar').waitFor({ state: 'visible' })
+    // Con resistencia: pasado el extremo (45 %), el vídeo sigue un poco más (56 × 0,35 ≈ 20 px como mucho), no se para en seco.
+    const pasado = (await altoVideo()) - 0.45 * 844
+    assert.ok(pasado > 8 && pasado < 25, `el vídeo pasa ${pasado} px del extremo`)
     await p.mouse.up()
     await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
     await p.getByTestId('reducir-video').click()

@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from 'react'
-import { ALTO_VIDEO_DVH, altoArrastrado, altosVideo, desbordeArrastre, DOBLE_TOQUE_MS, MOVER_PX, repartoMasCercano, repartoVecino, type Reparto } from './reparto'
+import { ALTO_VIDEO_DVH, altoArrastrado, altoElastico, altosVideo, desbordeArrastre, DOBLE_TOQUE_MS, MOVER_PX, repartoMasCercano, repartoVecino, type Reparto } from './reparto'
 
 interface Props {
   readonly reparto: Reparto
@@ -67,7 +67,7 @@ export default function SeparadorVideo({ reparto, onReparto, onArrastre, lienzo,
         const dy = e.clientY - a.y0
         if (!a.movido && Math.abs(dy) < MOVER_PX) return
         a.movido = true
-        onArrastre(altoArrastrado(a.inicio, dy, a.altos))
+        onArrastre(altoElastico(a.inicio, dy, a.altos))
         const d = desbordeArrastre(a.inicio, dy, a.altos)
         if (d !== desborde) {
           setDesborde(d)
@@ -115,7 +115,7 @@ export default function SeparadorVideo({ reparto, onReparto, onArrastre, lienzo,
         <span
           role="status"
           data-testid="aviso-ampliar"
-          className={`pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-md border border-acento bg-fondo/90 px-2 py-1 text-xs whitespace-nowrap text-texto ${
+          className={`aparece pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-md border border-acento bg-fondo/90 px-2 py-1 text-xs whitespace-nowrap text-texto ${
             desborde === 'video' ? 'top-full mt-1' : 'bottom-full mb-1'
           }`}
         >

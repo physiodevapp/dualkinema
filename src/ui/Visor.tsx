@@ -52,7 +52,7 @@ import { useAltura, useAnchoMinimo } from './visor/useAltura'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
 import SeparadorVideo from './visor/SeparadorVideo'
-import { ALTO_VIDEO_DVH, esReparto, type Reparto } from './visor/reparto'
+import { ALTO_VIDEO_DVH, AMPLIAR_PX, esReparto, type Reparto } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
@@ -922,7 +922,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     // Lo que se quita al vídeo lo puede ganar la gráfica, aunque pase de su tope de siempre.
     extraMaximo:
       reparto === 'grafica' || altoArrastre !== null
-        ? EXTRA_MAXIMO_PX + Math.ceil(((ALTO_VIDEO_DVH.normal - ALTO_VIDEO_DVH.grafica) / 100) * window.innerHeight)
+        ? EXTRA_MAXIMO_PX + Math.ceil(((ALTO_VIDEO_DVH.normal - ALTO_VIDEO_DVH.grafica) / 100) * window.innerHeight) + AMPLIAR_PX
         : EXTRA_MAXIMO_PX,
   })
   const elegirReparto = useCallback((r: Reparto) => {
@@ -1214,7 +1214,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             inert={videoOculto}
             className={`flex flex-col gap-2 max-lg:z-30 max-lg:bg-fondo max-lg:transition-[opacity,visibility] max-lg:duration-200 motion-reduce:transition-none ${
               enVideo
-                ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
+                ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
                 : videoOculto
                   ? // Oculto: fuera del flujo (las tarjetas ganan su sitio), pero con su tamaño, para no desmontar ni medir 0.
                     // Se desvanece (la visibilidad cambia al acabar el fundido) mientras las pestañas suben.
@@ -1404,7 +1404,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         <div
           data-testid="vista-graficas"
           className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0 ${
-            enGraficas ? 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
+            enGraficas ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
           {enGraficas && (
