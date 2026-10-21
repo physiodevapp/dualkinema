@@ -1,9 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
-  ChevronDoubleLeftIcon,
-  ChevronDoubleRightIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   ArrowTrendingUpIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
@@ -12,7 +8,7 @@ import {
 import { CALIDAD_MINIMA } from '../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
 import { datosCsv } from '../core/exportacion/datos'
-import { relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
+import { tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
 import type { CalibracionVista } from '../core/calibracion/escala'
 import type { OrientacionVista } from '../core/geometria/canonico'
@@ -23,14 +19,11 @@ import { estadisticas, indiceMasCercano } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { huellaDe } from './sesion'
-import ControlTrayectoria from './visor/ControlTrayectoria'
 import PanelGrafica from './visor/PanelGrafica'
 import MiniGrafica from './visor/MiniGrafica'
 import LienzoVideo from './visor/LienzoVideo'
-import PanelCinematica, { DESVIACION_AVISO } from './visor/PanelCinematica'
-import PanelExportar from './visor/PanelExportar'
+import { DESVIACION_AVISO } from './visor/PanelCinematica'
 import PanelEscala from './visor/PanelEscala'
-import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura } from './visor/useAltura'
 import { useVistaMovil } from './visor/useVistaMovil'
@@ -39,7 +32,7 @@ import { useMarcado } from './visor/useMarcado'
 import { useSeguimiento, type Aviso } from './visor/useSeguimiento'
 import { useAnalisis } from './visor/useAnalisis'
 import { useEscala } from './visor/useEscala'
-import { SALTO, useNavegacionFrames } from './visor/useNavegacionFrames'
+import { useNavegacionFrames } from './visor/useNavegacionFrames'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
 import SeparadorVideo from './visor/SeparadorVideo'
@@ -48,8 +41,6 @@ import { ALTO_VIDEO_DVH, AMPLIAR_PX } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useGuardado, type SesionAbierta } from './visor/useGuardado'
 import { caminosTrayectoria, dibujarCapa } from './visor/capa'
-import { fmt, grados, valorEn } from './visor/formato'
-import BotonPaso from './visor/BotonPaso'
 import SelectorMarcadores from './visor/SelectorMarcadores'
 import BotonSeguir from './visor/BotonSeguir'
 import InterruptorAOjo from './visor/InterruptorAOjo'
@@ -62,6 +53,9 @@ import ErrorToque, { type ErrorDeToque } from './visor/ErrorToque'
 import DeslizadorFrames from './visor/DeslizadorFrames'
 import ResumenGrafica from './visor/ResumenGrafica'
 import DatosVideo from './visor/DatosVideo'
+import PanelMarcar from './visor/PanelMarcar'
+import PanelAnalisis from './visor/PanelAnalisis'
+import BarraPosicion from './visor/BarraPosicion'
 
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
@@ -247,6 +241,12 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // encenderla y cuando cambian las trayectorias o el corte; en cada frame solo se pinta.
   const [trayectoriaCompleta, setTrayectoriaCompleta] = useState(false)
   const [conTrayectoria, setConTrayectoria] = useState<ReadonlySet<IdMarcador>>(() => new Set(ids))
+  const elegirTrayectoria = (id: IdMarcador) =>
+    setConTrayectoria((c) => {
+      const n = new Set(c)
+      if (!n.delete(id)) n.add(id)
+      return n
+    })
   const caminos = useMemo(() => caminosTrayectoria(filtrado.porMarcador, trayectoriaCompleta), [filtrado.porMarcador, trayectoriaCompleta])
 
   // ---- Capa de dibujo ----
@@ -539,75 +539,21 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           {/* Móvil: barra fija abajo con los botones, la línea de posición y los valores del frame, para
               no perderlos de vista al hacer scroll. Altura fija (nada de lo que contiene cambia de
               altura). En pantalla ancha no existe como caja (contents): queda en su sitio de siempre. */}
-          <div
-            ref={barraRef}
-            data-testid="barra-fija"
-            className="max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:flex max-lg:flex-col max-lg:gap-1.5 max-lg:border-t max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pt-1.5 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:contents"
-          >
-            {/* Siempre la misma altura: una línea que no se parte (lo que no cabe se corta). Si el texto
-                cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
-                y se perdía la pulsación mantenida. En el móvil, sin «t =» ni «frame» y sin los ms (están en la pestaña
-                «Vídeo»), con el deslizador de frames en medio: tiempo, deslizador y «frame / total» en una sola fila. */}
-            <div className={`flex items-center gap-x-2 font-mono text-sm tabular-nums max-lg:h-7 lg:items-baseline lg:justify-between lg:gap-x-3`} data-testid="posicion">
-              <span className="shrink-0 whitespace-nowrap">
-                <span className="max-lg:hidden">t = </span>
-                <span className="text-acento">{t === null ? '—' : fmt(t, 3)} s</span>
-              </span>
-              <div className="min-w-0 flex-1 lg:hidden">{controlDeslizador}</div>
-              <span className="min-w-0 truncate whitespace-nowrap text-texto-2 max-lg:shrink-0">
-                <span className="max-lg:hidden">frame </span>
-                {mostrado === null ? '—' : mostrado + 1} / {total}
-                {mostrado !== deseado && ' …'}
-                {/* A la vista junto a los controles: para ver en el móvil si decodificar se frena al mantener pulsado. */}
-                {msDecodificar !== null && (
-                  <span data-testid="ms-decodificar" className="max-lg:hidden">
-                    {' '}
-                    · {fmt(msDecodificar, 0)} ms{lectura && (
-                      <>
-                        {' '}
-                        <span data-testid="lectura" className="text-xs">
-                          {lectura}
-                        </span>
-                      </>
-                    )}
-                  </span>
-                )}
-              </span>
-            </div>
-
-            {/* Valores del frame actual junto a los controles: en el móvil, el panel «Velocidad y
-                cero» queda fuera de la vista mientras se recorre el movimiento. Altura fija y sin
-                partir, para no mover los botones (se perdería la pulsación mantenida). */}
-            <dl className={`grid grid-cols-4 gap-1 rounded-md border border-borde bg-panel px-2 py-0.5 font-mono tabular-nums`} data-testid="lectura-rapida">
-              {(
-                [
-                  ['Ángulo', Number.isFinite(anguloFiltrado) ? `${grados(anguloFiltrado)}°` : '—', 'rapida-angulo'],
-                  ['Relativo', cero && Number.isFinite(anguloFiltrado) ? `${grados(relativoAlCero(anguloFiltrado, cero))}°` : '—', 'rapida-relativo'],
-                  ['°/s', valorEn(filtrado.derivadas.velocidad, mostrado, 1), 'rapida-velocidad'],
-                  ['°/s²', valorEn(filtrado.derivadas.aceleracion, mostrado, 0), 'rapida-aceleracion'],
-                ] as const
-              ).map(([etiqueta, texto, id]) => (
-                <div key={id} className="min-w-0 text-center">
-                  <dt className="truncate text-[0.65rem] leading-tight text-texto-2">{etiqueta}</dt>
-                  <dd className="truncate text-sm leading-tight whitespace-nowrap" data-testid={id}>{texto}</dd>
-                </div>
-              ))}
-            </dl>
-            <div className="flex gap-2 lg:order-2">
-              <BotonPaso etiqueta={`Retroceder ${SALTO} frames`} accion={() => mover(-SALTO)}>
-                <ChevronDoubleLeftIcon className="size-6" />
-              </BotonPaso>
-              <BotonPaso etiqueta="Frame anterior" accion={() => mover(-1)}>
-                <ChevronLeftIcon className="size-7" />
-              </BotonPaso>
-              <BotonPaso etiqueta="Frame siguiente" accion={() => mover(1)}>
-                <ChevronRightIcon className="size-7" />
-              </BotonPaso>
-              <BotonPaso etiqueta={`Avanzar ${SALTO} frames`} accion={() => mover(SALTO)}>
-                <ChevronDoubleRightIcon className="size-6" />
-              </BotonPaso>
-            </div>
-          </div>
+          <BarraPosicion
+            contenedorRef={barraRef}
+            t={t}
+            mostrado={mostrado}
+            deseado={deseado}
+            total={total}
+            msDecodificar={msDecodificar}
+            lectura={lectura}
+            deslizador={controlDeslizador}
+            anguloFiltrado={anguloFiltrado}
+            cero={cero}
+            velocidad={filtrado.derivadas.velocidad}
+            aceleracion={filtrado.derivadas.aceleracion}
+            onMover={mover}
+          />
 
           {/* En el móvil el estado del guardado va en la pestaña «Vídeo» (aquí quitaba una línea a la primera pantalla); un punto
               en esa pestaña avisa si falla. */}
@@ -708,128 +654,59 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         >
 
           <PanelPestana id="marcar" activa={pestana === 'marcar'}>
-            <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
-              <div className="flex items-baseline justify-between gap-2">
-                <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Marcadores</h2>
-                <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
-              </div>
-
-              <SelectorMarcadores marcadores={modelo.marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={setSeleccionado} />
-
-              <p className="text-sm text-texto-2">
-                {siguiendo
-                  ? 'Siguiendo los gomets…'
-                  : seleccionado && colocarAOjo
-                    ? `A ojo: el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} queda justo donde sueltas el dedo, sin ajustarse a ningún gomet. Usa la lupa para afinar.`
-                    : seleccionado
-                      ? `Toca el ${nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
-                      : listoParaSeguir
-                        ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
-                        : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
-              </p>
-
-              <InterruptorAOjo activo={colocarAOjo} deshabilitado={siguiendo} onCambiar={() => setColocarAOjo((v) => !v)} />
-
-              {/* Quitar una marca a mano equivocada de cualquier marcador, en este frame, sin elegirlo antes. */}
-              {marcasManualesAqui.length > 0 && !siguiendo && (
-                <div className="flex flex-wrap gap-2">
-                  <BotonesQuitarManual marcas={marcasManualesAqui} siguiendo={siguiendo} frame={mostrado} onQuitar={quitarManual} claseExtra="" />
-                </div>
-              )}
-
-              <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={quitarMarcasPosteriores} />
-
-              <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={seguirDesdeAqui} onParar={pararSeguimiento} />
-
-              {aviso && (
-                <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
-                  <p data-testid="aviso">{aviso.texto}</p>
-                  {aviso.detalle && (
-                    <details className="text-texto-2">
-                      <summary className="cursor-pointer">Por qué (para diagnosticar)</summary>
-                      <pre className="mt-1 font-mono text-xs whitespace-pre-wrap">{aviso.detalle}</pre>
-                    </details>
-                  )}
-                  {aviso.irA !== undefined && <BotonIrAlHueco frame={aviso.irA} onIr={ir} />}
-                </div>
-              )}
-
-              {!siguiendo && (huecosCortos.length > 0 || hayInterpolados) && (
-                <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="huecos-cortos">
-                  <AccionesHuecos huecosCortos={huecosCortos.length} hayInterpolados={hayInterpolados} onRellenar={rellenarHuecosCortos} onQuitarInterpolados={quitarInterpolados} />
-                </div>
-              )}
-
-              <ControlTrayectoria
-                activa={trayectoriaCompleta}
-                onActiva={setTrayectoriaCompleta}
-                marcadores={modelo.marcadores.map((mk, k) => ({ id: mk.id, nombre: nombreCorto(mk.nombre), color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]! }))}
-                elegidos={conTrayectoria}
-                onElegir={(id) =>
-                  setConTrayectoria((c) => {
-                    const n = new Set(c)
-                    if (!n.delete(id)) n.add(id)
-                    return n
-                  })
-                }
-              />
-
-              <div className="flex items-baseline justify-between border-t border-borde pt-3">
-                <span className="text-texto-2">{nombreCorto(articulacion.nombre.replace(/\s*\(.*\)$/, ''))}</span>
-                <span className="font-mono text-2xl" data-testid="angulo">
-                  {Number.isNaN(angulo) ? '—' : `${grados(angulo)}°`}
-                  {anguloRedondeado !== 0 && !Number.isNaN(angulo) && (
-                    <span className="ml-2 text-sm text-texto-2">{anguloRedondeado > 0 ? articulacion.positivo : articulacion.negativo}</span>
-                  )}
-                </span>
-              </div>
-            </section>
+            <PanelMarcar
+              lado={lado}
+              marcadores={modelo.marcadores}
+              estadosMarcadores={estadosMarcadores}
+              seleccionado={seleccionado}
+              onElegirMarcador={setSeleccionado}
+              siguiendo={siguiendo}
+              colocarAOjo={colocarAOjo}
+              onCambiarAOjo={() => setColocarAOjo((v) => !v)}
+              listoParaSeguir={listoParaSeguir}
+              marcasManualesAqui={marcasManualesAqui}
+              mostrado={mostrado}
+              onQuitarManual={quitarManual}
+              framesAnclas={framesAnclas}
+              onQuitarMarcasPosteriores={quitarMarcasPosteriores}
+              progresoSeguimiento={progresoSeguimiento}
+              onSeguir={seguirDesdeAqui}
+              onParar={pararSeguimiento}
+              aviso={aviso}
+              onIr={ir}
+              huecosCortos={huecosCortos.length}
+              hayInterpolados={hayInterpolados}
+              onRellenarHuecos={rellenarHuecosCortos}
+              onQuitarInterpolados={quitarInterpolados}
+              trayectoriaCompleta={trayectoriaCompleta}
+              onTrayectoriaCompleta={setTrayectoriaCompleta}
+              conTrayectoria={conTrayectoria}
+              onElegirTrayectoria={elegirTrayectoria}
+              articulacion={articulacion}
+              angulo={angulo}
+              anguloRedondeado={anguloRedondeado}
+            />
           </PanelPestana>
 
           <PanelPestana id="analisis" activa={pestana === 'analisis'}>
-            <PanelFiltro
+            <PanelAnalisis
               ajustes={ajustes}
-              onCambiar={cambiarAjustes}
-              corte={filtrado.corte}
-              fs={filtrado.fs}
-              tramosCortos={filtrado.tramosCortos}
-              anguloTexto={Number.isNaN(anguloFiltrado) ? '—' : `${grados(anguloFiltrado)}°`}
-              deshabilitado={siguiendo}
-            />
-
-            <PanelCinematica
-              angulo={anguloFiltrado}
-              relativo={cero ? relativoAlCero(anguloFiltrado, cero) : NaN}
-              velocidad={mostrado === null ? NaN : (filtrado.derivadas.velocidad[mostrado] ?? NaN)}
-              aceleracion={mostrado === null ? NaN : (filtrado.derivadas.aceleracion[mostrado] ?? NaN)}
-              marcadores={modelo.marcadores.map((mk, k) => {
-                const v = filtrado.velocidades.get(mk.id)
-                return {
-                  id: mk.id,
-                  nombre: nombreCorto(mk.nombre),
-                  color: COLORES_MARCADOR[k % COLORES_MARCADOR.length]!,
-                  velocidad: mostrado === null || !v ? NaN : (v.modulo[mostrado] ?? NaN),
-                  unidad: v?.unidad ?? 'px/s',
-                }
-              })}
-              tramo={tramoEstatico}
+              onCambiarAjustes={cambiarAjustes}
+              filtrado={filtrado}
+              anguloFiltrado={anguloFiltrado}
+              mostrado={mostrado}
+              marcadores={modelo.marcadores}
+              tramoEstatico={tramoEstatico}
               cero={cero}
               t={t}
-              t0={tabla.tiempos[0] ?? 0}
-              tn={tabla.tiempos[total - 1] ?? 0}
-              onTramo={cambiarTramo}
-              onPrimeros={() => cambiarTramo(tramoInicial(tabla.tiempos))}
-              deshabilitado={siguiendo}
+              tiempos={tabla.tiempos}
+              total={total}
+              onCambiarTramo={cambiarTramo}
+              generarCsv={generarCsv}
+              conEscala={!!calibracion}
+              mismoPlano={orientacion.plano === articulacion.plano}
+              siguiendo={siguiendo}
             />
-
-            <PanelExportar
-              generar={generarCsv}
-              resumen={`${total} frames · ${modelo.marcadores.length} marcadores · ${
-                calibracion ? 'posiciones en px y en m, velocidades en m/s' : 'sin escala: todo en píxeles'
-              }${orientacion.plano === articulacion.plano ? '' : ' · sin ángulo (la articulación es de otro plano)'}`}
-              deshabilitado={siguiendo}
-            />
-
           </PanelPestana>
 
           <PanelPestana id="escala" activa={pestana === 'escala'}>
