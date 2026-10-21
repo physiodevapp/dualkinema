@@ -34,6 +34,21 @@ export function altoArrastrado(inicio: number, dy: number, altos: Record<Reparto
   return Math.min(altos.video, Math.max(altos.grafica, inicio + dy))
 }
 
+/** Cuánto del movimiento del dedo más allá de un extremo sigue el vídeo (0 = se para en seco, 1 = sin resistencia). */
+export const ELASTICO = 0.35
+
+/**
+ * Alto del vídeo mientras se arrastra, con resistencia más allá de los extremos: sigue al dedo sin salirse (como
+ * `altoArrastrado`) y, pasado el extremo, un poco más (`ELASTICO` de lo que se tira, como mucho hasta `AMPLIAR_PX`), para
+ * que no se pare en seco. Solo es el dibujo: lo que se hace al soltar lo decide `desbordeArrastre` con el movimiento real.
+ */
+export function altoElastico(inicio: number, dy: number, altos: Record<Reparto, number>): number {
+  const alto = inicio + dy
+  if (alto > altos.video) return altos.video + Math.min(alto - altos.video, AMPLIAR_PX) * ELASTICO
+  if (alto < altos.grafica) return altos.grafica - Math.min(altos.grafica - alto, AMPLIAR_PX) * ELASTICO
+  return alto
+}
+
 /**
  * Si se ha tirado más allá de una posición extrema: hacia abajo pasado «vídeo grande», el vídeo ampliado; hacia arriba
  * pasado «gráfica grande», solo las gráficas. Si no, null (el arrastre normal).

@@ -83,3 +83,22 @@ body {
 .deslizador-frames:focus-visible::-webkit-slider-thumb {
   box-shadow: 0 0 0 2px var(--color-texto);
 }
+
+/* Fundido corto al aparecer (el aviso de «Suelta para ampliar» y las vistas ampliadas del móvil): sin él, el cambio es un
+   corte. Con «reducir movimiento», sin animación. */
+@keyframes aparecer {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.aparece {
+  animation: aparecer 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aparece {
+    animation: none;
+  }
+}
