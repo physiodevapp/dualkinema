@@ -23,6 +23,13 @@ export interface Muestra2D {
    * aparte en la franja, la gráfica y la exportación.
    */
   readonly interpolado?: boolean
+  /**
+   * Solo en lo interpolado: lo que había en ese frame antes de rellenarlo
+   * (una detección perdida o dudosa; null = no había muestra). «Quitar lo
+   * interpolado» lo devuelve tal cual. Ausente en lo rellenado antes de
+   * guardarlo (sesiones antiguas): vuelve como perdido.
+   */
+  readonly sustituida?: Muestra2D | null
 }
 
 export interface Marcador {

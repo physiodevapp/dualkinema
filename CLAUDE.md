@@ -79,7 +79,7 @@ El detalle de cómo quedó cada pieza (y por qué) está en `docs/plan-fase-1.md
 - Lo marcado a mano no se sobrescribe al seguir y es un **ancla**: «Seguir desde aquí» se lo manda al worker, que toma esa posición como cierta y vuelve a aprender el gomet.
 - «Seguir desde aquí» quita lo seguido después (no lo marcado a mano), pero si el seguimiento no llega a arrancar (gomet no reconocido, error del worker) lo devuelve. Antes de seguir se avisa de las marcas a mano posteriores (`core/seguimiento/manuales.ts`; en el panel «Marcar» y en el vídeo grande) con un botón para quitarlas: una marca de prueba o a ojo lejos del gomet hace perder el gomet desde ahí (franja en rojo hasta el final).
 - Un solo umbral decide qué posición es utilizable para el análisis: `CALIDAD_MINIMA` (0,5). Lo usan ángulo, franja, gráfica, filtrado y recuento de huecos. El seguidor acepta desde `CALIDAD_PERDIDO` (0,3) solo para no perder la continuidad; esas detecciones son «dudosas».
-- Huecos cortos: solo a petición, entre dos posiciones fiables y de `HUECO_MAX_S` (0,2 s) como mucho; lo rellenado lleva `interpolado: true`, se ve siempre distinto (azul, a trazos) y se puede quitar.
+- Huecos cortos: solo a petición, entre dos posiciones fiables y de `HUECO_MAX_S` (0,2 s) como mucho; lo rellenado lleva `interpolado: true`, se ve siempre distinto (azul, a trazos) y se puede quitar: vuelve lo que había antes (perdido, dudoso o sin muestra; `sustituida`).
 
 **Cálculo** (fase 2 §1–4)
 - Se filtran las coordenadas (Butterworth de 2.º orden ida y vuelta, corrección de Winter sobre la frecuencia ya deformada por la bilineal); ángulos y derivadas salen de lo filtrado. Corte de 6 Hz por defecto, de 2 a 15 Hz, limitado a 0,4·fps.

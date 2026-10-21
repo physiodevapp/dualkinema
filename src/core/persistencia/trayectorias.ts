@@ -21,7 +21,19 @@ export interface TrayectoriaGuardada {
   readonly manual: Uint8Array
   /** 1 si se rellenó por interpolación (desde el esquema 2). */
   readonly interpolado: Uint8Array
+  /**
+   * Lo que había antes de rellenar cada frame interpolado (`Muestra2D.sustituida`):
+   * x, y y calidad, con calidad −1 = no había muestra; NaN en lo no interpolado.
+   * Opcional (se añadió sin subir el esquema): sin ellos, lo interpolado
+   * vuelve como perdido al quitarlo, como antes.
+   */
+  readonly sustituidaX?: Float64Array
+  readonly sustituidaY?: Float64Array
+  readonly sustituidaCalidad?: Float64Array
 }
+
+/** Calidad guardada de lo sustituido cuando no había muestra. */
+const SIN_MUESTRA = -1
 
 /** Serie en memoria del visor: una muestra (o nada) por frame. */
 export type SerieFrames = readonly (Muestra2D | undefined)[]
@@ -37,6 +49,9 @@ export function empaquetarTrayectoria(serie: SerieFrames): TrayectoriaGuardada {
     calidad: new Float64Array(n),
     manual: new Uint8Array(n),
     interpolado: new Uint8Array(n),
+    sustituidaX: new Float64Array(n).fill(NaN),
+    sustituidaY: new Float64Array(n).fill(NaN),
+    sustituidaCalidad: new Float64Array(n).fill(NaN),
   }
   let k = 0
   serie.forEach((m, i) => {
@@ -48,6 +63,14 @@ export function empaquetarTrayectoria(serie: SerieFrames): TrayectoriaGuardada {
     g.calidad[k] = m.calidad
     g.manual[k] = m.editadoManual ? 1 : 0
     g.interpolado[k] = m.interpolado ? 1 : 0
+    if (m.interpolado && m.sustituida !== undefined) {
+      const s = m.sustituida
+      g.sustituidaCalidad[k] = s ? s.calidad : SIN_MUESTRA
+      if (s) {
+        g.sustituidaX[k] = s.x
+        g.sustituidaY[k] = s.y
+      }
+    }
     k++
   })
   return g
@@ -58,9 +81,17 @@ export function desempaquetarTrayectoria(g: TrayectoriaGuardada, frames: number)
   const serie: (Muestra2D | undefined)[] = new Array(frames)
   for (let k = 0; k < g.indices.length; k++) {
     const m: Muestra2D = { t: g.t[k]!, x: g.x[k]!, y: g.y[k]!, calidad: g.calidad[k]!, editadoManual: g.manual[k] === 1 }
-    serie[g.indices[k]!] = g.interpolado[k] === 1 ? { ...m, interpolado: true } : m
+    serie[g.indices[k]!] = g.interpolado[k] === 1 ? { ...m, interpolado: true, ...sustituidaDe(g, k, m.t) } : m
   }
   return serie
+}
+
+/** `{ sustituida }` de la muestra k interpolada, o nada si no se apuntó. */
+function sustituidaDe(g: TrayectoriaGuardada, k: number, t: number): { sustituida?: Muestra2D | null } {
+  const c = g.sustituidaCalidad?.[k]
+  if (c === undefined || Number.isNaN(c)) return {}
+  if (c === SIN_MUESTRA) return { sustituida: null }
+  return { sustituida: { t, x: g.sustituidaX![k]!, y: g.sustituidaY![k]!, calidad: c, editadoManual: false } }
 }
 
 /** Motivo por el que una trayectoria leída no es válida, o null si lo es. */
@@ -79,7 +110,14 @@ export function errorTrayectoria(v: unknown, frames: number): string | null {
   for (const [campo, tipo] of tipos) if (!(g[campo] instanceof tipo)) return `«${campo}» no es ${tipo.name}`
   const t = g as unknown as TrayectoriaGuardada
   const n = t.indices.length
-  for (const [campo] of tipos) if (t[campo].length !== n) return `«${campo}» no tiene ${n} valores`
+  for (const [campo] of tipos) if (t[campo]!.length !== n) return `«${campo}» no tiene ${n} valores`
+  const opcionales = ['sustituidaX', 'sustituidaY', 'sustituidaCalidad'] as const
+  const conSustituida = opcionales.filter((c) => g[c] !== undefined).length
+  if (conSustituida !== 0 && conSustituida !== opcionales.length) return '«sustituida» a medias'
+  for (const c of conSustituida ? opcionales : []) {
+    if (!(g[c] instanceof Float64Array)) return `«${c}» no es Float64Array`
+    if (t[c]!.length !== n) return `«${c}» no tiene ${n} valores`
+  }
   for (let k = 0; k < n; k++) {
     const i = t.indices[k]!
     if (i < 0 || i >= frames) return `frame ${i} fuera del vídeo (${frames} frames)`
@@ -93,6 +131,16 @@ export function errorTrayectoria(v: unknown, frames: number): string | null {
     // Perdido = NaN en x e y; si hay posición, las dos coordenadas son números.
     if (Number.isNaN(t.x[k]) !== Number.isNaN(t.y[k])) return `posición a medias en el frame ${i}`
     if (!Number.isNaN(t.x[k]) && !(Number.isFinite(t.x[k]) && Number.isFinite(t.y[k]))) return `posición infinita en el frame ${i}`
+    const sc = t.sustituidaCalidad?.[k]
+    if (sc !== undefined && !Number.isNaN(sc)) {
+      if (!t.interpolado[k]) return `«sustituida» en un frame no interpolado (${i})`
+      if (sc !== SIN_MUESTRA && !(sc >= 0 && sc <= 1)) return `calidad de lo sustituido fuera de 0–1 en el frame ${i}`
+      const sx = t.sustituidaX![k]!
+      const sy = t.sustituidaY![k]!
+      // Sin muestra: sin posición. Con ella, como arriba: perdida (NaN) o dos números.
+      const valida = sc === SIN_MUESTRA ? Number.isNaN(sx) && Number.isNaN(sy) : (Number.isNaN(sx) && Number.isNaN(sy)) || (Number.isFinite(sx) && Number.isFinite(sy))
+      if (!valida) return `lo sustituido no es válido en el frame ${i}`
+    }
   }
   return null
 }

@@ -83,7 +83,8 @@ function pendiente(
  * cada frame (fps variable): pasa por las dos posiciones fiables con la
  * pendiente que traía el marcador a cada lado. Exacto para un movimiento a
  * velocidad constante. Devuelve las muestras de los frames `antes + 1` a
- * `despues − 1`, marcadas como interpoladas.
+ * `despues − 1`, marcadas como interpoladas y con lo que sustituyen
+ * (`sustituida`), para poder deshacerlo.
  */
 export function interpolarHueco(
   serie: readonly (Muestra2D | undefined)[],
@@ -117,8 +118,27 @@ export function interpolarHueco(
         calidad: 1,
         editadoManual: false,
         interpolado: true,
+        sustituida: serie[i] ?? null,
       },
     })
   }
   return r
+}
+
+/**
+ * «Quitar lo interpolado»: cada frame rellenado vuelve a lo que había antes
+ * (la detección perdida o dudosa, o nada). Si no se sabe (rellenado en una
+ * sesión guardada antes de apuntarlo), vuelve como perdido. Cambia las
+ * series en su sitio y devuelve cuántas muestras ha devuelto.
+ */
+export function quitarInterpolados(series: Iterable<(Muestra2D | undefined)[]>): number {
+  let n = 0
+  for (const serie of series) {
+    serie.forEach((m, i) => {
+      if (!m?.interpolado) return
+      serie[i] = m.sustituida === undefined ? { t: m.t, x: NaN, y: NaN, calidad: 0, editadoManual: false } : (m.sustituida ?? undefined)
+      n++
+    })
+  }
+  return n
 }

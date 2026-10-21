@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Muestra2D } from '../modelo/tipos'
-import { HUECO_MAX_S, huecosInterpolables, interpolarHueco } from './interpolar'
+import { HUECO_MAX_S, huecosInterpolables, interpolarHueco, quitarInterpolados } from './interpolar'
 
 // 30 fps con un frame que falta tras el 9 (fps variable, como un móvil).
 const tiempos = Array.from({ length: 30 }, (_, i) => (i < 10 ? i : i + 1) / 30)
@@ -66,5 +66,40 @@ describe('interpolar un hueco', () => {
   it('se niega si un borde no es una posición fiable', () => {
     const s = serieCon(() => ({ x: 0, y: 0 }), [3, 4])
     expect(() => interpolarHueco(s, tiempos, { antes: 3, despues: 5 })).toThrow(/posiciones fiables/)
+  })
+})
+
+describe('quitar lo interpolado', () => {
+  /** Hueco de 4 frames con una detección dudosa, un frame sin muestra y dos perdidos. */
+  function conHueco() {
+    const s: (Muestra2D | undefined)[] = serieCon((t) => ({ x: 100 + 60 * t, y: 50 }), [5, 7])
+    s[4] = muestra(tiempos[4]!, 105, 52, 0.4)
+    s[6] = undefined
+    return s
+  }
+
+  it('devuelve exactamente lo que había: la dudosa con su posición, el frame sin muestra y los perdidos', () => {
+    const original = conHueco()
+    const s = [...original]
+    const [h] = huecosInterpolables(s, tiempos)
+    expect(h).toEqual({ antes: 3, despues: 8 })
+    for (const { indice, muestra: m } of interpolarHueco(s, tiempos, h!)) s[indice] = m
+    expect(s.slice(4, 8).every((m) => m?.interpolado)).toBe(true)
+    expect(s[4]!.sustituida).toEqual(original[4])
+    expect(s[6]!.sustituida).toBeNull()
+
+    expect(quitarInterpolados([s])).toBe(4)
+    expect(s).toEqual(original)
+    expect(s[4]).toMatchObject({ x: 105, y: 52, calidad: 0.4 }) // la dudosa no se pierde
+    expect(s[6]).toBeUndefined() // sin muestra ≠ perdido (celda vacía en el CSV)
+    expect(6 in s).toBe(true)
+  })
+
+  it('lo rellenado sin apuntar lo sustituido (sesiones antiguas) vuelve como perdido', () => {
+    const s: (Muestra2D | undefined)[] = [muestra(0, 1, 2), { ...muestra(1 / 30, 3, 4), interpolado: true }, muestra(2 / 30, 5, 6)]
+    expect(quitarInterpolados([s])).toBe(1)
+    expect(s[1]).toMatchObject({ t: 1 / 30, calidad: 0, editadoManual: false })
+    expect(Number.isNaN(s[1]!.x)).toBe(true)
+    expect(s[0]).toEqual(muestra(0, 1, 2))
   })
 })
