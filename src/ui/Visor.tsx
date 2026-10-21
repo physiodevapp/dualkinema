@@ -24,7 +24,7 @@ import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seg
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import { resumirSerie } from '../core/graficas/rango'
 import { seriePorFrame } from '../core/graficas/series'
-import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/tablaFrames'
+import { estadisticas, indiceMasCercano } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
 import type { AlWorker, DelWorker } from '../workers/protocolo'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
@@ -42,6 +42,7 @@ import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura } from './visor/useAltura'
 import { useVistaMovil } from './visor/useVistaMovil'
+import { SALTO, useNavegacionFrames } from './visor/useNavegacionFrames'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
 import SeparadorVideo from './visor/SeparadorVideo'
@@ -66,8 +67,6 @@ import DeslizadorFrames from './visor/DeslizadorFrames'
 import ResumenGrafica from './visor/ResumenGrafica'
 import DatosVideo from './visor/DatosVideo'
 
-const SALTO = 10
-
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
 type Seguimiento = { estado: 'parado' } | { estado: 'siguiendo'; progreso: number }
@@ -88,8 +87,14 @@ interface Props {
   avisoInicial?: string
 }
 
+/*
+ * Las trayectorias viven en una ref que se lee y se modifica durante el render (con `version` para avisar a React).
+ * El React Compiler lo marca (`refs`, `immutability`); hasta el paso 4 de la §11 no lo veía porque se paraba antes en
+ * el `set-state-in-effect` (suprimido) del pintado inicial, que ahora está en `useNavegacionFrames`. Se resuelve al
+ * sacar las trayectorias a `useTrayectorias` (paso 5).
+ */
+/* eslint-disable react-hooks/refs, react-hooks/immutability */
 export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, ceros: cerosGuardados, calibracion: calibracionGuardada, avisoInicial }: Props) {
-  const lienzo = useRef<HTMLCanvasElement>(null)
   const { info, tabla } = video
   const total = tabla.tiempos.length
 
@@ -107,16 +112,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   if (trayectorias.current.size === 0) for (const id of ids) trayectorias.current.set(id, inicial?.get(id) ?? new Array(total))
   const muestra = useCallback((id: IdMarcador, i: number) => trayectorias.current.get(id)?.[i], [])
 
-  const [deseado, setDeseado] = useState(0)
-  const [mostrado, setMostrado] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(avisoInicial ? { texto: avisoInicial } : null)
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
   // `aOjo`: dónde se tocó, para ofrecer colocarlo ahí aunque no se reconozca el gomet.
   const [errorToque, setErrorToque] = useState<ErrorDeToque | null>(null)
-  const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
-  // Cómo se consiguió el frame: de la caché, siguiendo el decodificador o desde el fotograma clave.
-  const [lectura, setLectura] = useState<string | null>(null)
   // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
   // si están todos, ninguno, para no mover uno sin querer con el primer toque.
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
@@ -125,7 +124,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
   // «Colocar a ojo»: cada toque deja el marcador justo donde se suelta el dedo, sin buscar el gomet (gomet tapado o movido).
   const [colocarAOjo, setColocarAOjo] = useState(false)
-  const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
   const huella = useMemo(() => huellaDe(video), [video])
   // Ajuste del filtro: se guarda con la sesión. `revAjustes` cuenta sus cambios
   // para que el guardado automático los vea (como `version` con las trayectorias).
@@ -172,72 +170,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     recuperada: !!inicial,
   })
 
-  // Pintado «el último gana».
-  const pedido = useRef(0)
-  const ocupado = useRef(false)
-  const pintar = useCallback(async () => {
-    if (ocupado.current) return
-    ocupado.current = true
-    try {
-      for (;;) {
-        const i = pedido.current
-        const inicio = performance.now()
-        const frame = await video.frame(i)
-        lienzo.current?.getContext('2d')?.drawImage(frame.canvas, 0, 0)
-        ultimoFrame.current = frame.canvas
-        setMsDecodificar(performance.now() - inicio)
-        const l = video.ultimaLectura
-        setLectura(!l ? null : l.modo === 'cache' ? 'caché' : l.modo === 'seguido' ? 'seguido' : 'clave')
-        setMostrado(i)
-        setError(null)
-        if (pedido.current === i) break
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      ocupado.current = false
-    }
-  }, [video])
-
-  // Primer frame al montar. pintar() solo cambia el estado tras decodificar
-  // (asíncrono), no de forma síncrona dentro del efecto.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => void pintar(), [pintar])
-
-  // Sentido de la última navegación: la estela va por detrás del marcador, hacia los frames
-  // de los que se viene (hacia atrás en el tiempo al avanzar, hacia delante al retroceder).
-  const [sentido, setSentido] = useState<1 | -1>(1)
-  const ir = useCallback(
-    (i: number) => {
-      const destino = limitarIndice(tabla, i)
-      if (destino !== pedido.current) setSentido(destino > pedido.current ? 1 : -1)
-      pedido.current = destino
-      setDeseado(destino)
-      // El error de un toque es de su frame: «Colocarlo aquí a ojo» marcaría el anterior.
-      setErrorToque((e) => (e?.aOjo?.i === destino ? e : null))
-      void pintar()
-    },
-    [tabla, pintar],
-  )
-  const mover = useCallback((d: number) => ir(pedido.current + d), [ir])
-
-  useEffect(() => {
-    const tecla = (e: KeyboardEvent) => {
-      // Las flechas de otro campo son suyas (el corte del filtro, los de texto); las del
-      // deslizador de frames, de los botones y de las pestañas mueven el frame.
-      const el = e.target instanceof Element ? e.target : null
-      if (el?.closest('input, select, textarea') && el.getAttribute('aria-label') !== 'Posición en el vídeo') return
-      const paso = e.shiftKey ? SALTO : 1
-      if (e.key === 'ArrowRight') mover(paso)
-      else if (e.key === 'ArrowLeft') mover(-paso)
-      else if (e.key === 'Home') ir(0)
-      else if (e.key === 'End') ir(total - 1)
-      else return
-      e.preventDefault()
-    }
-    window.addEventListener('keydown', tecla)
-    return () => window.removeEventListener('keydown', tecla)
-  }, [mover, ir, total])
+  // Navegación por frames: lienzo, frame pedido / mostrado / deseado, pintado «el último gana», teclado.
+  // El error de un toque es de su frame: «Colocarlo aquí a ojo» marcaría el anterior.
+  const alIr = useCallback((destino: number) => setErrorToque((e) => (e?.aOjo?.i === destino ? e : null)), [])
+  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr)
 
   // ---- Worker de seguimiento ----
   const worker = useRef<Worker | null>(null)
@@ -385,7 +321,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         return null
       }
     },
-    [mostrado, info, tabla],
+    [mostrado, info, tabla, ultimoFrame],
   )
 
   const colocar = (x: number, y: number, radio: number) => {
