@@ -54,7 +54,7 @@ import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
 import SeparadorVideo from './visor/SeparadorVideo'
 import AsaVolver from './visor/AsaVolver'
-import { ALTO_VIDEO_DVH, AMPLIAR_PX, esReparto, type Reparto } from './visor/reparto'
+import { ALTO_VIDEO_DVH, AMPLIAR_PX, esReparto, repartoAlVolver, type Reparto } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
@@ -922,6 +922,12 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         ? EXTRA_MAXIMO_PX + Math.ceil(((ALTO_VIDEO_DVH.normal - ALTO_VIDEO_DVH.grafica) / 100) * window.innerHeight) + AMPLIAR_PX
         : EXTRA_MAXIMO_PX,
   })
+  // Volver de una vista ampliada a la mixta: aterriza en el extremo del que se viene (vídeo grande o gráfica grande) para
+  // seguir viendo en grande lo que se estaba mirando. No se guarda: el reparto guardado sigue siendo el elegido a mano.
+  const volverDe = useCallback((desde: 'video' | 'graficas') => {
+    setReparto(repartoAlVolver(desde))
+    setVista('mixta')
+  }, [])
   const elegirReparto = useCallback((r: Reparto) => {
     setReparto(r)
     try {
@@ -1261,7 +1267,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             {!anchoLg && (
               <button
                 type="button"
-                onClick={() => setVista(enVideo ? 'mixta' : 'video')}
+                onClick={() => (enVideo ? volverDe('video') : setVista('video'))}
                 aria-label={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
                 title={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
                 data-testid={enVideo ? 'reducir-video' : 'ampliar-video'}
@@ -1311,7 +1317,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
           )}
           {enVideo && (
             <>
-              <AsaVolver sentido="arriba" destino="volver a la vista con gráfica" onVolver={() => setVista('mixta')} testid="asa-volver-video" />
+              <AsaVolver sentido="arriba" destino="volver a la vista con gráfica" onVolver={() => volverDe('video')} testid="asa-volver-video" />
               {nodoError}
               {tiraMarcado}
             </>
@@ -1412,13 +1418,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             enGraficas ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
-          {enGraficas && <AsaVolver sentido="abajo" destino="volver a la vista con vídeo" onVolver={() => setVista('mixta')} testid="asa-volver-graficas" />}
+          {enGraficas && <AsaVolver sentido="abajo" destino="volver a la vista con vídeo" onVolver={() => volverDe('graficas')} testid="asa-volver-graficas" />}
           {enGraficas && (
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono text-xs tracking-wider text-texto-2 uppercase">Solo gráficas</span>
               <button
                 type="button"
-                onClick={() => setVista('mixta')}
+                onClick={() => volverDe('graficas')}
                 aria-label="Volver a la vista con vídeo"
                 title="Volver a la vista con vídeo"
                 data-testid="reducir-graficas"
