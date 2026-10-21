@@ -14,7 +14,7 @@ import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exporta
 import { datosCsv } from '../core/exportacion/datos'
 import { relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
-import { escalaDesfasada, medirEntreMarcadores, type CalibracionVista } from '../core/calibracion/escala'
+import type { CalibracionVista } from '../core/calibracion/escala'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import { framesConMarcaManual } from '../core/seguimiento/manuales'
@@ -31,14 +31,14 @@ import MiniGrafica from './visor/MiniGrafica'
 import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
 import PanelCinematica, { DESVIACION_AVISO } from './visor/PanelCinematica'
 import PanelExportar from './visor/PanelExportar'
-import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './visor/PanelEscala'
-import { tocarExtremo as tocarExtremoEscala } from './visor/toquesEscala'
+import PanelEscala from './visor/PanelEscala'
 import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura } from './visor/useAltura'
 import { useVistaMovil } from './visor/useVistaMovil'
 import { useTrayectorias } from './visor/useTrayectorias'
 import { useAnalisis } from './visor/useAnalisis'
+import { useEscala } from './visor/useEscala'
 import { SALTO, useNavegacionFrames } from './visor/useNavegacionFrames'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
@@ -127,13 +127,28 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // «Colocar a ojo»: cada toque deja el marcador justo donde se suelta el dedo, sin buscar el gomet (gomet tapado o movido).
   const [colocarAOjo, setColocarAOjo] = useState(false)
   const huella = useMemo(() => huellaDe(video), [video])
-  // Escala (paso 6): la guardada y, mientras se calibra, el borrador con los extremos tocados.
-  const [calibracion, setCalibracion] = useState<CalibracionVista | null>(calibracionGuardada ?? null)
-  const [revCalibracion, setRevCalibracion] = useState(0)
-  const [borrador, setBorrador] = useState<BorradorEscala | null>(null)
-  const calibrando = borrador !== null
-  // Calibrar tocando los extremos (con «Entre dos marcadores» no se toca el vídeo).
-  const tocandoEscala = calibrando && borrador.objeto !== 'marcadores'
+  // Navegación por frames: lienzo, frame pedido / mostrado / deseado, pintado «el último gana», teclado.
+  // El error de un toque es de su frame: «Colocarlo aquí a ojo» marcaría el anterior.
+  const alIr = useCallback((destino: number) => setErrorToque((e) => (e?.aOjo?.i === destino ? e : null)), [])
+  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr)
+
+  // Escala: la guardada, el borrador mientras se calibra, los toques en los extremos y la medida entre marcadores.
+  const {
+    calibracion,
+    revCalibracion,
+    borrador,
+    setBorrador,
+    calibrando,
+    tocandoEscala,
+    frameCalibracion,
+    tocarExtremo,
+    medicion,
+    desfase,
+    framesTramo,
+    empezarEscala: empezarEscalaCon,
+    guardarEscala,
+    quitarEscala,
+  } = useEscala({ tabla, articulacion, trayectorias, version, calibracionInicial: calibracionGuardada, mostrado, ir })
   // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
   const segmentos = useMemo(() => {
     const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
@@ -182,11 +197,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     version: version + revAjustes + revCeros + revCalibracion,
     recuperada: !!inicial,
   })
-
-  // Navegación por frames: lienzo, frame pedido / mostrado / deseado, pintado «el último gana», teclado.
-  // El error de un toque es de su frame: «Colocarlo aquí a ojo» marcaría el anterior.
-  const alIr = useCallback((destino: number) => setErrorToque((e) => (e?.aOjo?.i === destino ? e : null)), [])
-  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr)
 
   // ---- Worker de seguimiento ----
   const worker = useRef<Worker | null>(null)
@@ -335,58 +345,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     setAviso(null)
   }
 
-  // ---- Escala: tocar los dos extremos del objeto ----
-  const frameCalibracion = useMemo(() => (calibracion ? indiceMasCercano(tabla, calibracion.t) : null), [calibracion, tabla])
-  const tocarExtremo = (x: number, y: number) => {
-    if (mostrado === null || !borrador) return
-    // Los dos extremos, del mismo frame: un toque en otro empieza de nuevo.
-    setBorrador(tocarExtremoEscala(borrador, { x, y }, tabla.tiempos[mostrado]!))
-  }
-  // Con «Entre dos marcadores»: posición media de los dos en el tramo, con lo seguido ahora.
-  const medicion = useMemo(() => {
-    void version
-    if (borrador?.objeto !== 'marcadores' || !borrador.entre || !borrador.tramo) return null
-    const serie = (id: IdMarcador) => trayectorias.current.get(id) ?? []
-    return medirEntreMarcadores(serie(borrador.entre.desde), serie(borrador.entre.hasta), borrador.tramo)
-  }, [borrador, version, trayectorias])
-  // La guardada, medida otra vez con lo seguido ahora: si se calibró antes de seguir, hay más frames.
-  const medicionGuardada = useMemo(() => {
-    void version
-    const entre = calibracion?.entre
-    if (!entre) return null
-    return medirEntreMarcadores(trayectorias.current.get(entre.desde) ?? [], trayectorias.current.get(entre.hasta) ?? [], entre.tramo)
-  }, [calibracion, version, trayectorias])
-  // Si lo seguido cambió en el tramo desde que se guardó (más o menos frames, marcadores corregidos), se avisa.
-  const desfase = useMemo(() => (calibracion ? escalaDesfasada(calibracion, medicionGuardada) : null), [calibracion, medicionGuardada])
-  const framesTramo = useMemo(() => {
-    const tr = borrador?.tramo
-    if (!tr) return null
-    return tabla.tiempos.reduce((n, t) => (t >= tr.desde && t <= tr.hasta ? n + 1 : n), 0)
-  }, [borrador?.tramo, tabla])
+  // ---- Escala ----
   const empezarEscala = () => {
     setErrorToque(null)
-    // Por defecto, el segmento distal (rodilla–tobillo: el gomet del trocánter se desliza más) y el tramo del cero o los primeros 2 s.
-    const entre = calibracion?.entre ? { desde: calibracion.entre.desde, hasta: calibracion.entre.hasta } : { desde: articulacion.distal.desde, hasta: articulacion.distal.hasta }
-    const tramo = calibracion?.entre?.tramo ?? ceros[articulacion.id] ?? tramoInicial(tabla.tiempos)
-    if (!calibracion) {
-      setBorrador({ objeto: 'cinta', a: null, b: null, t: null, longitud: OBJETOS.cinta.cm, entre, tramo })
-      return
-    }
-    // Rehacer: se parte de lo guardado, en su frame, para ajustar un extremo o la longitud.
-    const longitud = fmt(calibracion.longitudM * 100, 1).replace(/,0$/, '')
-    setBorrador({ objeto: calibracion.objeto, a: calibracion.a, b: calibracion.b, t: calibracion.t, longitud, entre, tramo })
-    if (frameCalibracion !== null) ir(frameCalibracion)
-  }
-  const guardarEscala = () => {
-    const r = borrador && escalaDeBorrador(borrador, medicion)
-    if (!r?.ok) return
-    setCalibracion(r.valor)
-    setRevCalibracion((v) => v + 1)
-    setBorrador(null)
-  }
-  const quitarEscala = () => {
-    setCalibracion(null)
-    setRevCalibracion((v) => v + 1)
+    empezarEscalaCon(ceros[articulacion.id])
   }
 
   // ---- Huecos cortos: rellenar a petición ----
@@ -617,10 +579,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             {tocandoEscala && !siguiendo && (
               <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
                 Escala:{' '}
-                {!borrador.a
+                {!borrador!.a
                   ? 'toca un extremo'
-                  : !borrador.b
-                    ? borrador.otroFrame
+                  : !borrador!.b
+                    ? borrador!.otroFrame
                       ? 'otro frame, empieza de nuevo: toca el otro extremo'
                       : 'toca el otro extremo'
                     : 'toca cerca de un extremo para moverlo'}
