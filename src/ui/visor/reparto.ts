@@ -10,6 +10,9 @@ export type Reparto = 'grafica' | 'normal' | 'video'
 /** Tope de alto del vídeo en cada posición, en % del alto de la ventana (`dvh`). «normal» es el de siempre. */
 export const ALTO_VIDEO_DVH: Readonly<Record<Reparto, number>> = { grafica: 20, normal: 30, video: 45 }
 
+/** Lo que hay que tirar más allá de una posición extrema (px) para que, al soltar, se pase a la vista ampliada. */
+export const AMPLIAR_PX = 56
+
 /** Lo que tiene que moverse el dedo (px) para que cuente como arrastre y no como toque. */
 export const MOVER_PX = 4
 /** Dos toques seguidos dentro de este tiempo (ms) vuelven al reparto de siempre. */
@@ -29,6 +32,17 @@ export function altosVideo(altoVentana: number, techo: number): Record<Reparto, 
 /** Alto del vídeo mientras se arrastra: el de partida más lo movido, sin salir de las posiciones extremas. */
 export function altoArrastrado(inicio: number, dy: number, altos: Record<Reparto, number>): number {
   return Math.min(altos.video, Math.max(altos.grafica, inicio + dy))
+}
+
+/**
+ * Si se ha tirado más allá de una posición extrema: hacia abajo pasado «vídeo grande», el vídeo ampliado; hacia arriba
+ * pasado «gráfica grande», solo las gráficas. Si no, null (el arrastre normal).
+ */
+export function desbordeArrastre(inicio: number, dy: number, altos: Record<Reparto, number>): 'video' | 'graficas' | null {
+  const alto = inicio + dy
+  if (alto > altos.video + AMPLIAR_PX) return 'video'
+  if (alto < altos.grafica - AMPLIAR_PX) return 'graficas'
+  return null
 }
 
 /** Posición más cercana a `alto` al soltar. Si dos coinciden (el vídeo no puede crecer más), gana «normal». */

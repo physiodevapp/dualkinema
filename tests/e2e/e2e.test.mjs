@@ -2582,7 +2582,7 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
 
   it('arrastrar hacia arriba agranda la gráfica', async () => {
     const miniAntes = await altoMini()
-    await arrastrar(-300)
+    await arrastrar(-200)
     assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
     assert.ok(Math.abs((await altoVideo()) - 0.2 * 844) <= 2, `el vídeo mide ${await altoVideo()} px`)
     assert.ok((await altoMini()) > miniAntes + 60, `la gráfica mide ${await altoMini()} px (antes ${miniAntes})`)
@@ -2600,6 +2600,48 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await p.keyboard.press('ArrowUp')
     await p.keyboard.press('ArrowUp')
     assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
+  })
+
+  it('tirar más allá de un extremo y soltar pasa a la vista ampliada; el reparto no cambia', async () => {
+    await p.evaluate(() => window.scrollTo(0, 0))
+    await asentar()
+    const antes = await asa().getAttribute('data-reparto')
+    // Hacia abajo, mucho más allá de «vídeo grande»: aviso mientras se tira y, al soltar, el vídeo ampliado.
+    const c = await asa().boundingBox()
+    const x = c.x + c.width / 2
+    const y = c.y + c.height / 2
+    await p.mouse.move(x, y)
+    await p.mouse.down()
+    await p.mouse.move(x, y + 300, { steps: 8 })
+    assert.equal(await asa().getAttribute('data-desborde'), 'video')
+    await p.getByTestId('aviso-ampliar').waitFor({ state: 'visible' })
+    await p.mouse.up()
+    await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
+    await p.getByTestId('reducir-video').click()
+    await asentar()
+    assert.equal(await asa().getAttribute('data-reparto'), antes)
+    // Hacia arriba, más allá de «gráfica grande»: solo las gráficas.
+    await arrastrar(-500)
+    await p.getByTestId('vista-graficas').waitFor({ state: 'visible' })
+    await p.getByTestId('reducir-graficas').click()
+    await asentar()
+    assert.equal(await asa().getAttribute('data-reparto'), antes)
+  })
+
+  it('pasado el margen, volver atrás sin soltar no amplía: encaja como siempre', async () => {
+    const c = await asa().boundingBox()
+    const x = c.x + c.width / 2
+    const y = c.y + c.height / 2
+    await p.mouse.move(x, y)
+    await p.mouse.down()
+    await p.mouse.move(x, y + 300, { steps: 8 })
+    assert.equal(await asa().getAttribute('data-desborde'), 'video')
+    await p.mouse.move(x, y + 5, { steps: 8 })
+    assert.equal(await asa().getAttribute('data-desborde'), null)
+    await p.mouse.up()
+    await asentar()
+    assert.equal(await p.getByTestId('reducir-video').count(), 0)
+    assert.equal(await p.getByTestId('aviso-ampliar').count(), 0)
   })
 
   it('«Cambiar vídeo» en el móvil es solo un icono (con su nombre accesible)', async () => {

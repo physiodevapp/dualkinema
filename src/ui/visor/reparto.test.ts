@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { altoArrastrado, altosVideo, esReparto, repartoMasCercano, repartoVecino } from './reparto'
+import { AMPLIAR_PX, altoArrastrado, altosVideo, desbordeArrastre, esReparto, repartoMasCercano, repartoVecino } from './reparto'
 
 describe('reparto del alto entre vídeo y gráfica', () => {
   const altos = altosVideo(1000, Infinity)
@@ -38,5 +38,17 @@ describe('reparto del alto entre vídeo y gráfica', () => {
     expect(esReparto('video')).toBe(true)
     expect(esReparto('grande')).toBe(false)
     expect(esReparto(null)).toBe(false)
+  })
+
+  it('tirar más allá de un extremo pide la vista ampliada; sin pasar del margen, no', () => {
+    // De 300 px: el extremo de abajo está en 450 y el de arriba en 200.
+    expect(desbordeArrastre(300, 150 + AMPLIAR_PX, altos)).toBeNull()
+    expect(desbordeArrastre(300, 150 + AMPLIAR_PX + 1, altos)).toBe('video')
+    expect(desbordeArrastre(300, -100 - AMPLIAR_PX, altos)).toBeNull()
+    expect(desbordeArrastre(300, -100 - AMPLIAR_PX - 1, altos)).toBe('graficas')
+  })
+
+  it('con un vídeo que ya llena el ancho, el extremo de abajo es su tope', () => {
+    expect(desbordeArrastre(250, AMPLIAR_PX + 1, altosVideo(1000, 250))).toBe('video')
   })
 })
