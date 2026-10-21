@@ -1281,7 +1281,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             )}
           </div>
           {!anchoLg && vista === 'mixta' && (
-            <SeparadorVideo reparto={reparto} onReparto={elegirReparto} onArrastre={setAltoArrastre} lienzo={lienzo} proporcion={info.alto / info.ancho} />
+            <SeparadorVideo
+              reparto={reparto}
+              onReparto={elegirReparto}
+              onArrastre={setAltoArrastre}
+              lienzo={lienzo}
+              proporcion={info.alto / info.ancho}
+              onAmpliar={setVista}
+            />
           )}
           {!anchoLg && vista === 'mixta' && (
             <MiniGrafica
