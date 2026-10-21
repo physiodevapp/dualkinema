@@ -97,3 +97,15 @@ export function repartoVecino(r: Reparto, paso: 1 | -1): Reparto {
 export const repartoAlVolver = (desde: 'video' | 'graficas'): Reparto => (desde === 'video' ? 'video' : 'grafica')
 
 export const esReparto = (v: unknown): v is Reparto => typeof v === 'string' && (ORDEN as readonly string[]).includes(v)
+
+export const CLAVE_REPARTO = 'dualkinema.repartoVideo'
+
+/** Reparto del alto entre el vídeo y la gráfica guardado en este dispositivo (el de siempre si no hay o no se puede leer). */
+export function leerReparto(): Reparto {
+  try {
+    const v = localStorage.getItem(CLAVE_REPARTO)
+    return esReparto(v) ? v : 'normal'
+  } catch {
+    return 'normal'
+  }
+}
