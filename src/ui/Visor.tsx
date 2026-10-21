@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
@@ -18,17 +18,15 @@ import type { CalibracionVista } from '../core/calibracion/escala'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import { framesConMarcaManual } from '../core/seguimiento/manuales'
-import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
 import type { AjustesFiltro } from '../core/filtros/tramos'
 import { estadisticas, indiceMasCercano } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
-import type { AlWorker, DelWorker } from '../workers/protocolo'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { huellaDe } from './sesion'
 import ControlTrayectoria from './visor/ControlTrayectoria'
 import PanelGrafica from './visor/PanelGrafica'
 import MiniGrafica from './visor/MiniGrafica'
-import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
+import LienzoVideo from './visor/LienzoVideo'
 import PanelCinematica, { DESVIACION_AVISO } from './visor/PanelCinematica'
 import PanelExportar from './visor/PanelExportar'
 import PanelEscala from './visor/PanelEscala'
@@ -37,6 +35,8 @@ import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura } from './visor/useAltura'
 import { useVistaMovil } from './visor/useVistaMovil'
 import { useTrayectorias } from './visor/useTrayectorias'
+import { useMarcado } from './visor/useMarcado'
+import { useSeguimiento, type Aviso } from './visor/useSeguimiento'
 import { useAnalisis } from './visor/useAnalisis'
 import { useEscala } from './visor/useEscala'
 import { SALTO, useNavegacionFrames } from './visor/useNavegacionFrames'
@@ -47,8 +47,8 @@ import AsaVolver from './visor/AsaVolver'
 import { ALTO_VIDEO_DVH, AMPLIAR_PX } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useGuardado, type SesionAbierta } from './visor/useGuardado'
-import { caminosTrayectoria, dibujarCapa, lectorDeCanvas } from './visor/capa'
-import { describirMotivos, fmt, grados, valorEn } from './visor/formato'
+import { caminosTrayectoria, dibujarCapa } from './visor/capa'
+import { fmt, grados, valorEn } from './visor/formato'
 import BotonPaso from './visor/BotonPaso'
 import SelectorMarcadores from './visor/SelectorMarcadores'
 import BotonSeguir from './visor/BotonSeguir'
@@ -65,7 +65,6 @@ import DatosVideo from './visor/DatosVideo'
 
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
-type Seguimiento = { estado: 'parado' } | { estado: 'siguiendo'; progreso: number }
 
 interface Props {
   video: VideoAbierto
@@ -114,23 +113,48 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     estadosFrames,
   } = useTrayectorias({ ids, tabla, inicial, valida })
 
-  const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(avisoInicial ? { texto: avisoInicial } : null)
+  const [aviso, setAviso] = useState<Aviso | null>(avisoInicial ? { texto: avisoInicial } : null)
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
   // `aOjo`: dónde se tocó, para ofrecer colocarlo ahí aunque no se reconozca el gomet.
   const [errorToque, setErrorToque] = useState<ErrorDeToque | null>(null)
-  // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
-  // si están todos, ninguno, para no mover uno sin querer con el primer toque.
-  const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
-    inicial ? (ids.find((id) => !valida(inicial.get(id)?.[0])) ?? null) : (ids[0] ?? null),
-  )
-  const [seguimiento, setSeguimiento] = useState<Seguimiento>({ estado: 'parado' })
-  // «Colocar a ojo»: cada toque deja el marcador justo donde se suelta el dedo, sin buscar el gomet (gomet tapado o movido).
-  const [colocarAOjo, setColocarAOjo] = useState(false)
   const huella = useMemo(() => huellaDe(video), [video])
   // Navegación por frames: lienzo, frame pedido / mostrado / deseado, pintado «el último gana», teclado.
   // El error de un toque es de su frame: «Colocarlo aquí a ojo» marcaría el anterior.
   const alIr = useCallback((destino: number) => setErrorToque((e) => (e?.aOjo?.i === destino ? e : null)), [])
   const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr)
+
+  // Marcado a mano: marcador elegido, «Colocar a ojo», colocar (en el gomet o a ojo), la lupa y quitar.
+  const { seleccionado, setSeleccionado, colocarAOjo, setColocarAOjo, ponerManual, previsualizar, colocar, quitarManual } = useMarcado({
+    ids,
+    tabla,
+    info,
+    inicial,
+    valida,
+    trayectorias,
+    muestra,
+    poner,
+    quitar,
+    mostrado,
+    ultimoFrame,
+    setErrorToque,
+    setAviso,
+  })
+  // Seguimiento con el worker: lotes, final con sus avisos, devolver lo quitado si no arranca, seguir y parar.
+  const { siguiendo, progresoSeguimiento, listoParaSeguir, seguirDesdeAqui, pararSeguimiento } = useSeguimiento({
+    video,
+    modelo,
+    ids,
+    trayectorias,
+    muestra,
+    valida,
+    aplicarLote,
+    borrarDespuesDe,
+    devolver,
+    mostrado,
+    setAviso,
+    setSeleccionado,
+    setErrorToque,
+  })
 
   // Escala: la guardada, el borrador mientras se calibra, los toques en los extremos y la medida entre marcadores.
   const {
@@ -180,7 +204,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     orientacion,
     segmentos,
     calibracion,
-    siguiendo: seguimiento.estado === 'siguiendo',
+    siguiendo,
     filtroInicial: filtro,
     cerosIniciales: cerosGuardados,
   })
@@ -197,153 +221,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     version: version + revAjustes + revCeros + revCalibracion,
     recuperada: !!inicial,
   })
-
-  // ---- Worker de seguimiento ----
-  const worker = useRef<Worker | null>(null)
-  // Lo seguido que «Seguir desde aquí» quitó, hasta que llega el primer lote: si el
-  // seguimiento no arranca (gomet no reconocido, error), se devuelve tal cual.
-  const quitadoAlSeguir = useRef<Map<IdMarcador, (Muestra2D | undefined)[]> | null>(null)
-  const devolverQuitado = useCallback(() => {
-    const quitado = quitadoAlSeguir.current
-    quitadoAlSeguir.current = null
-    if (!quitado) return
-    devolver(quitado)
-  }, [devolver])
-  useEffect(() => {
-    const w = new Worker(new URL('../workers/seguimiento.worker.ts', import.meta.url), { type: 'module' })
-    worker.current = w
-    w.onmessage = (e: MessageEvent<DelWorker>) => {
-      const m = e.data
-      if (m.tipo === 'muestras') {
-        if (m.lote.length) quitadoAlSeguir.current = null
-        aplicarLote(m.lote)
-        setSeguimiento({ estado: 'siguiendo', progreso: m.progreso })
-      } else if (m.tipo === 'fin') {
-        setSeguimiento({ estado: 'parado' })
-        devolverQuitado()
-        const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((x) => x.id === id)?.nombre ?? id)
-        if (m.motivo === 'inicio') {
-          setAviso({
-            texto: `No reconozco ${m.sinReconocer.map(nombre).join(' ni ')} en este frame. Vuelve a tocarlo justo encima del gomet.`,
-          })
-          setSeleccionado(m.sinReconocer[0] ?? null)
-        } else if (m.huecos.length) {
-          const primero = Math.min(...m.huecos.map((h) => h.primero))
-          setAviso({
-            texto:
-              `${m.motivo === 'final' ? 'Seguimiento completado' : 'Seguimiento parado'}, con huecos: ` +
-              m.huecos.map((h) => `${nombre(h.id)} no tiene posición fiable en ${h.frames} frame${h.frames === 1 ? '' : 's'}`).join('; ') +
-              '. Son los frames en rojo de la franja y no se rellenan. Si en alguno sí se ve el gomet, tócalo ahí y pulsa «Seguir desde aquí».',
-            detalle: m.huecos.map((h) => `${nombre(h.id)}: ${describirMotivos(h)}`).join('\n'),
-            irA: primero,
-          })
-          setSeleccionado(m.huecos[0]!.id)
-        } else {
-          setAviso({ texto: m.motivo === 'final' ? 'Seguimiento completado hasta el final del vídeo, sin huecos.' : 'Seguimiento parado.' })
-        }
-      } else {
-        setSeguimiento({ estado: 'parado' })
-        devolverQuitado()
-        setAviso({ texto: `Error en el seguimiento: ${m.mensaje}` })
-      }
-    }
-    // Si el worker no llega a cargar (p. ej. una versión nueva publicada con la app abierta)
-    // o el navegador lo cierra, no llegaría ningún mensaje y el visor quedaría «siguiendo».
-    w.onerror = (ev) => {
-      ev.preventDefault()
-      setSeguimiento({ estado: 'parado' })
-      devolverQuitado()
-      setAviso({ texto: `Error en el seguimiento: ${ev.message || 'no se ha podido cargar el proceso de seguimiento. Recarga la página.'}` })
-    }
-    return () => w.terminate()
-  }, [modelo, ir, devolverQuitado, aplicarLote])
-
-  const posicionesEn = useCallback(
-    (i: number) => ids.map((id) => ({ id, m: muestra(id, i) })),
-    [ids, muestra],
-  )
-  const listoParaSeguir = mostrado !== null && posicionesEn(mostrado).every(({ m }) => valida(m))
-
-  const seguirDesdeAqui = () => {
-    if (mostrado === null || !listoParaSeguir) return
-    // Lo seguido antes a partir de aquí se descarta; lo marcado a mano se conserva.
-    // Se guarda una copia por si el seguimiento no llega a arrancar.
-    quitadoAlSeguir.current = borrarDespuesDe(mostrado)
-    setAviso(null)
-    setErrorToque(null)
-    setSeguimiento({ estado: 'siguiendo', progreso: mostrado / Math.max(1, total - 1) })
-    // Lo marcado a mano más adelante son anclas: el seguidor las respeta y sigue desde ellas.
-    const anclas: { indice: number; id: IdMarcador; x: number; y: number }[] = []
-    for (const [id, serie] of trayectorias.current) {
-      for (let i = mostrado + 1; i < total; i++) {
-        const m = serie[i]
-        if (m?.editadoManual && Number.isFinite(m.x)) anclas.push({ indice: i, id, x: m.x, y: m.y })
-      }
-    }
-    const msg: AlWorker = {
-      tipo: 'seguir',
-      archivo: video.archivo,
-      desde: mostrado,
-      posiciones: posicionesEn(mostrado).map(({ id, m }) => ({ id, x: m!.x, y: m!.y })),
-      anclas,
-    }
-    worker.current?.postMessage(msg)
-  }
-
-  /** Guarda una posición marcada a mano y pasa al siguiente marcador que falte en el frame. */
-  const ponerManual = (id: IdMarcador, i: number, x: number, y: number) => {
-    const serie = trayectorias.current.get(id)!
-    poner(id, i, x, y)
-    setErrorToque(null)
-    const falta = ids.find((otro) => otro !== id && !valida(muestra(otro, i)))
-    setSeleccionado(falta ?? null)
-    // Una corrección con lo seguido detrás: se puede rehacer desde aquí con ella como ancla.
-    const seguidoDespues = serie.some((m, k) => k > i && m !== undefined && !m.editadoManual)
-    setAviso(
-      seguidoDespues && !falta
-        ? { texto: 'Corregido. Para rehacer lo que viene después a partir de aquí, pulsa «Seguir desde aquí»: respeta todo lo marcado a mano.' }
-        : null,
-    )
-  }
-
-  /** Dónde quedaría el marcador si se suelta en (x, y): centro y radio del gomet, o null si no hay. */
-  const previsualizar = useCallback(
-    (x: number, y: number, radio: number): Previsualizacion => {
-      if (mostrado === null || !ultimoFrame.current) return null
-      try {
-        const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, tabla.tiempos[mostrado]!, x, y, { radioSemilla: radio })
-        return { x: r.x, y: r.y, r: radioDe(r.estado.area) }
-      } catch {
-        return null
-      }
-    },
-    [mostrado, info, tabla, ultimoFrame],
-  )
-
-  const colocar = (x: number, y: number, radio: number) => {
-    if (mostrado === null || !seleccionado || !ultimoFrame.current) return
-    if (colocarAOjo) {
-      ponerManual(seleccionado, mostrado, x, y)
-      return
-    }
-    const t = tabla.tiempos[mostrado]!
-    try {
-      // Se lleva el marcador al centro del gomet que se ve en la lupa (el mismo que marcaba el anillo).
-      const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, t, x, y, { radioSemilla: radio })
-      ponerManual(seleccionado, mostrado, r.x, r.y)
-    } catch (e) {
-      setErrorToque(
-        e instanceof ErrorMarcado
-          ? { texto: e.message, detalle: e.detalle, aOjo: { id: seleccionado, i: mostrado, x, y } }
-          : { texto: `No se ha podido marcar: ${String(e)}` },
-      )
-    }
-  }
-
-  const quitarManual = (id: IdMarcador, i: number) => {
-    quitar(id, i)
-    setAviso(null)
-  }
 
   // ---- Escala ----
   const empezarEscala = () => {
@@ -420,7 +297,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     [tabla, ir],
   )
   const t = mostrado === null ? null : tabla.tiempos[mostrado]!
-  const siguiendo = seguimiento.estado === 'siguiendo'
 
   // Pestañas de herramientas. Un punto en el nombre avisa de lo que pide atención aunque no se vea.
   const [pestana, setPestana] = useState('marcar')
@@ -491,8 +367,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
     return valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
   })
-  const pararSeguimiento = () => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)
-  const progresoSeguimiento = seguimiento.estado === 'siguiendo' ? seguimiento.progreso : 0
 
   // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
   const extrasCompactos =
