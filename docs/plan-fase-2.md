@@ -264,6 +264,7 @@ Vídeos del usuario (H.264 desde un Android, Chrome para Android), sentadillas d
 - **Glosario o wiki dentro de la app** (parámetros y avisos, con enlaces desde cada aviso o valor; todo local). Recomendación: **un paso propio al principio de la fase 3** (Sonnet), porque la fase 3 añade conceptos que también hay que explicar (desfase entre vistas, sincronización por evento o por audio) y así se recuperan las notas de la gráfica (limitación 8). Alternativa: fase 6, junto a la validación, pero entonces la limitación 8 se arrastra tres fases.
 - **Partir `Visor.tsx`** (§11) al empezar la fase 3, antes de duplicar nada para la segunda vista.
 - **Vídeo grande en horizontal en el móvil** y **recordar pestaña y series en la sesión** (limitaciones 7 y 9): pasos de interfaz (Sonnet), cuando el usuario los necesite.
+- **Botón de la trayectoria completa también en la vista mixta del móvil** (tarea aparte, Sonnet, cambio visible): hoy el atajo sobre el vídeo (`trayectoria-compacta`) solo sale en el vídeo grande, donde las pestañas están ocultas; en la vista mixta el interruptor está en la pestaña «Marcar» (`ControlTrayectoria`, con los marcadores a elegir), lejos del vídeo. Falta decidir dónde cabe: arriba a la derecha ya está el botón de ampliar y el vídeo mide el 30 % de la ventana.
 
 ### Después del cierre: app instalable
 
