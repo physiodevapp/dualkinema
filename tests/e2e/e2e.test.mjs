@@ -407,6 +407,92 @@ describe('progreso del seguimiento: en la franja del deslizador y en «Parar»',
   })
 })
 
+/**
+ * Frena el worker de seguimiento: cada lectura de píxeles tarda `ms` más. El seguimiento del vídeo sintético dura
+ * menos de un segundo; frenado, dura varios y da tiempo a mirar y a tocar a medias (frenar la CPU no frena el worker).
+ */
+async function frenarWorker(p, ms = 15) {
+  await p.context().route('**/seguimiento.worker-*.js', async (ruta) => {
+    const r = await ruta.fetch()
+    const freno = `{ const g = OffscreenCanvasRenderingContext2D.prototype.getImageData
+      OffscreenCanvasRenderingContext2D.prototype.getImageData = function (...a) {
+        const fin = performance.now() + ${ms}; while (performance.now() < fin); return g.apply(this, a) } }\n`
+    await ruta.fulfill({ response: r, body: freno + (await r.text()) })
+  })
+}
+
+describe('«Parar» a mitad del seguimiento', () => {
+  let p
+  const verdad = () => videos.verde.verdad
+  before(async () => {
+    p = await abrirApp(navegador, { ancho: 1280 })
+    await frenarWorker(p)
+    await cargarVideo(p, videos.verde.ruta)
+    await marcarTres(p, verdad()[0].ps)
+  })
+  after(() => p?.close())
+
+  it('se queda lo seguido hasta parar (con el ángulo real), lo de después sin seguir, y se avisa', async () => {
+    await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+    // Varios lotes del worker ya aplicados: el porcentaje de «Parar» pasa del 30 %.
+    await p.waitForFunction(() => Number.parseInt(document.querySelector('[data-testid=progreso-seguimiento]')?.textContent ?? '0') >= 30, null, {
+      timeout: 60000,
+    })
+    await p.getByRole('button', { name: /^Parar/ }).click()
+    await p.getByTestId('aviso').waitFor({ timeout: 30000 })
+    const aviso = (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
+    assert.match(aviso, /^Seguimiento parado/, `aviso: «${aviso}»`)
+    assert.doesNotMatch(aviso, /completado/)
+    assert.equal(await p.getByTestId('progreso-seguimiento').count(), 0)
+    await p.getByRole('button', { name: 'Seguir desde aquí' }).waitFor()
+    // Lo seguido antes de parar se conserva y es el ángulo real.
+    for (const i of [1, 20]) {
+      await irAFrame(p, i)
+      const medido = await leerAngulo(p)
+      assert.ok(Math.abs(medido - verdad()[i].flexion) < TOLERANCIA_GRADOS, `frame ${i + 1}: ${medido}°, real ${verdad()[i].flexion.toFixed(2)}°`)
+    }
+    // Lo que no llegó a seguirse queda sin posición: sin ángulo, nada inventado.
+    await irAFrame(p, verdad().length - 1)
+    assert.ok(Number.isNaN(await leerAngulo(p)), 'el último frame no se llegó a seguir y tiene ángulo')
+  })
+
+  it('seguir desde un frame ya seguido termina el vídeo con el ángulo real', async () => {
+    await irAFrame(p, 20)
+    const aviso = await seguirHastaElFinal(p)
+    assert.match(aviso, /completado hasta el final del vídeo, sin huecos/, `aviso: «${aviso}»`)
+    for (const i of [60, 100, verdad().length - 1]) {
+      await irAFrame(p, i)
+      const medido = await leerAngulo(p)
+      assert.ok(Math.abs(medido - verdad()[i].flexion) < TOLERANCIA_GRADOS, `frame ${i + 1}: ${medido}°, real ${verdad()[i].flexion.toFixed(2)}°`)
+    }
+  })
+})
+
+describe('seguir de nuevo desde un frame intermedio de un vídeo ya seguido', () => {
+  it('lo de antes no cambia, lo de después se rehace con el ángulo real y no quedan huecos', async () => {
+    const { p } = await seguirVideo(videos.verde)
+    try {
+      const verdad = videos.verde.verdad
+      await irAFrame(p, 20)
+      const antes20 = await textoDe(p, 'angulo')
+      await irAFrame(p, 60)
+      const aviso = await seguirHastaElFinal(p)
+      assert.match(aviso, /completado hasta el final del vídeo, sin huecos/, `aviso: «${aviso}»`)
+      // Antes del frame de partida no se toca nada (mismo texto, no solo el mismo valor redondeado a la tolerancia).
+      await irAFrame(p, 20)
+      assert.equal(await textoDe(p, 'angulo'), antes20)
+      for (const i of [61, 90, verdad.length - 1]) {
+        await irAFrame(p, i)
+        const medido = await leerAngulo(p)
+        assert.ok(Math.abs(medido - verdad[i].flexion) < TOLERANCIA_GRADOS, `frame ${i + 1}: ${medido}°, real ${verdad[i].flexion.toFixed(2)}°`)
+      }
+      assert.doesNotMatch(await p.getByTestId('resumen-grafica').innerText(), /sin valor/)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('seguimiento con gomets rojos sobre piel', () => {
   let p
   let aviso
@@ -2055,6 +2141,42 @@ describe('gráfica pequeña del móvil: ángulo, velocidad o las dos normalizada
       await esperarQuieto(p)
       const esperado = frameMasCercano(tiempos, tiempos[0] + 0.5 * (tiempos.at(-1) - tiempos[0])) + 1
       assert.ok(Math.abs((await leerPosicion(p)).frame - esperado) <= 1)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('gráfica pequeña del móvil: conserva su modo', () => {
+  it('al cambiar de frame, de pestaña, al desplazarse y al volver a seguir sigue en el modo elegido', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
+    try {
+      const modo = (id) => p.getByTestId(`minigrafica-modo-${id}`)
+      const enVelocidad = async (cuando) => {
+        assert.equal(await modo('velocidad').getAttribute('aria-pressed'), 'true', `${cuando}: la gráfica pequeña ha dejado el modo velocidad`)
+        assert.equal(await modo('angulo').getAttribute('aria-pressed'), 'false', cuando)
+      }
+      await p.evaluate(() => window.scrollTo(0, 0))
+      await modo('velocidad').click()
+      await enVelocidad('al elegirlo')
+      await irAFrame(p, 40)
+      await enVelocidad('al cambiar de frame')
+      for (const id of ['analisis', 'escala', 'video', 'marcar']) {
+        await abrirPestana(p, id)
+        await enVelocidad(`en la pestaña ${id}`)
+      }
+      // Bajar (la gráfica vuelve a su alto de siempre y el vídeo se puede ocultar) y volver arriba (crece otra vez).
+      await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      await p.waitForFunction(() => document.querySelector('[data-testid=visor-fijo]').dataset.grande === 'false')
+      await esperarVideoAsentado(p)
+      await p.evaluate(() => window.scrollTo(0, 0))
+      await p.waitForFunction(() => document.querySelector('[data-testid=visor-fijo]').dataset.grande === 'true')
+      await esperarVideoAsentado(p, false)
+      await enVelocidad('al bajar y volver arriba')
+      // Seguir de nuevo desde un frame intermedio: llegan lotes del worker y se rehace lo filtrado.
+      await irAFrame(p, 60)
+      await seguirHastaElFinal(p)
+      await enVelocidad('al volver a seguir')
     } finally {
       await p.close()
     }
