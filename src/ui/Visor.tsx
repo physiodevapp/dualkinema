@@ -9,20 +9,17 @@ import {
   ArrowsPointingOutIcon,
   VideoCameraIcon,
 } from '@heroicons/react/24/outline'
-import { CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
+import { CALIDAD_MINIMA } from '../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
 import { datosCsv } from '../core/exportacion/datos'
-import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
+import { relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
-import { escalaDesfasada, medirEntreMarcadores, metrosPorPx, type CalibracionVista } from '../core/calibracion/escala'
-import { constanciaSegmento } from '../core/calibracion/segmentos'
+import { escalaDesfasada, medirEntreMarcadores, type CalibracionVista } from '../core/calibracion/escala'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import { framesConMarcaManual } from '../core/seguimiento/manuales'
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
-import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
-import { resumirSerie } from '../core/graficas/rango'
-import { seriePorFrame } from '../core/graficas/series'
+import type { AjustesFiltro } from '../core/filtros/tramos'
 import { estadisticas, indiceMasCercano } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
 import type { AlWorker, DelWorker } from '../workers/protocolo'
@@ -41,6 +38,7 @@ import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura } from './visor/useAltura'
 import { useVistaMovil } from './visor/useVistaMovil'
 import { useTrayectorias } from './visor/useTrayectorias'
+import { useAnalisis } from './visor/useAnalisis'
 import { SALTO, useNavegacionFrames } from './visor/useNavegacionFrames'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
@@ -48,7 +46,6 @@ import SeparadorVideo from './visor/SeparadorVideo'
 import AsaVolver from './visor/AsaVolver'
 import { ALTO_VIDEO_DVH, AMPLIAR_PX } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
-import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type SesionAbierta } from './visor/useGuardado'
 import { caminosTrayectoria, dibujarCapa, lectorDeCanvas } from './visor/capa'
 import { describirMotivos, fmt, grados, valorEn } from './visor/formato'
@@ -130,30 +127,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // «Colocar a ojo»: cada toque deja el marcador justo donde se suelta el dedo, sin buscar el gomet (gomet tapado o movido).
   const [colocarAOjo, setColocarAOjo] = useState(false)
   const huella = useMemo(() => huellaDe(video), [video])
-  // Ajuste del filtro: se guarda con la sesión. `revAjustes` cuenta sus cambios
-  // para que el guardado automático los vea (como `version` con las trayectorias).
-  const [ajustes, setAjustes] = useState<AjustesFiltro>(filtro ?? AJUSTES_FILTRO_DEFECTO)
-  const [revAjustes, setRevAjustes] = useState(0)
-  const cambiarAjustes = useCallback((a: AjustesFiltro) => {
-    setAjustes(a)
-    setRevAjustes((r) => r + 1)
-  }, [])
-  // Cero de referencia (paso 5): tramo estático por articulación; se guarda
-  // el tramo y la media se recalcula con lo filtrado.
-  const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>(cerosGuardados ?? {})
-  const [revCeros, setRevCeros] = useState(0)
-  const cambiarTramo = useCallback(
-    (tramo: TramoEstatico | null) => {
-      setCeros((c) => {
-        const r: Record<string, TramoEstatico> = { ...c }
-        if (tramo) r[articulacion.id] = tramo
-        else delete r[articulacion.id]
-        return r
-      })
-      setRevCeros((r) => r + 1)
-    },
-    [articulacion.id],
-  )
   // Escala (paso 6): la guardada y, mientras se calibra, el borrador con los extremos tocados.
   const [calibracion, setCalibracion] = useState<CalibracionVista | null>(calibracionGuardada ?? null)
   const [revCalibracion, setRevCalibracion] = useState(0)
@@ -161,6 +134,41 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const calibrando = borrador !== null
   // Calibrar tocando los extremos (con «Entre dos marcadores» no se toca el vídeo).
   const tocandoEscala = calibrando && borrador.objeto !== 'marcadores'
+  // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
+  const segmentos = useMemo(() => {
+    const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
+    return [articulacion.proximal, articulacion.distal].map((s) => ({ desde: s.desde, hasta: s.hasta, nombre: `${nombre(s.desde)} – ${nombre(s.hasta)}` }))
+  }, [modelo, articulacion])
+  // Análisis: ajuste del filtro, cero de referencia, serie del ángulo, lo filtrado, series por frame y segmentos.
+  const {
+    ajustes,
+    cambiarAjustes,
+    revAjustes,
+    ceros,
+    cambiarTramo,
+    revCeros,
+    resumen,
+    filtrado,
+    crudoPorFrame,
+    filtradoPorFrame,
+    tramoEstatico,
+    cero,
+    constancia,
+    seriesSegmentos,
+    instantesInterpolados,
+  } = useAnalisis({
+    trayectorias,
+    version,
+    ids,
+    tabla,
+    articulacion,
+    orientacion,
+    segmentos,
+    calibracion,
+    siguiendo: seguimiento.estado === 'siguiendo',
+    filtroInicial: filtro,
+    cerosIniciales: cerosGuardados,
+  })
   const guardado = useGuardado({
     sesion,
     huella,
@@ -334,11 +342,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     // Los dos extremos, del mismo frame: un toque en otro empieza de nuevo.
     setBorrador(tocarExtremoEscala(borrador, { x, y }, tabla.tiempos[mostrado]!))
   }
-  // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
-  const segmentos = useMemo(() => {
-    const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
-    return [articulacion.proximal, articulacion.distal].map((s) => ({ desde: s.desde, hasta: s.hasta, nombre: `${nombre(s.desde)} – ${nombre(s.hasta)}` }))
-  }, [modelo, articulacion])
   // Con «Entre dos marcadores»: posición media de los dos en el tramo, con lo seguido ahora.
   const medicion = useMemo(() => {
     void version
@@ -401,29 +404,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   }
 
   // ---- Ángulo actual ----
-  // Serie completa del ángulo para la gráfica: misma regla de huecos que el valor
-  // en directo (marcador ausente o perdido = sin valor). Lo interpolado a
-  // petición tiene valor, pero va marcado y se dibuja aparte.
-  const serie = useMemo(() => {
-    void version
-    if (orientacion.plano !== articulacion.plano) return []
-    const porMarcador: Record<IdMarcador, Muestra2D[]> = {}
-    for (const id of ids) porMarcador[id] = (trayectorias.current.get(id) ?? []).filter((m): m is Muestra2D => m !== undefined)
-    return serieAngular(articulacion, porMarcador, orientacion)
-  }, [version, ids, orientacion, articulacion, trayectorias])
-  const resumen = useMemo(() => resumirSerie(serie), [serie])
-  const filtrado = useFiltrado({
-    trayectorias,
-    version,
-    ids,
-    tabla,
-    ajustes,
-    articulacion,
-    orientacion,
-    metrosPorPx: calibracion ? metrosPorPx(calibracion) : null,
-    siguiendo: seguimiento.estado === 'siguiendo',
-  })
-
   // Trayectoria completa de cada marcador, con lo filtrado: se prepara aquí al
   // encenderla y cuando cambian las trayectorias o el corte; en cada frame solo se pinta.
   const [trayectoriaCompleta, setTrayectoriaCompleta] = useState(false)
@@ -439,9 +419,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     [version, mostrado, sentido, total, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion, trayectoriaCompleta, conTrayectoria, caminos],
   )
 
-  // Las series de la gráfica, un valor por frame.
-  const crudoPorFrame = useMemo(() => seriePorFrame(serie, tabla.tiempos), [serie, tabla])
-  const filtradoPorFrame = useMemo(() => seriePorFrame(filtrado.serie, tabla.tiempos), [filtrado.serie, tabla])
   // El valor del frame sale de las mismas series que la gráfica y el CSV (una sola
   // fuente: antes se recalculaba aparte y podía quedar 360° desplazado de la curva).
   const angulo = mostrado === null ? NaN : (crudoPorFrame.valores[mostrado] ?? NaN)
@@ -449,27 +426,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // Redondeado a la décima que se muestra (+ 0 evita «−0,0»), para que la etiqueta
   // (flexión / hiperextensión) concuerde con el número visible.
   const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
-  const tramoEstatico = ceros[articulacion.id] ?? null
-  const cero = useMemo(() => (tramoEstatico ? ceroDeReferencia(filtrado.serie, tramoEstatico) : null), [tramoEstatico, filtrado.serie])
-  // Longitud de cada segmento a lo largo del vídeo, con lo filtrado (menos ruido que lo crudo).
-  const constancia = useMemo(
-    () =>
-      segmentos.map((s) => ({
-        segmento: s,
-        c: constanciaSegmento(filtrado.porMarcador.get(s.desde)?.posiciones ?? [], filtrado.porMarcador.get(s.hasta)?.posiciones ?? []),
-      })),
-    [segmentos, filtrado.porMarcador],
-  )
-  const seriesSegmentos = useMemo(
-    () =>
-      constancia.map(({ segmento: s, c }) => ({
-        id: `${s.desde}-${s.hasta}`,
-        nombre: s.nombre,
-        relativa: c?.relativa ?? [],
-        interpolado: c?.interpolado ?? [],
-      })),
-    [constancia],
-  )
   const est = useMemo(() => estadisticas(tabla), [tabla])
   const generarCsv = useCallback(
     (formato: FormatoCsv) => {
@@ -494,7 +450,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     },
     [orientacion, articulacion, filtrado, tabla, modelo, crudoPorFrame, filtradoPorFrame, cero, calibracion, info, est, ajustes, series],
   )
-  const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
     (t: number) => {
       const i = indiceMasCercano(tabla, t)
