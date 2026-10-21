@@ -63,7 +63,7 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 | `exportacion/` | CSV |
 | `persistencia/` | huella del archivo, trayectorias empaquetadas, esquema con versión y migraciones |
 
-Interfaz: `src/ui/App.tsx` (portada, apertura, recuperar), `src/ui/Visor.tsx` (estado del visor; ver la propuesta para partirlo en `docs/plan-fase-2.md`) y sus piezas en `src/ui/visor/`. IndexedDB en `src/persistencia/almacen.ts`.
+Interfaz: `src/ui/App.tsx` (portada, apertura, recuperar), `src/ui/Visor.tsx` (estado del visor; se está partiendo por pasos, ver `docs/plan-fase-2.md` §11) y sus piezas en `src/ui/visor/` (ayudas de formato en `formato.ts`; dibujo sobre el lienzo en `capa.ts`). IndexedDB en `src/persistencia/almacen.ts`.
 
 El detalle de cómo quedó cada pieza (y por qué) está en `docs/plan-fase-1.md` y `docs/plan-fase-2.md`. Léelo antes de tocar una pieza.
 

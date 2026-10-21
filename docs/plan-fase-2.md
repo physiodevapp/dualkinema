@@ -145,7 +145,7 @@ Junto al número de frame se ven los ms y cómo salió (`caché`, `seguido`, `cl
 | D7 | Formato CSV | `;` y coma decimal por defecto; el internacional como opción |
 | D8 | Pruebas e2e | En el repo y en la CI |
 
-## 11. Propuesta: partir `Visor.tsx` sin cambiar el comportamiento (no hecho)
+## 11. Propuesta: partir `Visor.tsx` sin cambiar el comportamiento (en curso: paso 0 hecho)
 
 `src/ui/Visor.tsx` tiene unas 1.500 líneas: navegación por frames, worker de seguimiento, marcado, escala, filtrado, guardado, distribución del móvil y del escritorio y el JSX de todo. Funciona y está cubierto por las e2e, pero cada cambio obliga a leerlo entero y React reconcilia todo el árbol en cada frame (ningún panel usa `memo`). Propuesta en pasos pequeños, **un PR cada uno o dos**, cada uno sin cambiar nada visible:
 
@@ -165,6 +165,8 @@ Reglas para todos los pasos: se conservan todos los `data-testid`, el orden del 
 | 9 | Componentes grandes: `PanelMarcar`, `PanelAnalisis`, `BarraPosicion` (altura fija); después, `memo` en los paneles con props estables | alto (distribución) | 2 h | barra fija, pestañas, columna de herramientas, escritorio sin scroll, barras de desplazamiento | Sonnet |
 
 Total: unos 2–3 días repartidos. Orden recomendado: 0–2 primero (quitan la duplicación sin tocar estado), luego 4, 5 y 8, que son los que más se tocarán en la fase 3 (dos vídeos = dos navegaciones, dos juegos de trayectorias y un seguimiento por vista). **Recomendación: hacerlo al empezar la fase 3, antes de duplicar nada por la segunda vista**, no como tarea suelta.
+
+**Hecho — paso 0.** `visor/formato.ts` (`fmt`, `grados`, `valorEn`, `hora`, `describirMotivos`), `visor/capa.ts` (`lectorDeCanvas`, `dibujarSegmentoEscala`), `visor/BotonPaso.tsx`, `visor/TextoGuardado.tsx`, y `leerReparto` / `CLAVE_REPARTO` en `visor/reparto.ts`. `valida` sigue en `Visor.tsx` (se parece a `esUtil` del núcleo; unificarlas no era de este paso). Se comprobó además que el DOM no cambia: `outerHTML` de `main` y del paso, idéntico en 31 estados (390 y 1280 px; mixta, vídeo grande y solo gráficas; las cuatro pestañas; vídeo seguido, error de toque, huecos cortos, interpolado, marca a mano y anclas).
 
 Antes del paso 8 conviene añadir las e2e que hoy faltan: «Parar» a mitad (lotes y aviso), seguir de nuevo desde un frame intermedio de un vídeo ya seguido, y que la gráfica pequeña conserve su modo.
 

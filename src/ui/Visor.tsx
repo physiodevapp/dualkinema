@@ -7,8 +7,6 @@ import {
   ArrowTrendingUpIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
-  CheckIcon,
-  ExclamationTriangleIcon,
   PlayIcon,
   SparklesIcon,
   StopIcon,
@@ -19,12 +17,10 @@ import { CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
 import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
-import { escalaDesfasada, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
+import { escalaDesfasada, medirEntreMarcadores, metrosPorPx, type CalibracionVista } from '../core/calibracion/escala'
 import { constanciaSegmento } from '../core/calibracion/segmentos'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
-import type { LeerVentana } from '../core/seguimiento/imagen'
-import type { MotivoHueco } from '../core/seguimiento/huecos'
 import { huecosInterpolables, HUECO_MAX_S, interpolarHueco, quitarInterpolados as quitarInterpoladosDe } from '../core/seguimiento/interpolar'
 import { framesConMarcaManual, quitarMarcasManuales } from '../core/seguimiento/manuales'
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
@@ -34,10 +30,9 @@ import { seriePorFrame } from '../core/graficas/series'
 import { polilineasTrayectoria } from '../core/graficas/trayectoria'
 import { estadisticas, indiceMasCercano, limitarIndice } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
-import type { AlWorker, DelWorker, Hueco } from '../workers/protocolo'
+import type { AlWorker, DelWorker } from '../workers/protocolo'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { huellaDe } from './sesion'
-import { useRepetir } from './useRepetir'
 import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
 import ControlTrayectoria from './visor/ControlTrayectoria'
 import PanelGrafica from './visor/PanelGrafica'
@@ -54,128 +49,21 @@ import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
 import SeparadorVideo from './visor/SeparadorVideo'
 import AsaVolver from './visor/AsaVolver'
-import { ALTO_VIDEO_DVH, AMPLIAR_PX, esReparto, type Reparto } from './visor/reparto'
+import { ALTO_VIDEO_DVH, AMPLIAR_PX, CLAVE_REPARTO, leerReparto, type Reparto } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useFiltrado } from './visor/useFiltrado'
-import { useGuardado, type EstadoGuardado, type SesionAbierta } from './visor/useGuardado'
+import { useGuardado, type SesionAbierta } from './visor/useGuardado'
+import { dibujarSegmentoEscala, lectorDeCanvas } from './visor/capa'
+import { describirMotivos, fmt, grados, valorEn } from './visor/formato'
+import BotonPaso from './visor/BotonPaso'
+import TextoGuardado from './visor/TextoGuardado'
 
 const SALTO = 10
 const ESTELA = 20 // frames de trayectoria dibujados por detrás, en el sentido en que se recorre el vídeo
 
-const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
-/** Grados con una decimal sin «−0,0» (un valor entre −0,05 y 0 se muestra 0,0). */
-const grados = (n: number) => fmt(Math.round(n * 10) / 10 + 0, 1)
-/** Valor de una serie por frame con d decimales, «—» si no hay (NaN o sin frame). */
-const valorEn = (serie: ArrayLike<number>, i: number | null, d: number) => {
-  const v = i === null ? NaN : (serie[i] ?? NaN)
-  return Number.isFinite(v) ? fmt(Math.round(v * 10 ** d) / 10 ** d + 0, d) : '—'
-}
-const CLAVE_REPARTO = 'dualkinema.repartoVideo'
-
-/** Reparto del alto entre el vídeo y la gráfica guardado en este dispositivo (el de siempre si no hay o no se puede leer). */
-function leerReparto(): Reparto {
-  try {
-    const v = localStorage.getItem(CLAVE_REPARTO)
-    return esReparto(v) ? v : 'normal'
-  } catch {
-    return 'normal'
-  }
-}
-
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
-function BotonPaso({ etiqueta, accion, children }: { etiqueta: string; accion: () => void; children: React.ReactNode }) {
-  const manejadores = useRepetir(accion)
-  return (
-    <button
-      type="button"
-      aria-label={etiqueta}
-      title={etiqueta}
-      {...manejadores}
-      className="flex h-11 flex-1 touch-manipulation lg:h-14 items-center justify-center rounded-md border border-borde bg-panel select-none active:border-acento active:text-acento"
-    >
-      {children}
-    </button>
-  )
-}
-
-function lectorDeCanvas(c: HTMLCanvasElement | OffscreenCanvas): LeerVentana {
-  const ctx = (c as HTMLCanvasElement).getContext('2d')
-  if (!ctx) throw new Error('No se pueden leer los píxeles del frame.')
-  return (v) => {
-    const d = ctx.getImageData(v.x, v.y, Math.max(1, v.ancho), Math.max(1, v.alto))
-    return { ancho: d.width, alto: d.height, datos: d.data, x0: v.x, y0: v.y }
-  }
-}
-
-/**
- * Segmento de la escala sobre el vídeo: línea a trazos entre los extremos y,
- * en cada uno, una cruz con el centro libre para ver el punto exacto.
- */
-function dibujarSegmentoEscala(ctx: CanvasRenderingContext2D, base: number, a: Punto2D | null, b: Punto2D | null) {
-  const acento = getComputedStyle(document.documentElement).getPropertyValue('--color-acento').trim() || '#f2a65a'
-  const trazo = (color: string, ancho: number, f: () => void) => {
-    ctx.strokeStyle = color
-    ctx.lineWidth = ancho
-    ctx.beginPath()
-    f()
-    ctx.stroke()
-  }
-  if (a && b) {
-    ctx.setLineDash([base * 3, base * 2])
-    trazo('#000', base * 1.2, () => (ctx.moveTo(a.x, a.y), ctx.lineTo(b.x, b.y)))
-    trazo(acento, base * 0.6, () => (ctx.moveTo(a.x, a.y), ctx.lineTo(b.x, b.y)))
-    ctx.setLineDash([])
-  }
-  for (const p of [a, b]) {
-    if (!p) continue
-    const cruz = () => {
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        ctx.moveTo(p.x + dx * base * 1.5, p.y + dy * base * 1.5)
-        ctx.lineTo(p.x + dx * base * 6, p.y + dy * base * 6)
-      }
-    }
-    trazo('#000', base * 1.2, cruz)
-    trazo(acento, base * 0.6, cruz)
-  }
-}
-
-const NOMBRE_MOTIVO: Record<MotivoHueco, string> = {
-  sinColor: 'sin su color en la zona',
-  tamano: 'mancha de tamaño distinto',
-  calidad: 'lejos de lo esperado o ambiguo',
-  conflicto: 'junto a otro gomet',
-  dudoso: 'detección dudosa, descartada',
-}
-
-function describirMotivos(h: Hueco): string {
-  const fmt = (n: number) => n.toFixed(1).replace('.', ',')
-  return (Object.entries(h.motivos) as [MotivoHueco, number][])
-    .sort((a, b) => b[1] - a[1])
-    .map(([m, n]) => {
-      const area = m === 'tamano' && h.areaMin !== undefined ? ` (área ${fmt(h.areaMin)}–${fmt(h.areaMax!)}× la del gomet)` : ''
-      return `${n} ${NOMBRE_MOTIVO[m]}${area}`
-    })
-    .join(', ')
-}
-
 type Seguimiento = { estado: 'parado' } | { estado: 'siguiendo'; progreso: number }
-
-const hora = (d: Date) => d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-
-function TextoGuardado({ g }: { g: EstadoGuardado }) {
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-texto-2" data-testid="guardado" aria-live="polite">
-      {(g.estado === 'guardado' || g.estado === 'recuperado') && <CheckIcon className="size-4 text-acento" />}
-      {g.estado === 'error' && <ExclamationTriangleIcon className="size-4 text-red-300" />}
-      {g.estado === 'nada' && 'Se guarda solo en este dispositivo en cuanto marques algo.'}
-      {g.estado === 'recuperado' && 'Guardado en este dispositivo. Lo que cambies se guarda solo.'}
-      {g.estado === 'pendiente' && 'Guardando en este dispositivo…'}
-      {g.estado === 'guardado' && `Guardado en este dispositivo a las ${hora(g.hora)}`}
-      {g.estado === 'error' && <span className="text-red-300">No se ha podido guardar: {g.mensaje}</span>}
-    </p>
-  )
-}
 
 interface Props {
   video: VideoAbierto
