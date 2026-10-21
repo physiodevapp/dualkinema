@@ -2469,6 +2469,36 @@ describe('aviso de versión nueva', () => {
     }
   })
 
+  it('el aviso flota: no cambia la posición de nada, y se cierra hasta que haya otra versión distinta', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      const y0 = (await p.getByRole('heading', { name: 'dualkinema' }).boundingBox()).y
+      await publicar(p, 'commit-nuevo')
+      await p.reload()
+      await p.getByTestId('version-nueva').waitFor()
+      assert.equal((await p.getByRole('heading', { name: 'dualkinema' }).boundingBox()).y, y0, 'el aviso mueve la cabecera')
+      assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('[data-testid=version-nueva]')).position), 'fixed')
+
+      await p.getByTestId('version-nueva-cerrar').click()
+      assert.equal(await p.getByTestId('version-nueva').count(), 0)
+      // Misma versión publicada al volver a verla: sigue cerrado. Otra distinta: vuelve a avisar.
+      const alVolver = () =>
+        p.evaluate(() => {
+          Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+          document.dispatchEvent(new Event('visibilitychange'))
+        })
+      await alVolver()
+      await p.waitForTimeout(500)
+      assert.equal(await p.getByTestId('version-nueva').count(), 0)
+      await p.unroute('**/version.json')
+      await publicar(p, 'otra-mas')
+      await alVolver()
+      await p.getByTestId('version-nueva').waitFor()
+    } finally {
+      await p.close()
+    }
+  })
+
   it('un version.json que no es una versión (p. ej. sin conexión o una página) no avisa', async () => {
     const p = await abrirApp(navegador)
     try {

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowPathIcon, FilmIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, FilmIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { TramoEstatico } from '../core/articulaciones/cero'
 import type { CalibracionVista } from '../core/calibracion/escala'
@@ -74,7 +74,7 @@ async function prepararRecuperacion(video: VideoAbierto, elegida: CabeceraSesion
 export default function App() {
   const [estado, setEstado] = useState<Estado>({ fase: 'inicio' })
   const selector = useRef<HTMLInputElement>(null)
-  const versionNueva = useVersionNueva()
+  const { nueva: versionNueva, descartar: descartarVersion } = useVersionNueva()
   // Identifica cada apertura de un vídeo: el visor se monta de cero aunque se
   // vuelva a abrir un archivo con el mismo nombre (antes la clave era el nombre).
   const aperturas = useRef(0)
@@ -168,14 +168,30 @@ export default function App() {
         estado.fase === 'visor' ? 'max-w-[90rem]' : 'max-w-6xl'
       }`}
     >
+      {/* Flotante (fixed, sobre todo): el aviso no ocupa sitio, así que no cambia el alto de la app ni mueve lo medido
+          (vídeo, gráfica, barra). Se puede cerrar y no vuelve hasta que haya otra versión distinta. */}
       {versionNueva && (
-        <div role="status" data-testid="version-nueva" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-acento/60 bg-panel px-3 py-2 text-sm">
-          <span>
+        <div
+          role="status"
+          data-testid="version-nueva"
+          className="fixed inset-x-2 top-[max(0.5rem,env(safe-area-inset-top))] z-40 mx-auto flex max-w-xl items-center gap-2 rounded-md border border-acento/60 bg-panel px-3 py-2 text-sm shadow-lg"
+        >
+          <span className="min-w-0 flex-1">
             Hay una versión nueva.
             {estado.fase === 'visor' && ' El trabajo se guarda solo; al recargar tendrás que volver a abrir el vídeo.'}
           </span>
-          <button type="button" onClick={() => location.reload()} className="rounded-md bg-acento px-3 py-1.5 font-medium text-fondo">
+          <button type="button" onClick={() => location.reload()} className="shrink-0 rounded-md bg-acento px-3 py-1.5 font-medium text-fondo">
             Recargar
+          </button>
+          <button
+            type="button"
+            onClick={descartarVersion}
+            aria-label="Cerrar el aviso"
+            title="Más tarde"
+            data-testid="version-nueva-cerrar"
+            className="flex size-9 shrink-0 items-center justify-center rounded-md border border-borde text-texto-2"
+          >
+            <XMarkIcon className="size-5" />
           </button>
         </div>
       )}
