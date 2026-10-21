@@ -40,12 +40,13 @@ import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './v
 import { tocarExtremo as tocarExtremoEscala } from './visor/toquesEscala'
 import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
-import { useAltura, useAnchoMinimo } from './visor/useAltura'
+import { useAltura } from './visor/useAltura'
+import { useVistaMovil } from './visor/useVistaMovil'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
 import SeparadorVideo from './visor/SeparadorVideo'
 import AsaVolver from './visor/AsaVolver'
-import { ALTO_VIDEO_DVH, AMPLIAR_PX, CLAVE_REPARTO, leerReparto, repartoAlVolver, type Reparto } from './visor/reparto'
+import { ALTO_VIDEO_DVH, AMPLIAR_PX } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useFiltrado } from './visor/useFiltrado'
 import { useGuardado, type SesionAbierta } from './visor/useGuardado'
@@ -646,27 +647,15 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // gráfica de arriba (las pestañas se pegan justo debajo al desplazarse).
   const [barraRef, altoBarra] = useAltura<HTMLDivElement>()
   const [fijoRef, altoFijo] = useAltura<HTMLDivElement>()
-  const anchoLg = useAnchoMinimo()
-  // La página deja debajo el sitio de la barra fija (`--alto-barra`, en la raíz: el pie de página también va debajo y
-  // cuelga de `main`, fuera de este componente; con el hueco dentro del visor, el pie quedaba tapado por la barra).
-  useEffect(() => {
-    document.documentElement.style.setProperty('--alto-barra', `${altoBarra}px`)
-    return () => {
-      document.documentElement.style.removeProperty('--alto-barra')
-    }
-  }, [altoBarra])
-  // Vista en el móvil: la mixta de siempre, el vídeo grande para marcar o solo las gráficas. En pantalla ancha no existe.
-  const [vista, setVista] = useState<'mixta' | 'video' | 'graficas'>('mixta')
-  const enVideo = !anchoLg && vista === 'video'
-  const enGraficas = !anchoLg && vista === 'graficas'
-  const ampliada = enVideo || enGraficas
+  const { anchoLg, vista, setVista, enVideo, enGraficas, ampliada, activo, reparto, altoArrastre, setAltoArrastre, elegirReparto, volverDe } =
+    useVistaMovil({ altoBarra })
   // Al bajar por las tarjetas, el vídeo y su gráfica se esconden (y vuelven al subir, al cambiar de frame o de pestaña,
   // y mientras se calibra tocando el vídeo); las pestañas suben a ocupar su sitio.
   const tiraRef = useRef<HTMLDivElement>(null)
   const tarjetasRef = useRef<HTMLDivElement>(null)
   const [, altoTira] = useAltura<HTMLDivElement>(tiraRef)
   const { oculto: videoOculto, ver: verVideo } = useOcultarAlBajar({
-    activo: !anchoLg && vista === 'mixta',
+    activo,
     tarjetas: tarjetasRef,
     tira: tiraRef,
     altoTira,
@@ -675,13 +664,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   })
   // Arriba del todo la gráfica pequeña crece hasta llenar lo que queda sobre la barra fija: en la primera pantalla solo
   // vídeo, gráfica, pestañas y barra. Al bajar vuelve a su alto de siempre.
-  // Reparto del alto entre el vídeo y la gráfica pequeña (móvil, vista mixta): un asa entre los dos lo cambia y la
-  // gráfica grande llena lo que quede (ver `reparto.ts`). Se guarda en este dispositivo.
-  const [reparto, setReparto] = useState<Reparto>(leerReparto)
-  const [altoArrastre, setAltoArrastre] = useState<number | null>(null)
   const cajaMiniRef = useRef<HTMLDivElement>(null)
   const mini = useMiniGrande({
-    activo: !anchoLg && vista === 'mixta',
+    activo,
     caja: cajaMiniRef,
     tira: tiraRef,
     barra: barraRef,
@@ -692,30 +677,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         ? EXTRA_MAXIMO_PX + Math.ceil(((ALTO_VIDEO_DVH.normal - ALTO_VIDEO_DVH.grafica) / 100) * window.innerHeight) + AMPLIAR_PX
         : EXTRA_MAXIMO_PX,
   })
-  // Volver de una vista ampliada a la mixta: aterriza en el extremo del que se viene (vídeo grande o gráfica grande) para
-  // seguir viendo en grande lo que se estaba mirando. No se guarda: el reparto guardado sigue siendo el elegido a mano.
-  const volverDe = useCallback((desde: 'video' | 'graficas') => {
-    setReparto(repartoAlVolver(desde))
-    setVista('mixta')
-  }, [])
-  const elegirReparto = useCallback((r: Reparto) => {
-    setReparto(r)
-    try {
-      localStorage.setItem(CLAVE_REPARTO, r)
-    } catch {
-      // Sin almacenamiento (modo privado): se usa solo esta vez.
-    }
-  }, [])
-  // Con una vista ampliada, la página de debajo no se desplaza.
-  useEffect(() => {
-    if (!ampliada) return
-    const antes = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = antes
-    }
-  }, [ampliada])
-
   // Debajo del vídeo (en la vista de vídeo grande, dentro de ella: lo de fuera queda tapado).
   // En el vídeo grande, el aviso va justo debajo del vídeo (sin `order`: con `order-2` quedaba el último, tras los marcadores,
   // el botón de seguir y el deslizador, fuera de pantalla), corto, con el detalle plegado y sus botones a la vista.
