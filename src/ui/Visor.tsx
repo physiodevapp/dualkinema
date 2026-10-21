@@ -29,7 +29,7 @@ import type { VideoAbierto } from '../media/video'
 import type { AlWorker, DelWorker } from '../workers/protocolo'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { huellaDe } from './sesion'
-import BandaFrames, { type EstadoFrame } from './visor/BandaFrames'
+import type { EstadoFrame } from './visor/BandaFrames'
 import ControlTrayectoria from './visor/ControlTrayectoria'
 import PanelGrafica from './visor/PanelGrafica'
 import MiniGrafica from './visor/MiniGrafica'
@@ -60,6 +60,10 @@ import AvisoAnclas from './visor/AvisoAnclas'
 import AccionesHuecos from './visor/AccionesHuecos'
 import BotonIrAlHueco from './visor/BotonIrAlHueco'
 import TextoGuardado from './visor/TextoGuardado'
+import ErrorToque, { type ErrorDeToque } from './visor/ErrorToque'
+import DeslizadorFrames from './visor/DeslizadorFrames'
+import ResumenGrafica from './visor/ResumenGrafica'
+import DatosVideo from './visor/DatosVideo'
 
 const SALTO = 10
 const ESTELA = 20 // frames de trayectoria dibujados por detrás, en el sentido en que se recorre el vídeo
@@ -109,7 +113,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(avisoInicial ? { texto: avisoInicial } : null)
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
   // `aOjo`: dónde se tocó, para ofrecer colocarlo ahí aunque no se reconozca el gomet.
-  const [errorToque, setErrorToque] = useState<{ texto: string; detalle?: string; aOjo?: { id: IdMarcador; i: number; x: number; y: number } } | null>(null)
+  const [errorToque, setErrorToque] = useState<ErrorDeToque | null>(null)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
   // Cómo se consiguió el frame: de la caché, siguiendo el decodificador o desde el fotograma clave.
   const [lectura, setLectura] = useState<string | null>(null)
@@ -840,90 +844,16 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // Debajo del vídeo (en la vista de vídeo grande, dentro de ella: lo de fuera queda tapado).
   // En el vídeo grande, el aviso va justo debajo del vídeo (sin `order`: con `order-2` quedaba el último, tras los marcadores,
   // el botón de seguir y el deslizador, fuera de pantalla), corto, con el detalle plegado y sus botones a la vista.
-  const frasePrincipal = (texto: string) => `${texto.split(/[:.]/)[0]!.trim()}.`
-  const nodoError =
-    errorToque &&
-    (enVideo ? (
-      <div data-testid="error-toque" role="alert" className="flex flex-col gap-1.5 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200">
-        <p>{frasePrincipal(errorToque.texto)}</p>
-        <div className="flex flex-wrap gap-2">
-          {errorToque.aOjo && (
-            <button
-              type="button"
-              onClick={() => {
-                const { id, i, x, y } = errorToque.aOjo!
-                ponerManual(id, i, x, y)
-              }}
-              className="rounded-md border border-borde px-3 py-1.5 text-texto"
-            >
-              Colocarlo aquí a ojo
-            </button>
-          )}
-          <button type="button" onClick={() => setErrorToque(null)} className="rounded-md border border-borde px-3 py-1.5 text-texto-2">
-            Cerrar
-          </button>
-        </div>
-        <details className="text-xs text-texto-2">
-          <summary className="cursor-pointer">Por qué</summary>
-          <p className="mt-1">{errorToque.texto}</p>
-          {errorToque.detalle && <p className="mt-1 font-mono">{errorToque.detalle}</p>}
-          {errorToque.aOjo && <p className="mt-1">A ojo: queda como marcado a mano justo donde has soltado el dedo, sin ajustarlo a ningún gomet. Para varios frames seguidos, activa «Colocar a ojo».</p>}
-        </details>
-      </div>
-    ) : (
-            // Debajo del vídeo y no encima: un mensaje encima tapaba casi toda la
-            // imagen en un móvil, y el siguiente toque (aunque fuera sobre el
-            // gomet) caía en el mensaje en vez de marcar.
-            <div data-testid="error-toque" role="alert" className={`flex flex-col gap-2 max-lg:order-2 rounded-md border border-red-400/60 bg-fondo p-2 text-sm text-red-200`}>
-              <p>{errorToque.texto}</p>
-              {errorToque.detalle && <p className="font-mono text-xs text-texto-2">{errorToque.detalle}</p>}
-              <div className="flex flex-wrap gap-2">
-                {errorToque.aOjo && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const { id, i, x, y } = errorToque.aOjo!
-                      ponerManual(id, i, x, y)
-                    }}
-                    className="rounded-md border border-borde px-3 py-2 text-texto"
-                  >
-                    Colocarlo aquí a ojo
-                  </button>
-                )}
-                <button type="button" onClick={() => setErrorToque(null)} className="rounded-md border border-borde px-3 py-2 text-texto-2">
-                  Cerrar
-                </button>
-              </div>
-              {errorToque.aOjo && (
-                <p className="text-xs text-texto-2">
-                  A ojo: para un frame en que el gomet no se ve (tapado, movido). Queda como marcado a mano, justo donde has
-                  soltado el dedo, sin ajustarlo al centro de ningún gomet.
-                </p>
-              )}
-            </div>
-    ))
+  const nodoError = errorToque && (
+    <ErrorToque error={errorToque} enVideo={enVideo} onColocarAOjo={ponerManual} onCerrar={() => setErrorToque(null)} />
+  )
 
   // Deslizador de frames con la franja de estado. Una sola barra: la franja de cada frame es la pista del deslizador y el
   // tirador va encima (la franja se mete la mitad del tirador por cada lado, para que su centro coincida con el frame).
   // En el móvil va en la fila de posición de la barra de abajo (a mano desde cualquier pestaña y vista); desde `lg`, en el
   // flujo de la página, bajo el vídeo. Es el mismo control dibujado en los dos sitios y solo se ve uno.
   const controlDeslizador = (
-    <div className="relative h-7">
-      <div className="pointer-events-none absolute inset-x-[7px] top-1/2 -translate-y-1/2">
-        <BandaFrames estados={estadosFrames} className="h-2.5" />
-      </div>
-      <input
-        type="range"
-        min={0}
-        max={total - 1}
-        step={1}
-        value={deseado}
-        onChange={(e) => ir(Number(e.target.value))}
-        aria-label="Posición en el vídeo"
-        aria-valuetext={`frame ${deseado + 1} de ${total}, ${fmt(tabla.tiempos[deseado]!, 3)} s`}
-        className="deslizador-frames relative"
-      />
-    </div>
+    <DeslizadorFrames estados={estadosFrames} total={total} deseado={deseado} t={tabla.tiempos[deseado]!} onIr={ir} />
   )
   const nodoDeslizador = <div className="flex flex-col gap-1 max-lg:hidden lg:order-1">{controlDeslizador}</div>
 
@@ -1225,25 +1155,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             velocidad={filtrado.derivadas.velocidad}
             corte={filtrado.corte}
             segmentos={seriesSegmentos}
-            resumen={
-              <p className="font-mono text-xs text-texto-2" data-testid="resumen-grafica">
-                {resumen.max && resumen.min ? (
-                  <>
-                    <span className="whitespace-nowrap">
-                      máx. {grados(resumen.max.valor)}° (t = {fmt(resumen.max.t, 2)} s)
-                    </span>{' '}
-                    ·{' '}
-                    <span className="whitespace-nowrap">
-                      mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
-                    </span>
-                    {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
-                    {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
-                  </>
-                ) : (
-                  'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'
-                )}
-              </p>
-            }
+            resumen={<ResumenGrafica resumen={resumen} instantesInterpolados={instantesInterpolados} />}
           />
 
           {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
@@ -1445,32 +1357,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
 
           <PanelPestana id="video" activa={pestana === 'video'}>
             {!anchoLg && <TextoGuardado g={guardado} />}
-            <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
-              <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
-              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                <dt className="text-texto-2">Archivo</dt>
-                <dd className="truncate" title={info.nombre}>{info.nombre}</dd>
-                <dt className="text-texto-2">Formato</dt>
-                <dd>{info.formato} · {info.codec}</dd>
-                <dt className="text-texto-2">Tamaño</dt>
-                <dd>{info.ancho} × {info.alto} px{info.rotacion ? ` (girado ${info.rotacion}°)` : ''}</dd>
-                <dt className="text-texto-2">Duración</dt>
-                <dd>{fmt(info.duracion, 2)} s</dd>
-                <dt className="text-texto-2">Frames</dt>
-                <dd>{total}</dd>
-                <dt className="text-texto-2">fps medio</dt>
-                <dd>{Number.isNaN(est.fpsMedio) ? '—' : fmt(est.fpsMedio, 2)}</dd>
-                <dt className="text-texto-2">Entre frames</dt>
-                <dd>
-                  {Number.isNaN(est.pasoMin) ? '—' : `${fmt(est.pasoMin * 1000, 1)}–${fmt(est.pasoMax * 1000, 1)} ms`}
-                  {est.variable && <span className="text-acento"> · variable</span>}
-                </dd>
-                <dt className="text-texto-2">Persona</dt>
-                <dd>{orientacion.plano === 'sagital' ? `mira a la ${orientacion.mira}` : `vista desde ${orientacion.ve}`}</dd>
-                <dt className="text-texto-2">Decodificar</dt>
-                <dd>{msDecodificar === null ? '—' : `${fmt(msDecodificar, 0)} ms`}{lectura && ` · ${lectura}`}</dd>
-              </dl>
-            </section>
+            <DatosVideo info={info} total={total} est={est} orientacion={orientacion} msDecodificar={msDecodificar} lectura={lectura} />
           </PanelPestana>
         </div>
       </div>

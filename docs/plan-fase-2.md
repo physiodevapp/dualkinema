@@ -145,7 +145,7 @@ Junto al número de frame se ven los ms y cómo salió (`caché`, `seguido`, `cl
 | D7 | Formato CSV | `;` y coma decimal por defecto; el internacional como opción |
 | D8 | Pruebas e2e | En el repo y en la CI |
 
-## 11. Propuesta: partir `Visor.tsx` sin cambiar el comportamiento (en curso: pasos 0 y 1a hechos)
+## 11. Propuesta: partir `Visor.tsx` sin cambiar el comportamiento (en curso: pasos 0, 1a y 1b hechos)
 
 `src/ui/Visor.tsx` tiene unas 1.500 líneas: navegación por frames, worker de seguimiento, marcado, escala, filtrado, guardado, distribución del móvil y del escritorio y el JSX de todo. Funciona y está cubierto por las e2e, pero cada cambio obliga a leerlo entero y React reconcilia todo el árbol en cada frame (ningún panel usa `memo`). Propuesta en pasos pequeños, **un PR cada uno o dos**, cada uno sin cambiar nada visible:
 
@@ -169,6 +169,8 @@ Total: unos 2–3 días repartidos. Orden recomendado: 0–2 primero (quitan la 
 **Hecho — paso 0.** `visor/formato.ts` (`fmt`, `grados`, `valorEn`, `hora`, `describirMotivos`), `visor/capa.ts` (`lectorDeCanvas`, `dibujarSegmentoEscala`), `visor/BotonPaso.tsx`, `visor/TextoGuardado.tsx`, y `leerReparto` / `CLAVE_REPARTO` en `visor/reparto.ts`. `valida` sigue en `Visor.tsx` (se parece a `esUtil` del núcleo; unificarlas no era de este paso). Se comprobó además que el DOM no cambia: `outerHTML` de `main` y del paso, idéntico en 31 estados (390 y 1280 px; mixta, vídeo grande y solo gráficas; las cuatro pestañas; vídeo seguido, error de toque, huecos cortos, interpolado, marca a mano y anclas).
 
 **Hecho — paso 1a** (las piezas que se pintaban dos veces, con la prop `compacto` para la tira del vídeo grande; props = valores y callbacks, nada del estado entero): `visor/SelectorMarcadores.tsx`, `BotonSeguir.tsx` («Seguir desde aquí» / «Parar» con su progreso), `InterruptorAOjo.tsx`, `BotonesQuitarManual.tsx`, `AvisoAnclas.tsx`, `AccionesHuecos.tsx` («Rellenar N huecos cortos» y «Quitar lo interpolado»; el contenedor lo pone quien lo usa) y `BotonIrAlHueco.tsx`. Lo que se movió tal cual y se podría limpiar más adelante, apuntado y sin tocar: en `BotonSeguir` el `{siguiendo && …}` del porcentaje es redundante (ya está dentro de la rama «siguiendo»); `BotonesQuitarManual` conserva el parámetro `claseExtra` (siempre `''`) porque deja un espacio al final de la clase y el DOM debe salir idéntico; el estado de cada marcador (`estadosMarcadores`) se calcula en `Visor.tsx` en cada render aunque la tira compacta no se vea.
+
+**Hecho — paso 1b** (las piezas sueltas): `visor/ErrorToque.tsx` (el aviso del toque fallido, corto en el vídeo grande y completo bajo el vídeo; exporta `ErrorDeToque`), `DeslizadorFrames.tsx` (franja de estado + `range`), `ResumenGrafica.tsx` (máx., mín., huecos e interpolados) y `DatosVideo.tsx` (tarjeta de la pestaña «Vídeo»). `Visor.tsx` queda en unas 1.370 líneas. Con esto el paso 1 está completo.
 
 Antes del paso 8 conviene añadir las e2e que hoy faltan: «Parar» a mitad (lotes y aviso), seguir de nuevo desde un frame intermedio de un vídeo ya seguido, y que la gráfica pequeña conserve su modo.
 
