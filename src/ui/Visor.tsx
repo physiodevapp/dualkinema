@@ -18,8 +18,7 @@ import { escalaDesfasada, medirEntreMarcadores, metrosPorPx, type CalibracionVis
 import { constanciaSegmento } from '../core/calibracion/segmentos'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
-import { huecosInterpolables, interpolarHueco, quitarInterpolados as quitarInterpoladosDe } from '../core/seguimiento/interpolar'
-import { framesConMarcaManual, quitarMarcasManuales } from '../core/seguimiento/manuales'
+import { framesConMarcaManual } from '../core/seguimiento/manuales'
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import { resumirSerie } from '../core/graficas/rango'
@@ -29,7 +28,6 @@ import type { VideoAbierto } from '../media/video'
 import type { AlWorker, DelWorker } from '../workers/protocolo'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
 import { huellaDe } from './sesion'
-import type { EstadoFrame } from './visor/BandaFrames'
 import ControlTrayectoria from './visor/ControlTrayectoria'
 import PanelGrafica from './visor/PanelGrafica'
 import MiniGrafica from './visor/MiniGrafica'
@@ -42,6 +40,7 @@ import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura } from './visor/useAltura'
 import { useVistaMovil } from './visor/useVistaMovil'
+import { useTrayectorias } from './visor/useTrayectorias'
 import { SALTO, useNavegacionFrames } from './visor/useNavegacionFrames'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
@@ -87,13 +86,6 @@ interface Props {
   avisoInicial?: string
 }
 
-/*
- * Las trayectorias viven en una ref que se lee y se modifica durante el render (con `version` para avisar a React).
- * El React Compiler lo marca (`refs`, `immutability`); hasta el paso 4 de la §11 no lo veía porque se paraba antes en
- * el `set-state-in-effect` (suprimido) del pintado inicial, que ahora está en `useNavegacionFrames`. Se resuelve al
- * sacar las trayectorias a `useTrayectorias` (paso 5).
- */
-/* eslint-disable react-hooks/refs, react-hooks/immutability */
 export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, ceros: cerosGuardados, calibracion: calibracionGuardada, avisoInicial }: Props) {
   const { info, tabla } = video
   const total = tabla.tiempos.length
@@ -105,12 +97,25 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
   const articulacion = modelo.articulaciones[0]!
 
-  // Trayectorias: una posición (o nada) por frame y marcador. Se modifican en
-  // sitio y `version` avisa a React de que hay que repintar.
-  const trayectorias = useRef<Map<IdMarcador, (Muestra2D | undefined)[]>>(new Map())
-  const [version, setVersion] = useState(0)
-  if (trayectorias.current.size === 0) for (const id of ids) trayectorias.current.set(id, inicial?.get(id) ?? new Array(total))
-  const muestra = useCallback((id: IdMarcador, i: number) => trayectorias.current.get(id)?.[i], [])
+  // Trayectorias: una posición (o nada) por frame y marcador, con sus mutadores (suben `version` por dentro), el estado
+  // de cada frame y los huecos cortos.
+  const {
+    trayectorias,
+    version,
+    muestra,
+    series,
+    poner,
+    quitar,
+    aplicarLote,
+    borrarDespuesDe,
+    devolver,
+    quitarManualesDespuesDe,
+    huecosCortos,
+    hayInterpolados,
+    rellenarCortos,
+    quitarInterpolados: deshacerInterpolados,
+    estadosFrames,
+  } = useTrayectorias({ ids, tabla, inicial, valida })
 
   const [aviso, setAviso] = useState<{ texto: string; detalle?: string; irA?: number } | null>(avisoInicial ? { texto: avisoInicial } : null)
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
@@ -184,15 +189,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     const quitado = quitadoAlSeguir.current
     quitadoAlSeguir.current = null
     if (!quitado) return
-    for (const [id, antes] of quitado) {
-      const serie = trayectorias.current.get(id)
-      if (!serie) continue
-      antes.forEach((m, i) => {
-        if (m !== undefined && serie[i] === undefined) serie[i] = m
-      })
-    }
-    setVersion((v) => v + 1)
-  }, [])
+    devolver(quitado)
+  }, [devolver])
   useEffect(() => {
     const w = new Worker(new URL('../workers/seguimiento.worker.ts', import.meta.url), { type: 'module' })
     worker.current = w
@@ -200,15 +198,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       const m = e.data
       if (m.tipo === 'muestras') {
         if (m.lote.length) quitadoAlSeguir.current = null
-        for (const f of m.lote) {
-          for (const mk of f.marcadores) {
-            const serie = trayectorias.current.get(mk.id)
-            if (!serie || serie[f.indice]?.editadoManual) continue
-            serie[f.indice] = { t: f.t, x: mk.x, y: mk.y, calidad: mk.calidad, editadoManual: false }
-          }
-        }
+        aplicarLote(m.lote)
         setSeguimiento({ estado: 'siguiendo', progreso: m.progreso })
-        setVersion((v) => v + 1)
       } else if (m.tipo === 'fin') {
         setSeguimiento({ estado: 'parado' })
         devolverQuitado()
@@ -247,7 +238,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       setAviso({ texto: `Error en el seguimiento: ${ev.message || 'no se ha podido cargar el proceso de seguimiento. Recarga la página.'}` })
     }
     return () => w.terminate()
-  }, [modelo, ir, devolverQuitado])
+  }, [modelo, ir, devolverQuitado, aplicarLote])
 
   const posicionesEn = useCallback(
     (i: number) => ids.map((id) => ({ id, m: muestra(id, i) })),
@@ -259,19 +250,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     if (mostrado === null || !listoParaSeguir) return
     // Lo seguido antes a partir de aquí se descarta; lo marcado a mano se conserva.
     // Se guarda una copia por si el seguimiento no llega a arrancar.
-    const quitado = new Map<IdMarcador, (Muestra2D | undefined)[]>()
-    for (const [id, serie] of trayectorias.current) {
-      const antes = new Array<Muestra2D | undefined>(total)
-      for (let i = mostrado + 1; i < total; i++) {
-        if (!serie[i]?.editadoManual) {
-          antes[i] = serie[i]
-          serie[i] = undefined
-        }
-      }
-      quitado.set(id, antes)
-    }
-    quitadoAlSeguir.current = quitado
-    setVersion((v) => v + 1)
+    quitadoAlSeguir.current = borrarDespuesDe(mostrado)
     setAviso(null)
     setErrorToque(null)
     setSeguimiento({ estado: 'siguiendo', progreso: mostrado / Math.max(1, total - 1) })
@@ -296,9 +275,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   /** Guarda una posición marcada a mano y pasa al siguiente marcador que falte en el frame. */
   const ponerManual = (id: IdMarcador, i: number, x: number, y: number) => {
     const serie = trayectorias.current.get(id)!
-    serie[i] = { t: tabla.tiempos[i]!, x, y, calidad: 1, editadoManual: true }
+    poner(id, i, x, y)
     setErrorToque(null)
-    setVersion((v) => v + 1)
     const falta = ids.find((otro) => otro !== id && !valida(muestra(otro, i)))
     setSeleccionado(falta ?? null)
     // Una corrección con lo seguido detrás: se puede rehacer desde aquí con ella como ancla.
@@ -345,9 +323,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   }
 
   const quitarManual = (id: IdMarcador, i: number) => {
-    trayectorias.current.get(id)![i] = undefined
+    quitar(id, i)
     setAviso(null)
-    setVersion((v) => v + 1)
   }
 
   // ---- Escala: tocar los dos extremos del objeto ----
@@ -368,14 +345,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     if (borrador?.objeto !== 'marcadores' || !borrador.entre || !borrador.tramo) return null
     const serie = (id: IdMarcador) => trayectorias.current.get(id) ?? []
     return medirEntreMarcadores(serie(borrador.entre.desde), serie(borrador.entre.hasta), borrador.tramo)
-  }, [borrador, version])
+  }, [borrador, version, trayectorias])
   // La guardada, medida otra vez con lo seguido ahora: si se calibró antes de seguir, hay más frames.
   const medicionGuardada = useMemo(() => {
     void version
     const entre = calibracion?.entre
     if (!entre) return null
     return medirEntreMarcadores(trayectorias.current.get(entre.desde) ?? [], trayectorias.current.get(entre.hasta) ?? [], entre.tramo)
-  }, [calibracion, version])
+  }, [calibracion, version, trayectorias])
   // Si lo seguido cambió en el tramo desde que se guardó (más o menos frames, marcadores corregidos), se avisa.
   const desfase = useMemo(() => (calibracion ? escalaDesfasada(calibracion, medicionGuardada) : null), [calibracion, medicionGuardada])
   const framesTramo = useMemo(() => {
@@ -410,59 +387,20 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   }
 
   // ---- Huecos cortos: rellenar a petición ----
-  const huecosCortos = useMemo(() => {
-    void version
-    return ids.flatMap((id) => huecosInterpolables(trayectorias.current.get(id)!, tabla.tiempos).map((h) => ({ id, h })))
-  }, [version, ids, tabla])
-  const hayInterpolados = useMemo(() => {
-    void version
-    return [...trayectorias.current.values()].some((s) => s.some((m) => m?.interpolado))
-  }, [version])
-
   const rellenarHuecosCortos = () => {
-    let frames = 0
-    for (const { id, h } of huecosCortos) {
-      const serie = trayectorias.current.get(id)!
-      for (const { indice, muestra: m } of interpolarHueco(serie, tabla.tiempos, h)) {
-        serie[indice] = m
-        frames++
-      }
-    }
+    const frames = rellenarCortos()
     setAviso({
       texto: `Rellenados ${huecosCortos.length} hueco${huecosCortos.length === 1 ? '' : 's'} (${frames} posiciones interpoladas, en azul en la franja y a trazos en la gráfica).`,
     })
-    setVersion((v) => v + 1)
   }
 
   const quitarInterpolados = () => {
     // Vuelven a ser huecos, con lo que había antes de rellenar (perdido, dudoso o nada).
-    quitarInterpoladosDe(trayectorias.current.values())
+    deshacerInterpolados()
     setAviso({ texto: 'Quitado lo interpolado: esos frames vuelven a ser huecos.' })
-    setVersion((v) => v + 1)
   }
 
-  // ---- Estado por frame para la franja y ángulo actual ----
-  const estadosFrames = useMemo<EstadoFrame[]>(() => {
-    void version
-    const r: EstadoFrame[] = new Array(total)
-    for (let i = 0; i < total; i++) {
-      let hay = false
-      let perdido = false
-      let manual = false
-      let interpolado = false
-      for (const id of ids) {
-        const m = muestra(id, i)
-        if (!m) continue
-        hay = true
-        if (m.editadoManual) manual = true
-        else if (m.interpolado) interpolado = true
-        else if (!valida(m)) perdido = true
-      }
-      r[i] = perdido ? 'perdido' : interpolado ? 'interpolado' : manual ? 'manual' : hay ? 'seguido' : 'vacio'
-    }
-    return r
-  }, [version, total, ids, muestra])
-
+  // ---- Ángulo actual ----
   // Serie completa del ángulo para la gráfica: misma regla de huecos que el valor
   // en directo (marcador ausente o perdido = sin valor). Lo interpolado a
   // petición tiene valor, pero va marcado y se dibuja aparte.
@@ -472,7 +410,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     const porMarcador: Record<IdMarcador, Muestra2D[]> = {}
     for (const id of ids) porMarcador[id] = (trayectorias.current.get(id) ?? []).filter((m): m is Muestra2D => m !== undefined)
     return serieAngular(articulacion, porMarcador, orientacion)
-  }, [version, ids, orientacion, articulacion])
+  }, [version, ids, orientacion, articulacion, trayectorias])
   const resumen = useMemo(() => resumirSerie(serie), [serie])
   const filtrado = useFiltrado({
     trayectorias,
@@ -538,7 +476,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       const datos = datosCsv({
         tiempos: tabla.tiempos,
         marcadores: modelo.marcadores,
-        crudo: trayectorias.current,
+        crudo: series(),
         filtrado,
         articulacion,
         orientacion,
@@ -554,7 +492,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       const texto = construirCsv(datos, formato)
       return { nombre: nombreArchivoCsv(info.nombre, datos.angulo ? articulacion.id : null), texto }
     },
-    [orientacion, articulacion, filtrado, tabla, modelo, crudoPorFrame, filtradoPorFrame, cero, calibracion, info, est, ajustes],
+    [orientacion, articulacion, filtrado, tabla, modelo, crudoPorFrame, filtradoPorFrame, cero, calibracion, info, est, ajustes, series],
   )
   const instantesInterpolados = useMemo(() => serie.filter((p) => p.interpolado).length, [serie])
   const buscarEnTiempo = useCallback(
@@ -653,11 +591,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const framesAnclas = useMemo(() => {
     void version
     return mostrado === null ? [] : framesConMarcaManual(trayectorias.current, mostrado)
-  }, [version, mostrado])
+  }, [version, mostrado, trayectorias])
   const quitarMarcasPosteriores = () => {
     if (mostrado === null) return
-    const n = quitarMarcasManuales(trayectorias.current, mostrado)
-    setVersion((v) => v + 1)
+    const n = quitarManualesDespuesDe(mostrado)
     setAviso({
       texto: `Quitadas ${n} marca${n === 1 ? '' : 's'} a mano posteriores al frame ${mostrado + 1}. Los frames quedan sin posición: pulsa «Seguir desde aquí» para volver a seguirlos.`,
     })
