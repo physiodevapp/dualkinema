@@ -19,7 +19,7 @@ import { CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
 import { ceroDeReferencia, relativoAlCero, tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
-import { distanciaPx, escalaDesfasada, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
+import { escalaDesfasada, medirEntreMarcadores, metrosPorPx, type CalibracionVista, type Punto2D } from '../core/calibracion/escala'
 import { constanciaSegmento } from '../core/calibracion/segmentos'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
@@ -46,6 +46,7 @@ import LienzoVideo, { type Previsualizacion } from './visor/LienzoVideo'
 import PanelCinematica, { DESVIACION_AVISO } from './visor/PanelCinematica'
 import PanelExportar from './visor/PanelExportar'
 import PanelEscala, { escalaDeBorrador, OBJETOS, type BorradorEscala } from './visor/PanelEscala'
+import { tocarExtremo as tocarExtremoEscala } from './visor/toquesEscala'
 import PanelFiltro from './visor/PanelFiltro'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura, useAnchoMinimo } from './visor/useAltura'
@@ -522,13 +523,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const frameCalibracion = useMemo(() => (calibracion ? indiceMasCercano(tabla, calibracion.t) : null), [calibracion, tabla])
   const tocarExtremo = (x: number, y: number) => {
     if (mostrado === null || !borrador) return
-    const p: Punto2D = { x, y }
-    const t = tabla.tiempos[mostrado]!
-    const { a, b } = borrador
-    // El primero y el segundo, por orden; después, cada toque mueve el extremo más cercano.
-    if (!a) setBorrador({ ...borrador, a: p, t })
-    else if (!b || distanciaPx(p, b) < distanciaPx(p, a)) setBorrador({ ...borrador, b: p, t })
-    else setBorrador({ ...borrador, a: p, t })
+    // Los dos extremos, del mismo frame: un toque en otro empieza de nuevo.
+    setBorrador(tocarExtremoEscala(borrador, { x, y }, tabla.tiempos[mostrado]!))
   }
   // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
   const segmentos = useMemo(() => {
@@ -1242,7 +1238,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             )}
             {tocandoEscala && !siguiendo && (
               <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
-                Escala: {!borrador.a ? 'toca un extremo' : !borrador.b ? 'toca el otro extremo' : 'toca cerca de un extremo para moverlo'}
+                Escala:{' '}
+                {!borrador.a
+                  ? 'toca un extremo'
+                  : !borrador.b
+                    ? borrador.otroFrame
+                      ? 'otro frame, empieza de nuevo: toca el otro extremo'
+                      : 'toca el otro extremo'
+                    : 'toca cerca de un extremo para moverlo'}
               </p>
             )}
             {!calibrando && seleccionado && !siguiendo && (

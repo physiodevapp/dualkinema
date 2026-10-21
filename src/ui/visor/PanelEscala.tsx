@@ -63,8 +63,10 @@ export interface BorradorEscala {
   readonly objeto: ObjetoCalibracion
   readonly a: Punto2D | null
   readonly b: Punto2D | null
-  /** Instante del frame en que se tocó el último extremo. */
+  /** Instante del frame de los dos extremos (siempre el mismo: `tocarExtremo`). */
   readonly t: number | null
+  /** El último toque empezó de nuevo porque los extremos eran de otro frame. */
+  readonly otroFrame?: boolean
   /** Longitud en cm, tal como se escribe. */
   readonly longitud: string
   /** Con «Entre dos marcadores»: cuáles y en qué tramo se promedian. */
@@ -273,7 +275,9 @@ export default function PanelEscala({
             {!borrador.a
               ? 'Toca un extremo del objeto en el vídeo. Mantén el dedo para ver la lupa y suelta justo en el extremo.'
               : !borrador.b
-                ? 'Ahora toca el otro extremo.'
+                ? borrador.otroFrame
+                  ? 'Has cambiado de frame: los dos extremos tienen que ser del mismo (el objeto podría haberse movido), así que ese toque empieza de nuevo. Ahora toca el otro extremo en este frame.'
+                  : 'Ahora toca el otro extremo.'
                 : `Extremos a ${fmt(distanciaPx(borrador.a, borrador.b), 1)} px. Para corregir uno, toca cerca de él.`}
           </p>
           {borrador.a && borrador.b && <Precision c={{ a: borrador.a, b: borrador.b }} />}
