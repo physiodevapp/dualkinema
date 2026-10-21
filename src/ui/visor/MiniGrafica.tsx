@@ -1,9 +1,10 @@
-import { useMemo, useState, type Ref } from 'react'
+import { useMemo, type Ref } from 'react'
 import { ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { partirInterpolado, type SeriePorFrame } from '../../core/graficas/series'
 import GraficaTiempo, { type SerieGrafica, type TokenColor } from './GraficaTiempo'
 
-type Modo = 'angulo' | 'velocidad' | 'ambas'
+export type ModoMiniGrafica = 'angulo' | 'velocidad' | 'ambas'
+type Modo = ModoMiniGrafica
 
 const MODOS: readonly { id: Modo; nombre: string; color: TokenColor }[] = [
   { id: 'angulo', nombre: 'Ángulo', color: 'texto' },
@@ -22,6 +23,9 @@ interface Props {
   filtrado: SeriePorFrame
   /** Velocidad angular por frame, °/s (NaN = sin valor). */
   velocidad: ArrayLike<number>
+  /** Qué se ve y cómo cambiarlo. El estado vive fuera: esta gráfica se desmonta en las vistas ampliadas y, si no, volvería a «Ángulo». */
+  modo: ModoMiniGrafica
+  onModo: (modo: ModoMiniGrafica) => void
   /** Pasa a la vista de solo gráficas. */
   onAmpliar: () => void
   /** Alto de la gráfica, px (crece con la página arriba del todo; ver `miniGrande.ts`). */
@@ -55,8 +59,7 @@ const dividir = (v: ArrayLike<number>, d: number) => Float64Array.from(v, (x) =>
  * para ver si coinciden en el tiempo, no para leer valores; esos, en la gráfica completa).
  * Mismos huecos y mismo cursor que la completa; tocar o arrastrar salta de frame.
  */
-export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado, velocidad, onAmpliar, alto, animable, cajaRef }: Props) {
-  const [modo, setModo] = useState<Modo>('angulo')
+export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado, velocidad, modo, onModo, onAmpliar, alto, animable, cajaRef }: Props) {
   const xs = useMemo(() => Array.from(tiempos), [tiempos])
   const n = xs.length
 
@@ -113,7 +116,7 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
               type="button"
               aria-pressed={modo === m.id}
               data-testid={`minigrafica-modo-${m.id}`}
-              onClick={() => setModo(m.id)}
+              onClick={() => onModo(m.id)}
               className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs ${modo === m.id ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
             >
               {m.id !== 'ambas' && <span aria-hidden="true" className="inline-block h-0.5 w-3 rounded-full" style={{ backgroundColor: `var(--color-${m.color})` }} />}
