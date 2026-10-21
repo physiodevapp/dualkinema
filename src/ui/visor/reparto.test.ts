@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { desplazamientoAsa, pasaParaVolver, VOLVER_PX, altoElastico, AMPLIAR_PX, altoArrastrado, ELASTICO, altosVideo, desbordeArrastre, esReparto, repartoMasCercano, repartoVecino } from './reparto'
+import { repartoAlVolver, desplazamientoAsa, pasaParaVolver, VOLVER_PX, altoElastico, AMPLIAR_PX, altoArrastrado, ELASTICO, altosVideo, desbordeArrastre, esReparto, repartoMasCercano, repartoVecino } from './reparto'
 
 describe('reparto del alto entre vídeo y gráfica', () => {
   const altos = altosVideo(1000, Infinity)
@@ -76,5 +76,10 @@ describe('reparto del alto entre vídeo y gráfica', () => {
     expect(desplazamientoAsa(-900, 'arriba')).toBeCloseTo(-VOLVER_PX * ELASTICO)
     expect(desplazamientoAsa(40, 'abajo')).toBeCloseTo(40 * ELASTICO)
     expect(desplazamientoAsa(-40, 'abajo')).toBe(0)
+  })
+
+  it('al volver de una vista ampliada se aterriza en el extremo del que se viene', () => {
+    expect(repartoAlVolver('video')).toBe('video')
+    expect(repartoAlVolver('graficas')).toBe('grafica')
   })
 })
