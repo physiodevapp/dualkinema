@@ -2724,6 +2724,47 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     assert.equal(await asa().getAttribute('data-reparto'), antes)
   })
 
+  it('en las vistas ampliadas, tirar del asa en sentido contrario al de entrar vuelve a la mixta (con poco recorrido, no)', async () => {
+    await p.evaluate(() => window.scrollTo(0, 0))
+    await asentar()
+    const antes = await asa().getAttribute('data-reparto')
+    const tirar = async (id, dy) => {
+      const c = await p.getByTestId(id).boundingBox()
+      const x = c.x + c.width / 2
+      const y = c.y + c.height / 2
+      await p.mouse.move(x, y)
+      await p.mouse.down()
+      await p.mouse.move(x, y + dy / 2, { steps: 4 })
+      await p.mouse.move(x, y + dy, { steps: 4 })
+      return () => p.mouse.up()
+    }
+    // Vídeo grande: se entra tirando hacia abajo y se sale tirando hacia arriba.
+    await arrastrar(500)
+    await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
+    let soltar = await tirar('asa-volver-video', -20)
+    assert.equal(await p.getByTestId('asa-volver-video-aviso').count(), 0, 'con poco recorrido no avisa')
+    await soltar()
+    assert.equal(await p.getByTestId('reducir-video').count(), 1, 'con poco recorrido no vuelve')
+    soltar = await tirar('asa-volver-video', -120)
+    await p.getByTestId('asa-volver-video-aviso').waitFor({ state: 'visible' })
+    await soltar()
+    await p.getByTestId('reducir-video').waitFor({ state: 'detached' })
+    await asentar()
+    assert.equal(await asa().getAttribute('data-reparto'), antes)
+    // Solo gráficas: se entra tirando hacia arriba y se sale tirando hacia abajo.
+    await arrastrar(-500)
+    await p.getByTestId('vista-graficas').waitFor({ state: 'visible' })
+    soltar = await tirar('asa-volver-graficas', 20)
+    await soltar()
+    assert.equal(await p.getByTestId('reducir-graficas').count(), 1, 'con poco recorrido no vuelve')
+    soltar = await tirar('asa-volver-graficas', 120)
+    await p.getByTestId('asa-volver-graficas-aviso').waitFor({ state: 'visible' })
+    await soltar()
+    await p.getByTestId('reducir-graficas').waitFor({ state: 'detached' })
+    await asentar()
+    assert.equal(await asa().getAttribute('data-reparto'), antes)
+  })
+
   it('pasado el margen, volver atrás sin soltar no amplía: encaja como siempre', async () => {
     const c = await asa().boundingBox()
     const x = c.x + c.width / 2

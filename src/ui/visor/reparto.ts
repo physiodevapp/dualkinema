@@ -13,6 +13,24 @@ export const ALTO_VIDEO_DVH: Readonly<Record<Reparto, number>> = { grafica: 20, 
 /** Lo que hay que tirar más allá de una posición extrema (px) para que, al soltar, se pase a la vista ampliada. */
 export const AMPLIAR_PX = 56
 
+/** Lo que hay que tirar del asa de una vista ampliada (px, en el sentido contrario al de entrar) para volver a la mixta al soltar. */
+export const VOLVER_PX = 56
+
+/**
+ * ¿Se ha tirado lo bastante del asa de una vista ampliada para volver? `sentido`: hacia dónde hay que tirar, hacia
+ * arriba en el vídeo grande (lo contrario de lo que se hizo para ampliarlo) y hacia abajo en solo gráficas.
+ */
+export function pasaParaVolver(dy: number, sentido: 'arriba' | 'abajo'): boolean {
+  return (sentido === 'arriba' ? -dy : dy) >= VOLVER_PX
+}
+
+/** Cuánto se desplaza el asa con el dedo (px, con signo de `dy`): lo que se tira, con resistencia y con tope. */
+export function desplazamientoAsa(dy: number, sentido: 'arriba' | 'abajo'): number {
+  const a = sentido === 'arriba' ? -dy : dy
+  const dentro = Math.min(Math.max(a, 0), VOLVER_PX) * ELASTICO
+  return sentido === 'arriba' ? 0 - dentro : dentro
+}
+
 /** Lo que tiene que moverse el dedo (px) para que cuente como arrastre y no como toque. */
 export const MOVER_PX = 4
 /** Dos toques seguidos dentro de este tiempo (ms) vuelven al reparto de siempre. */
