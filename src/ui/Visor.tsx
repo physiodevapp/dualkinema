@@ -7,10 +7,6 @@ import {
   ArrowTrendingUpIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
-  PlayIcon,
-  SparklesIcon,
-  StopIcon,
-  TrashIcon,
   VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import { CALIDAD_MINIMA, serieAngular } from '../core/articulaciones/calculo'
@@ -21,7 +17,7 @@ import { escalaDesfasada, medirEntreMarcadores, metrosPorPx, type CalibracionVis
 import { constanciaSegmento } from '../core/calibracion/segmentos'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
-import { huecosInterpolables, HUECO_MAX_S, interpolarHueco, quitarInterpolados as quitarInterpoladosDe } from '../core/seguimiento/interpolar'
+import { huecosInterpolables, interpolarHueco, quitarInterpolados as quitarInterpoladosDe } from '../core/seguimiento/interpolar'
 import { framesConMarcaManual, quitarMarcasManuales } from '../core/seguimiento/manuales'
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../core/seguimiento/seguidor'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
@@ -56,6 +52,13 @@ import { useGuardado, type SesionAbierta } from './visor/useGuardado'
 import { dibujarSegmentoEscala, lectorDeCanvas } from './visor/capa'
 import { describirMotivos, fmt, grados, valorEn } from './visor/formato'
 import BotonPaso from './visor/BotonPaso'
+import SelectorMarcadores from './visor/SelectorMarcadores'
+import BotonSeguir from './visor/BotonSeguir'
+import InterruptorAOjo from './visor/InterruptorAOjo'
+import BotonesQuitarManual from './visor/BotonesQuitarManual'
+import AvisoAnclas from './visor/AvisoAnclas'
+import AccionesHuecos from './visor/AccionesHuecos'
+import BotonIrAlHueco from './visor/BotonIrAlHueco'
 import TextoGuardado from './visor/TextoGuardado'
 
 const SALTO = 10
@@ -924,67 +927,27 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   )
   const nodoDeslizador = <div className="flex flex-col gap-1 max-lg:hidden lg:order-1">{controlDeslizador}</div>
 
-  // Mientras se sigue, el avance se ve en la franja del deslizador (se va poniendo verde);
-  // el botón lleva el porcentaje, con ancho fijo para que no cambie de tamaño.
-  const botonParar = (alto: string) => (
-    <button
-      type="button"
-      onClick={() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)}
-      className={`flex items-center justify-center gap-2 rounded-md border border-borde px-4 ${alto}`}
-    >
-      <StopIcon className="size-5" /> Parar
-      {seguimiento.estado === 'siguiendo' && (
-        <span className="inline-block w-[5ch] text-right font-mono text-sm text-texto-2" data-testid="progreso-seguimiento">
-          {Math.round(seguimiento.progreso * 100)} %
-        </span>
-      )}
-    </button>
-  )
-
   // Marcadores con una marca a mano en el frame actual: se pueden quitar sin tener que elegirlos antes.
   const marcasManualesAqui = mostrado === null ? [] : modelo.marcadores.map((mk, k) => ({ mk, k })).filter(({ mk }) => muestra(mk.id, mostrado)?.editadoManual)
-  const botonesQuitarManual = (porDefecto: string) =>
-    siguiendo || mostrado === null
-      ? null
-      : marcasManualesAqui.map(({ mk, k }) => (
-          <button
-            key={mk.id}
-            type="button"
-            onClick={() => quitarManual(mk.id, mostrado)}
-            data-testid={`quitar-manual-${mk.id}`}
-            className={`flex items-center gap-2 rounded-md border border-borde px-3 py-2 text-sm text-texto-2 ${porDefecto}`}
-          >
-            <TrashIcon className="size-4" />
-            <span className="size-2.5 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
-            Quitar la marca a mano: {nombreCorto(mk.nombre)}
-          </button>
-        ))
+  // Estado de cada marcador en el frame mostrado, para el selector.
+  const estadosMarcadores = modelo.marcadores.map((mk) => {
+    const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
+    return valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
+  })
+  const pararSeguimiento = () => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorker)
+  const progresoSeguimiento = seguimiento.estado === 'siguiendo' ? seguimiento.progreso : 0
 
   // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
   const extrasCompactos =
     !siguiendo && (marcasManualesAqui.length > 0 || huecosCortos.length > 0 || hayInterpolados || aviso?.irA !== undefined) ? (
       <div className="flex flex-wrap gap-2" data-testid="extras-compactos">
-        {botonesQuitarManual('')}
-        {huecosCortos.length > 0 && (
-          <button type="button" onClick={rellenarHuecosCortos} className="flex items-center gap-2 rounded-md border border-interpolado/60 px-3 py-2 text-sm text-interpolado">
-            <SparklesIcon className="size-4" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto{huecosCortos.length === 1 ? '' : 's'}
-          </button>
-        )}
-        {hayInterpolados && (
-          <button type="button" onClick={quitarInterpolados} className="rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
-            Quitar lo interpolado
-          </button>
-        )}
-        {aviso?.irA !== undefined && (
-          <button type="button" onClick={() => ir(aviso.irA!)} className="rounded-md border border-borde px-3 py-2 text-sm">
-            Ir al primer frame con hueco ({aviso.irA + 1})
-          </button>
-        )}
+        <BotonesQuitarManual marcas={marcasManualesAqui} siguiendo={siguiendo} frame={mostrado} onQuitar={quitarManual} claseExtra="" />
+        <AccionesHuecos huecosCortos={huecosCortos.length} hayInterpolados={hayInterpolados} onRellenar={rellenarHuecosCortos} onQuitarInterpolados={quitarInterpolados} compacto />
+        {aviso?.irA !== undefined && <BotonIrAlHueco frame={aviso.irA} onIr={ir} compacto />}
       </div>
     ) : null
 
-  // Marcas a mano más adelante: «Seguir desde aquí» las toma como anclas y sigue desde ellas. Una marca de prueba o puesta
-  // «a ojo» lejos del gomet hace que el seguimiento lo pierda desde ahí (frames en rojo hasta el final): se avisa antes.
+  // Marcas a mano más adelante: «Seguir desde aquí» las toma como anclas y sigue desde ellas (ver `AvisoAnclas`).
   const framesAnclas = useMemo(() => {
     void version
     return mostrado === null ? [] : framesConMarcaManual(trayectorias.current, mostrado)
@@ -997,87 +960,14 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       texto: `Quitadas ${n} marca${n === 1 ? '' : 's'} a mano posteriores al frame ${mostrado + 1}. Los frames quedan sin posición: pulsa «Seguir desde aquí» para volver a seguirlos.`,
     })
   }
-  const nodoAnclas = (compacto: boolean) => {
-    if (siguiendo || framesAnclas.length === 0) return null
-    const lista = framesAnclas.slice(0, 3).map((i) => i + 1).join(', ') + (framesAnclas.length > 3 ? ` y ${framesAnclas.length - 3} más` : '')
-    return (
-      <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-2 text-xs" data-testid="aviso-anclas">
-        <p>
-          {compacto
-            ? `Hay marcas a mano más adelante (frames ${lista}): se usan como anclas.`
-            : `Hay marcas a mano más adelante (frames ${lista}). «Seguir desde aquí» las toma como ciertas y sigue desde ellas: si eran de prueba o están lejos del gomet, el seguimiento lo puede perder desde ahí.`}
-        </p>
-        <button
-          type="button"
-          onClick={quitarMarcasPosteriores}
-          className="flex items-center justify-center gap-2 self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2"
-        >
-          <TrashIcon className="size-4" /> Quitar las marcas a mano posteriores
-        </button>
-      </div>
-    )
-  }
-
-  const interruptorAOjo = (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={colocarAOjo}
-      disabled={siguiendo}
-      onClick={() => setColocarAOjo((v) => !v)}
-      data-testid="colocar-a-ojo"
-      title="Cada toque deja el marcador justo donde sueltas el dedo, sin buscar el gomet (gomet tapado o movido)"
-      className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm disabled:opacity-50 ${colocarAOjo ? 'border-acento text-acento' : 'border-borde text-texto-2'}`}
-    >
-      <span>Colocar a ojo</span>
-      <span aria-hidden className={`relative h-5 w-9 shrink-0 rounded-full border ${colocarAOjo ? 'border-acento bg-acento/30' : 'border-borde bg-fondo'}`}>
-        <span className={`absolute top-0.5 size-3.5 rounded-full transition-[left] motion-reduce:transition-none ${colocarAOjo ? 'left-[1.1rem] bg-acento' : 'left-0.5 bg-texto-2'}`} />
-      </span>
-    </button>
-  )
 
   // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
-      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
-        {modelo.marcadores.map((mk, k) => {
-          const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
-          const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
-          const activo = seleccionado === mk.id
-          return (
-            <button
-              key={mk.id}
-              type="button"
-              role="radio"
-              aria-checked={activo}
-              disabled={siguiendo}
-              onClick={() => setSeleccionado(activo ? null : mk.id)}
-              title={mk.nombre}
-              className={`flex flex-col items-center rounded-md border px-1 py-1.5 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
-            >
-              <span className="flex items-center gap-1.5">
-                <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
-                {nombreCorto(mk.nombre)}
-              </span>
-              <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
-            </button>
-          )
-        })}
-      </div>
-      {interruptorAOjo}
-      {nodoAnclas(true)}
-      {siguiendo ? (
-        botonParar('py-2')
-      ) : (
-        <button
-          type="button"
-          onClick={seguirDesdeAqui}
-          disabled={!listoParaSeguir}
-          className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-2.5 font-medium text-fondo disabled:opacity-40"
-        >
-          <PlayIcon className="size-5" /> Seguir desde aquí
-        </button>
-      )}
+      <SelectorMarcadores marcadores={modelo.marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={setSeleccionado} compacto />
+      <InterruptorAOjo activo={colocarAOjo} deshabilitado={siguiendo} onCambiar={() => setColocarAOjo((v) => !v)} />
+      <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={quitarMarcasPosteriores} compacto />
+      <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={seguirDesdeAqui} onParar={pararSeguimiento} compacto />
       {extrasCompactos}
       {aviso && <p className="line-clamp-2 text-xs text-texto-2">{aviso.texto}</p>}
     </div>
@@ -1412,31 +1302,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
               </div>
 
-              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Marcador a colocar">
-                {modelo.marcadores.map((mk, k) => {
-                  const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
-                  const estado = valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
-                  const activo = seleccionado === mk.id
-                  return (
-                    <button
-                      key={mk.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={activo}
-                      disabled={siguiendo}
-                      onClick={() => setSeleccionado(activo ? null : mk.id)}
-                      title={mk.nombre}
-                      className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <span className="size-3 rounded-full" style={{ background: COLORES_MARCADOR[k % COLORES_MARCADOR.length] }} />
-                        {nombreCorto(mk.nombre)}
-                      </span>
-                      <span className={`font-mono text-xs ${estado === 'perdido' ? 'text-red-300' : ''}`}>{estado}</span>
-                    </button>
-                  )
-                })}
-              </div>
+              <SelectorMarcadores marcadores={modelo.marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={setSeleccionado} />
 
               <p className="text-sm text-texto-2">
                 {siguiendo
@@ -1450,25 +1316,18 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                         : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
               </p>
 
-              {interruptorAOjo}
+              <InterruptorAOjo activo={colocarAOjo} deshabilitado={siguiendo} onCambiar={() => setColocarAOjo((v) => !v)} />
 
               {/* Quitar una marca a mano equivocada de cualquier marcador, en este frame, sin elegirlo antes. */}
-              {marcasManualesAqui.length > 0 && !siguiendo && <div className="flex flex-wrap gap-2">{botonesQuitarManual('')}</div>}
-
-              {nodoAnclas(false)}
-
-              {siguiendo ? (
-                botonParar('py-3')
-              ) : (
-                <button
-                  type="button"
-                  onClick={seguirDesdeAqui}
-                  disabled={!listoParaSeguir}
-                  className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo disabled:opacity-40"
-                >
-                  <PlayIcon className="size-5" /> Seguir desde aquí
-                </button>
+              {marcasManualesAqui.length > 0 && !siguiendo && (
+                <div className="flex flex-wrap gap-2">
+                  <BotonesQuitarManual marcas={marcasManualesAqui} siguiendo={siguiendo} frame={mostrado} onQuitar={quitarManual} claseExtra="" />
+                </div>
               )}
+
+              <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={quitarMarcasPosteriores} />
+
+              <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={seguirDesdeAqui} onParar={pararSeguimiento} />
 
               {aviso && (
                 <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
@@ -1479,37 +1338,13 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                       <pre className="mt-1 font-mono text-xs whitespace-pre-wrap">{aviso.detalle}</pre>
                     </details>
                   )}
-                  {aviso.irA !== undefined && (
-                    <button type="button" onClick={() => ir(aviso.irA!)} className="self-start rounded-md border border-borde px-3 py-2">
-                      Ir al primer frame con hueco ({aviso.irA + 1})
-                    </button>
-                  )}
+                  {aviso.irA !== undefined && <BotonIrAlHueco frame={aviso.irA} onIr={ir} />}
                 </div>
               )}
 
               {!siguiendo && (huecosCortos.length > 0 || hayInterpolados) && (
                 <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="huecos-cortos">
-                  {huecosCortos.length > 0 && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={rellenarHuecosCortos}
-                        className="flex items-center justify-center gap-2 rounded-md border border-interpolado/60 px-4 py-3 text-interpolado"
-                      >
-                        <SparklesIcon className="size-5" /> Rellenar {huecosCortos.length} hueco{huecosCortos.length === 1 ? '' : 's'} corto
-                        {huecosCortos.length === 1 ? '' : 's'}
-                      </button>
-                      <p className="text-xs text-texto-2">
-                        Huecos de {fmt(HUECO_MAX_S, 1)} s o menos entre dos posiciones fiables. Se rellenan con una curva suave que
-                        sigue el movimiento de antes y de después, y quedan marcados como interpolados.
-                      </p>
-                    </>
-                  )}
-                  {hayInterpolados && (
-                    <button type="button" onClick={quitarInterpolados} className="self-start rounded-md border border-borde px-3 py-2 text-sm text-texto-2">
-                      Quitar lo interpolado
-                    </button>
-                  )}
+                  <AccionesHuecos huecosCortos={huecosCortos.length} hayInterpolados={hayInterpolados} onRellenar={rellenarHuecosCortos} onQuitarInterpolados={quitarInterpolados} />
                 </div>
               )}
 
