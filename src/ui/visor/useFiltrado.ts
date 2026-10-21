@@ -1,3 +1,6 @@
+/* eslint-disable react-hooks/purity, react-hooks/refs --
+ * Mide lo que tarda cada pasada (`performance.now()`) dentro del `useMemo` y lee las trayectorias de su ref para
+ * decidir cuándo refiltrar mientras se sigue (`refiltrado.ts`). Código anterior al refactor; ver la §11. */
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { serieAngular, type MuestraAngulo } from '../../core/articulaciones/calculo'
 import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
