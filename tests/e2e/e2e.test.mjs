@@ -2742,7 +2742,7 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
   })
 
-  it('tirar más allá de un extremo y soltar pasa a la vista ampliada; el reparto no cambia', async () => {
+  it('tirar más allá de un extremo y soltar pasa a la vista ampliada y al volver se aterriza en ese extremo', async () => {
     await p.evaluate(() => window.scrollTo(0, 0))
     await asentar()
     const antes = await asa().getAttribute('data-reparto')
@@ -2762,13 +2762,15 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
     await p.getByTestId('reducir-video').click()
     await asentar()
-    assert.equal(await asa().getAttribute('data-reparto'), antes)
+    // Se vuelve al extremo del que se viene (vídeo grande), sin tocar el reparto guardado.
+    assert.equal(await asa().getAttribute('data-reparto'), 'video')
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoVideo')), antes)
     // Hacia arriba, más allá de «gráfica grande»: solo las gráficas.
     await arrastrar(-500)
     await p.getByTestId('vista-graficas').waitFor({ state: 'visible' })
     await p.getByTestId('reducir-graficas').click()
     await asentar()
-    assert.equal(await asa().getAttribute('data-reparto'), antes)
+    assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
   })
 
   it('en las vistas ampliadas, tirar del asa en sentido contrario al de entrar vuelve a la mixta (con poco recorrido, no)', async () => {
@@ -2797,7 +2799,8 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await soltar()
     await p.getByTestId('reducir-video').waitFor({ state: 'detached' })
     await asentar()
-    assert.equal(await asa().getAttribute('data-reparto'), antes)
+    assert.equal(await asa().getAttribute('data-reparto'), 'video')
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoVideo')), antes)
     // Solo gráficas: se entra tirando hacia arriba y se sale tirando hacia abajo.
     await arrastrar(-500)
     await p.getByTestId('vista-graficas').waitFor({ state: 'visible' })
@@ -2809,7 +2812,7 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await soltar()
     await p.getByTestId('reducir-graficas').waitFor({ state: 'detached' })
     await asentar()
-    assert.equal(await asa().getAttribute('data-reparto'), antes)
+    assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
   })
 
   it('pasado el margen, volver atrás sin soltar no amplía: encaja como siempre', async () => {
