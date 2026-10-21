@@ -848,6 +848,41 @@ describe('mientras se sigue, lo filtrado se rehace (no se queda en la pasada ant
   })
 })
 
+describe('ancla a ojo lejos del gomet: se vuelve a encontrar (reenganche)', () => {
+  it('con el tobillo tapado y marcado a ojo a 130 px, se recupera al reaparecer y da el ángulo real', async () => {
+    const verdad = videos.oculto.verdad
+    const ocultos = verdad.flatMap((f, i) => (f.tobilloOculto ? [i] : []))
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.oculto.ruta)
+      await marcarTres(p, verdad[0].ps)
+      // A ojo, en un frame con el tobillo tapado y 130 px a su izquierda (sobre el fondo): más lejos que el
+      // tope de la ventana normal de búsqueda (un 25 % de 360 px = 90 px), así que antes se perdía hasta el final.
+      const i = ocultos[2]
+      await irAFrame(p, i)
+      await abrirPestana(p, 'marcar')
+      await elegirMarcador(p, 'Maléolo')
+      const interruptor = p.getByTestId('colocar-a-ojo').filter({ visible: true })
+      await interruptor.click()
+      const real = verdad[i].ps[2]
+      await tocarVideo(p, real.x - 130, real.y)
+      await interruptor.click()
+      assert.equal(await estadoMarcador(p, 'Maléolo'), 'a mano')
+      await irAFrame(p, 0)
+      const aviso = await seguirHastaElFinal(p)
+      // Huecos: exactamente los frames tapados, menos el del ancla (antes, del ancla al final del vídeo).
+      assert.match(aviso, new RegExp(`Maléolo no tiene posición fiable en ${ocultos.length - 1} frames`))
+      for (const k of [ocultos.at(-1) + 2, 80, verdad.length - 1]) {
+        await irAFrame(p, k)
+        assert.equal(await estadoMarcador(p, 'Maléolo'), 'seguido', `frame ${k + 1}`)
+        assert.ok(Math.abs((await leerAngulo(p)) - verdad[k].flexion) < TOLERANCIA_GRADOS, `frame ${k + 1}`)
+      }
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('huecos cortos: rellenar a petición', () => {
   let p
   const ocultos = () => videos.corto.verdad.flatMap((f, i) => (f.tobilloOculto ? [i] : []))

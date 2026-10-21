@@ -11,6 +11,12 @@ export interface EstadoMarcador {
   readonly ultimas: readonly { t: number; x: number; y: number }[]
   /** Frames seguidos sin encontrarlo. */
   readonly perdidos: number
+  /**
+   * Instante de un ancla en la que no se reconoció el gomet (colocada a ojo):
+   * mientras siga perdido, se busca más lejos (`reenganchar`). Se quita al
+   * encontrarlo o pasados REENGANCHE_MAX_S.
+   */
+  readonly reenganche?: number
 }
 
 /**
@@ -47,6 +53,13 @@ export const AREA_MIN = 0.25
 export const AREA_MAX = 1.8
 /** Segundos que se extrapola la velocidad de un gomet perdido. */
 export const EXTRAPOLACION_MAX = 0.3
+/** Segundos tras un ancla sin gomet durante los que se busca lejos de ella. */
+export const REENGANCHE_MAX_S = 2
+/**
+ * Calidad mínima de un gomet reenganchado (tamaño y color; la distancia al
+ * ancla no cuenta): solo se acepta uno que se parezca claramente.
+ */
+export const CALIDAD_REENGANCHE = 0.7
 
 export class ErrorMarcado extends Error {
   /** Datos técnicos para diagnosticar (se muestran en pequeño). */
@@ -192,7 +205,69 @@ export function predecir(e: EstadoMarcador, t: number): { x: number; y: number; 
  * La calidad baja si la mancha se aleja de lo esperado o si hay otra candidata
  * casi igual de buena (ambigüedad).
  */
-export function seguir(e: EstadoMarcador, leer: LeerVentana, ancho: number, alto: number, t: number): Resultado {
+export function seguir(
+  e: EstadoMarcador,
+  leer: LeerVentana,
+  ancho: number,
+  alto: number,
+  t: number,
+  ocupadas: readonly { x: number; y: number }[] = [],
+): Resultado {
+  // Tras un ancla sin gomet, ni cerca se acepta el gomet de otro marcador.
+  const r = buscarCerca(e, leer, ancho, alto, t, e.reenganche === undefined ? [] : ocupadas)
+  if (!Number.isNaN(r.x) || e.reenganche === undefined) return r
+  if (t - e.reenganche > REENGANCHE_MAX_S + 1e-9) return { ...r, estado: { ...r.estado, reenganche: undefined } }
+  return reenganchar(e, leer, ancho, alto, t, ocupadas) ?? r
+}
+
+/**
+ * Reenganche tras un ancla sin gomet (pendiente de la fase 2: un ancla a ojo
+ * lejos del gomet lo hacía perder hasta el final). La predicción se queda en
+ * el ancla y la ventana normal tiene tope (un 25 % del lado menor), así que
+ * un gomet más lejos no se volvía a ver. Aquí la zona es la mitad del lado
+ * mayor alrededor del ancla y, al frame siguiente, todo el frame; la distancia al ancla no cuenta
+ * (podía estar mal puesta); a cambio, solo se acepta una mancha si es la
+ * única con forma de gomet, tamaño y color claramente parecidos, y no es la
+ * de otro marcador (`ocupadas`). Con dos candidatas sigue perdido: mejor un
+ * hueco que un gomet equivocado. Nunca se inventa una posición.
+ */
+function reenganchar(
+  e: EstadoMarcador,
+  leer: LeerVentana,
+  ancho: number,
+  alto: number,
+  t: number,
+  ocupadas: readonly { x: number; y: number }[],
+): Resultado | null {
+  const ultima = e.ultimas[e.ultimas.length - 1]!
+  const radio = Math.max(ancho, alto) * Math.min(1, 0.5 * 2 ** e.perdidos)
+  const img = leer(ventanaAlrededor(ultima.x, ultima.y, radio, ancho, alto))
+  const r = radioDe(e.area)
+  const calidadDe = (m: Mancha) => {
+    const qArea = Math.sqrt(Math.min(m.area, e.area) / Math.max(m.area, e.area))
+    const qColor = Math.max(0, 1 - m.distanciaMedia / UMBRAL_COLOR)
+    return Math.sqrt(qArea * qColor)
+  }
+  const candidatas = buscarManchas(img, e.modelo)
+    .filter((m) => m.area >= e.area * AREA_MIN && m.area <= e.area * AREA_MAX && pareceGomet(m, img.ancho, img.alto))
+    .filter((m) => !ocupadas.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < r + radioDe(m.area)))
+    .map((m) => ({ m, calidad: calidadDe(m) }))
+  const buenas = candidatas.filter((c) => c.calidad >= CALIDAD_REENGANCHE)
+  // Ninguna, o ambigua (otra mancha parecida en la zona): sigue perdido.
+  if (buenas.length !== 1 || candidatas.length > 1) return null
+  const { m, calidad } = buenas[0]!
+  return { x: m.x, y: m.y, calidad, estado: { modelo: e.modelo, area: e.area, ultimas: [{ t, x: m.x, y: m.y }], perdidos: 0 } }
+}
+
+/** Búsqueda normal, alrededor de la posición prevista, sin las manchas de `ocupadas`. */
+function buscarCerca(
+  e: EstadoMarcador,
+  leer: LeerVentana,
+  ancho: number,
+  alto: number,
+  t: number,
+  ocupadas: readonly { x: number; y: number }[],
+): Resultado {
   const ultima = e.ultimas[e.ultimas.length - 1]!
   // Perdido: se extrapola la velocidad como mucho EXTRAPOLACION_MAX segundos
   // (más allá la predicción se alejaría del gomet) y la ventana crece con cada
@@ -215,7 +290,9 @@ export function seguir(e: EstadoMarcador, leer: LeerVentana, ancho: number, alto
 
   const todas = buscarManchas(leer(ventanaAlrededor(p.x, p.y, radio, ancho, alto)), e.modelo)
   if (todas.length === 0) return perdido('sinColor')
-  const candidatas = todas.filter((m) => m.area >= e.area * AREA_MIN && m.area <= e.area * AREA_MAX)
+  const candidatas = todas.filter(
+    (m) => m.area >= e.area * AREA_MIN && m.area <= e.area * AREA_MAX && !ocupadas.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < r + radioDe(m.area)),
+  )
   if (candidatas.length === 0) {
     // La de tamaño más parecido, en escala logarítmica.
     const rel = todas.map((m) => m.area / e.area).sort((a, b) => Math.abs(Math.log(a)) - Math.abs(Math.log(b)))[0]!

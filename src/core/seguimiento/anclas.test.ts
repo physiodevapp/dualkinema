@@ -95,4 +95,63 @@ describe('anclas: una posición marcada a mano corrige lo que viene después', (
     expect(f.get('a')).toMatchObject({ x: 200, y: 120, calidad: 1 })
     expect(f.get('b')).toMatchObject({ calidad: 0, motivo: 'conflicto' })
   })
+
+  describe('ancla a ojo lejos del gomet: se vuelve a buscar más lejos (reenganche)', () => {
+    // El gomet avanza; en el frame 10 se marca a ojo 90 px por debajo (fuera
+    // del tope de la ventana normal, un 25 % del lado menor = 60 px).
+    const mueve: Escena = (t) => ({ a: { x: 80 + 60 * t, y: 80, r: 8, rgb: VERDE } })
+    const anclaLejos = (dy: number) => new Map([[10, new Map([['a', { x: mueve(TIEMPOS[10]!, 10).a!.x, y: 80 + dy }]])]])
+
+    it('se recupera en el frame siguiente y se sigue bien hasta el final', () => {
+      const res = recorrer(mueve, anclaLejos(90))
+      expect(res.find(({ i }) => i === 10)!.res.get('a')).toMatchObject({ y: 170, calidad: 1 }) // el ancla se respeta
+      for (const { res: r, real: d } of res.filter(({ i }) => i > 10)) expect(error(r.get('a')!, d.a!)).toBeLessThan(0.5)
+    })
+
+    it('tapado al poner el ancla, se recupera al reaparecer aunque esté lejos', () => {
+      const tapado: Escena = (t, i) => ({ a: i >= 9 && i <= 14 ? null : { x: 80 + 120 * t, y: 80, r: 8, rgb: VERDE } })
+      const res = recorrer(tapado, new Map([[10, new Map([['a', { x: 100, y: 200 }]])]]))
+      for (const { i, res: r } of res.filter(({ i }) => i > 10 && i <= 14)) expect(r.get('a')!.x, `frame ${i}`).toBeNaN() // tapado: hueco
+      for (const { res: r, real: d } of res.filter(({ i }) => i > 14)) expect(error(r.get('a')!, d.a!)).toBeLessThan(0.5)
+    })
+
+    it('no se queda con el gomet de otro marcador, aunque esté más cerca del ancla', () => {
+      const dos: Escena = (t) => ({
+        a: { x: 80 + 60 * t, y: 60, r: 8, rgb: VERDE },
+        b: { x: 240, y: 200, r: 8, rgb: VERDE },
+      })
+      const res = recorrer(dos, new Map([[10, new Map([['a', { x: 230, y: 190 }]])]]))
+      for (const { res: r, real: d } of res.filter(({ i }) => i > 10)) {
+        expect(error(r.get('a')!, d.a!)).toBeLessThan(0.5)
+        expect(error(r.get('b')!, d.b!)).toBeLessThan(0.5)
+      }
+    })
+
+    it('con otra mancha igual que no es de ningún marcador, sigue perdido (hueco, no un gomet equivocado)', () => {
+      const senuelo: Escena = (t, i) => ({
+        a: { x: 80 + 60 * t, y: 60, r: 8, rgb: VERDE },
+        ...(i > 0 ? { s: { x: 240, y: 200, r: 8, rgb: VERDE } } : {}),
+      })
+      // Solo se sigue «a» (el señuelo no está en el frame 0, donde se aprenden los marcadores).
+      const res = recorrer(senuelo, new Map([[10, new Map([['a', { x: 150, y: 180 }]])]]))
+      for (const { res: r } of res.filter(({ i }) => i > 10)) expect(r.get('a')!.x).toBeNaN()
+    })
+
+    it('pasados 2 s sin encontrarlo deja de buscar lejos', () => {
+      const largo = Array.from({ length: 90 }, (_, i) => i / 30)
+      const quieto = (i: number): Disco | null => (i >= 9 && i <= 80 ? null : { x: 80, y: 80, r: 8, rgb: VERDE })
+      const leer = (i: number) => lector(dibujarFrame(W, H, [quieto(i)].filter((d): d is Disco => d !== null), { semilla: i + 1 }))
+      const s = new SeguidorMultiple(new Map([['a', aprenderMarcador(leer(0), W, H, 0, 80, 80).estado]]), W, H)
+      let ultimo: Resultado | undefined
+      largo.forEach((t, i) => {
+        if (i === 0) return
+        ultimo = s.procesar(t, leer(i), i === 10 ? new Map([['a', { x: 240, y: 200 }]]) : undefined).get('a')!
+        if (i === 50) expect(ultimo.estado.reenganche).toBeCloseTo(largo[10]!, 9)
+        if (i === 80) expect(ultimo.estado.reenganche).toBeUndefined()
+      })
+      // Reaparece a 180 px del ancla tras 2,3 s: ya no se reengancha (la ventana normal no llega).
+      expect(ultimo!.x).toBeNaN()
+    })
+  })
 })
+

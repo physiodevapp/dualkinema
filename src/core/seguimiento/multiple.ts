@@ -37,7 +37,9 @@ export function estadoEnAncla(
     return { ...estado, ultimas }
   } catch (e) {
     if (!(e instanceof ErrorMarcado)) throw e
-    return { ...previo, ultimas, perdidos: 0 }
+    // Sin gomet en el ancla (tapado, o colocado a ojo lejos de él): si en los
+    // frames siguientes no aparece cerca, se busca más lejos (`reenganche`).
+    return { ...previo, ultimas, perdidos: 0, reenganche: t }
   }
 }
 
@@ -70,9 +72,20 @@ export class SeguidorMultiple {
     const res = new Map<IdMarcador, Resultado>()
     for (const [id, e] of this.estados) {
       const a = anclas?.get(id)
+      // Dónde están los demás (su ancla, o su última posición si venían bien
+      // seguidos): un reenganche no puede quedarse con el gomet de otro.
+      const ocupadas = [...this.estados]
+        .filter(([otro]) => otro !== id)
+        .flatMap(([otro, o]) => {
+          const ao = anclas?.get(otro)
+          if (ao) return [ao]
+          return o.perdidos === 0 ? [o.ultimas[o.ultimas.length - 1]!] : []
+        })
       res.set(
         id,
-        a ? { x: a.x, y: a.y, calidad: 1, estado: estadoEnAncla(e, a, t, leer, this.ancho, this.alto) } : seguir(e, leer, this.ancho, this.alto, t),
+        a
+          ? { x: a.x, y: a.y, calidad: 1, estado: estadoEnAncla(e, a, t, leer, this.ancho, this.alto) }
+          : seguir(e, leer, this.ancho, this.alto, t, ocupadas),
       )
     }
 
