@@ -30,11 +30,12 @@ export async function servirApp() {
 export const lanzarNavegador = () => chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 
 /** Abre la app como un móvil (o ancho de escritorio con `ancho` ≥ 800). El idioma es es-ES: uPlot lo necesita. */
-export async function abrirApp(navegador, { ancho = 390 } = {}) {
+export async function abrirApp(navegador, { ancho = 390, alto } = {}) {
   const pagina = await navegador.newPage({
     locale: 'es-ES',
-    viewport: { width: ancho, height: ancho >= 800 ? 900 : 844 },
-    hasTouch: ancho < 800,
+    viewport: { width: ancho, height: alto ?? (ancho >= 800 ? 900 : 844) },
+    // Un móvil girado (poco alto) también es táctil.
+    hasTouch: ancho < 800 || (alto ?? 900) < 600,
   })
   pagina.on('pageerror', (e) => errores.push(`pageerror: ${e.message}`))
   pagina.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()}`))
