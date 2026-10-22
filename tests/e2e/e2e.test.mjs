@@ -1550,7 +1550,7 @@ describe('trayectoria completa sobre el vídeo', () => {
       await irAFrame(p, 29)
       await irAFrame(p, 30)
       for (const k of lejos) assert.equal(await hayTrazo(p, verdad[k].ps[2]), false, `sin trayectoria completa, nada en el frame ${k + 1}`)
-      const boton = p.getByRole('button', { name: 'Trayectoria completa' })
+      const boton = p.getByRole('button', { name: 'Trayectoria completa', exact: true })
       assert.equal(await boton.getAttribute('aria-pressed'), 'false')
       await boton.click()
       for (const k of lejos) assert.equal(await hayTrazo(p, verdad[k].ps[2]), true, `trayectoria en el frame ${k + 1}`)
@@ -2283,7 +2283,7 @@ describe('vistas ampliadas del móvil', () => {
 
       // Al volver: la franja refleja lo seguido (verde), lo perdido (rojo) y lo marcado a mano (ámbar), no un solo color.
       await p.getByTestId('reducir-video').click()
-      assert.equal(await p.getByRole('button', { name: 'Trayectoria completa' }).getAttribute('aria-pressed'), 'true')
+      assert.equal(await p.getByRole('button', { name: 'Trayectoria completa', exact: true }).getAttribute('aria-pressed'), 'true')
       await p.waitForFunction(() => {
         const c = document.querySelector('input[aria-label="Posición en el vídeo"]')?.parentElement?.querySelector('canvas')
         return !!c && c.width > 50
@@ -2295,6 +2295,38 @@ describe('vistas ampliadas del móvil', () => {
       // El hueco ocupa tapados.length de total frames: su parte de la franja, con un píxel de margen por redondeo.
       const esperado = (tapados.length / total) * franja.ancho
       assert.ok(Math.abs(franja.rojo - esperado) <= 2 + esperado * 0.5, `rojo ${franja.rojo} px, esperado ≈ ${esperado.toFixed(1)}`)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('vista mixta del móvil: el atajo de la trayectoria completa está sobre el vídeo y es el mismo interruptor que el de «Marcar»', async () => {
+    const video = videos.verde
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await cargarVideo(p, video.ruta)
+      await marcarTres(p, video.verdad[0].ps)
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      await p.getByTestId('aviso').waitFor({ timeout: 90000 })
+      await p.evaluate(() => window.scrollTo(0, 0))
+      await esperarQuieto(p)
+      const trayectoria = p.getByTestId('trayectoria-compacta')
+      await trayectoria.waitFor()
+      // No tapa el botón de ampliar ni se sale del vídeo.
+      const caja = await p.getByTestId('capa').boundingBox()
+      const b = await trayectoria.boundingBox()
+      const ampliar = await p.getByTestId('ampliar-video').boundingBox()
+      assert.ok(b.y >= ampliar.y + ampliar.height, 'el atajo debe ir debajo del botón de ampliar')
+      assert.ok(b.y + b.height <= caja.y + caja.height && b.x + b.width <= caja.x + caja.width, 'el atajo debe caber en el vídeo')
+      assert.equal(await trayectoria.getAttribute('aria-pressed'), 'false')
+      await trayectoria.click()
+      assert.equal(await trayectoria.getAttribute('aria-pressed'), 'true')
+      // Es el interruptor de la pestaña «Marcar»: lo ve encendido; apagarlo allí lo apaga aquí.
+      await p.getByTestId('pestana-marcar').click()
+      const enPanel = p.getByRole('button', { name: 'Trayectoria completa', exact: true })
+      assert.equal(await enPanel.getAttribute('aria-pressed'), 'true')
+      await enPanel.click()
+      assert.equal(await trayectoria.getAttribute('aria-pressed'), 'false')
     } finally {
       await p.close()
     }
@@ -2505,7 +2537,7 @@ describe('escritorio: la pantalla cabe en la altura de la ventana', () => {
         assert.ok(botones.y + botones.height <= alto)
         // La columna de herramientas, más alta que el hueco (la trayectoria desplegada, el panel de análisis), se desplaza por dentro:
         // no alarga la página ni empuja el pie hacia abajo.
-        await p.getByRole('button', { name: 'Trayectoria completa' }).click()
+        await p.getByRole('button', { name: 'Trayectoria completa', exact: true }).click()
         for (const pestana of ['marcar', 'analisis', 'escala', 'video']) {
           await abrirPestana(p, pestana)
           const m = await p.evaluate(() => ({ alto: document.documentElement.scrollHeight, ventana: window.innerHeight }))
@@ -2538,7 +2570,7 @@ describe('escritorio: la columna de herramientas mide lo mismo que la tarjeta de
         for (const trayectoria of [false, true]) {
           if (trayectoria) {
             await abrirPestana(p, 'marcar')
-            await p.getByRole('button', { name: 'Trayectoria completa' }).click()
+            await p.getByRole('button', { name: 'Trayectoria completa', exact: true }).click()
           }
           for (const pestana of ['marcar', 'analisis', 'escala', 'video']) {
             await abrirPestana(p, pestana)

@@ -484,7 +484,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                 {enVideo ? <ArrowsPointingInIcon className="size-5" /> : <ArrowsPointingOutIcon className="size-5" />}
               </button>
             )}
-            {enVideo && (
+            {!anchoLg && vista !== 'graficas' && (
               <button
                 type="button"
                 onClick={() => setTrayectoriaCompleta((t) => !t)}
