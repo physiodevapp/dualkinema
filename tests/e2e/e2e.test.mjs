@@ -2148,7 +2148,7 @@ describe('gráfica pequeña del móvil: ángulo, velocidad o las dos normalizada
 })
 
 describe('gráfica pequeña del móvil: conserva su modo', () => {
-  it('al cambiar de frame, de pestaña, al desplazarse y al volver a seguir sigue en el modo elegido', async () => {
+  it('al cambiar de frame, de pestaña, al desplazarse, al ampliar el vídeo o las gráficas y volver, y al volver a seguir sigue en el modo elegido', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
       const modo = (id) => p.getByTestId(`minigrafica-modo-${id}`)
@@ -2173,6 +2173,15 @@ describe('gráfica pequeña del móvil: conserva su modo', () => {
       await p.waitForFunction(() => document.querySelector('[data-testid=visor-fijo]').dataset.grande === 'true')
       await esperarVideoAsentado(p, false)
       await enVelocidad('al bajar y volver arriba')
+      // Al pasar al vídeo grande o a solo gráficas (la gráfica pequeña no está) y volver, sigue en «Velocidad».
+      await p.getByTestId('ampliar-video').click()
+      await p.getByTestId('reducir-video').click()
+      await p.getByTestId('minigrafica-modo-velocidad').waitFor()
+      await enVelocidad('al volver del vídeo grande')
+      await p.getByTestId('ampliar-graficas').click()
+      await p.getByTestId('reducir-graficas').click()
+      await p.getByTestId('minigrafica-modo-velocidad').waitFor()
+      await enVelocidad('al volver de solo gráficas')
       // Seguir de nuevo desde un frame intermedio: llegan lotes del worker y se rehace lo filtrado.
       await irAFrame(p, 60)
       await seguirHastaElFinal(p)

@@ -314,7 +314,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // gráfica de arriba (las pestañas se pegan justo debajo al desplazarse).
   const [barraRef, altoBarra] = useAltura<HTMLDivElement>()
   const [fijoRef, altoFijo] = useAltura<HTMLDivElement>()
-  const { anchoLg, vista, setVista, enVideo, enGraficas, ampliada, activo, reparto, altoArrastre, setAltoArrastre, elegirReparto, volverDe } =
+  const { anchoLg, vista, setVista, enVideo, enGraficas, ampliada, activo, reparto, altoArrastre, setAltoArrastre, modoMini, setModoMini, elegirReparto, volverDe } =
     useVistaMovil({ altoBarra })
   // Al bajar por las tarjetas, el vídeo y su gráfica se esconden (y vuelven al subir, al cambiar de frame o de pestaña,
   // y mientras se calibra tocando el vídeo); las pestañas suben a ocupar su sitio.
@@ -516,6 +516,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               crudo={crudoPorFrame}
               filtrado={filtradoPorFrame}
               velocidad={filtrado.derivadas.velocidad}
+              modo={modoMini}
+              onModo={setModoMini}
               onAmpliar={() => setVista('graficas')}
               alto={mini.alto}
               // Mientras se arrastra el asa, la gráfica sigue al vídeo sin retraso (la tira de pestañas no se mueve).

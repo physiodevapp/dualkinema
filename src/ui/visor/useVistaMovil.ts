@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { ModoMiniGrafica } from './MiniGrafica'
 import { useAnchoMinimo } from './useAltura'
 import { CLAVE_REPARTO, leerReparto, repartoAlVolver, type Reparto } from './reparto'
 
@@ -6,8 +7,9 @@ export type Vista = 'mixta' | 'video' | 'graficas'
 
 /**
  * Cómo se reparte la pantalla: ancho de escritorio o móvil, vista del móvil (la mixta de siempre, el vídeo grande para
- * marcar o solo las gráficas; en pantalla ancha no existe), reparto del alto entre el vídeo y la gráfica pequeña, y lo
- * que cuelga de ello en la raíz (`--alto-barra`) y en la página (sin scroll con una vista ampliada).
+ * marcar o solo las gráficas; en pantalla ancha no existe), reparto del alto entre el vídeo y la gráfica pequeña, el modo
+ * de esa gráfica (aquí, porque se desmonta en las vistas ampliadas y no puede guardarlo ella) y lo que cuelga de ello en
+ * la raíz (`--alto-barra`) y en la página (sin scroll con una vista ampliada).
  *
  * `useOcultarAlBajar` y `useMiniGrande` se llaman en el visor (dependen de refs que se crean allí) y de aquí solo
  * toman `activo`.
@@ -31,6 +33,8 @@ export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
   // gráfica grande llena lo que quede (ver `reparto.ts`). Se guarda en este dispositivo.
   const [reparto, setReparto] = useState<Reparto>(leerReparto)
   const [altoArrastre, setAltoArrastre] = useState<number | null>(null)
+  // Modo de la gráfica pequeña (ángulo, velocidad o ambas): se conserva al ampliar el vídeo o las gráficas y volver.
+  const [modoMini, setModoMini] = useState<ModoMiniGrafica>('angulo')
   // Volver de una vista ampliada a la mixta: aterriza en el extremo del que se viene (vídeo grande o gráfica grande) para
   // seguir viendo en grande lo que se estaba mirando. No se guarda: el reparto guardado sigue siendo el elegido a mano.
   const volverDe = useCallback((desde: 'video' | 'graficas') => {
@@ -67,6 +71,8 @@ export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
     reparto,
     altoArrastre,
     setAltoArrastre,
+    modoMini,
+    setModoMini,
     elegirReparto,
     volverDe,
   }
