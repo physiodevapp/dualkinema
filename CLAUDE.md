@@ -55,7 +55,7 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 | `modelo/` | tipos: sesión, vista, modelo de marcadores, `Muestra2D` |
 | `geometria/` | ángulo con signo, normalización y desenrollado (`angulo.ts`); paso al marco canónico de la vista (`canonico.ts`, único sitio donde se cambia de convención) |
 | `articulaciones/` | definición declarativa, cálculo, catálogo (convenciones fijadas por `catalogo.test.ts`) y cero de referencia (`cero.ts`) |
-| `tiempo/` | tabla de frames: pts ordenados, frame visible en un instante, `indiceDeFrame`, fps mediano |
+| `tiempo/` | tabla de frames: pts ordenados, frame visible en un instante, `indiceDeFrame`, fps mediano; tiempo común de varias vistas (`comun.ts`: tiempo común = tiempo del vídeo + desfase) |
 | `seguimiento/` | color, manchas, seguidor, varios marcadores con anclas, huecos, interpolación de huecos cortos, imágenes sintéticas |
 | `filtros/` | Butterworth, spline, tramos y remuestreo, derivadas |
 | `calibracion/` | escala en metros (dos toques o entre marcadores), constancia de los segmentos |
