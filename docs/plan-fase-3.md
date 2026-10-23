@@ -1,6 +1,6 @@
 # Fase 3: dos vistas
 
-Estado: **propuesta**. Decisiones D1–D10 pendientes de aceptar por el usuario; nada de esta fase está escrito todavía. Cuando se acepten, este documento recogerá cómo queda cada pieza, como `docs/plan-fase-2.md`.
+Estado: **plan aceptado** (2026-10-23). Decisiones D1–D10 aceptadas por el usuario tal como se proponen, incluida la medida frontal de D3 (FPPA de rodilla con muslo proximal, centro de la rodilla y centro del tobillo). Nada de esta fase está escrito todavía; este documento recogerá cómo queda cada pieza, como `docs/plan-fase-2.md`.
 
 Objetivo de la fase (de `CLAUDE.md`): carga de dos vídeos, sincronización por evento visual o por audio, línea de tiempo y cursor comunes, gráficas superpuestas. Además, lo que la fase 2 dejó para aquí: el glosario dentro de la app (limitación 8: las notas de la gráfica no se ven en ningún sitio), la deuda de supresiones de `react-hooks` en los hooks del visor y la limitación 1 (la vista lateral sola no ve lo que pasa en el plano frontal).
 
@@ -66,7 +66,7 @@ Se guarda cómo se sincronizó (método, calidad del pico o frames del evento) p
 
 - Convención por fijar en `articulaciones/catalogo.ts` con su test en `catalogo.test.ts` (como todas): 0° con el muslo y la pierna alineados de frente; valgo (rodilla hacia dentro) positivo, varo negativo, igual para la pierna derecha y la izquierda y para la cámara delante o detrás (el marco canónico frontal ya lo resuelve con el espejo, falta el signo por lado). Es la parte de cálculo de esta fase: Opus, con casos de valor conocido.
 - El núcleo ya tiene la abducción de cadera frontal (`cadera_frontal_*`); se puede ofrecer también, pero sus marcadores (acromion, trocánter, epicóndilo) no son los de un protocolo frontal: no lo recomiendo para esta fase.
-- **Pregunta abierta para el usuario** (es criterio clínico): ¿FPPA de rodilla es la medida frontal que quieres? ¿Qué marcadores usas en la práctica para la cadera en la vista frontal?
+- Aceptado por el usuario (criterio clínico): FPPA de rodilla, con muslo proximal, centro de la rodilla y centro del tobillo.
 
 ## 5. Persistencia [D7] (paso 2)
 
@@ -126,13 +126,13 @@ Un CSV por vista, con el formato de la fase 2 más una columna `t_comun_s` (tiem
 
 Los pasos 4 y 5 se pueden intercambiar: el 4 da antes algo usable con cualquier vídeo; el 5 necesita vídeos reales con palmada para afinarse.
 
-## Resumen de decisiones (pendientes de aceptar)
+## Resumen de decisiones (aceptadas)
 
 | | Decisión | Propuesta |
 |---|---|---|
 | D1 | Vista de referencia | La primera que se abre (normalmente la lateral); se puede cambiar |
 | D2 | Sincronización | Audio automático y comprobación con un evento visual, con ajuste fino de un frame; solo visual si no hay audio |
-| D3 | Medida frontal | FPPA de rodilla (valgo dinámico), con sus 3 marcadores frontales (pendiente de criterio clínico) |
+| D3 | Medida frontal | FPPA de rodilla (valgo dinámico), con sus 3 marcadores frontales |
 | D4 | Marcadores | Un modelo por sesión; cada vista dice cuáles sigue; el mismo id es el mismo punto en todas |
 | D5 | Interfaz en el móvil | Vertical: una vista activa con conmutador A / B y miniatura de la otra; girado y escritorio: las dos a la vez |
 | D6 | Gráficas | Una por medida, alineadas en el tiempo común con cursor compartido; opción de superponer las de la misma unidad |
@@ -150,5 +150,4 @@ Los pasos 4 y 5 se pueden intercambiar: el 4 da antes algo usable con cualquier 
 
 ## Qué necesito del usuario
 
-- Aceptar o cambiar D1–D10, y responder la pregunta clínica de D3.
 - Antes del paso 5: **dos vídeos reales** de la misma sentadilla, grabados a la vez con dos móviles (uno de lado, otro de frente, a la altura de la rodilla), con una **palmada** al principio que se vea y se oiga en los dos. Con ellos se mide el retardo audio–vídeo y se afina la sincronización.
