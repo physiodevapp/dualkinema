@@ -2,7 +2,7 @@ import { esTramoEstatico, type TramoEstatico } from '../articulaciones/cero'
 import { esCalibracion, type CalibracionVista } from '../calibracion/escala'
 import type { DefinicionArticulacion, Plano } from '../articulaciones/definicion'
 import type { OrientacionVista } from '../geometria/canonico'
-import type { IdMarcador, ModeloMarcadores } from '../modelo/tipos'
+import type { IdMarcador, MetodoSincronia, ModeloMarcadores, Sincronia } from '../modelo/tipos'
 import { esAjustesFiltro, type AjustesFiltro } from '../filtros/tramos'
 import { claveHuella, esHuella, type HuellaArchivo } from './huella'
 import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, type TrayectoriaGuardada } from './trayectorias'
@@ -27,9 +27,17 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  * no exige cambiar de versión mientras null / {} sigan siendo válidos; un
  * cambio que deje de admitir lo guardado sí: sube ESQUEMA_ACTUAL y añade su
  * migración.
+ *
+ * Esquema 3 (fase 3, dos vistas): cada vista guarda los marcadores que sigue y
+ * cómo se sincronizó, y la sesión cuál es la vista de referencia. Añadir eso
+ * con valores por defecto no obligaba a subir la versión, pero una app vieja
+ * que abriera una sesión de dos vistas leería solo la primera y, al guardar,
+ * borraría la segunda: con el 3, no la abre. Las trayectorias no cambian (cada
+ * vista ya guarda las de todos los marcadores del modelo; las que no sigue van
+ * vacías).
  */
 
-export const ESQUEMA_ACTUAL = 2
+export const ESQUEMA_ACTUAL = 3
 
 export interface VistaCabecera {
   readonly id: string
@@ -41,6 +49,10 @@ export interface VistaCabecera {
   readonly calibracion: CalibracionVista | null
   /** Cero de referencia: tramo estático por id de articulación (vacío = sin cero). */
   readonly ceros: Readonly<Record<string, TramoEstatico>>
+  /** Marcadores del modelo que se siguen en esta vista (esquema 3). */
+  readonly marcadores: readonly IdMarcador[]
+  /** Cómo se halló el desfase (esquema 3). */
+  readonly sincronia: Sincronia
 }
 
 export interface CabeceraSesion {
@@ -52,6 +64,8 @@ export interface CabeceraSesion {
   readonly actualizada: string
   readonly modelo: ModeloMarcadores
   readonly vistas: readonly VistaCabecera[]
+  /** Id de la vista de referencia (esquema 3): su desfase es 0 y su tiempo es el tiempo común. */
+  readonly referencia: string
   /** Ajustes del filtro (paso 4); null = los de por defecto (6 Hz). */
   readonly filtro: AjustesFiltro | null
   /** Para la lista: frames con alguna muestra, con alguna marca a mano y con algo interpolado. */
@@ -90,8 +104,18 @@ export interface EntradaGuardado {
     readonly ceros?: Readonly<Record<string, TramoEstatico>>
     /** Escala de la vista; sin ella (o null), sin escala. */
     readonly calibracion?: CalibracionVista | null
+    /** Desfase respecto a la referencia (s); sin él, 0. */
+    readonly desfase?: number
+    /** Marcadores que se siguen en la vista; sin ellos, todos los del modelo. */
+    readonly marcadores?: readonly IdMarcador[]
+    /** Cómo se sincronizó; sin ella, «ninguna». */
+    readonly sincronia?: Sincronia
   }[]
+  /** Id de la vista de referencia; sin él, la primera. */
+  readonly referencia?: string
 }
+
+const SIN_SINCRONIA: Sincronia = { metodo: 'ninguna' }
 
 export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion; datos: DatosSesion } {
   const trayectorias: Record<string, Record<IdMarcador, TrayectoriaGuardada>> = {}
@@ -114,7 +138,17 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     creada: e.creada,
     actualizada: e.ahora,
     modelo: e.modelo,
-    vistas: e.vistas.map((v) => ({ id: v.id, huella: v.huella, orientacion: v.orientacion, desfase: 0, calibracion: v.calibracion ?? null, ceros: { ...v.ceros } })),
+    vistas: e.vistas.map((v) => ({
+      id: v.id,
+      huella: v.huella,
+      orientacion: v.orientacion,
+      desfase: v.desfase ?? 0,
+      calibracion: v.calibracion ?? null,
+      ceros: { ...v.ceros },
+      marcadores: [...(v.marcadores ?? e.modelo.marcadores.map((mk) => mk.id))],
+      sincronia: v.sincronia ?? SIN_SINCRONIA,
+    })),
+    referencia: e.referencia ?? e.vistas[0]!.id,
     filtro: e.filtro ?? null,
     resumen: { frames: e.vistas.reduce((s, v) => s + v.huella.frames, 0), conDatos, aMano, interpolados },
     claves: e.vistas.map((v) => claveHuella(v.huella)),
@@ -135,6 +169,19 @@ export type Migraciones = Readonly<Record<number, (registro: Record<string, unkn
  */
 export const MIGRACIONES_CABECERA: Migraciones = {
   1: (r) => (esObjeto(r.resumen) ? { ...r, resumen: { ...r.resumen, interpolados: 0 } } : r),
+  /*
+   * 2 → 3 (fase 3): las sesiones de antes tienen una sola vista, que sigue todos
+   * los marcadores del modelo, sin sincronizar, y es la referencia. Los mismos
+   * valores que pone `prepararGuardado` por defecto: una sesión vieja se lee
+   * igual que una nueva de una vista.
+   */
+  2: (r) => {
+    if (!Array.isArray(r.vistas) || !esObjeto(r.modelo) || !Array.isArray(r.modelo.marcadores)) return r
+    const ids = (r.modelo.marcadores as unknown[]).map((mk) => (esObjeto(mk) ? mk.id : undefined))
+    const vistas = (r.vistas as unknown[]).map((v) => (esObjeto(v) ? { ...v, marcadores: ids, sincronia: { metodo: 'ninguna' } } : v))
+    const primera = r.vistas[0] as unknown
+    return { ...r, vistas, referencia: esObjeto(primera) ? primera.id : undefined }
+  },
 }
 export const MIGRACIONES_DATOS: Migraciones = {
   1: (r) => {
@@ -153,6 +200,8 @@ export const MIGRACIONES_DATOS: Migraciones = {
     }
     return { ...r, trayectorias }
   },
+  // 2 → 3: las trayectorias no cambian.
+  2: (r) => r,
 }
 
 /**
@@ -213,6 +262,18 @@ function errorModelo(v: unknown): string | null {
   return null
 }
 
+const METODOS: readonly MetodoSincronia[] = ['ninguna', 'evento', 'audio', 'manual']
+const esNumero = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+function errorSincronia(v: unknown): string | null {
+  if (!esObjeto(v) || !METODOS.includes(v.metodo as MetodoSincronia)) return 'sincronía no válida'
+  if (v.evento !== undefined && !(esObjeto(v.evento) && esNumero(v.evento.referencia) && esNumero(v.evento.vista))) return 'evento de sincronía no válido'
+  if (v.audio !== undefined && !(esObjeto(v.audio) && esNumero(v.audio.calidad) && v.audio.calidad >= 0 && esNumero(v.audio.desfase))) {
+    return 'sincronía por audio no válida'
+  }
+  return null
+}
+
 function errorVista(v: unknown): string | null {
   if (!esObjeto(v) || !esTexto(v.id)) return 'vista sin id'
   if (!esHuella(v.huella)) return `huella no válida en la vista ${v.id}`
@@ -221,6 +282,10 @@ function errorVista(v: unknown): string | null {
   if (typeof v.desfase !== 'number' || !Number.isFinite(v.desfase)) return `desfase no válido en la vista ${v.id}`
   if (v.calibracion !== null && !esCalibracion(v.calibracion)) return `calibración no válida en la vista ${v.id}`
   if (!esObjeto(v.ceros) || !Object.values(v.ceros).every(esTramoEstatico)) return `ceros no válidos en la vista ${v.id}`
+  if (!Array.isArray(v.marcadores) || v.marcadores.length === 0 || !v.marcadores.every(esTexto)) return `marcadores no válidos en la vista ${v.id}`
+  if (new Set(v.marcadores).size !== v.marcadores.length) return `marcadores repetidos en la vista ${v.id}`
+  const s = errorSincronia(v.sincronia)
+  if (s) return `${s} en la vista ${v.id}`
   return null
 }
 
@@ -241,14 +306,19 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
   }
   const vistas = c.vistas as VistaCabecera[]
   const articulaciones = new Set((c.modelo as ModeloMarcadores).articulaciones.map((a) => a.id))
+  const marcadores = new Set((c.modelo as ModeloMarcadores).marcadores.map((m) => m.id))
   for (const vista of vistas) {
     const ajena = Object.keys(vista.ceros).find((id) => !articulaciones.has(id))
     if (ajena) return mal(`cero de referencia de una articulación que no está en el modelo: ${ajena}`)
     const entre = vista.calibracion?.entre
-    const marcadores = new Set((c.modelo as ModeloMarcadores).marcadores.map((m) => m.id))
     if (entre && (!marcadores.has(entre.desde) || !marcadores.has(entre.hasta))) return mal('escala entre marcadores que no están en el modelo')
+    const fuera = vista.marcadores.find((id) => !marcadores.has(id))
+    if (fuera) return mal(`la vista ${vista.id} sigue un marcador que no está en el modelo: ${fuera}`)
   }
   if (new Set(vistas.map((x) => x.id)).size !== vistas.length) return mal('vistas repetidas')
+  const referencia = vistas.find((x) => x.id === c.referencia)
+  if (!referencia) return mal('la vista de referencia no es ninguna de las vistas')
+  if (referencia.desfase !== 0) return mal('la vista de referencia tiene desfase')
   if (c.filtro !== null && !esAjustesFiltro(c.filtro)) return mal('filtro no válido')
   const r = c.resumen
   if (!esObjeto(r) || ![r.frames, r.conDatos, r.aMano, r.interpolados].every((n) => Number.isInteger(n) && (n as number) >= 0)) return mal('resumen no válido')

@@ -111,6 +111,10 @@ Un CSV por vista, con el formato de la fase 2 más una columna `t_comun_s` (tiem
 - e2e: un par de vídeos sintéticos nuevos generados con ffmpeg con **verdad conocida**: el mismo movimiento visto de lado y de frente, con **fps distintos** (30 y 25), un **desfase conocido** (p. ej. 0,733 s), un destello en un frame conocido de cada vídeo (evento visual) y una **pista de audio** con un pitido corto en un instante conocido de cada uno. Se comprueba que el desfase por audio cae dentro de 1 ms del real, el visual dentro de su incertidumbre, que el cursor común muestra en cada vista el frame que toca y que las curvas de cada vista coinciden con su verdad en el tiempo común.
 - Lo que no se puede probar aquí: H.264 y HEVC reales (como siempre) y el retardo audio–vídeo de cada móvil. Para eso hacen falta **vídeos reales del usuario** (ver «Qué necesito del usuario»).
 
+## Hecho
+
+**Paso 2a — esquema 3** (`core/persistencia/esquema.ts`, tipos en `core/modelo/tipos.ts`). Cada vista guarda `marcadores` (los que sigue; por defecto, todos los del modelo) y `sincronia` (`ninguna`, `evento` con el instante en cada vista, `audio` con la calidad del pico y el desfase que dio antes del ajuste fino, o `manual`); la sesión guarda `referencia` (id de la vista de referencia). `prepararGuardado` toma `desfase` de la entrada (antes lo ponía siempre a 0). Validación: marcadores no vacíos, sin repetir y del modelo; sincronía con un método conocido y números finitos; la referencia es una de las vistas y su desfase es 0. Migración 2 → 3 con los mismos valores que pone `prepararGuardado` por defecto (una sesión vieja se lee igual que una nueva de una vista); las trayectorias no cambian (2 → 3 solo sube la versión). Tests: ida y vuelta de dos vistas (lateral y frontal, con desfase negativo y sincronía por audio), referencia en la segunda vista, lectura del esquema 2 y del 1, y casos rechazados. Nada visible cambia: el visor sigue con una vista.
+
 ## Orden de trabajo (un PR por paso)
 
 | Paso | Contenido | Modelo |

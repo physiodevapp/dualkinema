@@ -91,7 +91,7 @@ El detalle de cómo quedó cada pieza (y por qué) está en `docs/plan-fase-1.md
 - La convención clínica de cada articulación está en `articulaciones/catalogo.ts` y la fija `catalogo.test.ts`: cambiarla exige cambiar ese test a propósito.
 
 **Persistencia** (fase 2 §6)
-- El vídeo nunca se guarda. Cada registro lleva `esquema` (`ESQUEMA_ACTUAL`, hoy 2); uno de una versión más nueva no se abre ni se reescribe. Rellenar un hueco ya previsto (vacío válido) no sube la versión; un cambio que deje de admitir lo guardado sí, con su migración y su test.
+- El vídeo nunca se guarda. Cada registro lleva `esquema` (`ESQUEMA_ACTUAL`, hoy 3: cada vista guarda los marcadores que sigue y cómo se sincronizó, y la sesión su vista de referencia, con desfase 0); uno de una versión más nueva no se abre ni se reescribe. Rellenar un hueco ya previsto (vacío válido) no sube la versión; un cambio que deje de admitir lo guardado sí, con su migración y su test.
 - La huella se busca sin el nombre (`claveHuella`): Android da al mismo vídeo otro nombre según desde dónde se elija.
 - No se crea sesión hasta que hay algo marcado o una escala; una vez creada, quitarlo todo también se guarda. La transacción de guardado se crea de forma síncrona con la base ya abierta (si no, Chromium la pierde al recargar).
 

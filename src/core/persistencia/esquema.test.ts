@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { modeloRodilla3 } from '../articulaciones/catalogo'
 import type { Muestra2D } from '../modelo/tipos'
-import { ESQUEMA_ACTUAL, leerCabecera, leerDatos, migrar, prepararGuardado, type EntradaGuardado } from './esquema'
+import { ESQUEMA_ACTUAL, leerCabecera, leerDatos, migrar, prepararGuardado, type EntradaGuardado, type VistaCabecera } from './esquema'
 import type { HuellaArchivo } from './huella'
 import { desempaquetarTrayectoria, empaquetarTrayectoria, errorTrayectoria } from './trayectorias'
 
@@ -108,9 +108,11 @@ describe('esquema de la sesión', () => {
   it('cabecera de la versión actual con los huecos de los pasos siguientes vacíos', () => {
     const { cabecera } = prepararGuardado(entrada())
     expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL)
-    expect(ESQUEMA_ACTUAL).toBe(2)
+    expect(ESQUEMA_ACTUAL).toBe(3)
     expect(cabecera.filtro).toBeNull()
-    expect(cabecera.vistas[0]).toMatchObject({ desfase: 0, calibracion: null, ceros: {} })
+    // Sin decir nada: la vista sigue todos los marcadores del modelo, sin sincronizar, y es la referencia.
+    expect(cabecera.vistas[0]).toMatchObject({ desfase: 0, calibracion: null, ceros: {}, marcadores: [cadera, rodilla, tobillo], sincronia: { metodo: 'ninguna' } })
+    expect(cabecera.referencia).toBe('v1')
     expect(cabecera.claves).toEqual(['1000:6:200'])
     // Frames 0, 1, 2 y 4 tienen alguna muestra; solo el 0 tiene marcas a mano.
     expect(cabecera.resumen).toEqual({ frames: FRAMES, conDatos: 4, aMano: 1, interpolados: 0 })
@@ -129,10 +131,10 @@ describe('esquema de la sesión', () => {
     const e = entrada()
     const conCero = { ...e, vistas: [{ ...e.vistas[0]!, ceros: { [art]: { desde: 0, hasta: 2 } } }] }
     const { cabecera } = prepararGuardado(conCero)
-    expect(cabecera.esquema).toBe(2)
+    expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL) // rellenar el hueco no sube la versión
     const r = leerCabecera(comoIDB(cabecera))
     expect(r.ok && r.valor.vistas[0]!.ceros).toEqual({ [art]: { desde: 0, hasta: 2 } })
-    // Una sesión guardada antes de este paso (ceros vacío, esquema 2) se lee igual.
+    // Una sesión guardada antes de este paso (ceros vacío) se lee igual.
     const antes = leerCabecera(comoIDB(prepararGuardado(entrada()).cabecera))
     expect(antes.ok && antes.valor.vistas[0]!.ceros).toEqual({})
     // Tramos no válidos o de una articulación ajena al modelo se rechazan.
@@ -155,7 +157,7 @@ describe('esquema de la sesión', () => {
     const e = entrada()
     const calibracion = { tipo: 'escala-plano', objeto: 'palo', a: { x: 10, y: 20 }, b: { x: 10, y: 452 }, longitudM: 1, t: 0.25 } as const
     const { cabecera } = prepararGuardado({ ...e, vistas: [{ ...e.vistas[0]!, calibracion }] })
-    expect(cabecera.esquema).toBe(2)
+    expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL) // rellenar el hueco no sube la versión
     const r = leerCabecera(comoIDB(cabecera))
     expect(r.ok && r.valor.vistas[0]!.calibracion).toEqual(calibracion)
     const antes = leerCabecera(comoIDB(prepararGuardado(entrada()).cabecera))
@@ -241,11 +243,11 @@ describe('interpolado (esquema 2)', () => {
   })
 
   it('una sesión guardada con el esquema 1 se lee igual, sin nada interpolado', () => {
-    // Registro tal como lo escribía la versión 1 (paso 2 de la fase 2).
+    // Registro tal como lo escribía la versión 1 (paso 2 de la fase 2): sin lo interpolado ni lo del esquema 3.
     const { cabecera, datos } = prepararGuardado(entrada())
     const resumenV1: Record<string, unknown> = { ...cabecera.resumen }
     delete resumenV1.interpolados
-    const cabeceraV1 = { ...cabecera, esquema: 1, resumen: resumenV1 }
+    const cabeceraV1 = { ...comoV2(cabecera), esquema: 1, resumen: resumenV1 }
     const trayectoriasV1 = Object.fromEntries(
       Object.entries(datos.trayectorias.v1!).map(([id, g]) => {
         const resto: Record<string, unknown> = { ...g }
@@ -261,9 +263,106 @@ describe('interpolado (esquema 2)', () => {
     const d = leerDatos(comoIDB(datosV1), c.valor)
     expect(d.ok).toBe(true)
     if (!d.ok) return
-    expect(d.valor.esquema).toBe(2)
+    expect(d.valor.esquema).toBe(ESQUEMA_ACTUAL)
     expect(desempaquetarTrayectoria(d.valor.trayectorias.v1![cadera]!, FRAMES)).toEqual(serieCadera)
     expect(Array.from(d.valor.trayectorias.v1![cadera]!.interpolado)).toEqual([0, 0, 0, 0])
+  })
+})
+
+/** La cabecera tal como la escribía el esquema 2: sin marcadores ni sincronía por vista ni vista de referencia. */
+function comoV2(cabecera: ReturnType<typeof prepararGuardado>['cabecera']): Record<string, unknown> {
+  const { referencia, ...resto } = cabecera
+  void referencia
+  return {
+    ...resto,
+    esquema: 2,
+    vistas: cabecera.vistas.map(({ marcadores, sincronia, ...v }) => {
+      void marcadores
+      void sincronia
+      return v
+    }),
+  }
+}
+
+describe('varias vistas (esquema 3)', () => {
+  // Una vista lateral (los 3 gomets de la rodilla) y una frontal con sus propios marcadores (inventados para la prueba).
+  const frontal = ['muslo_izq', 'rodilla_centro_izq', 'tobillo_centro_izq']
+  const modelo2 = { ...modelo, marcadores: [...modelo.marcadores, ...frontal.map((id) => ({ id, nombre: id }))] }
+  const huellaFrontal: HuellaArchivo = { nombre: 'frontal.mp4', tamano: 2000, duracion: 0.24, frames: FRAMES }
+
+  function entradaDos(): EntradaGuardado {
+    const e = entrada()
+    return {
+      ...e,
+      modelo: modelo2,
+      vistas: [
+        { ...e.vistas[0]!, marcadores: [cadera, rodilla, tobillo] },
+        {
+          id: 'v2',
+          huella: huellaFrontal,
+          orientacion: { plano: 'frontal', ve: 'delante' },
+          series: new Map([[frontal[0]!, [m(0, 300, 40, 1, true), undefined, undefined, undefined, undefined, undefined]]]),
+          desfase: -0.7333,
+          marcadores: frontal,
+          sincronia: { metodo: 'audio', audio: { calidad: 7.5, desfase: -0.7 } },
+        },
+      ],
+    }
+  }
+
+  it('ida y vuelta de una sesión con dos vistas: desfase, marcadores y sincronía de cada una', () => {
+    const { cabecera, datos } = prepararGuardado(entradaDos())
+    expect(cabecera.referencia).toBe('v1')
+    expect(cabecera.vistas[1]).toMatchObject({ desfase: -0.7333, marcadores: frontal, sincronia: { metodo: 'audio', audio: { calidad: 7.5, desfase: -0.7 } } })
+    expect(cabecera.claves).toEqual(['1000:6:200', '2000:6:240'])
+    const c = leerCabecera(comoIDB(cabecera))
+    expect(c).toEqual({ ok: true, valor: cabecera })
+    if (!c.ok) return
+    const d = leerDatos(comoIDB(datos), c.valor)
+    expect(d.ok).toBe(true)
+    if (!d.ok) return
+    // Cada vista guarda las trayectorias de todos los marcadores del modelo; las que no sigue, vacías.
+    expect(desempaquetarTrayectoria(d.valor.trayectorias.v2![frontal[0]!]!, FRAMES)[0]).toEqual(m(0, 300, 40, 1, true))
+    expect(desempaquetarTrayectoria(d.valor.trayectorias.v2![cadera]!, FRAMES).every((x) => x === undefined)).toBe(true)
+  })
+
+  it('la referencia puede ser otra vista, y entonces es la que tiene desfase 0', () => {
+    const e = entradaDos()
+    const vistas = [{ ...e.vistas[0]!, desfase: 0.7333 }, { ...e.vistas[1]!, desfase: 0 }]
+    const { cabecera } = prepararGuardado({ ...e, vistas, referencia: 'v2' })
+    expect(leerCabecera(comoIDB(cabecera))).toEqual({ ok: true, valor: cabecera })
+  })
+
+  it('una sesión guardada con el esquema 2 se lee igual que una nueva de una vista', () => {
+    const { cabecera, datos } = prepararGuardado(entrada())
+    const c = leerCabecera(comoIDB(comoV2(cabecera)))
+    expect(c).toEqual({ ok: true, valor: cabecera })
+    if (!c.ok) return
+    const d = leerDatos(comoIDB({ ...datos, esquema: 2 }), c.valor)
+    expect(d).toEqual({ ok: true, valor: comoIDB(datos) })
+  })
+
+  it('rechaza marcadores, sincronía o referencia que no cuadran', () => {
+    const { cabecera } = prepararGuardado(entradaDos())
+    const [v1, v2] = cabecera.vistas as readonly VistaCabecera[]
+    const conV2 = (cambio: Record<string, unknown>) => ({ ...cabecera, vistas: [v1, { ...v2, ...cambio }] })
+    const casos: [Record<string, unknown>, RegExp][] = [
+      [conV2({ marcadores: [] }), /marcadores no válidos/],
+      [conV2({ marcadores: [frontal[0], frontal[0]] }), /marcadores repetidos/],
+      [conV2({ marcadores: ['pie'] }), /marcador que no está en el modelo: pie/],
+      [conV2({ sincronia: { metodo: 'reloj' } }), /sincronía no válida/],
+      [conV2({ sincronia: undefined }), /sincronía no válida/],
+      [conV2({ sincronia: { metodo: 'audio', audio: { calidad: Number.NaN, desfase: 0 } } }), /audio no válida/],
+      [conV2({ sincronia: { metodo: 'evento', evento: { referencia: 1 } } }), /evento de sincronía/],
+      [conV2({ desfase: Number.POSITIVE_INFINITY }), /desfase no válido/],
+      [{ ...cabecera, referencia: 'v3' }, /referencia no es ninguna/],
+      [{ ...cabecera, referencia: 'v2' }, /referencia tiene desfase/],
+    ]
+    for (const [registro, motivo] of casos) {
+      const r = leerCabecera(registro)
+      expect(r.ok, String(motivo)).toBe(false)
+      if (!r.ok) expect(r.detalle).toMatch(motivo)
+    }
   })
 })
 
