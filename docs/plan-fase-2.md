@@ -380,3 +380,15 @@ Elegido (entre guardarlo en el dispositivo o en la sesión de cada vídeo, y ent
 - `Visor.tsx`: la pestaña abierta se lee al montar el visor y se guarda al tocar una pestaña. `PanelGrafica.tsx`: las series visibles se leen al montar y se guardan al encender o apagar una (en el manejador, no en un efecto: así no se escribe lo de por defecto sin que nadie haya elegido).
 - **La pestaña solo se restaura al recuperar un trabajo** (corregido tras probarlo: un vídeo nuevo, sin nada marcado, abría en «Escala» o «Análisis» con las tarjetas vacías). Con un vídeo nuevo se empieza siempre en «Marcar»; al recuperar una sesión (`inicial` definido), en la última pestaña usada. La pestaña se sigue guardando al tocarla; solo cambia cuándo se lee. Las series visibles sí se restauran siempre (valen para cualquier vídeo).
 - Pruebas: dos e2e (`preferencias recordadas en el dispositivo`): pestaña al recuperar un trabajo, con un vídeo nuevo (empieza en «Marcar») y con un valor ilegible; series al recargar y con un guardado roto.
+
+### Después del cierre: «Solo gráficas» con el móvil girado
+
+Medido antes de tocar: con el móvil girado (800 × 360) «Solo gráficas» dejaba **224 px** de alto útil (el resto, la barra fija). Entre el asa de arriba, la cabecera «Solo gráficas», el título del panel y los botones de series, la gráfica del ángulo empezaba en y = 171 y quedaba **a medias**, y la de velocidad empezaba en y = 342: **fuera de pantalla**, solo se veía desplazando.
+
+Con `apaisado` y `enGraficas` (misma condición que el vídeo grande en dos columnas):
+- **Ángulo y velocidad lado a lado** (`lado` en `PanelGrafica`; los segmentos, si se encienden, como tercera columna). Cada columna lleva una línea a su izquierda en vez de la de arriba. La del ángulo lleva debajo su resumen; la de velocidad, su título encima.
+- **Más alto:** sin el asa para volver y sin la cabecera «Solo gráficas» (el botón de volver, con el mismo `data-testid="reducir-graficas"`, va en la fila del título del panel: prop `accion`) y con margen de 8 px en vez de 16.
+- Resultado: el panel entra entero (208 px de 224) y las gráficas miden unos 367 × 96 px (800 × 360) y 389 × 126 px (844 × 390), las dos a la vista sin desplazarse.
+- Vertical, vista mixta y escritorio no cambian (DOM idéntico). La disposición va por CSS flex con envoltorios que solo existen con `lado`.
+- Se pierde la alineación vertical del tiempo entre las dos gráficas (cada una tiene su eje X); el cursor sigue sincronizado.
+- Prueba (`móvil girado (horizontal)`): ángulo y velocidad enteras sobre la barra, una a la derecha de la otra, sin asa, con los segmentos como tercera columna y el botón de volver funcionando, en 740 × 360 y 844 × 390.

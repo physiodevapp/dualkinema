@@ -3146,6 +3146,48 @@ describe('móvil girado (horizontal)', () => {
       }
     }
   })
+
+  it('«Solo gráficas» con el móvil girado: ángulo y velocidad lado a lado, enteras en pantalla y con el botón de volver en el título', async () => {
+    const video = videos.verde
+    for (const [ancho, alto] of [
+      [740, 360],
+      [844, 390],
+    ]) {
+      const p = await abrirApp(navegador, { ancho, alto })
+      try {
+        await cargarVideo(p, video.ruta)
+        await p.getByTestId('ampliar-graficas').click()
+        await p.getByTestId('grafica-velocidad').waitFor()
+        const barra = await p.getByTestId('barra-fija').boundingBox()
+        const angulo = await p.getByTestId('grafica-angulo').boundingBox()
+        const velocidad = await p.getByTestId('grafica-velocidad').boundingBox()
+        const dentro = (c, nombre) => {
+          assert.ok(c.y >= 0 && c.y + c.height <= barra.y + 1, `${nombre} no cabe sobre la barra (${ancho} × ${alto}): ${JSON.stringify({ c, barraY: barra.y })}`)
+          assert.ok(c.height >= 80 && c.width >= 200, `${nombre} demasiado pequeña: ${c.width} × ${c.height}`)
+        }
+        dentro(angulo, 'la gráfica del ángulo')
+        dentro(velocidad, 'la gráfica de la velocidad')
+        // Una al lado de la otra, no una debajo de la otra.
+        assert.ok(velocidad.x >= angulo.x + angulo.width - 1, `la velocidad debe ir a la derecha del ángulo: ${JSON.stringify({ angulo, velocidad })}`)
+        assert.ok(Math.abs(velocidad.y - angulo.y) <= 40, 'a una altura parecida')
+        // Sin asa ni cabecera: el botón de volver está en la fila del título, sobre la barra.
+        assert.equal(await p.getByTestId('asa-volver-graficas').count(), 0)
+        const volver = await p.getByTestId('reducir-graficas').boundingBox()
+        assert.ok(volver.y >= 0 && volver.y + volver.height <= angulo.y, 'el botón de volver va sobre las gráficas')
+        // Con los segmentos encendidos, tres columnas y todo sigue dentro.
+        await p.getByTestId('panel-grafica').getByRole('button', { name: /Trocánter – Epicóndilo/ }).click()
+        const segmentos = await p.getByTestId('grafica-segmentos').boundingBox()
+        assert.ok(segmentos.x >= velocidad.x + 1, 'los segmentos van en otra columna a la derecha')
+        dentro(segmentos, 'la gráfica de los segmentos')
+        // El botón vuelve a la vista mixta.
+        await p.getByTestId('reducir-graficas').click()
+        await p.getByTestId('capa').waitFor()
+        assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
+      } finally {
+        await p.close()
+      }
+    }
+  })
 })
 
 describe('preferencias recordadas en el dispositivo', () => {

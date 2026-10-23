@@ -609,11 +609,11 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         <div
           data-testid="vista-graficas"
           className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0 ${
-            enGraficas ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo max-lg:p-4' : ''
+            enGraficas ? `aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo ${apaisado ? 'max-lg:p-2' : 'max-lg:p-4'}` : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
-          {enGraficas && <AsaVolver sentido="abajo" destino="volver a la vista con vídeo" onVolver={() => volverDe('graficas')} testid="asa-volver-graficas" />}
-          {enGraficas && (
+          {enGraficas && !apaisado && <AsaVolver sentido="abajo" destino="volver a la vista con vídeo" onVolver={() => volverDe('graficas')} testid="asa-volver-graficas" />}
+          {enGraficas && !apaisado && (
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono text-xs tracking-wider text-texto-2 uppercase">Solo gráficas</span>
               <button
@@ -642,6 +642,22 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             corte={filtrado.corte}
             segmentos={seriesSegmentos}
             resumen={<ResumenGrafica resumen={resumen} instantesInterpolados={instantesInterpolados} />}
+            lado={enGraficas && apaisado}
+            accion={
+              // Móvil girado: sin cabecera ni asa (no hay alto), el botón de volver va en la fila del título de la gráfica.
+              enGraficas && apaisado ? (
+                <button
+                  type="button"
+                  onClick={() => volverDe('graficas')}
+                  aria-label="Volver a la vista con vídeo"
+                  title="Volver a la vista con vídeo"
+                  data-testid="reducir-graficas"
+                  className="flex size-9 items-center justify-center rounded-md border border-borde text-texto"
+                >
+                  <ArrowsPointingInIcon className="size-5" />
+                </button>
+              ) : undefined
+            }
           />
 
           {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
