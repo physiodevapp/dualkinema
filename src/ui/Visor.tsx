@@ -1,24 +1,13 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
-import {
-  ArrowTrendingUpIcon,
-  ArrowsPointingInIcon,
-  ArrowsPointingOutIcon,
-  VideoCameraIcon,
-} from '@heroicons/react/24/outline'
-import { CALIDAD_MINIMA } from '../core/articulaciones/calculo'
-import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../core/exportacion/csv'
-import { datosCsv } from '../core/exportacion/datos'
+import { useMemo, useRef, useState } from 'react'
+import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { tramoInicial, type TramoEstatico } from '../core/articulaciones/cero'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
 import type { CalibracionVista } from '../core/calibracion/escala'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
-import { framesConMarcaManual } from '../core/seguimiento/manuales'
 import type { AjustesFiltro } from '../core/filtros/tramos'
-import { estadisticas, indiceMasCercano } from '../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../media/video'
 import { COLORES_MARCADOR, ladoVisible, nombreCorto } from './marcadores'
-import { huellaDe } from './sesion'
 import PanelGrafica from './visor/PanelGrafica'
 import MiniGrafica from './visor/MiniGrafica'
 import LienzoVideo from './visor/LienzoVideo'
@@ -27,12 +16,6 @@ import PanelEscala from './visor/PanelEscala'
 import Pestanas, { PanelPestana } from './visor/Pestanas'
 import { useAltura } from './visor/useAltura'
 import { useVistaMovil } from './visor/useVistaMovil'
-import { useTrayectorias } from './visor/useTrayectorias'
-import { useMarcado } from './visor/useMarcado'
-import { useSeguimiento, type Aviso } from './visor/useSeguimiento'
-import { useAnalisis } from './visor/useAnalisis'
-import { useEscala } from './visor/useEscala'
-import { useNavegacionFrames } from './visor/useNavegacionFrames'
 import { useMiniGrande } from './visor/useMiniGrande'
 import { EXTRA_MAXIMO_PX } from './visor/miniGrande'
 import SeparadorVideo from './visor/SeparadorVideo'
@@ -40,7 +23,6 @@ import AsaVolver from './visor/AsaVolver'
 import { ALTO_VIDEO_DVH, AMPLIAR_PX } from './visor/reparto'
 import { useOcultarAlBajar } from './visor/useOcultarAlBajar'
 import { useGuardado, type SesionAbierta } from './visor/useGuardado'
-import { caminosTrayectoria, dibujarCapa } from './visor/capa'
 import SelectorMarcadores from './visor/SelectorMarcadores'
 import BotonSeguir from './visor/BotonSeguir'
 import InterruptorAOjo from './visor/InterruptorAOjo'
@@ -49,7 +31,7 @@ import AvisoAnclas from './visor/AvisoAnclas'
 import AccionesHuecos from './visor/AccionesHuecos'
 import BotonIrAlHueco from './visor/BotonIrAlHueco'
 import TextoGuardado from './visor/TextoGuardado'
-import ErrorToque, { type ErrorDeToque } from './visor/ErrorToque'
+import ErrorToque from './visor/ErrorToque'
 import DeslizadorFrames from './visor/DeslizadorFrames'
 import ResumenGrafica from './visor/ResumenGrafica'
 import DatosVideo from './visor/DatosVideo'
@@ -57,9 +39,7 @@ import PanelMarcar from './visor/PanelMarcar'
 import PanelAnalisis from './visor/PanelAnalisis'
 import BarraPosicion, { ANCHO_COLUMNA_APAISADA } from './visor/BarraPosicion'
 import { esPestana, guardarPestana, leerPestana, PESTANA_DEFECTO } from './visor/preferencias'
-
-const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
-
+import { useVista } from './visor/useVista'
 
 interface Props {
   video: VideoAbierto
@@ -78,9 +58,6 @@ interface Props {
 }
 
 export default function Visor({ video, orientacion, sesion, modelo: modeloGuardado, inicial, filtro, ceros: cerosGuardados, calibracion: calibracionGuardada, avisoInicial }: Props) {
-  const { info, tabla } = video
-  const total = tabla.tiempos.length
-
   // Modelo de la fase 1: rodilla con 3 gomets en la pierna que ve la cámara.
   // Una sesión recuperada usa el que se guardó con ella.
   const lado = orientacion.plano === 'sagital' ? ladoVisible(orientacion) : 'izq'
@@ -88,70 +65,41 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
   const articulacion = modelo.articulaciones[0]!
 
-  // Trayectorias: una posición (o nada) por frame y marcador, con sus mutadores (suben `version` por dentro), el estado
-  // de cada frame y los huecos cortos.
+  // Todo lo de la vista (trayectorias, frames, marcado, seguimiento, escala, análisis, dibujo, valores y CSV).
   const {
+    info,
+    tabla,
+    total,
     series,
     version,
-    muestra,
-    poner,
-    quitar,
-    aplicarLote,
-    borrarDespuesDe,
-    devolver,
-    quitarManualesDespuesDe,
     huecosCortos,
     hayInterpolados,
-    rellenarCortos,
-    quitarInterpolados: deshacerInterpolados,
     estadosFrames,
-  } = useTrayectorias({ ids, tabla, inicial, valida })
-
-  const [aviso, setAviso] = useState<Aviso | null>(avisoInicial ? { texto: avisoInicial } : null)
-  // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
-  // `aOjo`: dónde se tocó, para ofrecer colocarlo ahí aunque no se reconozca el gomet.
-  const [errorToque, setErrorToque] = useState<ErrorDeToque | null>(null)
-  const huella = useMemo(() => huellaDe(video), [video])
-  // Navegación por frames: lienzo, frame pedido / mostrado / deseado, pintado «el último gana», teclado.
-  // El error de un toque es de su frame: «Colocarlo aquí a ojo» marcaría el anterior.
-  const alIr = useCallback((destino: number) => setErrorToque((e) => (e?.aOjo?.i === destino ? e : null)), [])
-  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr)
-
-  // Marcado a mano: marcador elegido, «Colocar a ojo», colocar (en el gomet o a ojo), la lupa y quitar.
-  const { seleccionado, setSeleccionado, colocarAOjo, setColocarAOjo, ponerManual, previsualizar, colocar, quitarManual } = useMarcado({
-    ids,
-    tabla,
-    info,
-    inicial,
-    valida,
-    series,
-    muestra,
-    poner,
-    quitar,
-    mostrado,
-    ultimoFrame,
+    aviso,
+    errorToque,
     setErrorToque,
-    setAviso,
-  })
-  // Seguimiento con el worker: lotes, final con sus avisos, devolver lo quitado si no arranca, seguir y parar.
-  const { siguiendo, progresoSeguimiento, listoParaSeguir, seguirDesdeAqui, pararSeguimiento } = useSeguimiento({
-    video,
-    modelo,
-    ids,
-    series,
-    muestra,
-    valida,
-    aplicarLote,
-    borrarDespuesDe,
-    devolver,
+    huella,
+    lienzo,
+    deseado,
     mostrado,
-    setAviso,
+    error,
+    msDecodificar,
+    lectura,
+    ir,
+    mover,
+    seleccionado,
     setSeleccionado,
-    setErrorToque,
-  })
-
-  // Escala: la guardada, el borrador mientras se calibra, los toques en los extremos y la medida entre marcadores.
-  const {
+    colocarAOjo,
+    setColocarAOjo,
+    ponerManual,
+    previsualizar,
+    colocar,
+    quitarManual,
+    siguiendo,
+    progresoSeguimiento,
+    listoParaSeguir,
+    seguirDesdeAqui,
+    pararSeguimiento,
     calibracion,
     revCalibracion,
     borrador,
@@ -163,17 +111,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     medicion,
     desfase,
     framesTramo,
-    empezarEscala: empezarEscalaCon,
     guardarEscala,
     quitarEscala,
-  } = useEscala({ tabla, articulacion, series, version, calibracionInicial: calibracionGuardada, mostrado, ir })
-  // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
-  const segmentos = useMemo(() => {
-    const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
-    return [articulacion.proximal, articulacion.distal].map((s) => ({ desde: s.desde, hasta: s.hasta, nombre: `${nombre(s.desde)} – ${nombre(s.hasta)}` }))
-  }, [modelo, articulacion])
-  // Análisis: ajuste del filtro, cero de referencia, serie del ángulo, lo filtrado, series por frame y segmentos.
-  const {
+    segmentos,
     ajustes,
     cambiarAjustes,
     revAjustes,
@@ -189,19 +129,27 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     constancia,
     seriesSegmentos,
     instantesInterpolados,
-  } = useAnalisis({
-    series,
-    version,
-    ids,
-    tabla,
-    articulacion,
-    orientacion,
-    segmentos,
-    calibracion,
-    siguiendo,
-    filtroInicial: filtro,
-    cerosIniciales: cerosGuardados,
-  })
+    empezarEscala,
+    rellenarHuecosCortos,
+    quitarInterpolados,
+    trayectoriaCompleta,
+    setTrayectoriaCompleta,
+    conTrayectoria,
+    elegirTrayectoria,
+    dibujar,
+    angulo,
+    anguloFiltrado,
+    anguloRedondeado,
+    est,
+    generarCsv,
+    buscarEnTiempo,
+    t,
+    marcasManualesAqui,
+    estadosMarcadores,
+    framesAnclas,
+    quitarMarcasPosteriores,
+  } = useVista({ video, orientacion, modelo, inicial, filtro, cerosGuardados, calibracionGuardada, avisoInicial })
+
   const guardado = useGuardado({
     sesion,
     huella,
@@ -215,89 +163,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     version: version + revAjustes + revCeros + revCalibracion,
     recuperada: !!inicial,
   })
-
-  // ---- Escala ----
-  const empezarEscala = () => {
-    setErrorToque(null)
-    empezarEscalaCon(ceros[articulacion.id])
-  }
-
-  // ---- Huecos cortos: rellenar a petición ----
-  const rellenarHuecosCortos = () => {
-    const frames = rellenarCortos()
-    setAviso({
-      texto: `Rellenados ${huecosCortos.length} hueco${huecosCortos.length === 1 ? '' : 's'} (${frames} posiciones interpoladas, en azul en la franja y a trazos en la gráfica).`,
-    })
-  }
-
-  const quitarInterpolados = () => {
-    // Vuelven a ser huecos, con lo que había antes de rellenar (perdido, dudoso o nada).
-    deshacerInterpolados()
-    setAviso({ texto: 'Quitado lo interpolado: esos frames vuelven a ser huecos.' })
-  }
-
-  // ---- Ángulo actual ----
-  // Trayectoria completa de cada marcador, con lo filtrado: se prepara aquí al
-  // encenderla y cuando cambian las trayectorias o el corte; en cada frame solo se pinta.
-  const [trayectoriaCompleta, setTrayectoriaCompleta] = useState(false)
-  const [conTrayectoria, setConTrayectoria] = useState<ReadonlySet<IdMarcador>>(() => new Set(ids))
-  const elegirTrayectoria = (id: IdMarcador) =>
-    setConTrayectoria((c) => {
-      const n = new Set(c)
-      if (!n.delete(id)) n.add(id)
-      return n
-    })
-  const caminos = useMemo(() => caminosTrayectoria(filtrado.porMarcador, trayectoriaCompleta), [filtrado.porMarcador, trayectoriaCompleta])
-
-  // ---- Capa de dibujo ----
-  const dibujar = useCallback(
-    (ctx: CanvasRenderingContext2D, escala: number) => {
-      void version
-      dibujarCapa(ctx, escala, { mostrado, sentido, total, ids, muestra, valida, articulacion, trayectoriaCompleta, conTrayectoria, caminos, borrador, medicion, calibracion, frameCalibracion })
-    },
-    [version, mostrado, sentido, total, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion, trayectoriaCompleta, conTrayectoria, caminos],
-  )
-
-  // El valor del frame sale de las mismas series que la gráfica y el CSV (una sola
-  // fuente: antes se recalculaba aparte y podía quedar 360° desplazado de la curva).
-  const angulo = mostrado === null ? NaN : (crudoPorFrame.valores[mostrado] ?? NaN)
-  const anguloFiltrado = mostrado === null ? NaN : (filtradoPorFrame.valores[mostrado] ?? NaN)
-  // Redondeado a la décima que se muestra (+ 0 evita «−0,0»), para que la etiqueta
-  // (flexión / hiperextensión) concuerde con el número visible.
-  const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
-  const est = useMemo(() => estadisticas(tabla), [tabla])
-  const generarCsv = useCallback(
-    (formato: FormatoCsv) => {
-      const datos = datosCsv({
-        tiempos: tabla.tiempos,
-        marcadores: modelo.marcadores,
-        crudo: series,
-        filtrado,
-        articulacion,
-        orientacion,
-        anguloCrudo: crudoPorFrame.valores,
-        anguloFiltrado: filtradoPorFrame.valores,
-        cero,
-        calibracion,
-        info,
-        est,
-        corteHz: ajustes.corteHz,
-        exportado: new Date().toISOString(),
-      })
-      const texto = construirCsv(datos, formato)
-      return { nombre: nombreArchivoCsv(info.nombre, datos.angulo ? articulacion.id : null), texto }
-    },
-    [orientacion, articulacion, filtrado, tabla, modelo, crudoPorFrame, filtradoPorFrame, cero, calibracion, info, est, ajustes, series],
-  )
-  const buscarEnTiempo = useCallback(
-    (t: number) => {
-      const i = indiceMasCercano(tabla, t)
-      if (i >= 0) ir(i)
-    },
-    [tabla, ir],
-  )
-  const t = mostrado === null ? null : tabla.tiempos[mostrado]!
-
   // Pestañas de herramientas. Un punto en el nombre avisa de lo que pide atención aunque no se vea.
   // Con un vídeo nuevo (nada marcado todavía) se empieza en «Marcar»; al recuperar un trabajo, en la pestaña que se usó.
   const [pestana, setPestanaAbierta] = useState<string>(() => (inicial ? leerPestana() : PESTANA_DEFECTO))
@@ -365,14 +230,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   )
   const nodoDeslizador = <div className="flex flex-col gap-1 max-lg:hidden lg:order-1">{controlDeslizador}</div>
 
-  // Marcadores con una marca a mano en el frame actual: se pueden quitar sin tener que elegirlos antes.
-  const marcasManualesAqui = mostrado === null ? [] : modelo.marcadores.map((mk, k) => ({ mk, k })).filter(({ mk }) => muestra(mk.id, mostrado)?.editadoManual)
-  // Estado de cada marcador en el frame mostrado, para el selector.
-  const estadosMarcadores = modelo.marcadores.map((mk) => {
-    const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
-    return valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
-  })
-
   // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
   const extrasCompactos =
     !siguiendo && (marcasManualesAqui.length > 0 || huecosCortos.length > 0 || hayInterpolados || aviso?.irA !== undefined) ? (
@@ -382,19 +239,6 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
         {aviso?.irA !== undefined && <BotonIrAlHueco frame={aviso.irA} onIr={ir} compacto />}
       </div>
     ) : null
-
-  // Marcas a mano más adelante: «Seguir desde aquí» las toma como anclas y sigue desde ellas (ver `AvisoAnclas`).
-  const framesAnclas = useMemo(() => {
-    void version
-    return mostrado === null ? [] : framesConMarcaManual(series, mostrado)
-  }, [version, mostrado, series])
-  const quitarMarcasPosteriores = () => {
-    if (mostrado === null) return
-    const n = quitarManualesDespuesDe(mostrado)
-    setAviso({
-      texto: `Quitadas ${n} marca${n === 1 ? '' : 's'} a mano posteriores al frame ${mostrado + 1}. Los frames quedan sin posición: pulsa «Seguir desde aquí» para volver a seguirlos.`,
-    })
-  }
 
   // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
   // Móvil girado con el vídeo grande: dos columnas (el vídeo con todo el alto; a su lado, aviso, marcado y barra fija).
