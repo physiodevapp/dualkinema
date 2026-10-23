@@ -22,16 +22,28 @@ export function useAltura<T extends HTMLElement>(externa?: RefObject<T | null>) 
   return [ref, alto] as const
 }
 
-/** `true` mientras la ventana tiene al menos `px` de ancho (por defecto 1024, el `lg` de Tailwind). */
-export function useAnchoMinimo(px = 1024) {
-  const consulta = `(min-width: ${px}px)`
-  const [ancho, setAncho] = useState(() => window.matchMedia(consulta).matches)
+/** `true` mientras se cumple la consulta de medios (se actualiza al girar o redimensionar la ventana). */
+function useConsulta(consulta: string) {
+  const [cumple, setCumple] = useState(() => window.matchMedia(consulta).matches)
   useEffect(() => {
     const m = window.matchMedia(consulta)
-    const cambiar = () => setAncho(m.matches)
+    const cambiar = () => setCumple(m.matches)
     cambiar()
     m.addEventListener('change', cambiar)
     return () => m.removeEventListener('change', cambiar)
   }, [consulta])
-  return ancho
+  return cumple
+}
+
+/** `true` mientras la ventana tiene al menos `px` de ancho (por defecto 1024, el `lg` de Tailwind). */
+export function useAnchoMinimo(px = 1024) {
+  return useConsulta(`(min-width: ${px}px)`)
+}
+
+/**
+ * `true` con el móvil girado: horizontal, de poca altura y con ancho para dos columnas. Alto de hasta 500 px: un móvil
+ * girado mide entre 360 y 430; una tablet en horizontal o una ventana de escritorio no entran.
+ */
+export function useApaisado() {
+  return useConsulta('(orientation: landscape) and (max-height: 500px) and (min-width: 600px)')
 }

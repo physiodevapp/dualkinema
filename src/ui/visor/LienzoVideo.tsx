@@ -26,6 +26,8 @@ interface Props {
   previsualizar?: (x: number, y: number, radio: number) => Previsualizacion
   /** Vista de vídeo grande: todo el alto libre (sin la barra de abajo ni los controles de marcado), en vez de un tope de un tercio. */
   llenar?: boolean
+  /** Móvil girado, vídeo grande en dos columnas: el vídeo llena todo el alto de la ventana (menos el margen), no hay tira debajo. */
+  apaisado?: boolean
   /** Tope de alto en pantalla ancha (clase `lg:max-h-…`): lo fija el visor según la orientación del vídeo y el alto de la ventana. */
   topeLg?: string
   /** Tope de alto en el móvil (longitud CSS) cuando se reparte el alto con la gráfica; sin él, un tercio de la ventana. */
@@ -42,7 +44,7 @@ interface Props {
 const variableColor = (nombre: string, defecto: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(nombre).trim() || defecto
 
-export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo, onToque, previsualizar, llenar, topeLg = 'lg:max-h-[60dvh]', topeMovil }: Props) {
+export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo, onToque, previsualizar, llenar, apaisado, topeLg = 'lg:max-h-[60dvh]', topeMovil }: Props) {
   const capa = useRef<HTMLCanvasElement>(null)
   const lupa = useRef<HTMLCanvasElement>(null)
   // `campo`: lo que abarca la lupa, en px del vídeo, con el tamaño del vídeo en pantalla al tocar.
@@ -138,7 +140,7 @@ export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo,
           data-testid="lienzo"
           width={ancho}
           height={alto}
-          className={`block max-w-full ${llenar ? 'max-h-[calc(100dvh-var(--alto-barra)-14.5rem)]' : `max-h-[30dvh] ${topeLg}`}`}
+          className={`block max-w-full ${llenar ? (apaisado ? 'max-h-[calc(100dvh-1.5rem)]' : 'max-h-[calc(100dvh-var(--alto-barra)-14.5rem)]') : `max-h-[30dvh] ${topeLg}`}`}
           style={{ aspectRatio: `${ancho} / ${alto}`, maxHeight: topeMovil }}
         />
         <canvas

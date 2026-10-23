@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ModoMiniGrafica } from './MiniGrafica'
-import { useAnchoMinimo } from './useAltura'
+import { useAnchoMinimo, useApaisado } from './useAltura'
 import { CLAVE_REPARTO, leerReparto, repartoAlVolver, type Reparto } from './reparto'
 
 export type Vista = 'mixta' | 'video' | 'graficas'
@@ -16,6 +16,9 @@ export type Vista = 'mixta' | 'video' | 'graficas'
  */
 export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
   const anchoLg = useAnchoMinimo()
+  // Móvil girado: el vídeo grande pasa a dos columnas (el vídeo con todo el alto y, a su lado, marcado y barra fija).
+  const girado = useApaisado()
+  const apaisado = !anchoLg && girado
   // La página deja debajo el sitio de la barra fija (`--alto-barra`, en la raíz: el pie de página también va debajo y
   // cuelga de `main`, fuera de este componente; con el hueco dentro del visor, el pie quedaba tapado por la barra).
   useEffect(() => {
@@ -61,6 +64,7 @@ export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
 
   return {
     anchoLg,
+    apaisado,
     vista,
     setVista,
     enVideo,

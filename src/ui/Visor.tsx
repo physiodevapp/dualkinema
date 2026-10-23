@@ -55,7 +55,7 @@ import ResumenGrafica from './visor/ResumenGrafica'
 import DatosVideo from './visor/DatosVideo'
 import PanelMarcar from './visor/PanelMarcar'
 import PanelAnalisis from './visor/PanelAnalisis'
-import BarraPosicion from './visor/BarraPosicion'
+import BarraPosicion, { ANCHO_COLUMNA_APAISADA } from './visor/BarraPosicion'
 
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
@@ -314,7 +314,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // gráfica de arriba (las pestañas se pegan justo debajo al desplazarse).
   const [barraRef, altoBarra] = useAltura<HTMLDivElement>()
   const [fijoRef, altoFijo] = useAltura<HTMLDivElement>()
-  const { anchoLg, vista, setVista, enVideo, enGraficas, ampliada, activo, reparto, altoArrastre, setAltoArrastre, modoMini, setModoMini, elegirReparto, volverDe } =
+  const { anchoLg, apaisado, vista, setVista, enVideo, enGraficas, ampliada, activo, reparto, altoArrastre, setAltoArrastre, modoMini, setModoMini, elegirReparto, volverDe } =
     useVistaMovil({ altoBarra })
   // Al bajar por las tarjetas, el vídeo y su gráfica se esconden (y vuelven al subir, al cambiar de frame o de pestaña,
   // y mientras se calibra tocando el vídeo); las pestañas suben a ocupar su sitio.
@@ -392,6 +392,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   }
 
   // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
+  // Móvil girado con el vídeo grande: dos columnas (el vídeo con todo el alto; a su lado, aviso, marcado y barra fija).
+  const dosColumnas = enVideo && apaisado
+
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
       <SelectorMarcadores marcadores={modelo.marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={setSeleccionado} compacto />
@@ -423,8 +426,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             data-oculto={videoOculto}
             data-grande={mini.grande}
             inert={videoOculto}
-            className={`flex flex-col gap-2 max-lg:z-30 max-lg:bg-fondo max-lg:transition-[opacity,visibility] max-lg:duration-200 motion-reduce:transition-none ${
-              enVideo
+            className={`flex ${dosColumnas ? 'flex-row' : 'flex-col'} gap-2 max-lg:z-30 max-lg:bg-fondo max-lg:transition-[opacity,visibility] max-lg:duration-200 motion-reduce:transition-none ${
+              dosColumnas
+                ? 'aparece max-lg:fixed max-lg:inset-0 max-lg:gap-0 max-lg:overflow-hidden max-lg:py-3 max-lg:pl-3'
+                : enVideo
                 ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
                 : videoOculto
                   ? // Oculto: fuera del flujo (las tarjetas ganan su sitio), pero con su tamaño, para no desmontar ni medir 0.
@@ -433,9 +438,10 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
                   : 'max-lg:sticky max-lg:top-0 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:px-4 max-lg:pb-2'
             } ${enGraficas ? 'max-lg:hidden' : ''}`}
           >
-          <div className="relative">
+          <div className={dosColumnas ? 'relative min-w-0 flex-1' : 'relative'}>
             <LienzoVideo
               llenar={enVideo}
+              apaisado={dosColumnas}
               topeLg="lg:max-h-[max(14rem,calc(100dvh-25rem))]"
               topeMovil={!anchoLg && vista === 'mixta' ? (altoArrastre !== null ? `${altoArrastre}px` : `${ALTO_VIDEO_DVH[reparto]}dvh`) : undefined}
               ancho={info.ancho}
@@ -525,12 +531,21 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
               cajaRef={cajaMiniRef}
             />
           )}
-          {enVideo && (
+          {enVideo && !dosColumnas && (
             <>
               <AsaVolver sentido="arriba" destino="volver a la vista con gráfica" onVolver={() => volverDe('video')} testid="asa-volver-video" />
               {nodoError}
               {tiraMarcado}
             </>
+          )}
+          {dosColumnas && (
+            // Sin asa para volver (se tira hacia abajo y aquí no hay sitio): queda el botón del vídeo. La barra fija (más
+            // abajo) mide lo mismo y tiene el mismo relleno lateral, para que el contenido de las dos quede alineado; el hueco de abajo
+            // es el de la barra.
+            <div data-testid="columna-marcado" className={`flex min-h-0 shrink-0 flex-col gap-2 overflow-y-auto px-4 pb-(--alto-barra) ${ANCHO_COLUMNA_APAISADA}`}>
+              {nodoError}
+              {tiraMarcado}
+            </div>
           )}
           </div>
 
@@ -555,6 +570,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             velocidad={filtrado.derivadas.velocidad}
             aceleracion={filtrado.derivadas.aceleracion}
             onMover={mover}
+            columna={dosColumnas}
           />
 
           {/* En el móvil el estado del guardado va en la pestaña «Vídeo» (aquí quitaba una línea a la primera pantalla); un punto

@@ -3007,3 +3007,107 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await q.close()
   })
 })
+
+describe('móvil girado (horizontal)', () => {
+  let navegador
+  let videos
+  before(async () => {
+    videos = await asegurarVideos()
+    navegador = await lanzarNavegador()
+  })
+  after(() => navegador.close())
+
+  const caja = async (p, testid) => (await p.getByTestId(testid).boundingBox())
+
+  it('el vídeo grande se reparte en dos columnas: el vídeo con todo el alto y, a su lado, el marcado y la barra fija', async () => {
+    const video = videos.verde
+    const p = await abrirApp(navegador, { ancho: 844, alto: 390 })
+    try {
+      await cargarVideo(p, video.ruta)
+      await p.getByTestId('ampliar-video').click()
+      await esperarVideoAsentado(p, false)
+      const capa = await caja(p, 'capa')
+      const columna = await caja(p, 'columna-marcado')
+      const barra = await caja(p, 'barra-fija')
+      // Con el reparto de antes quedaba una rendija de 39 × 22 px: ahora el vídeo es grande y está a la izquierda.
+      assert.ok(capa.width >= 380 && capa.height >= 200, `vídeo demasiado pequeño: ${capa.width} × ${capa.height}`)
+      assert.ok(capa.x + capa.width <= columna.x + 1, 'el vídeo debe quedar a la izquierda de la columna de marcado')
+      // La barra fija ocupa solo esa columna (mismo ancho y la misma posición), no todo el ancho de la ventana.
+      assert.ok(Math.abs(barra.width - columna.width) <= 1 && Math.abs(barra.x - columna.x) <= 1, `barra ${JSON.stringify(barra)} / columna ${JSON.stringify(columna)}`)
+      assert.ok(barra.y + barra.height <= 390 + 1 && columna.y + columna.height <= 390 + 1, 'nada se sale de la ventana')
+      // La barra no tapa el marcado: su hueco de abajo es de la barra.
+      const seguir = await caja(p, 'marcado-compacto')
+      assert.ok(seguir.y + seguir.height <= barra.y + 1 || seguir.y < barra.y, 'el marcado empieza sobre la barra')
+      assert.equal(await p.getByTestId('asa-volver-video').count(), 0, 'sin asa para volver: queda el botón del vídeo')
+      // La página no se desplaza.
+      assert.equal(await p.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight), true)
+
+      // Se marca tocando el vídeo y se sigue desde la columna de la derecha.
+      await marcarTres(p, video.verdad[0].ps)
+      for (const nombre of [/Trocánter/, /Epicóndilo/, /Maléolo/]) {
+        assert.match(await p.getByTestId('marcado-compacto').getByRole('radio', { name: nombre }).innerText(), /a mano/)
+      }
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      await p.getByTestId('marcado-compacto').getByText(/Seguimiento completado hasta el final del vídeo, sin huecos/).waitFor({ timeout: 90000 })
+
+      // Los botones de frame de la barra funcionan.
+      const antes = (await leerPosicion(p)).frame
+      await p.getByTestId('barra-fija').getByRole('button', { name: /Frame siguiente|siguiente/i }).first().click()
+      await esperarQuieto(p)
+      assert.equal((await leerPosicion(p)).frame, antes + 1)
+
+      // Volver a la vista mixta: la barra vuelve a ocupar todo el ancho.
+      await p.getByTestId('reducir-video').click()
+      await esperarVideoAsentado(p, false)
+      assert.equal(await p.getByTestId('columna-marcado').count(), 0)
+      assert.ok(Math.abs((await caja(p, 'barra-fija')).width - 844) <= 1)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('girar el móvil con el vídeo grande abierto cambia el reparto sin perder el vídeo ni lo marcado', async () => {
+    const video = videos.verde
+    const p = await abrirApp(navegador, { ancho: 844, alto: 390 })
+    try {
+      await cargarVideo(p, video.ruta)
+      await p.getByTestId('ampliar-video').click()
+      await esperarVideoAsentado(p, false)
+      await marcarTres(p, video.verdad[0].ps)
+      assert.equal(await p.getByTestId('columna-marcado').count(), 1)
+      // A vertical: vuelve el reparto de siempre (vídeo arriba, marcado debajo, barra a todo el ancho).
+      await p.setViewportSize({ width: 390, height: 844 })
+      await p.getByTestId('columna-marcado').waitFor({ state: 'detached' })
+      await esperarVideoAsentado(p, false)
+      assert.ok(Math.abs((await caja(p, 'barra-fija')).width - 390) <= 1)
+      assert.match(await p.getByTestId('marcado-compacto').getByRole('radio', { name: /Trocánter/ }).innerText(), /a mano/)
+      // Y otra vez a horizontal.
+      await p.setViewportSize({ width: 844, height: 390 })
+      await p.getByTestId('columna-marcado').waitFor()
+      assert.match(await p.getByTestId('marcado-compacto').getByRole('radio', { name: /Maléolo/ }).innerText(), /a mano/)
+      assert.ok((await caja(p, 'capa')).width >= 380)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('en horizontal, con la vista mixta y solo gráficas siguen usables', async () => {
+    const video = videos.verde
+    const p = await abrirApp(navegador, { ancho: 844, alto: 390 })
+    try {
+      await cargarVideo(p, video.ruta)
+      // Mixta: el vídeo se ve y se puede tocar (sin el reparto en columnas).
+      const capa = await caja(p, 'capa')
+      assert.ok(capa.width >= 150 && capa.height >= 80, `vídeo de la mixta: ${capa.width} × ${capa.height}`)
+      assert.equal(await p.getByTestId('columna-marcado').count(), 0)
+      // Solo gráficas: entra, la gráfica se ve y sale.
+      await p.getByTestId('ampliar-graficas').click()
+      const g = await p.getByTestId('vista-graficas').boundingBox()
+      assert.ok(g.width >= 800 && g.height >= 200, `solo gráficas: ${g.width} × ${g.height}`)
+      await p.getByTestId('reducir-graficas').click()
+      await p.getByTestId('capa').waitFor()
+    } finally {
+      await p.close()
+    }
+  })
+})

@@ -256,7 +256,7 @@ Vídeos del usuario (H.264 desde un Android, Chrome para Android), sentadillas d
 
 **Interfaz:**
 
-7. **Vídeo grande en el móvil, solo en vertical.** No hay una versión pensada para girar el móvil a horizontal: girado, se usa el diseño del móvil (o el de escritorio si el ancho llega a 1024 px) sin aprovechar el ancho para el vídeo.
+7. **Vídeo grande en el móvil girado: resuelto (ver «Después del cierre: vídeo grande en horizontal»).** Antes, girado, la barra fija se llevaba 254 de los 390 px de alto y el vídeo quedaba en 39 × 22 px.
 8. **Las notas de la gráfica completa ya no se ven en ningún sitio** (huecos sin línea, interpolado a trazos, corte del filtro, qué significa salirse de la banda de los segmentos): en el escritorio y en «Solo gráficas» la gráfica va ampliada y sin notas, y en el móvil no se muestra de otra forma. Irán al glosario.
 9. **No se guarda en la sesión** la pestaña abierta, las series de la gráfica que se ven, la trayectoria completa ni el modo de la gráfica pequeña (que además vuelve a «Ángulo» al salir de una vista ampliada, porque se desmonta). Al reabrir, todo vuelve a lo de por defecto.
 10. **Faltan en la gráfica** la aceleración angular, la velocidad de cada marcador y el ángulo relativo al cero (están en el panel y en el CSV); no hay zoom.
@@ -280,7 +280,7 @@ Vídeos del usuario (H.264 desde un Android, Chrome para Android), sentadillas d
 - **Reglas de `react-hooks` también en los hooks `.ts` de `ui/`** (hecho, `eslint.config.js`: antes solo se aplicaban a los `.tsx`, así que `ui/visor/use*.ts` no las pasaba). Al activarlas salieron 19 errores en 5 hooks, todos de patrones deliberados y no de fallos: `useTrayectorias` (la ref mutable de las trayectorias, `refs` e `immutability`), `useFiltrado` (`performance.now()` y la ref dentro del `useMemo`, `purity` y `refs`), `useGuardado` (el patrón «lo último en una ref», `refs`), `useMiniGrande` (refs del DOM en `useCallback`, `preserve-manual-memoization`) y `useNavegacionFrames` (el primer frame al montar, `set-state-in-effect`, con la misma supresión que tenía en el visor). Cada uno lleva en su cabecera la supresión con su motivo, para que cualquier hook nuevo sí quede revisado. **Deuda:** quitar esas supresiones, o encapsular mejor esos patrones, al duplicar trayectorias y seguimiento por vista en la fase 3.
 - **Glosario o wiki dentro de la app** (parámetros y avisos, con enlaces desde cada aviso o valor; todo local). Recomendación: **un paso propio al principio de la fase 3** (Sonnet), porque la fase 3 añade conceptos que también hay que explicar (desfase entre vistas, sincronización por evento o por audio) y así se recuperan las notas de la gráfica (limitación 8). Alternativa: fase 6, junto a la validación, pero entonces la limitación 8 se arrastra tres fases.
 - **Partir `Visor.tsx`** (§11) al empezar la fase 3, antes de duplicar nada para la segunda vista.
-- **Vídeo grande en horizontal en el móvil** y **recordar pestaña y series en la sesión** (limitaciones 7 y 9): pasos de interfaz (Sonnet), cuando el usuario los necesite.
+- **Recordar pestaña y series en la sesión** (limitación 9): paso de interfaz (Sonnet), cuando el usuario lo necesite.
 
 ### Después del cierre: app instalable
 
@@ -359,3 +359,14 @@ El modo de la gráfica pequeña (ángulo, velocidad o ambas normalizadas) era es
 ### Después del cierre: el atajo de la trayectoria completa también en la vista mixta (móvil)
 
 El botón `trayectoria-compacta` (flecha de tendencia, bajo el de ampliar, arriba a la derecha del vídeo) salía solo en el vídeo grande; en la vista mixta el interruptor estaba únicamente en la pestaña «Marcar», lejos del vídeo. Ahora sale en el móvil siempre que el vídeo se vea (mixta y vídeo grande; no en «Solo gráficas», donde el vídeo está oculto). Es el mismo estado (`trayectoriaCompleta`) que el interruptor «Trayectoria completa» de «Marcar»: encenderlo en uno lo enciende en el otro. Cabe aunque el vídeo se reduzca al 20 % (el botón de ampliar ocupa de 8 a 44 px y este de 56 a 92 px). En pantalla ancha no se añade: allí el panel «Marcar» está siempre a la vista. Como ahora puede haber a la vez el atajo («Mostrar la trayectoria completa») y el interruptor del panel («Trayectoria completa»), las pruebas que buscan este último por rol usan nombre exacto.
+
+### Después del cierre: vídeo grande en horizontal (móvil girado)
+
+Con el móvil girado (844 × 390) se usaba el diseño del móvil: la vista mixta valía (el vídeo medía unos 208 × 117 px y se puede tocar), pero en el vídeo grande la barra fija de valores y botones ocupaba 254 de los 390 px y el vídeo se quedaba en **39 × 22 px**: no se podía marcar. Elegido (entre dos columnas, vídeo casi a pantalla completa o dejarlo): **dos columnas**.
+
+- `useApaisado` (`ui/visor/useAltura.ts`): `(orientation: landscape) and (max-height: 500px) and (min-width: 600px)`. Un móvil girado mide entre 360 y 430 px de alto; una tablet o una ventana de escritorio no entran. `useVistaMovil` devuelve `apaisado` (solo por debajo de `lg`, es decir, hasta 1023 px de ancho). El visor calcula `dosColumnas = enVideo && apaisado`.
+- Solo cambia el **vídeo grande** y solo girado: el vídeo a la izquierda con todo el alto de la ventana (`max-h: 100dvh − 1,5 rem`, 435 × 244 px en 844 × 390 y 474 × 267 en 915 × 412, con un vídeo de 16:9: lo limita el ancho; uno vertical lo llenaría en alto) y, a la derecha, `columna-marcado` con el aviso de error y la tira de marcado (se desplaza por dentro). La **barra fija** pasa a ocupar solo esa columna (`columna` en `BarraPosicion`; ancho `clamp(18rem, 40vw, 24rem)` común a las dos, `ANCHO_COLUMNA_APAISADA`) y la columna deja debajo su alto (`--alto-barra`). Mixta, solo gráficas y el móvil en vertical no cambian (DOM idéntico).
+- Sin el asa para volver: se tira hacia abajo y no hay sitio; queda el botón de la esquina del vídeo.
+- Girar con el vídeo grande abierto cambia el reparto al vuelo; el vídeo y lo marcado se conservan (el lienzo no se desmonta; la columna sí, pero sus piezas no tienen estado).
+- Pruebas (`describe('móvil girado (horizontal)')`): reparto en columnas (tamaño del vídeo, orden, barra de la columna, sin scroll, marcar y seguir, botones de frame, volver a la mixta), girar abierto en los dos sentidos, y mixta y solo gráficas en horizontal. `abrirApp` admite `alto`.
+- Límites: de 1024 px de ancho en adelante (algunos móviles grandes girados) se usa el diseño de escritorio, que no cabe en 400 px de alto; no se ha tocado. Probado solo con Chromium emulado, no en un móvil real.

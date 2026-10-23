@@ -10,6 +10,9 @@ import BotonPaso from './BotonPaso'
 import { fmt, grados, valorEn } from './formato'
 import { SALTO } from './useNavegacionFrames'
 
+/** Ancho de la columna de la derecha con el móvil girado (el vídeo grande y la barra fija lo comparten). */
+export const ANCHO_COLUMNA_APAISADA = 'max-lg:w-[clamp(18rem,40vw,24rem)]'
+
 interface Props {
   /** La caja de la barra: el visor mide su alto (`--alto-barra`) y lo usa `useMiniGrande`. */
   contenedorRef: Ref<HTMLDivElement>
@@ -30,6 +33,8 @@ interface Props {
   velocidad: ArrayLike<number>
   aceleracion: ArrayLike<number>
   onMover: (d: number) => void
+  /** Móvil girado con el vídeo grande: la barra ocupa solo la columna de la derecha, no todo el ancho. */
+  columna?: boolean
 }
 
 /**
@@ -51,12 +56,13 @@ export default function BarraPosicion({
   velocidad,
   aceleracion,
   onMover,
+  columna,
 }: Props) {
   return (
           <div
             ref={contenedorRef}
             data-testid="barra-fija"
-            className="max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:flex max-lg:flex-col max-lg:gap-1.5 max-lg:border-t max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pt-1.5 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:contents"
+            className={`max-lg:fixed ${columna ? `max-lg:right-0 ${ANCHO_COLUMNA_APAISADA}` : 'max-lg:inset-x-0'} max-lg:bottom-0 max-lg:z-30 max-lg:flex max-lg:flex-col max-lg:gap-1.5 max-lg:border-t max-lg:border-borde max-lg:bg-fondo max-lg:px-4 max-lg:pt-1.5 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:contents`}
           >
             {/* Siempre la misma altura: una línea que no se parte (lo que no cabe se corta). Si el texto
                 cambiaba de una a dos líneas (p. ej. «288 ms clave»), los botones de debajo se movían
