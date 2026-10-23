@@ -3,6 +3,7 @@ import type { Sincronia } from '../../core/modelo/tipos'
 import { ajustarDesfase, ajusteManual, desfaseDeEvento, incertidumbreEvento, pasoTipico, sincroniaTrasAjuste, type EventoVisual } from '../../core/sincronia/evento'
 import { fmt } from './formato'
 import type { VistaViva } from './vistas'
+import { InfoGlosario } from '../glosario/Glosario'
 
 /** Instante del evento marcado en cada vista (s de vídeo); lo que falta, sin marcar. */
 export type MarcaEvento = { readonly referencia?: number; readonly vista?: number }
@@ -55,7 +56,9 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4" data-testid="sincronizar-vistas">
-      <h2 className="text-xs tracking-wider text-texto-2 uppercase">Sincronizar las vistas</h2>
+      <h2 className="flex items-center gap-1 text-xs tracking-wider text-texto-2 uppercase">
+        Sincronizar las vistas <InfoGlosario id="tiempo-comun" tema="el tiempo común y el desfase" className="-my-1.5" />
+      </h2>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-sm">
         <dt className="text-texto-2">Desfase de B</dt>
         <dd data-testid="desfase-sincronia">{segundos(vista.desfaseS)}</dd>
@@ -66,7 +69,9 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
         </dd>
         {vista.sincronia.metodo === 'evento' && (
           <>
-            <dt className="text-texto-2">Precisión</dt>
+            <dt className="text-texto-2">
+              Precisión <InfoGlosario id="sincronia" tema="la sincronía por evento y su precisión" className="-my-1.5 align-middle" />
+            </dt>
             <dd data-testid="incertidumbre-sincronia">± {fmt(incertidumbreEvento(pasoRef, pasoVista) * 1000, 0)} ms</dd>
           </>
         )}

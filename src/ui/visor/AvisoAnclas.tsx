@@ -1,4 +1,5 @@
 import { TrashIcon } from '@heroicons/react/24/outline'
+import { InfoGlosario } from '../glosario/Glosario'
 
 interface Props {
   /** Frames (0-based) con una marca a mano posterior al mostrado. */
@@ -18,11 +19,14 @@ export default function AvisoAnclas({ frames, siguiendo, onQuitar, compacto }: P
   const lista = frames.slice(0, 3).map((i) => i + 1).join(', ') + (frames.length > 3 ? ` y ${frames.length - 3} más` : '')
   return (
     <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-2 text-xs" data-testid="aviso-anclas">
-      <p>
-        {compacto
-          ? `Hay marcas a mano más adelante (frames ${lista}): se usan como anclas.`
-          : `Hay marcas a mano más adelante (frames ${lista}). «Seguir desde aquí» las toma como ciertas y sigue desde ellas: si eran de prueba o están lejos del gomet, el seguimiento lo puede perder desde ahí.`}
-      </p>
+      <div className="flex items-start gap-1">
+        <p className="min-w-0 flex-1">
+          {compacto
+            ? `Hay marcas a mano más adelante (frames ${lista}): se usan como anclas.`
+            : `Hay marcas a mano más adelante (frames ${lista}). «Seguir desde aquí» las toma como ciertas y sigue desde ellas: si eran de prueba o están lejos del gomet, el seguimiento lo puede perder desde ahí.`}
+        </p>
+        <InfoGlosario id="anclas" tema="las anclas y el reenganche" className="-my-1" />
+      </div>
       <button
         type="button"
         onClick={onQuitar}

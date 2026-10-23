@@ -15,6 +15,7 @@ import {
 } from '../../core/calibracion/escala'
 import type { ConstanciaSegmento } from '../../core/calibracion/segmentos'
 import type { IdMarcador } from '../../core/modelo/tipos'
+import { InfoGlosario } from '../glosario/Glosario'
 
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
 const conSigno = (n: number, d: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmt(Math.abs(n), d)}`
@@ -318,7 +319,9 @@ export default function PanelEscala({
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4" data-testid="panel-escala">
-      <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Escala</h2>
+      <h2 className="flex items-center gap-1 font-mono text-xs tracking-wider text-texto-2 uppercase">
+        Escala <InfoGlosario id="escala" tema="la escala y su precisión" className="-my-1.5" />
+      </h2>
 
       {editar ||
         (calibracion ? (
@@ -386,7 +389,9 @@ export default function PanelEscala({
 
       {constancia.some((s) => s.c) && (
         <div className="flex flex-col gap-2 border-t border-borde pt-3">
-          <h3 className="text-sm">Longitud de los segmentos</h3>
+          <h3 className="flex items-center gap-1 text-sm">
+            Longitud de los segmentos <InfoGlosario id="segmentos" tema="la longitud de los segmentos" className="-my-1.5" />
+          </h3>
           {constancia.map(({ segmento, c }) =>
             c ? (
               <div key={`${segmento.desde}-${segmento.hasta}`} className="flex flex-col gap-1" data-testid={`constancia-${segmento.desde}-${segmento.hasta}`}>

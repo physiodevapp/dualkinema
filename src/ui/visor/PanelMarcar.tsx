@@ -12,6 +12,7 @@ import { grados } from './formato'
 import InterruptorAOjo from './InterruptorAOjo'
 import SelectorMarcadores from './SelectorMarcadores'
 import type { Aviso } from './useSeguimiento'
+import { InfoGlosario } from '../glosario/Glosario'
 
 interface Props {
   /** Pierna que ve la cámara. */
@@ -88,7 +89,9 @@ export default function PanelMarcar({
   return (
             <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
               <div className="flex items-baseline justify-between gap-2">
-                <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Marcadores</h2>
+                <h2 className="flex items-center gap-1 font-mono text-xs tracking-wider text-texto-2 uppercase">
+                  Marcadores <InfoGlosario id="calidad" tema="seguido, dudoso, perdido y a mano" className="-my-1.5" />
+                </h2>
                 <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
               </div>
 

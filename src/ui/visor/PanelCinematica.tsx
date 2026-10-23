@@ -1,5 +1,6 @@
 import type { CeroReferencia, TramoEstatico } from '../../core/articulaciones/cero'
 import type { UnidadVelocidad } from '../../core/filtros/derivadas'
+import { InfoGlosario } from '../glosario/Glosario'
 
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
 /** Con d decimales, sin «−0» ni «−0,0». */
@@ -60,10 +61,15 @@ export default function PanelCinematica({
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4" data-testid="panel-cinematica">
-      <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Velocidad y cero</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Velocidad y cero</h2>
+        <InfoGlosario id="velocidad" tema="la velocidad y la aceleración" className="-my-1.5" />
+      </div>
 
       <dl className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-1">
-        <dt className="text-texto-2">Ángulo (sin cero)</dt>
+        <dt className="text-texto-2">
+          Ángulo (sin cero) <InfoGlosario id="angulo" tema="el ángulo sin cero y el relativo" className="-my-1.5 align-middle" />
+        </dt>
         <dd className="text-right font-mono" data-testid="angulo-sin-cero">{valor(angulo, 1, '°')}</dd>
         <dt className="text-texto-2">Relativo al estático</dt>
         <dd className="text-right font-mono text-lg text-acento" data-testid="angulo-relativo">
@@ -90,7 +96,10 @@ export default function PanelCinematica({
       </p>
 
       <div className="flex flex-col gap-2 border-t border-borde pt-3">
-        <h3 className="text-sm">Cero de referencia (toma estática)</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm">Cero de referencia (toma estática)</h3>
+          <InfoGlosario id="cero" tema="el cero de referencia" className="-my-1.5" />
+        </div>
         {tramo ? (
           <p className="font-mono text-sm" data-testid="cero-tramo">
             {num(tramo.desde, 2)}–{num(tramo.hasta, 2)} s

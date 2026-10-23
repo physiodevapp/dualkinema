@@ -1,4 +1,5 @@
 import type { ResumenSerie } from '../../core/graficas/rango'
+import { InfoGlosario } from '../glosario/Glosario'
 import { fmt, grados } from './formato'
 
 interface Props {
@@ -20,8 +21,18 @@ export default function ResumenGrafica({ resumen, instantesInterpolados }: Props
                     <span className="whitespace-nowrap">
                       mín. {grados(resumen.min.valor)}° (t = {fmt(resumen.min.t, 2)} s)
                     </span>
-                    {resumen.huecos > 0 && <span className="whitespace-nowrap text-red-300"> · {resumen.huecos} sin valor</span>}
-                    {instantesInterpolados > 0 && <span className="whitespace-nowrap text-interpolado"> · {instantesInterpolados} interpolados</span>}
+                    {resumen.huecos > 0 && (
+                      <span className="whitespace-nowrap text-red-300">
+                        {' '}
+                        · {resumen.huecos} sin valor <InfoGlosario id="huecos" tema="los huecos (sin valor)" className="-my-1.5 align-middle" />
+                      </span>
+                    )}
+                    {instantesInterpolados > 0 && (
+                      <span className="whitespace-nowrap text-interpolado">
+                        {' '}
+                        · {instantesInterpolados} interpolados <InfoGlosario id="interpolado" tema="lo interpolado" className="-my-1.5 align-middle" />
+                      </span>
+                    )}
                   </>
                 ) : (
                   'Sin datos todavía: marca los gomets y pulsa «Seguir desde aquí».'

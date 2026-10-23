@@ -2,6 +2,7 @@ import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { EstadisticasFrames } from '../../core/tiempo/tablaFrames'
 import type { InfoVideo } from '../../media/video'
 import { fmt } from './formato'
+import { InfoGlosario } from '../glosario/Glosario'
 
 interface Props {
   info: InfoVideo
@@ -17,7 +18,9 @@ interface Props {
 export default function DatosVideo({ info, total, est, orientacion, msDecodificar, lectura }: Props) {
   return (
     <section className="rounded-2xl border border-borde bg-panel p-4 font-mono text-sm">
-              <h2 className="text-xs tracking-wider text-texto-2 uppercase">Datos del vídeo</h2>
+              <h2 className="flex items-center gap-1 text-xs tracking-wider text-texto-2 uppercase">
+                Datos del vídeo <InfoGlosario id="fps" tema="el tiempo del vídeo y los fps variables" className="-my-1.5" />
+              </h2>
               <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <dt className="text-texto-2">Archivo</dt>
                 <dd className="truncate" title={info.nombre}>{info.nombre}</dd>
