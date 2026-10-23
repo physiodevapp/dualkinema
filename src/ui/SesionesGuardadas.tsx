@@ -78,7 +78,7 @@ export default function SesionesGuardadas({ onContinuar, ocupado }: { onContinua
             <div className="min-w-0">
               <p className="truncate" title={c.nombre}>{c.nombre}</p>
               <p className="text-sm text-texto-2">
-                {fechaCorta(c.actualizada)} · {textoOrientacion(c.vistas[0]!.orientacion)}
+                {fechaCorta(c.actualizada)} · {c.vistas.map((v) => textoOrientacion(v.orientacion)).join(' + ')}
               </p>
               <p className="font-mono text-xs text-texto-2">{textoResumen(c)}</p>
             </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { limitarIndice } from '../../core/tiempo/tablaFrames'
 import type { VideoAbierto } from '../../media/video'
 
@@ -13,9 +13,29 @@ export const SALTO = 10
  *
  * `alIr(destino)` se llama en cada `ir`, antes de pintar (el visor quita ahí el error de un toque de otro frame). Debe
  * ser estable (`useCallback`): si cambia, cambian `ir` y `mover`.
+ *
+ * Con varias vistas solo la `activa` responde al teclado. Y cada vez que un lienzo nuevo se monta (al pasar a ser la
+ * activa, o al volver a montarse el visor con otra vista más) recibe el último frame: un canvas nace en blanco, y mientras
+ * esta vista no tenía lienzo en pantalla los frames solo se guardaban en `ultimoFrame`.
  */
-export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number) => void) {
-  const lienzo = useRef<HTMLCanvasElement>(null)
+export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number) => void, activa = true) {
+  // El último frame pintado: de él se leen los píxeles al marcar, y con él se pinta un lienzo recién montado.
+  const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
+  // `ref` del canvas del visor. Al engancharse uno nuevo (el visor lo vuelve a montar al cambiar de vista o de número de
+  // vistas) se le pinta el último frame, que si no quedaría en blanco hasta el siguiente cambio de frame.
+  const elemento = useRef<HTMLCanvasElement | null>(null)
+  const lienzo = useMemo(
+    () => ({
+      get current() {
+        return elemento.current
+      },
+      set current(c: HTMLCanvasElement | null) {
+        elemento.current = c
+        if (c && ultimoFrame.current) c.getContext('2d')?.drawImage(ultimoFrame.current, 0, 0)
+      },
+    }),
+    [],
+  )
   const { tabla } = video
   const total = tabla.tiempos.length
   const [deseado, setDeseado] = useState(0)
@@ -24,8 +44,6 @@ export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number)
   const [msDecodificar, setMsDecodificar] = useState<number | null>(null)
   // Cómo se consiguió el frame: de la caché, siguiendo el decodificador o desde el fotograma clave.
   const [lectura, setLectura] = useState<string | null>(null)
-  // El canvas del último frame pintado: de él se leen los píxeles al marcar.
-  const ultimoFrame = useRef<HTMLCanvasElement | OffscreenCanvas | null>(null)
 
   // Pintado «el último gana».
   const pedido = useRef(0)
@@ -52,7 +70,7 @@ export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number)
     } finally {
       ocupado.current = false
     }
-  }, [video])
+  }, [video, lienzo])
 
   // Primer frame al montar. pintar() solo cambia el estado tras decodificar
   // (asíncrono), no de forma síncrona dentro del efecto.
@@ -76,6 +94,7 @@ export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number)
   const mover = useCallback((d: number) => ir(pedido.current + d), [ir])
 
   useEffect(() => {
+    if (!activa) return
     const tecla = (e: KeyboardEvent) => {
       // Las flechas de otro campo son suyas (el corte del filtro, los de texto); las del
       // deslizador de frames, de los botones y de las pestañas mueven el frame.
@@ -91,7 +110,7 @@ export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number)
     }
     window.addEventListener('keydown', tecla)
     return () => window.removeEventListener('keydown', tecla)
-  }, [mover, ir, total])
+  }, [mover, ir, total, activa])
 
 
   return { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover }

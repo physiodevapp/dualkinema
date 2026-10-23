@@ -1,6 +1,6 @@
 import { ArrowUturnLeftIcon, PlusIcon } from '@heroicons/react/24/outline'
 import type { CabeceraSesion } from '../core/persistencia/esquema'
-import type { Coincidencia } from '../core/persistencia/huella'
+import { compararHuella, type Coincidencia, type HuellaArchivo } from '../core/persistencia/huella'
 import { fechaCorta, textoOrientacion, textoResumen } from './sesion'
 
 export interface Candidata {
@@ -11,6 +11,7 @@ export interface Candidata {
 /** Al abrir un vídeo con trabajo guardado: recuperarlo o empezar de cero. */
 export default function RecuperarSesion({
   nombre,
+  huella,
   candidatas,
   ocupado,
   error,
@@ -18,6 +19,8 @@ export default function RecuperarSesion({
   onNueva,
 }: {
   nombre: string
+  /** Huella del vídeo abierto: dice a qué vista de cada sesión corresponde. */
+  huella: HuellaArchivo
   candidatas: readonly Candidata[]
   ocupado: boolean
   error?: string
@@ -34,14 +37,17 @@ export default function RecuperarSesion({
         {candidatas.map(({ cabecera, coincidencia }) => (
           <li key={cabecera.id} className="flex flex-col gap-2 rounded-md border border-borde p-3" data-testid="candidata">
             <p className="text-sm">
-              Guardado el {fechaCorta(cabecera.actualizada)} · {textoOrientacion(cabecera.vistas[0]!.orientacion)}
+              Guardado el {fechaCorta(cabecera.actualizada)} · {cabecera.vistas.map((v) => textoOrientacion(v.orientacion)).join(' + ')}
             </p>
             <p className="font-mono text-xs text-texto-2">{textoResumen(cabecera)}</p>
             {coincidencia === 'otroNombre' && (
               <p className="text-xs text-acento">
-                Se guardó como «{cabecera.vistas[0]!.huella.nombre}». El nombre cambia, pero tiene el mismo tamaño, duración y
+                Se guardó como «{(cabecera.vistas.find((v) => compararHuella(v.huella, huella) !== 'distinta') ?? cabecera.vistas[0]!).huella.nombre}». El nombre cambia, pero tiene el mismo tamaño, duración y
                 número de frames: es el mismo vídeo.
               </p>
+            )}
+            {cabecera.vistas.length > 1 && (
+              <p className="text-xs text-texto-2">Tiene {cabecera.vistas.length} vistas: al recuperarla se te pedirán los demás vídeos.</p>
             )}
             <button
               type="button"

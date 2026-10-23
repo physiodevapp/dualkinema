@@ -37,6 +37,10 @@ interface Opciones {
   /** Al recuperar: la escala de la vista (null = sin escala). */
   readonly calibracionGuardada?: CalibracionVista | null
   readonly avisoInicial?: string
+  /** Es la vista que se marca y se navega (con varias vistas, solo una); las demás siguen el cursor común. */
+  readonly activa?: boolean
+  /** Se llama en cada cambio de frame de esta vista (el cursor común mueve con ello las demás). Debe ser estable. */
+  readonly alCambiarFrame?: (frame: number) => void
 }
 
 /**
@@ -45,7 +49,7 @@ interface Opciones {
  * lo común: el modelo, las pestañas, el reparto de la pantalla y el guardado. Con dos vistas, el visor llamará a este
  * hook para cada una y pintará la activa.
  */
-export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGuardados, calibracionGuardada, avisoInicial }: Opciones) {
+export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGuardados, calibracionGuardada, avisoInicial, activa = true, alCambiarFrame }: Opciones) {
   const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
   const articulacion = modelo.articulaciones[0]!
   const { info, tabla } = video
@@ -76,8 +80,14 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
   const huella = useMemo(() => huellaDe(video), [video])
   // Navegación por frames: lienzo, frame pedido / mostrado / deseado, pintado «el último gana», teclado.
   // El error de un toque es de su frame: «Colocarlo aquí a ojo» marcaría el anterior.
-  const alIr = useCallback((destino: number) => setErrorToque((e) => (e?.aOjo?.i === destino ? e : null)), [])
-  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr)
+  const alIr = useCallback(
+    (destino: number) => {
+      setErrorToque((e) => (e?.aOjo?.i === destino ? e : null))
+      alCambiarFrame?.(destino)
+    },
+    [alCambiarFrame],
+  )
+  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr, activa)
 
   // Marcado a mano: marcador elegido, «Colocar a ojo», colocar (en el gomet o a ojo), la lupa y quitar.
   const { seleccionado, setSeleccionado, colocarAOjo, setColocarAOjo, ponerManual, previsualizar, colocar, quitarManual } = useMarcado({
@@ -281,6 +291,7 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     setErrorToque,
     huella,
     lienzo,
+    ultimoFrame,
     deseado,
     mostrado,
     error,

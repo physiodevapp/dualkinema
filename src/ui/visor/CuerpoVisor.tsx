@@ -1,7 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
+import type { OrientacionVista } from '../../core/geometria/canonico'
+import type { VideoAbierto } from '../../media/video'
 import { COLORES_MARCADOR, ladoDeVista, nombreCorto } from '../marcadores'
 import PanelGrafica from './PanelGrafica'
 import MiniGrafica from './MiniGrafica'
@@ -33,8 +35,14 @@ import DatosVideo from './DatosVideo'
 import PanelMarcar from './PanelMarcar'
 import PanelAnalisis from './PanelAnalisis'
 import BarraPosicion, { ANCHO_COLUMNA_APAISADA } from './BarraPosicion'
-import { esPestana, guardarPestana, leerPestana, PESTANA_DEFECTO } from './preferencias'
+import { textoOrientacion } from '../sesion'
+import AnadirVista from './AnadirVista'
+import ConmutadorVista from './ConmutadorVista'
+import MiniaturaVista from './MiniaturaVista'
 import type { VistaViva } from './vistas'
+
+/** Letra de cada vista, en el orden de la sesión. */
+const LETRAS = ['A', 'B'] as const
 
 interface Props {
   /** Todas las vistas de la sesión (la de referencia primero). */
@@ -45,9 +53,21 @@ interface Props {
   modelo: ModeloMarcadores
   /** La sesión viene de lo guardado (no es nueva). */
   recuperada: boolean
+  /** La sesión que se abre no está guardada tal como es (se acaba de añadir una vista): se guarda al montar. */
+  sinGuardar: boolean
+  /** Pestaña de herramientas abierta (la guarda la sesión: no se pierde al abrir otra vista). */
+  pestana: string
+  onPestana: (id: string) => void
+  /** Vistas cuyo vídeo no tiene imagen en el instante del cursor común. */
+  fuera: ReadonlySet<string>
+  /** Entrega las vistas a la sesión en cada render y le pide poner las demás al día con la activa. */
+  registrarVistas: (vistas: readonly VistaViva[]) => void
+  sincronizarVistas: () => void
+  onElegirVista: (id: string) => void
+  onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista) => void
 }
 
-export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada }: Props) {
+export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, onElegirVista, onAnadirVista }: Props) {
   const activaViva = vistas[activa]!
   const orientacion = activaViva.orientacion
   const lado = ladoDeVista(orientacion)
@@ -62,7 +82,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
     huecosCortos,
     hayInterpolados,
     estadosFrames,
-    aviso,
+    aviso: avisoPropio,
     errorToque,
     setErrorToque,
     lienzo,
@@ -83,7 +103,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
     quitarManual,
     siguiendo,
     progresoSeguimiento,
-    listoParaSeguir,
+    listoParaSeguir: listoPropio,
     seguirDesdeAqui,
     pararSeguimiento,
     calibracion,
@@ -150,14 +170,19 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
     version: vistas.reduce((suma, w) => suma + w.version + w.revAjustes + w.revCeros + w.revCalibracion, 0),
     recuperada,
+    sinGuardar,
   })
+  // Con varias vistas se sigue de una en una (dos decodificadores a la vez duplican la memoria y compiten por el del
+  // hardware): mientras otra vista sigue, esta espera.
+  const otraSiguiendo = vistas.some((w, i) => i !== activa && w.siguiendo)
+  const listoParaSeguir = listoPropio && !otraSiguiendo
+  const aviso = avisoPropio ?? (otraSiguiendo ? { texto: 'Se está siguiendo la otra vista: espera a que acabe para seguir esta.' } : null)
+  // La sesión conoce las vistas vivas (el cursor común mueve las demás) y, al abrir otra vista, la pone donde toca.
+  useEffect(() => {
+    registrarVistas(vistas)
+  })
+  useEffect(() => sincronizarVistas(), [sincronizarVistas, vistas.length])
   // Pestañas de herramientas. Un punto en el nombre avisa de lo que pide atención aunque no se vea.
-  // Con un vídeo nuevo (nada marcado todavía) se empieza en «Marcar»; al recuperar un trabajo, en la pestaña que se usó.
-  const [pestana, setPestanaAbierta] = useState<string>(() => (recuperada ? leerPestana() : PESTANA_DEFECTO))
-  const setPestana = (id: string) => {
-    setPestanaAbierta(id)
-    if (esPestana(id)) guardarPestana(id)
-  }
   const pestanasVisor = [
     { id: 'marcar', nombre: 'Marcar', aviso: (resumen.huecos > 0 || huecosCortos.length > 0) && 'Hay huecos sin valor' },
     { id: 'analisis', nombre: 'Análisis', aviso: !!cero && cero.desviacion > DESVIACION_AVISO && 'El cero de referencia no parece quieto' },
@@ -293,6 +318,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
           >
           <div className={dosColumnas ? 'relative min-w-0 flex-1' : 'relative'}>
             <LienzoVideo
+              key={activaViva.id}
               llenar={enVideo}
               apaisado={dosColumnas}
               topeLg="lg:max-h-[max(14rem,calc(100dvh-25rem))]"
@@ -330,6 +356,20 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
                 Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
                 {colocarAOjo && <span className="text-texto-2">· a ojo</span>}
               </p>
+            )}
+            {vistas.length > 1 && (
+              // Abajo a la izquierda, juntos: el conmutador y la miniatura de la otra vista (a la derecha quedan los botones del vídeo).
+              <div className="absolute bottom-2 left-2 z-10 flex items-end gap-2">
+                <ConmutadorVista
+                  vistas={vistas.map((w, i) => ({ id: w.id, letra: LETRAS[i]!, descripcion: textoOrientacion(w.orientacion) }))}
+                  activa={activaViva.id}
+                  onElegir={onElegirVista}
+                />
+                {vistas.map(
+                  (w, i) =>
+                    i !== activa && <MiniaturaVista key={w.id} vista={w} etiqueta={LETRAS[i]!} fuera={fuera.has(w.id)} onElegir={() => onElegirVista(w.id)} />,
+                )}
+              </div>
             )}
             {!anchoLg && (
               <button
@@ -621,6 +661,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
 
           <PanelPestana id="video" activa={pestana === 'video'}>
             {!anchoLg && <TextoGuardado g={guardado} />}
+            {vistas.length === 1 && <AnadirVista existentes={[activaViva.huella]} onAnadir={onAnadirVista} />}
             <DatosVideo info={info} total={total} est={est} orientacion={orientacion} msDecodificar={msDecodificar} lectura={lectura} />
           </PanelPestana>
         </div>

@@ -1,17 +1,19 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowPathIcon, FilmIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import type { OrientacionVista } from '../core/geometria/canonico'
 import type { AjustesFiltro } from '../core/filtros/tramos'
-import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
-import type { CabeceraSesion } from '../core/persistencia/esquema'
+import type { ModeloMarcadores } from '../core/modelo/tipos'
+import type { CabeceraSesion, DatosSesion } from '../core/persistencia/esquema'
 import { diferenciasHuella } from '../core/persistencia/huella'
-import { desempaquetarTrayectoria } from '../core/persistencia/trayectorias'
 import type { VideoAbierto } from '../media/video'
 import { buscarPorHuella, leerSesion } from '../persistencia/almacen'
 import Compatibilidad from './compatibilidad'
 import ElegirOrientacion from './ElegirOrientacion'
+import FaltanVideos from './FaltanVideos'
+import { armarSesion, vistaDeHuella, vistasQueFaltan, type Abiertos } from './recuperacion'
 import RecuperarSesion, { type Candidata } from './RecuperarSesion'
 import SesionesGuardadas from './SesionesGuardadas'
-import { fechaCorta, huellaDe, textoResumen } from './sesion'
+import { huellaDe } from './sesion'
 import { useVersionNueva } from './useVersionNueva'
 import type { SesionAbierta } from './visor/useGuardado'
 import type { EntradaVista } from './visor/vistas'
@@ -23,6 +25,8 @@ type Estado =
   | { fase: 'cargando'; nombre: string }
   | { fase: 'recuperar'; video: VideoAbierto; apertura: number; candidatas: Candidata[]; ocupado?: boolean; error?: string }
   | { fase: 'orientacion'; video: VideoAbierto; apertura: number; aviso?: string }
+  /** Una sesión de varias vistas, con parte de sus vídeos abiertos: faltan los demás. */
+  | { fase: 'faltan'; apertura: number; cabecera: CabeceraSesion; datos: DatosSesion; abiertos: Abiertos; ocupado?: boolean; error?: string }
   | {
       fase: 'visor'
       apertura: number
@@ -47,23 +51,33 @@ const sesionNueva = (video: VideoAbierto): SesionAbierta => ({
   referencia: ID_VISTA_REFERENCIA,
 })
 
-/** Lee una sesión guardada y prepara el visor tal como se dejó. */
-async function prepararRecuperacion(video: VideoAbierto, elegida: CabeceraSesion) {
+/**
+ * Lee una sesión guardada. Con todos sus vídeos abiertos, el visor continúa tal como se dejó; si le faltan vídeos, se pide
+ * elegirlos (`faltan`).
+ */
+async function leerParaRecuperar(video: VideoAbierto, elegida: CabeceraSesion, apertura: number): Promise<Estado> {
   // La cabecera recién leída, no la de la lista: otra pestaña puede haberla cambiado
   // (escala, cero, filtro) y mezclarla con las trayectorias nuevas las desemparejaría.
   const { cabecera, datos } = await leerSesion(elegida.id)
-  const vista = cabecera.vistas[0]!
-  const total = video.tabla.tiempos.length
-  const inicial = new Map<IdMarcador, (Muestra2D | undefined)[]>()
-  for (const mk of cabecera.modelo.marcadores) inicial.set(mk.id, desempaquetarTrayectoria(datos.trayectorias[vista.id]![mk.id]!, total))
-  return {
-    // Hasta que se puedan abrir dos vistas (fase 3) una sesión guardada solo tiene una.
-    vistas: [{ id: vista.id, video, orientacion: vista.orientacion, desfase: vista.desfase, sincronia: vista.sincronia, inicial, ceros: vista.ceros, calibracion: vista.calibracion }],
-    sesion: { id: cabecera.id, nombre: cabecera.nombre, creada: cabecera.creada, referencia: cabecera.referencia },
-    modelo: cabecera.modelo,
-    filtro: cabecera.filtro,
-    aviso: `Trabajo recuperado tal como se guardó el ${fechaCorta(cabecera.actualizada)}: ${textoResumen(cabecera)}.`,
-  }
+  const vista = vistaDeHuella(cabecera, huellaDe(video), {})
+  if (!vista) throw new Error('Este vídeo ya no corresponde a ninguna vista de esa sesión.')
+  return estadoDeSesion(cabecera, datos, { [vista.id]: video }, apertura)
+}
+
+/** El visor, si ya están todos los vídeos de la sesión; si no, la pantalla que los pide. */
+function estadoDeSesion(cabecera: CabeceraSesion, datos: DatosSesion, abiertos: Abiertos, apertura: number): Estado {
+  if (vistasQueFaltan(cabecera, abiertos).length) return { fase: 'faltan', apertura, cabecera, datos, abiertos }
+  const vistas = Object.keys(abiertos).length
+  for (const v of Object.values(abiertos)) v.repartirMemoria(vistas)
+  return { fase: 'visor', apertura, ...armarSesion(cabecera, datos, abiertos) }
+}
+
+/** Los vídeos que mantiene abiertos un estado de la app. */
+function videosDe(e: Estado): VideoAbierto[] {
+  if (e.fase === 'recuperar' || e.fase === 'orientacion') return [e.video]
+  if (e.fase === 'faltan') return Object.values(e.abiertos)
+  if (e.fase === 'visor') return e.vistas.map((v) => v.video)
+  return []
 }
 
 export default function App() {
@@ -75,12 +89,24 @@ export default function App() {
   const aperturas = useRef(0)
   // Sesión que se quiere continuar desde la lista: el archivo elegido debe ser su vídeo.
   const objetivo = useRef<CabeceraSesion | null>(null)
-  const videoActual = estado.fase === 'visor' ? estado.vistas[0]!.video : estado.fase === 'recuperar' || estado.fase === 'orientacion' ? estado.video : null
+  // El archivo que se elija es para una sesión de varias vistas que pide el vídeo que le falta.
+  const paraFaltante = useRef(false)
+  const hayVideo = videosDe(estado).length > 0
 
-  // Cierra el vídeo anterior al cambiar de vídeo o al salir.
+  // Cierra los vídeos que dejan de estar en uso (al cambiar de vídeo, al salir del visor) y todos al desmontar. Las vistas
+  // de una sesión comparten estado: un vídeo que pasa de una pantalla a otra (recuperar → faltan → visor) sigue abierto.
+  const enUso = useRef<ReadonlySet<VideoAbierto>>(new Set())
   useEffect(() => {
-    return () => void videoActual?.cerrar()
-  }, [videoActual])
+    const ahora = new Set(videosDe(estado))
+    for (const v of enUso.current) if (!ahora.has(v)) void v.cerrar()
+    enUso.current = ahora
+  }, [estado])
+  useEffect(
+    () => () => {
+      for (const v of enUso.current) void v.cerrar()
+    },
+    [],
+  )
 
   const cargar = useCallback(async (archivo: File, buscada: CabeceraSesion | null) => {
     setEstado({ fase: 'cargando', nombre: archivo.name })
@@ -93,18 +119,20 @@ export default function App() {
       video = await VideoAbierto.abrir(archivo)
       const huella = huellaDe(video)
       if (buscada) {
-        // «Continuar» desde la lista: solo vale el vídeo de esa sesión.
-        const guardada = buscada.vistas[0]!.huella
-        const distinto = diferenciasHuella(guardada, huella).filter((d) => d !== 'nombre')
-        if (distinto.length) {
+        // «Continuar» desde la lista: solo vale un vídeo de esa sesión.
+        if (!vistaDeHuella(buscada, huella, {})) {
           void video.cerrar()
+          const distinto = diferenciasHuella(buscada.vistas[0]!.huella, huella).filter((d) => d !== 'nombre')
           setEstado({
             fase: 'inicio',
-            error: `«${archivo.name}» no es el vídeo de la sesión «${buscada.nombre}»: cambia ${distinto.map((d) => NOMBRE_DIFERENCIA[d]).join(', ')}. Elige el mismo archivo con que se trabajó.`,
+            error:
+              buscada.vistas.length === 1
+                ? `«${archivo.name}» no es el vídeo de la sesión «${buscada.nombre}»: cambia ${distinto.map((d) => NOMBRE_DIFERENCIA[d]).join(', ')}. Elige el mismo archivo con que se trabajó.`
+                : `«${archivo.name}» no es ninguno de los vídeos de la sesión «${buscada.nombre}». Elige uno de los archivos con que se trabajó.`,
           })
           return
         }
-        setEstado({ fase: 'visor', apertura, ...(await prepararRecuperacion(video, buscada)) })
+        setEstado(await leerParaRecuperar(video, buscada, apertura))
         return
       }
       // Si no se puede leer lo guardado, se abre igual (el vídeo no depende de
@@ -126,19 +154,62 @@ export default function App() {
   const recuperar = useCallback(async (video: VideoAbierto, apertura: number, candidatas: Candidata[], cabecera: CabeceraSesion) => {
     setEstado({ fase: 'recuperar', video, apertura, candidatas, ocupado: true })
     try {
-      const preparada = await prepararRecuperacion(video, cabecera)
+      const siguiente = await leerParaRecuperar(video, cabecera, apertura)
       // Mientras se leía se pudo cambiar de vídeo: entonces esto ya no vale.
       if (aperturas.current !== apertura) return
-      setEstado({ fase: 'visor', apertura, ...preparada })
+      setEstado(siguiente)
     } catch (e) {
       if (aperturas.current !== apertura) return
       setEstado({ fase: 'recuperar', video, apertura, candidatas, error: e instanceof Error ? e.message : String(e) })
     }
   }, [])
 
+  // Segunda vista de la sesión abierta: el vídeo ya está leído y se sabe cómo se ve a la persona. Las dos se reparten
+  // la memoria de la caché de frames.
+  const anadirVista = (video: VideoAbierto, orientacion: OrientacionVista) => {
+    if (estado.fase !== 'visor' || estado.vistas.length >= 2) {
+      void video.cerrar()
+      return
+    }
+    const vistas = [...estado.vistas, { id: 'v2', video, orientacion, desfase: 0, sincronia: { metodo: 'ninguna' as const } }]
+    for (const v of vistas) v.video.repartirMemoria(vistas.length)
+    setEstado({ ...estado, vistas })
+  }
+
   const elegirArchivo = (buscada: CabeceraSesion | null) => {
     objetivo.current = buscada
+    paraFaltante.current = false
     selector.current?.click()
+  }
+
+  // Una sesión de varias vistas pide los vídeos que faltan: el archivo elegido tiene que ser uno de ellos.
+  const elegirFaltante = () => {
+    paraFaltante.current = true
+    selector.current?.click()
+  }
+  const abrirFaltante = async (archivo: File) => {
+    if (estado.fase !== 'faltan') return
+    const { apertura, cabecera, datos, abiertos } = estado
+    setEstado({ ...estado, ocupado: true, error: undefined })
+    let video: VideoAbierto | null = null
+    try {
+      const { VideoAbierto } = await import('../media/video')
+      video = await VideoAbierto.abrir(archivo)
+      if (aperturas.current !== apertura) {
+        void video.cerrar()
+        return
+      }
+      const vista = vistaDeHuella(cabecera, huellaDe(video), abiertos)
+      if (!vista) {
+        void video.cerrar()
+        setEstado({ fase: 'faltan', apertura, cabecera, datos, abiertos, error: `«${archivo.name}» no es ninguno de los vídeos que faltan en la sesión «${cabecera.nombre}».` })
+        return
+      }
+      setEstado(estadoDeSesion(cabecera, datos, { ...abiertos, [vista.id]: video }, apertura))
+    } catch (e) {
+      void video?.cerrar()
+      setEstado({ fase: 'faltan', apertura, cabecera, datos, abiertos, error: e instanceof Error ? e.message : String(e) })
+    }
   }
 
   // Botón de la portada (sin vídeo abierto). Con un vídeo abierto, el de cambiarlo va en la cabecera.
@@ -158,7 +229,7 @@ export default function App() {
     // El visor aprovecha pantallas anchas (vídeo, gráfica y herramientas lado a lado); la portada y los diálogos, no.
     <main
       className={`mx-auto flex min-h-dvh flex-col px-4 pb-[calc(1.5rem+var(--alto-barra,0px))] lg:gap-6 lg:pt-6 lg:pb-6 ${
-        videoActual ? 'gap-3 pt-3' : 'gap-6 pt-6'
+        hayVideo ? 'gap-3 pt-3' : 'gap-6 pt-6'
       } ${
         estado.fase === 'visor' ? 'max-w-[90rem]' : 'max-w-6xl'
       }`}
@@ -195,10 +266,10 @@ export default function App() {
           se hace poco, así que su botón es secundario (sin el ámbar, que queda para lo que se está usando) y en el
           móvil solo lleva el icono. */}
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className={`font-serif ${videoActual ? 'text-2xl lg:text-3xl' : 'text-3xl'}`}>
+        <h1 className={`font-serif ${hayVideo ? 'text-2xl lg:text-3xl' : 'text-3xl'}`}>
           dual<span className="text-acento">kinema</span>
         </h1>
-        {videoActual && (
+        {hayVideo && (
           <button
             type="button"
             onClick={() => elegirArchivo(null)}
@@ -220,8 +291,10 @@ export default function App() {
         onChange={(e) => {
           const archivo = e.target.files?.[0]
           e.target.value = ''
-          if (archivo) void cargar(archivo, objetivo.current)
+          if (archivo && paraFaltante.current) void abrirFaltante(archivo)
+          else if (archivo) void cargar(archivo, objetivo.current)
           objetivo.current = null
+          paraFaltante.current = false
         }}
       />
 
@@ -245,11 +318,26 @@ export default function App() {
         <div className="mx-auto w-full max-w-xl">
           <RecuperarSesion
             nombre={estado.video.info.nombre}
+            huella={huellaDe(estado.video)}
             candidatas={estado.candidatas}
             ocupado={!!estado.ocupado}
             error={estado.error}
             onRecuperar={(c) => void recuperar(estado.video, estado.apertura, estado.candidatas, c)}
             onNueva={() => setEstado({ fase: 'orientacion', video: estado.video, apertura: estado.apertura })}
+          />
+        </div>
+      )}
+
+      {estado.fase === 'faltan' && (
+        <div className="mx-auto w-full max-w-xl">
+          <FaltanVideos
+            nombreSesion={estado.cabecera.nombre}
+            abiertos={Object.values(estado.abiertos).map((v) => v.info.nombre)}
+            faltan={vistasQueFaltan(estado.cabecera, estado.abiertos)}
+            ocupado={!!estado.ocupado}
+            error={estado.error}
+            onElegir={elegirFaltante}
+            onCancelar={() => setEstado({ fase: 'inicio' })}
           />
         </div>
       )}
@@ -279,6 +367,7 @@ export default function App() {
             modelo={estado.modelo}
             filtro={estado.filtro}
             avisoInicial={estado.aviso}
+            onAnadirVista={anadirVista}
           />
         </Suspense>
       )}

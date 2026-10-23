@@ -2754,6 +2754,265 @@ describe('app instalable', () => {
   })
 })
 
+describe('dos vistas: añadir la segunda, cursor común, A / B y recuperarlas', () => {
+  // A = «verde» (30 fps con huecos, 4,03 s, seguida: ángulo real conocido) y B = «numerado25» (25 fps constantes, 3,6 s, con el número de cada frame
+  // en bloques). Por tiempo común (desfase 0): al frame k de A le toca en B el último con t_B ≤ t_A(k), y A acaba (4,03 s) después que B (3,6 s).
+  let p
+  // El contenedor guarda los tiempos en milisegundos: los de 30 fps (33,33…) se redondean, y con ellos se decide qué frame toca.
+  const tA = (k) => Math.round(videos.verde.verdad[k].t * 1000) / 1000
+  let tB
+  const frameBEn = (t) => tB.reduce((mejor, x, k) => (x <= t + 1e-6 ? k : mejor), 0)
+  const verB = () => leerFrameDibujado(p, videos.numerado25)
+
+  before(async () => {
+    tB = videos.numerado25.tiempos
+    ;({ p } = await seguirVideo(videos.verde))
+  })
+  after(() => p?.close())
+
+  it('con una sola vista no hay conmutador y la pestaña «Vídeo» ofrece añadir la segunda', async () => {
+    assert.equal(await p.getByTestId('conmutador-vista').count(), 0)
+    await abrirPestana(p, 'video')
+    await p.getByRole('button', { name: 'Añadir la segunda vista' }).waitFor()
+  })
+
+  it('un vídeo igual al abierto se rechaza', async () => {
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.verde.ruta)
+    await p.getByText(/es el mismo vídeo que ya está abierto/).waitFor({ timeout: 20000 })
+    assert.equal(await p.getByTestId('conmutador-vista').count(), 0)
+  })
+
+  it('al añadir el otro vídeo y decir cómo se ve la persona, entra como vista B y la A sigue siendo la activa', async () => {
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.numerado25.ruta)
+    await p.getByTestId('anadir-vista-orientacion').waitFor({ timeout: 20000 })
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    assert.equal(await p.getByTestId('vista-A').getAttribute('aria-pressed'), 'true')
+    assert.equal(await p.getByTestId('vista-B').getAttribute('aria-pressed'), 'false')
+    assert.equal(await p.getByTestId('miniatura-vista').count(), 1)
+    // Sigue en la pestaña «Vídeo» y la sección de añadir ya no está.
+    assert.equal(await p.getByTestId('pestana-video').getAttribute('aria-selected'), 'true')
+    assert.equal(await p.getByRole('button', { name: 'Añadir la segunda vista' }).count(), 0)
+    // Lo de A no se ha perdido al volver a montar el cuerpo del visor: el vídeo sigue pintado (no en blanco) y el ángulo es el real.
+    await esperarQuieto(p)
+    const pintado = await p.evaluate(() => {
+      const c = document.querySelector('[data-testid=lienzo]')
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data
+      let claros = 0
+      for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 60) claros++
+      return claros / (d.length / 4)
+    })
+    assert.ok(pintado > 0.5, `el lienzo de A quedó en blanco al añadir la segunda vista (píxeles con imagen: ${pintado})`)
+    await irAFrame(p, 60)
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+  })
+
+  it('el cursor común lleva B al frame que toca por tiempo (25 y 30 fps), no al mismo número', async () => {
+    for (const k of [0, 10, 40, 41, 59, 80, 81, 100]) {
+      await abrirPestana(p, 'video')
+      await irAFrame(p, k)
+      // Las dos vistas viven en el mismo cursor: B se ve en la miniatura y, al activarla, en su lienzo.
+      await p.getByTestId('vista-B').click()
+      await esperarQuieto(p)
+      const esperado = frameBEn(tA(k))
+      assert.equal(await verB(), esperado, `A en el frame ${k + 1} (t = ${tA(k).toFixed(3)} s): B debería mostrar el frame ${esperado}`)
+      assert.equal((await leerPosicion(p)).frame, esperado + 1)
+      // Volver a A no la mueve: sigue en su frame.
+      await p.getByTestId('vista-A').click()
+      await esperarQuieto(p)
+      assert.equal((await leerPosicion(p)).frame, k + 1, `volver a A deja su frame ${k + 1}`)
+    }
+  })
+
+  it('al revés: moviendo B (activa) A va al frame que toca por tiempo', async () => {
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    for (const j of [5, 33, 70]) {
+      await irAFrame(p, j)
+      await p.getByTestId('vista-A').click()
+      await esperarQuieto(p)
+      const esperado = videos.verde.verdad.reduce((mejor, _, k) => (tA(k) <= tB[j] + 1e-6 ? k : mejor), 0)
+      assert.equal((await leerPosicion(p)).frame, esperado + 1, `B en el frame ${j + 1} (t = ${tB[j].toFixed(3)} s)`)
+      await p.getByTestId('vista-B').click()
+      await esperarQuieto(p)
+      assert.equal((await leerPosicion(p)).frame, j + 1)
+    }
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+  })
+
+  it('el teclado mueve solo la vista activa', async () => {
+    await irAFrame(p, 20)
+    await p.keyboard.press('ArrowRight')
+    await esperarQuieto(p)
+    assert.equal((await leerPosicion(p)).frame, 22)
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    const antes = (await leerPosicion(p)).frame
+    await p.keyboard.press('ArrowRight')
+    await esperarQuieto(p)
+    assert.equal((await leerPosicion(p)).frame, antes + 1, 'B avanza un frame (no dos: A no responde al teclado)')
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+  })
+
+  it('pasado el final de B (3,6 s), su miniatura dice «Fuera de este vídeo» y no se mueve; al volver dentro, B vuelve a su sitio', async () => {
+    const k = 110
+    assert.ok(tA(k) > tB[tB.length - 1] + 1 / 25, 'el frame 111 de A está después del final de B')
+    await irAFrame(p, k)
+    const miniatura = p.getByTestId('miniatura-vista')
+    await p.waitForFunction(() => document.querySelector('[data-testid=miniatura-vista]')?.getAttribute('data-fuera') === 'true')
+    assert.match(await miniatura.innerText(), /Fuera de este vídeo/)
+    await irAFrame(p, 60)
+    await p.waitForFunction(() => document.querySelector('[data-testid=miniatura-vista]')?.getAttribute('data-fuera') === 'false')
+    assert.doesNotMatch(await miniatura.innerText(), /Fuera/)
+  })
+
+  it('con el cursor fuera del vídeo de B, pasar a B la lleva a su último frame', async () => {
+    await irAFrame(p, 110)
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    assert.equal(await verB(), tB.length - 1)
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    await irAFrame(p, 0)
+  })
+
+  it('marcar en B no toca lo de A, y mientras sigue una vista la otra espera', async () => {
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    // B no tiene nada marcado: su ángulo no existe y el recuento de A no cambia.
+    await abrirPestana(p, 'marcar')
+    assert.equal(await p.getByTestId('angulo').innerText(), '—')
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    await irAFrame(p, 60)
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+  })
+
+  it('la sesión se guarda con las dos vistas', async () => {
+    await esperarGuardado(p, videos.verde.verdad.length)
+    const cabecera = await p.evaluate(async () => {
+      const bd = await new Promise((ok) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+      })
+      const todas = await new Promise((ok) => {
+        const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+        r.onsuccess = () => ok(r.result)
+      })
+      bd.close()
+      return todas[0]
+    })
+    assert.equal(cabecera.vistas.length, 2)
+    assert.deepEqual(cabecera.vistas.map((v) => v.id), ['v1', 'v2'])
+    assert.equal(cabecera.referencia, 'v1')
+    assert.deepEqual(cabecera.vistas.map((v) => v.desfase), [0, 0])
+    assert.deepEqual(cabecera.vistas[1].orientacion, { plano: 'frontal', ve: 'delante' })
+    assert.equal(cabecera.claves.length, 2)
+  })
+
+  it('tras recargar, la portada la lista con sus dos vistas', async () => {
+    await p.reload()
+    const sesion = p.getByTestId('sesion-guardada')
+    await sesion.waitFor()
+    assert.equal(await sesion.count(), 1)
+    assert.match(await sesion.innerText(), /mira a la derecha \+ vista desde delante/)
+  })
+
+  it('abriendo solo uno de los vídeos pide el otro; uno que no es de la sesión se rechaza; con el bueno recupera las dos vistas', async () => {
+    await p.setInputFiles('input[type=file]', videos.numerado25.ruta)
+    await p.getByRole('heading', { name: 'Ya has trabajado con este vídeo' }).waitFor({ timeout: 20000 })
+    assert.match(await p.getByTestId('candidata').innerText(), /Tiene 2 vistas/)
+    await p.getByRole('button', { name: 'Recuperar el trabajo' }).click()
+    await p.getByTestId('faltan-videos').waitFor({ timeout: 20000 })
+    assert.match(await p.getByTestId('faltan-videos').innerText(), /verde\.webm/)
+    // Un vídeo ajeno no vale.
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Elegir el vídeo que falta' }), videos.numerado.ruta)
+    await p.getByText(/no es ninguno de los vídeos que faltan/).waitFor({ timeout: 20000 })
+    assert.equal(await p.getByTestId('conmutador-vista').count(), 0)
+    // El suyo sí.
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Elegir el vídeo que falta' }), videos.verde.ruta)
+    await p.getByTestId('conmutador-vista').waitFor({ timeout: 20000 })
+    await esperarQuieto(p)
+    // La referencia (A) es verde, con su seguimiento intacto, y B es el de 25 fps.
+    assert.equal(await p.getByTestId('vista-A').getAttribute('aria-pressed'), 'true')
+    assert.equal((await leerPosicion(p)).total, videos.verde.verdad.length)
+    await irAFrame(p, 60)
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    assert.equal((await leerPosicion(p)).total, videos.numerado25.tiempos.length)
+    assert.equal(await verB(), frameBEn(tA(60)))
+  })
+
+  it('«Continuar» desde la lista con el vídeo de la vista A también pide el otro, y sigue siendo la misma sesión', async () => {
+    await p.reload()
+    await p.getByTestId('sesion-guardada').waitFor()
+    assert.equal(await p.getByTestId('sesion-guardada').count(), 1)
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Continuar' }), videos.verde.ruta)
+    await p.getByTestId('faltan-videos').waitFor({ timeout: 20000 })
+    assert.match(await p.getByTestId('faltan-videos').innerText(), /numerado25\.webm/)
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Elegir el vídeo que falta' }), videos.numerado25.ruta)
+    await p.getByTestId('conmutador-vista').waitFor({ timeout: 20000 })
+    await esperarQuieto(p)
+    await p.reload()
+    await p.getByTestId('sesion-guardada').waitFor()
+    assert.equal(await p.getByTestId('sesion-guardada').count(), 1, 'recuperar no crea otra sesión')
+  })
+})
+
+describe('dos vistas: se sigue de una en una y cada vista conserva lo suyo', () => {
+  // A = «verde» y B = «rojo» (otra cámara, vista de frente: sin ángulo, pero se marca y se sigue igual). El worker va frenado
+  // para que dé tiempo a cambiar de vista a mitad del seguimiento de A.
+  let p
+  before(async () => {
+    p = await abrirApp(navegador, { ancho: 1280 })
+    await frenarWorker(p)
+    await cargarVideo(p, videos.verde.ruta)
+    await marcarTres(p, videos.verde.verdad[0].ps)
+    await abrirPestana(p, 'video')
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.rojo.ruta)
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'marcar')
+    await marcarTres(p, videos.rojo.verdad[0].ps)
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+  })
+  after(() => p?.close())
+
+  it('mientras A sigue, B espera (no se puede empezar a seguir) y avisa; al acabar A, B puede seguir y termina sin huecos', async () => {
+    await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+    await p.waitForFunction(() => Number.parseInt(document.querySelector('[data-testid=progreso-seguimiento]')?.textContent ?? '0') >= 10, null, { timeout: 60000 })
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).isDisabled(), true, 'B no puede seguir mientras A sigue')
+    assert.match(await p.getByTestId('aviso').innerText(), /Se está siguiendo la otra vista/)
+    // A termina (sigue en segundo plano mientras se mira B): al volver a A, está seguida entera con el ángulo real.
+    await p.getByRole('button', { name: 'Seguir desde aquí' }).waitFor({ state: 'visible' })
+    await p.waitForFunction(() => !document.querySelector('[data-testid=aviso]')?.textContent?.includes('Se está siguiendo la otra vista'), null, { timeout: 90000 })
+    await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+    await p.getByTestId('aviso').filter({ hasText: /completado hasta el final del vídeo, sin huecos/ }).waitFor({ timeout: 90000 })
+  })
+
+  it('cada vista conserva lo suyo: A, el ángulo real; B, sus tres marcadores', async () => {
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    for (const i of [20, 60, 100]) {
+      await irAFrame(p, i)
+      assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[i].flexion) < TOLERANCIA_GRADOS, `A, frame ${i + 1}`)
+    }
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await irAFrame(p, 60)
+    // B está seguida en todos sus frames: los tres marcadores tienen posición («seguido»), no «—» ni «perdido».
+    assert.doesNotMatch(await p.getByRole('radiogroup').innerText(), /perdido|—/)
+  })
+})
+
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })

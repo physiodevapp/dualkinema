@@ -25,13 +25,14 @@ export function tiemposDe(n, huecos) {
 }
 
 /** Escribe un vídeo VP9 con `n` frames (RGB24 de `dibujar(i)`) y los tiempos de `tiemposDe`. */
-async function escribirVideo({ ancho, alto, n, huecos, dibujar, salida, gop = 30, kbps = 1500 }) {
+async function escribirVideo({ ancho, alto, n, huecos, dibujar, salida, gop = 30, kbps = 1500, fps = FPS }) {
   const extra = huecos.map((h) => `gte(N,${h})`).join('+')
-  const expr = extra ? `(N+${extra})/${FPS}` : `N/${FPS}`
+  const expr = extra ? `(N+${extra})/${fps}` : `N/${fps}`
   const ff = spawn(
     'ffmpeg',
-    ['-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${ancho}x${alto}`, '-r', String(FPS), '-i', '-',
-      '-vf', `setpts='${expr}/TB'`, '-fps_mode', 'passthrough', '-c:v', 'libvpx-vp9', '-g', String(gop), '-b:v', `${kbps}k`, salida],
+    ['-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${ancho}x${alto}`, '-r', String(fps), '-i', '-',
+      // Con fps constante distinto de 30 no se reescriben los tiempos: `setpts` en coma flotante repetía algún milisegundo.
+      ...(huecos.length || fps === FPS ? ['-vf', `setpts='${expr}/TB'`] : []), '-fps_mode', 'passthrough', '-c:v', 'libvpx-vp9', '-g', String(gop), '-b:v', `${kbps}k`, salida],
     { stdio: ['pipe', 'inherit', 'inherit'] },
   )
   for (let i = 0; i < n; i++) {
@@ -171,6 +172,35 @@ async function girarVideo(entrada, salida) {
  * Genera (una sola vez por versión) los vídeos y devuelve sus rutas y la
  * verdad de cada uno. Se guardan en la carpeta temporal del sistema.
  */
+/**
+ * El mismo tipo de vídeo que `numerado`, pero a 25 fps constantes y 90 frames (3,6 s): la segunda vista de las pruebas de
+ * dos vistas. Con fps distinto del de `verde` (30 y variable) y una duración menor, sirve para comprobar que el cursor
+ * común lleva cada vista por tiempo y no por índice, y qué pasa cuando un vídeo acaba antes que el otro.
+ */
+async function generarNumerado25(dir) {
+  const ancho = 320
+  const alto = 180
+  const n = 90
+  await escribirVideo({
+    ancho, alto, n, huecos: [], gop: 25, kbps: 800, fps: 25, salida: join(dir, 'numerado25.webm'),
+    dibujar: (i) => {
+      const buf = Buffer.alloc(ancho * alto * 3, 90)
+      const poner = (x, y, v) => {
+        const k = (y * ancho + x) * 3
+        buf[k] = buf[k + 1] = buf[k + 2] = v
+      }
+      for (let b = 0; b < BITS; b++) {
+        const v = (i >> b) & 1 ? 240 : 15
+        for (let y = 0; y < LADO_BLOQUE; y++) for (let x = b * LADO_BLOQUE; x < (b + 1) * LADO_BLOQUE; x++) poner(x, y, v)
+      }
+      const x0 = 10 + ((i * 3) % 290)
+      for (let y = 70; y < 130; y++) for (let x = x0; x < x0 + 12; x++) poner(x, y, 200)
+      return buf
+    },
+  })
+  writeFileSync(join(dir, 'numerado25.json'), JSON.stringify({ tiempos: Array.from({ length: n }, (_, i) => i / 25), bits: BITS, ladoBloque: LADO_BLOQUE }))
+}
+
 export async function asegurarVideos() {
   const dir = join(tmpdir(), `dualkinema-e2e-v${VERSION}`)
   const marca = join(dir, 'listo')
@@ -184,9 +214,12 @@ export async function asegurarVideos() {
     await girarVideo(join(dir, 'verde.webm'), join(dir, 'vertical.webm'))
     writeFileSync(marca, '')
   }
+  // Añadido después de la primera versión: se genera aparte si falta (sin invalidar los demás).
+  if (!existsSync(join(dir, 'numerado25.json'))) await generarNumerado25(dir)
   const leer = (nombre) => JSON.parse(readFileSync(join(dir, `${nombre}.json`), 'utf8'))
   return {
     numerado: { ruta: join(dir, 'numerado.webm'), ...leer('numerado') },
+    numerado25: { ruta: join(dir, 'numerado25.webm'), ...leer('numerado25') },
     verde: { ruta: join(dir, 'verde.webm'), verdad: leer('verde') },
     rojo: { ruta: join(dir, 'rojo.webm'), verdad: leer('rojo') },
     oculto: { ruta: join(dir, 'oculto.webm'), verdad: leer('oculto') },
