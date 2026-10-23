@@ -7,7 +7,7 @@ import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
-import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
+import type { IdMarcador, ModeloMarcadores, Muestra2D, Sincronia } from '../../core/modelo/tipos'
 import { prepararGuardado } from '../../core/persistencia/esquema'
 import type { HuellaArchivo } from '../../core/persistencia/huella'
 import { guardarSesion, pedirPersistencia } from '../../persistencia/almacen'
@@ -22,7 +22,24 @@ export interface SesionAbierta {
   readonly nombre: string
   /** ISO 8601. */
   readonly creada: string
-  readonly vistaId: string
+  /** Id de la vista de referencia. */
+  readonly referencia: string
+}
+
+/** Lo que se guarda de una vista. */
+export interface VistaAGuardar {
+  readonly id: string
+  readonly huella: HuellaArchivo
+  readonly orientacion: OrientacionVista
+  /** Las series de las trayectorias (el mapa del almacén, modificado en sitio): se leen al guardar. */
+  readonly series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>
+  /** Tramo estático del cero de referencia por id de articulación. */
+  readonly ceros: Readonly<Record<string, TramoEstatico>>
+  /** Escala de la vista (null = sin escala). */
+  readonly calibracion: CalibracionVista | null
+  /** Segundos respecto a la vista de referencia. */
+  readonly desfase: number
+  readonly sincronia: Sincronia
 }
 
 export type EstadoGuardado =
@@ -35,16 +52,9 @@ export type EstadoGuardado =
 
 interface Opciones {
   readonly sesion: SesionAbierta
-  readonly huella: HuellaArchivo
-  readonly orientacion: OrientacionVista
   readonly modelo: ModeloMarcadores
-  /** Las series de las trayectorias (el mapa del almacén, modificado en sitio): se leen al guardar. */
-  readonly series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>
   readonly filtro: AjustesFiltro
-  /** Tramo estático del cero de referencia por id de articulación. */
-  readonly ceros: Readonly<Record<string, TramoEstatico>>
-  /** Escala de la vista (null = sin escala). */
-  readonly calibracion: CalibracionVista | null
+  readonly vistas: readonly VistaAGuardar[]
   /** Cambia con cada modificación de lo que se guarda (trayectorias, ajustes, ceros o escala); solo crece. */
   readonly version: number
   /** La sesión viene de lo guardado (no es nueva). */
@@ -58,7 +68,7 @@ interface Opciones {
  * cerrar el visor. No crea la sesión hasta que hay algo marcado o una escala;
  * una vez creada, quitarlo todo también se guarda (si no, volvería al recuperar).
  */
-export function useGuardado({ sesion, huella, orientacion, modelo, series: seriesTrayectorias, filtro, ceros, calibracion, version, recuperada }: Opciones): EstadoGuardado {
+export function useGuardado({ sesion, modelo, filtro, vistas, version, recuperada }: Opciones): EstadoGuardado {
   const [estado, setEstado] = useState<EstadoGuardado>({ estado: recuperada ? 'recuperado' : 'nada' })
   // La versión con que se montó ya está guardada (vacía o recuperada).
   const guardada = useRef(version)
@@ -70,23 +80,22 @@ export function useGuardado({ sesion, huella, orientacion, modelo, series: serie
   // La sesión ya está en el dispositivo: a partir de ahí, quitarlo todo también se guarda.
   const existe = useRef(recuperada)
   // Lo que se lee al guardar: siempre lo último, sin rehacer los efectos.
-  const datos = useRef({ sesion, huella, orientacion, modelo, filtro, ceros, calibracion })
-  datos.current = { sesion, huella, orientacion, modelo, filtro, ceros, calibracion }
+  const datos = useRef({ sesion, modelo, filtro, vistas })
+  datos.current = { sesion, modelo, filtro, vistas }
 
   const guardar = useCallback(() => {
     if (temporizador.current) clearTimeout(temporizador.current)
     temporizador.current = null
     const v = actual.current
     if (v === guardada.current) return
-    const series = seriesTrayectorias
     // Calibrar antes de marcar también es trabajo que no se debe perder.
-    const hayAlgo = datos.current.calibracion !== null || [...series.values()].some((s) => s.some((m) => m !== undefined))
+    const hayAlgo = datos.current.vistas.some((w) => w.calibracion !== null || [...w.series.values()].some((s) => s.some((m) => m !== undefined)))
     if (!hayAlgo && !existe.current) {
       guardada.current = v
       setEstado({ estado: 'nada' })
       return
     }
-    const { sesion, huella, orientacion, modelo, filtro, ceros, calibracion } = datos.current
+    const { sesion, modelo, filtro, vistas } = datos.current
     // Se serializa ahora: las trayectorias cambian en sitio.
     const { cabecera, datos: tray } = prepararGuardado({
       id: sesion.id,
@@ -95,7 +104,8 @@ export function useGuardado({ sesion, huella, orientacion, modelo, series: serie
       ahora: new Date().toISOString(),
       modelo,
       filtro,
-      vistas: [{ id: sesion.vistaId, huella, orientacion, series, ceros, calibracion }],
+      vistas,
+      referencia: sesion.referencia,
     })
     guardada.current = v
     existe.current = true
@@ -113,7 +123,7 @@ export function useGuardado({ sesion, huella, orientacion, modelo, series: serie
         setEstado({ estado: 'error', mensaje: e instanceof Error ? e.message : String(e) })
       },
     )
-  }, [seriesTrayectorias])
+  }, [])
 
   // Cada cambio programa un guardado.
   useEffect(() => {
