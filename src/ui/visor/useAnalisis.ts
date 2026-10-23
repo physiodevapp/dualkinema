@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type RefObject } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { serieAngular } from '../../core/articulaciones/calculo'
 import { ceroDeReferencia, type TramoEstatico } from '../../core/articulaciones/cero'
 import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
@@ -14,7 +14,7 @@ import { useFiltrado } from './useFiltrado'
 import type { SeriesTrayectorias } from './useTrayectorias'
 
 interface Opciones {
-  readonly trayectorias: RefObject<SeriesTrayectorias>
+  readonly series: SeriesTrayectorias
   /** Contador de cambios de las trayectorias (el `version` de `useTrayectorias`). */
   readonly version: number
   readonly ids: readonly IdMarcador[]
@@ -37,7 +37,7 @@ interface Opciones {
  * por frame de la gráfica y del CSV, el cero, y la longitud de los segmentos.
  */
 export function useAnalisis({
-  trayectorias,
+  series,
   version,
   ids,
   tabla,
@@ -81,12 +81,12 @@ export function useAnalisis({
     void version
     if (orientacion.plano !== articulacion.plano) return []
     const porMarcador: Record<IdMarcador, Muestra2D[]> = {}
-    for (const id of ids) porMarcador[id] = (trayectorias.current.get(id) ?? []).filter((m): m is Muestra2D => m !== undefined)
+    for (const id of ids) porMarcador[id] = (series.get(id) ?? []).filter((m): m is Muestra2D => m !== undefined)
     return serieAngular(articulacion, porMarcador, orientacion)
-  }, [version, ids, orientacion, articulacion, trayectorias])
+  }, [version, ids, orientacion, articulacion, series])
   const resumen = useMemo(() => resumirSerie(serie), [serie])
   const filtrado = useFiltrado({
-    trayectorias,
+    series,
     version,
     ids,
     tabla,

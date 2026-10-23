@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
 import type { VideoAbierto } from '../../media/video'
 import type { AlWorker, DelWorker, MuestraFrame } from '../../workers/protocolo'
@@ -16,7 +16,7 @@ interface Opciones {
   readonly video: VideoAbierto
   readonly modelo: ModeloMarcadores
   readonly ids: readonly IdMarcador[]
-  readonly trayectorias: RefObject<SeriesTrayectorias>
+  readonly series: SeriesTrayectorias
   readonly muestra: (id: IdMarcador, i: number) => Muestra2D | undefined
   /** ¿Posición utilizable para el análisis? (`CALIDAD_MINIMA`; la define el visor). */
   readonly valida: (m: Muestra2D | undefined) => m is Muestra2D
@@ -39,7 +39,7 @@ export function useSeguimiento({
   video,
   modelo,
   ids,
-  trayectorias,
+  series,
   muestra,
   valida,
   aplicarLote,
@@ -129,7 +129,7 @@ export function useSeguimiento({
     setSeguimiento({ estado: 'siguiendo', progreso: mostrado / Math.max(1, total - 1) })
     // Lo marcado a mano más adelante son anclas: el seguidor las respeta y sigue desde ellas.
     const anclas: { indice: number; id: IdMarcador; x: number; y: number }[] = []
-    for (const [id, serie] of trayectorias.current) {
+    for (const [id, serie] of series) {
       for (let i = mostrado + 1; i < total; i++) {
         const m = serie[i]
         if (m?.editadoManual && Number.isFinite(m.x)) anclas.push({ indice: i, id, x: m.x, y: m.y })

@@ -17,7 +17,7 @@ interface Opciones {
   readonly inicial?: ReadonlyMap<IdMarcador, (Muestra2D | undefined)[]>
   /** ¿Posición utilizable para el análisis? (`CALIDAD_MINIMA`; la define el visor). */
   readonly valida: (m: Muestra2D | undefined) => m is Muestra2D
-  readonly trayectorias: RefObject<SeriesTrayectorias>
+  readonly series: SeriesTrayectorias
   readonly muestra: (id: IdMarcador, i: number) => Muestra2D | undefined
   /** Mutadores de `useTrayectorias`. */
   readonly poner: (id: IdMarcador, i: number, x: number, y: number) => void
@@ -37,7 +37,7 @@ interface Opciones {
  * El marcado a mano: el marcador elegido, «Colocar a ojo», colocar un marcador donde se toca (en el centro del gomet
  * o a ojo), previsualizar dónde quedaría (la lupa) y quitar una marca a mano.
  */
-export function useMarcado({ ids, tabla, info, inicial, valida, trayectorias, muestra, poner, quitar, mostrado, ultimoFrame, setErrorToque, setAviso }: Opciones) {
+export function useMarcado({ ids, tabla, info, inicial, valida, series, muestra, poner, quitar, mostrado, ultimoFrame, setErrorToque, setAviso }: Opciones) {
   // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
   // si están todos, ninguno, para no mover uno sin querer con el primer toque.
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
@@ -48,7 +48,7 @@ export function useMarcado({ ids, tabla, info, inicial, valida, trayectorias, mu
 
   /** Guarda una posición marcada a mano y pasa al siguiente marcador que falte en el frame. */
   const ponerManual = (id: IdMarcador, i: number, x: number, y: number) => {
-    const serie = trayectorias.current.get(id)!
+    const serie = series.get(id)!
     poner(id, i, x, y)
     setErrorToque(null)
     const falta = ids.find((otro) => otro !== id && !valida(muestra(otro, i)))

@@ -91,10 +91,9 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // Trayectorias: una posición (o nada) por frame y marcador, con sus mutadores (suben `version` por dentro), el estado
   // de cada frame y los huecos cortos.
   const {
-    trayectorias,
+    series,
     version,
     muestra,
-    series,
     poner,
     quitar,
     aplicarLote,
@@ -125,7 +124,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     info,
     inicial,
     valida,
-    trayectorias,
+    series,
     muestra,
     poner,
     quitar,
@@ -139,7 +138,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     video,
     modelo,
     ids,
-    trayectorias,
+    series,
     muestra,
     valida,
     aplicarLote,
@@ -167,7 +166,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     empezarEscala: empezarEscalaCon,
     guardarEscala,
     quitarEscala,
-  } = useEscala({ tabla, articulacion, trayectorias, version, calibracionInicial: calibracionGuardada, mostrado, ir })
+  } = useEscala({ tabla, articulacion, series, version, calibracionInicial: calibracionGuardada, mostrado, ir })
   // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
   const segmentos = useMemo(() => {
     const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
@@ -191,7 +190,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     seriesSegmentos,
     instantesInterpolados,
   } = useAnalisis({
-    trayectorias,
+    series,
     version,
     ids,
     tabla,
@@ -208,7 +207,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
     huella,
     orientacion,
     modelo,
-    trayectorias,
+    series,
     filtro: ajustes,
     ceros,
     calibracion,
@@ -272,7 +271,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
       const datos = datosCsv({
         tiempos: tabla.tiempos,
         marcadores: modelo.marcadores,
-        crudo: series(),
+        crudo: series,
         filtrado,
         articulacion,
         orientacion,
@@ -387,8 +386,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // Marcas a mano más adelante: «Seguir desde aquí» las toma como anclas y sigue desde ellas (ver `AvisoAnclas`).
   const framesAnclas = useMemo(() => {
     void version
-    return mostrado === null ? [] : framesConMarcaManual(trayectorias.current, mostrado)
-  }, [version, mostrado, trayectorias])
+    return mostrado === null ? [] : framesConMarcaManual(series, mostrado)
+  }, [version, mostrado, series])
   const quitarMarcasPosteriores = () => {
     if (mostrado === null) return
     const n = quitarManualesDespuesDe(mostrado)
