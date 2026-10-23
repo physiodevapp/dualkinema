@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
 import type { OrientacionVista } from '../../core/geometria/canonico'
+import type { Sincronia } from '../../core/modelo/tipos'
 import type { VideoAbierto } from '../../media/video'
 import { COLORES_MARCADOR, ladoDeVista, nombreCorto } from '../marcadores'
 import PanelGrafica from './PanelGrafica'
@@ -39,6 +40,7 @@ import { textoOrientacion } from '../sesion'
 import AnadirVista from './AnadirVista'
 import ConmutadorVista from './ConmutadorVista'
 import MiniaturaVista from './MiniaturaVista'
+import SincronizarVistas, { type MarcaEvento } from './SincronizarVistas'
 import type { VistaViva } from './vistas'
 
 /** Letra de cada vista, en el orden de la sesión. */
@@ -63,11 +65,17 @@ interface Props {
   /** Entrega las vistas a la sesión en cada render y le pide poner las demás al día con la activa. */
   registrarVistas: (vistas: readonly VistaViva[]) => void
   sincronizarVistas: () => void
+  /** Enlaza o desenlaza el cursor común (desenlazado, cada vista se mueve sola: así se marca el evento de la sincronía). */
+  enlazarCursor: (si: boolean) => void
+  /** Cambia el desfase y la sincronía de una vista. */
+  onSincronia: (id: string, desfase: number, sincronia: Sincronia) => void
+  /** Sube con cada cambio de desfase o sincronía (para el guardado). */
+  revSinc: number
   onElegirVista: (id: string) => void
   onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista) => void
 }
 
-export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, onElegirVista, onAnadirVista }: Props) {
+export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, onElegirVista, onAnadirVista }: Props) {
   const activaViva = vistas[activa]!
   const orientacion = activaViva.orientacion
   const lado = ladoDeVista(orientacion)
@@ -168,7 +176,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
       sincronia: w.sincronia,
     })),
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: vistas.reduce((suma, w) => suma + w.version + w.revAjustes + w.revCeros + w.revCalibracion, 0),
+    version: revSinc + vistas.reduce((suma, w) => suma + w.version + w.revAjustes + w.revCeros + w.revCalibracion, 0),
     recuperada,
     sinGuardar,
   })
@@ -177,11 +185,29 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
   const otraSiguiendo = vistas.some((w, i) => i !== activa && w.siguiendo)
   const listoParaSeguir = listoPropio && !otraSiguiendo
   const aviso = avisoPropio ?? (otraSiguiendo ? { texto: 'Se está siguiendo la otra vista: espera a que acabe para seguir esta.' } : null)
+  // Sincronizar por un evento visual: mientras se marca, el cursor está desenlazado (cada vista se mueve sola) y el botón de
+  // marcar va también sobre el vídeo (en el móvil el panel de la pestaña queda fuera de pantalla al recorrerlo).
+  const [marcandoEvento, setMarcandoEvento] = useState(false)
+  const [marcaEvento, setMarcaEvento] = useState<MarcaEvento>({})
+  const empezarEvento = () => {
+    enlazarCursor(false)
+    setMarcaEvento({})
+    setMarcandoEvento(true)
+  }
+  const terminarEvento = () => {
+    setMarcandoEvento(false)
+    setMarcaEvento({})
+    enlazarCursor(true)
+  }
+  const marcarEvento = (clave: keyof MarcaEvento, t: number) => setMarcaEvento((m) => ({ ...m, [clave]: t }))
+  const claveActiva: keyof MarcaEvento = activa === 0 ? 'referencia' : 'vista'
   // La sesión conoce las vistas vivas (el cursor común mueve las demás) y, al abrir otra vista, la pone donde toca.
   useEffect(() => {
     registrarVistas(vistas)
   })
-  useEffect(() => sincronizarVistas(), [sincronizarVistas, vistas.length])
+  // Al abrir otra vista o cambiar un desfase, las demás vuelven a ponerse según la activa.
+  const desfases = vistas.map((w) => w.desfaseS).join('|')
+  useEffect(() => sincronizarVistas(), [sincronizarVistas, vistas.length, desfases])
   // Pestañas de herramientas. Un punto en el nombre avisa de lo que pide atención aunque no se vea.
   const pestanasVisor = [
     { id: 'marcar', nombre: 'Marcar', aviso: (resumen.huecos > 0 || huecosCortos.length > 0) && 'Hay huecos sin valor' },
@@ -370,6 +396,18 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
                     i !== activa && <MiniaturaVista key={w.id} vista={w} etiqueta={LETRAS[i]!} fuera={fuera.has(w.id)} onElegir={() => onElegirVista(w.id)} />,
                 )}
               </div>
+            )}
+            {marcandoEvento && (
+              <button
+                type="button"
+                data-testid="marcar-evento-video"
+                disabled={activaViva.mostrado === null || activaViva.mostrado !== activaViva.deseado}
+                onClick={() => marcarEvento(claveActiva, activaViva.tabla.tiempos[activaViva.mostrado!]!)}
+                className="absolute right-2 bottom-2 z-10 rounded-md bg-acento px-3 py-2 text-sm font-medium text-fondo shadow-lg disabled:opacity-40"
+              >
+                Es el evento · {LETRAS[activa]}
+                {marcaEvento[claveActiva] !== undefined && ' ✓'}
+              </button>
             )}
             {!anchoLg && (
               <button
@@ -662,6 +700,18 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
           <PanelPestana id="video" activa={pestana === 'video'}>
             {!anchoLg && <TextoGuardado g={guardado} />}
             {vistas.length === 1 && <AnadirVista existentes={[activaViva.huella]} onAnadir={onAnadirVista} />}
+            {vistas.length === 2 && (
+              <SincronizarVistas
+                referencia={vistas[0]!}
+                vista={vistas[1]!}
+                onSincronia={onSincronia}
+                marcando={marcandoEvento}
+                marca={marcaEvento}
+                onEmpezar={empezarEvento}
+                onTerminar={terminarEvento}
+                onMarcar={marcarEvento}
+              />
+            )}
             <DatosVideo info={info} total={total} est={est} orientacion={orientacion} msDecodificar={msDecodificar} lectura={lectura} />
           </PanelPestana>
         </div>

@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { modeloRodilla3 } from '../core/articulaciones/catalogo'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { AjustesFiltro } from '../core/filtros/tramos'
-import type { ModeloMarcadores } from '../core/modelo/tipos'
+import type { ModeloMarcadores, Sincronia } from '../core/modelo/tipos'
 import type { VideoAbierto } from '../media/video'
 import { ladoDeVista } from './marcadores'
 import AnfitrionVista from './visor/AnfitrionVista'
@@ -66,6 +66,15 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
   const modelo = useMemo(() => modeloGuardado ?? modeloRodilla3(lado), [modeloGuardado, lado])
   const recuperada = !!vistas[0]!.inicial
   const cursor = useCursorComun(vistas[0]!.id)
+  // El desfase y la sincronía de cada vista cambian al sincronizar: se guardan aquí, sobre lo que traía cada vista.
+  const [sinc, setSinc] = useState<Readonly<Record<string, { desfase: number; sincronia: Sincronia }>>>({})
+  // Sube con cada cambio, para que el guardado se entere.
+  const [revSinc, setRevSinc] = useState(0)
+  const fijarSincronia = useCallback((id: string, desfase: number, sincronia: Sincronia) => {
+    setSinc((s) => ({ ...s, [id]: { desfase, sincronia } }))
+    setRevSinc((n) => n + 1)
+  }, [])
+  const entradas = useMemo(() => vistas.map((v) => (sinc[v.id] ? { ...v, ...sinc[v.id] } : v)), [vistas, sinc])
   // Pestañas de herramientas. Con un vídeo nuevo (nada marcado todavía) se empieza en «Marcar»; al recuperar un trabajo,
   // en la pestaña que se usó. Viven aquí (no en el cuerpo) para no perderse al abrir otra vista.
   const [pestana, setPestanaAbierta] = useState<string>(() => (recuperada ? leerPestana() : PESTANA_DEFECTO))
@@ -74,7 +83,7 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
     if (esPestana(id)) guardarPestana(id)
   }
   return (
-    <Anfitriones entradas={vistas} acumuladas={[]} modelo={modelo} filtro={filtro} avisoInicial={avisoInicial} activaId={cursor.activaId} alCambiarFrame={cursor.propagar}>
+    <Anfitriones entradas={entradas} acumuladas={[]} modelo={modelo} filtro={filtro} avisoInicial={avisoInicial} activaId={cursor.activaId} alCambiarFrame={cursor.propagar}>
       {(vivas) => (
         <CuerpoVisor
           vistas={vivas}
@@ -89,6 +98,9 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
           fuera={cursor.fuera}
           registrarVistas={cursor.registrar}
           sincronizarVistas={cursor.sincronizar}
+          enlazarCursor={cursor.enlazar}
+          onSincronia={fijarSincronia}
+          revSinc={revSinc}
           onElegirVista={cursor.elegirActiva}
           onAnadirVista={onAnadirVista}
         />
