@@ -1,8 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowPathIcon, FilmIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import type { OrientacionVista } from '../core/geometria/canonico'
-import type { TramoEstatico } from '../core/articulaciones/cero'
-import type { CalibracionVista } from '../core/calibracion/escala'
 import type { AjustesFiltro } from '../core/filtros/tramos'
 import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../core/modelo/tipos'
 import type { CabeceraSesion } from '../core/persistencia/esquema'
@@ -17,6 +14,7 @@ import SesionesGuardadas from './SesionesGuardadas'
 import { fechaCorta, huellaDe, textoResumen } from './sesion'
 import { useVersionNueva } from './useVersionNueva'
 import type { SesionAbierta } from './visor/useGuardado'
+import type { EntradaVista } from './visor/vistas'
 // El visor (con la gráfica y uPlot) solo se descarga al abrir un vídeo.
 const Visor = lazy(() => import('./Visor'))
 
@@ -27,27 +25,26 @@ type Estado =
   | { fase: 'orientacion'; video: VideoAbierto; apertura: number; aviso?: string }
   | {
       fase: 'visor'
-      video: VideoAbierto
       apertura: number
-      orientacion: OrientacionVista
+      /** Las vistas, la de referencia primero. */
+      vistas: readonly EntradaVista[]
       sesion: SesionAbierta
-      /** Solo al recuperar: modelo y trayectorias guardados. */
+      /** Solo al recuperar: el modelo y el filtro guardados. */
       modelo?: ModeloMarcadores
-      inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
       filtro?: AjustesFiltro | null
-      ceros?: Readonly<Record<string, TramoEstatico>>
-      calibracion?: CalibracionVista | null
       aviso?: string
     }
 
 const NOMBRE_DIFERENCIA = { nombre: 'nombre', tamano: 'tamaño', duracion: 'duración', frames: 'número de frames' } as const
 
-/** Sesión nueva para el vídeo abierto (con una sola vista hasta la fase 3). */
+const ID_VISTA_REFERENCIA = 'v1'
+
+/** Sesión nueva para el vídeo abierto, que es su vista de referencia. */
 const sesionNueva = (video: VideoAbierto): SesionAbierta => ({
   id: crypto.randomUUID(),
   nombre: video.info.nombre,
   creada: new Date().toISOString(),
-  vistaId: 'v1',
+  referencia: ID_VISTA_REFERENCIA,
 })
 
 /** Lee una sesión guardada y prepara el visor tal como se dejó. */
@@ -60,13 +57,11 @@ async function prepararRecuperacion(video: VideoAbierto, elegida: CabeceraSesion
   const inicial = new Map<IdMarcador, (Muestra2D | undefined)[]>()
   for (const mk of cabecera.modelo.marcadores) inicial.set(mk.id, desempaquetarTrayectoria(datos.trayectorias[vista.id]![mk.id]!, total))
   return {
-    orientacion: vista.orientacion,
-    sesion: { id: cabecera.id, nombre: cabecera.nombre, creada: cabecera.creada, vistaId: vista.id },
+    // Hasta que se puedan abrir dos vistas (fase 3) una sesión guardada solo tiene una.
+    vistas: [{ id: vista.id, video, orientacion: vista.orientacion, desfase: vista.desfase, sincronia: vista.sincronia, inicial, ceros: vista.ceros, calibracion: vista.calibracion }],
+    sesion: { id: cabecera.id, nombre: cabecera.nombre, creada: cabecera.creada, referencia: cabecera.referencia },
     modelo: cabecera.modelo,
-    inicial,
     filtro: cabecera.filtro,
-    ceros: vista.ceros,
-    calibracion: vista.calibracion,
     aviso: `Trabajo recuperado tal como se guardó el ${fechaCorta(cabecera.actualizada)}: ${textoResumen(cabecera)}.`,
   }
 }
@@ -80,7 +75,7 @@ export default function App() {
   const aperturas = useRef(0)
   // Sesión que se quiere continuar desde la lista: el archivo elegido debe ser su vídeo.
   const objetivo = useRef<CabeceraSesion | null>(null)
-  const videoActual = estado.fase === 'recuperar' || estado.fase === 'orientacion' || estado.fase === 'visor' ? estado.video : null
+  const videoActual = estado.fase === 'visor' ? estado.vistas[0]!.video : estado.fase === 'recuperar' || estado.fase === 'orientacion' ? estado.video : null
 
   // Cierra el vídeo anterior al cambiar de vídeo o al salir.
   useEffect(() => {
@@ -109,7 +104,7 @@ export default function App() {
           })
           return
         }
-        setEstado({ fase: 'visor', video, apertura, ...(await prepararRecuperacion(video, buscada)) })
+        setEstado({ fase: 'visor', apertura, ...(await prepararRecuperacion(video, buscada)) })
         return
       }
       // Si no se puede leer lo guardado, se abre igual (el vídeo no depende de
@@ -134,7 +129,7 @@ export default function App() {
       const preparada = await prepararRecuperacion(video, cabecera)
       // Mientras se leía se pudo cambiar de vídeo: entonces esto ya no vale.
       if (aperturas.current !== apertura) return
-      setEstado({ fase: 'visor', video, apertura, ...preparada })
+      setEstado({ fase: 'visor', apertura, ...preparada })
     } catch (e) {
       if (aperturas.current !== apertura) return
       setEstado({ fase: 'recuperar', video, apertura, candidatas, error: e instanceof Error ? e.message : String(e) })
@@ -264,7 +259,12 @@ export default function App() {
           {estado.aviso && <p className="rounded-md border border-red-400/50 p-3 text-sm text-red-300">{estado.aviso}</p>}
           <ElegirOrientacion
             onElegir={(orientacion) =>
-              setEstado({ fase: 'visor', video: estado.video, apertura: estado.apertura, orientacion, sesion: sesionNueva(estado.video) })
+              setEstado({
+                fase: 'visor',
+                apertura: estado.apertura,
+                sesion: sesionNueva(estado.video),
+                vistas: [{ id: ID_VISTA_REFERENCIA, video: estado.video, orientacion, desfase: 0, sincronia: { metodo: 'ninguna' } }],
+              })
             }
           />
         </div>
@@ -274,14 +274,10 @@ export default function App() {
         <Suspense fallback={<p className="text-texto-2">Cargando el visor…</p>}>
           <Visor
             key={estado.apertura}
-            video={estado.video}
-            orientacion={estado.orientacion}
+            vistas={estado.vistas}
             sesion={estado.sesion}
             modelo={estado.modelo}
-            inicial={estado.inicial}
             filtro={estado.filtro}
-            ceros={estado.ceros}
-            calibracion={estado.calibracion}
             avisoInicial={estado.aviso}
           />
         </Suspense>

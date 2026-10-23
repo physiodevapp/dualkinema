@@ -19,3 +19,6 @@ export function ladoVisible(o: Extract<OrientacionVista, { plano: 'sagital' }>):
 export function nombreCorto(nombre: string): string {
   return nombre.replace(/\s*\(.*\)$/, '').replace(/\s+(mayor|femoral lateral|lateral)$/, '')
 }
+
+/** Pierna que ve la cámara de una vista; en una vista que no es sagital (de frente) no hay lado visible y se toma la izquierda. */
+export const ladoDeVista = (o: OrientacionVista): Lado => (o.plano === 'sagital' ? ladoVisible(o) : 'izq')
