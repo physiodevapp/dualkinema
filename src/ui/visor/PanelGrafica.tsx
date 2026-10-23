@@ -51,6 +51,10 @@ interface Props {
   resumen: ReactNode
   /** Vista de solo gráficas (móvil y tablet en vertical): los paneles se reparten el alto que haya, sin desplazarse. */
   ampliada?: boolean
+  /** Móvil girado en «Solo gráficas»: ángulo, velocidad y segmentos en columnas, una al lado de la otra, para que quepan en el poco alto que hay. */
+  lado?: boolean
+  /** Un botón en la fila del título (el de volver, en «Solo gráficas» con el móvil girado, donde no hay cabecera propia). */
+  accion?: ReactNode
 }
 
 const VISIBLES_DEFECTO: Record<string, boolean> = { crudo: true, filtrado: true, velocidad: true }
@@ -65,7 +69,7 @@ const porcentaje = (v: number) => `${fmt(v, Math.abs(v) < 10 && v % 1 !== 0 ? 1 
  * u oculta con su botón, que da además su valor en el frame actual; un panel
  * sin ninguna serie a la vista no se dibuja.
  */
-export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positivo, crudo, filtrado, velocidad, corte, segmentos, resumen, ampliada }: Props) {
+export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positivo, crudo, filtrado, velocidad, corte, segmentos, resumen, ampliada, lado, accion }: Props) {
   // Los segmentos empiezan ocultos: son una comprobación, no el análisis. Lo que se elige se recuerda en este dispositivo.
   const [visibles, setVisibles] = useState(() => leerSeriesVisibles(VISIBLES_DEFECTO))
   const alternar = (id: string) => {
@@ -122,6 +126,13 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
     [segmentos, partidas, visiblesSegmentos],
   )
 
+  // Con `lado`, las gráficas van en una fila de columnas (el ángulo con su resumen en la primera); si no, una debajo de otra.
+  const enFila = (nodo: ReactNode) => (lado ? <div className="flex min-h-0 flex-1 gap-3">{nodo}</div> : nodo)
+  const columnaAngulo = (nodo: ReactNode) => (lado ? <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">{nodo}</div> : nodo)
+  const cajaGrafica = (flexible: string) => (ampliada ? (lado ? 'relative min-h-0 flex-1' : flexible) : '')
+  const bloque = lado ? 'min-w-0 border-l border-borde pl-3' : 'border-t border-borde pt-2'
+  const altoBloque = ampliada ? (lado ? 'min-h-0 flex-1' : 'min-h-[140px] flex-1') : ''
+
   const valor = (v: number | undefined, d: number, u: string) => (v !== undefined && Number.isFinite(v) ? `${fmt(v, d)}${u}` : '—')
   const interruptores: Interruptor[] = [
     { id: 'crudo', nombre: 'Crudo', color: 'acento', valor: (i) => valor(crudo.valores[i], 1, '°') },
@@ -146,7 +157,14 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
     <section className={`flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-3 ${ampliada ? 'flex-1' : ''}`} data-testid="panel-grafica">
       <div className="flex items-baseline justify-between gap-2 px-1">
         <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">{titulo}</h2>
-        <span className="font-mono text-xs text-texto-2">{positivo} +</span>
+        {accion ? (
+          <div className="-my-2 flex items-center gap-2">
+            <span className="font-mono text-xs text-texto-2">{positivo} +</span>
+            {accion}
+          </div>
+        ) : (
+          <span className="font-mono text-xs text-texto-2">{positivo} +</span>
+        )}
       </div>
 
       <div className={`flex gap-1.5 px-1 ${ampliada ? 'shrink-0 overflow-x-auto' : 'flex-wrap'}`} role="group" aria-label="Series de la gráfica">
@@ -175,8 +193,10 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
         })}
       </div>
 
+      {enFila(<>
+      {columnaAngulo(<>
       {(visibles.crudo || visibles.filtrado) && (
-        <div className={ampliada ? 'relative min-h-[110px] flex-[1.2_1_0]' : ''}>
+        <div className={cajaGrafica('relative min-h-[110px] flex-[1.2_1_0]')}>
           <GraficaTiempo
             {...comun}
             series={seriesAngulo}
@@ -189,11 +209,12 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
         </div>
       )}
       <div className="shrink-0 px-1">{resumen}</div>
+      </>)}
 
       {visibles.velocidad && (
-        <div className={`flex flex-col gap-1 border-t border-borde pt-2 ${ampliada ? 'min-h-[140px] flex-1' : ''}`}>
+        <div className={`flex flex-col gap-1 ${bloque} ${altoBloque}`}>
           <h3 className="px-1 font-mono text-xs text-texto-2">Velocidad angular (°/s)</h3>
-          <div className={ampliada ? 'relative min-h-[110px] flex-1' : ''}>
+          <div className={cajaGrafica('relative min-h-[110px] flex-1')}>
             <GraficaTiempo
               {...comun}
               series={seriesVelocidad}
@@ -208,9 +229,9 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
       )}
 
       {seriesSegmentos.some((x) => x.visible) && (
-        <div className={`flex flex-col gap-1 border-t border-borde pt-2 ${ampliada ? 'min-h-[140px] flex-1' : ''}`}>
+        <div className={`flex flex-col gap-1 ${bloque} ${altoBloque}`}>
           <h3 className="px-1 font-mono text-xs text-texto-2">Longitud de los segmentos (% frente a su mediana)</h3>
-          <div className={ampliada ? 'relative min-h-[110px] flex-1' : ''}>
+          <div className={cajaGrafica('relative min-h-[110px] flex-1')}>
             <GraficaTiempo
               {...comun}
               series={seriesSegmentos}
@@ -230,6 +251,8 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
           )}
         </div>
       )}
+
+      </>)}
 
       {!ampliada && (
         <p className="px-1 text-xs text-texto-2">
