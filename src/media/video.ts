@@ -1,6 +1,6 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input, type WrappedCanvas } from 'mediabunny'
 import { crearTablaFrames, indiceDeFrame, type TablaFrames } from '../core/tiempo/tablaFrames'
-import { CacheFrames, capacidadCache } from './cacheFrames'
+import { CacheFrames, capacidadCache, MEMORIA_CACHE } from './cacheFrames'
 import { planificarLectura } from './planLectura'
 
 export interface InfoVideo {
@@ -48,7 +48,7 @@ export class VideoAbierto {
   private cola: Promise<unknown> = Promise.resolve()
   private cerrado = false
   /** Últimos frames decodificados (el CanvasSink da un canvas nuevo por frame, así que se pueden guardar). */
-  private readonly cache: CacheFrames<WrappedCanvas>
+  private cache: CacheFrames<WrappedCanvas>
   ultimaLectura: UltimaLectura | null = null
 
   private constructor(
@@ -161,6 +161,15 @@ export class VideoAbierto {
         return r.value
       }
     }
+  }
+
+  /**
+   * Con varias vistas abiertas la caché de frames se reparte la memoria: cada vista usa la parte que le toca (con una,
+   * todo el presupuesto). Vacía la caché; los frames se vuelven a decodificar al pedirlos.
+   */
+  repartirMemoria(vistas: number): void {
+    this.cache.vaciar()
+    this.cache = new CacheFrames(capacidadCache(this.info.ancho, this.info.alto, MEMORIA_CACHE / Math.max(1, vistas)))
   }
 
   async cerrar(): Promise<void> {
