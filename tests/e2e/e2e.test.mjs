@@ -3111,3 +3111,74 @@ describe('móvil girado (horizontal)', () => {
     }
   })
 })
+
+describe('preferencias recordadas en el dispositivo', () => {
+  let navegador
+  let videos
+  before(async () => {
+    videos = await asegurarVideos()
+    navegador = await lanzarNavegador()
+  })
+  after(() => navegador.close())
+
+  const abierta = async (p) => {
+    const ids = ['marcar', 'analisis', 'escala', 'video']
+    const marcas = await Promise.all(ids.map((id) => p.getByTestId(`pestana-${id}`).getAttribute('aria-selected')))
+    return ids.filter((_, i) => marcas[i] === 'true')
+  }
+
+  it('la pestaña abierta se recuerda al recargar y al abrir otro vídeo; con un valor ilegible, vuelve «Marcar»', async () => {
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      assert.deepEqual(await abierta(p), ['marcar'], 'de partida, «Marcar»')
+      await abrirPestana(p, 'escala')
+      assert.deepEqual(await abierta(p), ['escala'])
+      await p.reload()
+      await cargarVideo(p, videos.verde.ruta)
+      assert.deepEqual(await abierta(p), ['escala'], 'al recargar y abrir el vídeo, la última')
+      await abrirPestana(p, 'analisis')
+      await p.reload()
+      await cargarVideo(p, videos.corto.ruta)
+      assert.deepEqual(await abierta(p), ['analisis'], 'con otro vídeo, la última también')
+      // Un valor que no es una pestaña no rompe nada: se usa la de por defecto.
+      await p.evaluate(() => localStorage.setItem('dualkinema.pestana', 'otra'))
+      await p.reload()
+      await cargarVideo(p, videos.verde.ruta)
+      assert.deepEqual(await abierta(p), ['marcar'])
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('las series que se ven en la gráfica se recuerdan; un guardado roto se ignora', async () => {
+    const p = await abrirApp(navegador, { ancho: 1280 })
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      const serie = (id) => p.getByTestId(`serie-${id}`)
+      assert.equal(await serie('velocidad').getAttribute('aria-pressed'), 'true')
+      assert.equal(await serie('crudo').getAttribute('aria-pressed'), 'true')
+      await serie('velocidad').click()
+      await serie('crudo').click()
+      assert.equal(await serie('velocidad').getAttribute('aria-pressed'), 'false')
+      await p.reload()
+      await cargarVideo(p, videos.verde.ruta)
+      assert.equal(await serie('velocidad').getAttribute('aria-pressed'), 'false', 'la velocidad sigue oculta')
+      assert.equal(await serie('crudo').getAttribute('aria-pressed'), 'false', 'lo crudo sigue oculto')
+      assert.equal(await serie('filtrado').getAttribute('aria-pressed'), 'true', 'lo que no se tocó sigue a la vista')
+      // Se vuelve a encender y se recuerda también.
+      await serie('velocidad').click()
+      await p.reload()
+      await cargarVideo(p, videos.verde.ruta)
+      assert.equal(await serie('velocidad').getAttribute('aria-pressed'), 'true')
+      // Un guardado ilegible se ignora: las de por defecto.
+      await p.evaluate(() => localStorage.setItem('dualkinema.seriesVisibles', '{roto'))
+      await p.reload()
+      await cargarVideo(p, videos.verde.ruta)
+      for (const id of ['crudo', 'filtrado', 'velocidad']) assert.equal(await serie(id).getAttribute('aria-pressed'), 'true')
+    } finally {
+      await p.close()
+    }
+  })
+})
+

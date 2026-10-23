@@ -56,6 +56,7 @@ import DatosVideo from './visor/DatosVideo'
 import PanelMarcar from './visor/PanelMarcar'
 import PanelAnalisis from './visor/PanelAnalisis'
 import BarraPosicion, { ANCHO_COLUMNA_APAISADA } from './visor/BarraPosicion'
+import { esPestana, guardarPestana, leerPestana } from './visor/preferencias'
 
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
@@ -299,7 +300,11 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const t = mostrado === null ? null : tabla.tiempos[mostrado]!
 
   // Pestañas de herramientas. Un punto en el nombre avisa de lo que pide atención aunque no se vea.
-  const [pestana, setPestana] = useState('marcar')
+  const [pestana, setPestanaAbierta] = useState<string>(leerPestana)
+  const setPestana = (id: string) => {
+    setPestanaAbierta(id)
+    if (esPestana(id)) guardarPestana(id)
+  }
   const pestanasVisor = [
     { id: 'marcar', nombre: 'Marcar', aviso: (resumen.huecos > 0 || huecosCortos.length > 0) && 'Hay huecos sin valor' },
     { id: 'analisis', nombre: 'Análisis', aviso: !!cero && cero.desviacion > DESVIACION_AVISO && 'El cero de referencia no parece quieto' },
