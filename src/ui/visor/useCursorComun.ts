@@ -17,6 +17,9 @@ const mismoConjunto = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size
  * Cambiar de vista activa no mueve el cursor: cada vista sigue en su frame. Solo si el cursor cae fuera del vídeo de la
  * que pasa a ser activa, esta va al frame más próximo (el de su extremo) y el cursor pasa a ser el de ese frame.
  *
+ * El cursor se puede **desenlazar** (`enlazar(false)`) mientras se marca el evento para sincronizar: cada vista se mueve
+ * sola, sin arrastrar a la otra, para llevar cada una a su frame del evento.
+ *
  * Quien pinta registra las vistas vivas en cada render (`registrar`); los manejadores leen de ahí lo último sin
  * rehacerse (tienen que ser estables: son `useCallback` de los hooks de cada vista).
  */
@@ -26,6 +29,8 @@ export function useCursorComun(idInicial: string) {
   const [fuera, setFuera] = useState<ReadonlySet<string>>(new Set())
   const vivas = useRef<readonly VistaViva[]>([])
   const activaRef = useRef(idInicial)
+  // Con el cursor desenlazado (marcando el evento para sincronizar), mover una vista no mueve la otra.
+  const enlazado = useRef(true)
   // El instante común del cursor; null hasta que se mueva algo (entonces es el frame de la activa).
   const cursor = useRef<number | null>(null)
 
@@ -52,19 +57,31 @@ export function useCursorComun(idInicial: string) {
       if (!origen || origen.id !== activaRef.current) return
       const t = tiempoDe(origen, frame)
       cursor.current = t
-      llevarA(t, origen.id)
+      if (enlazado.current) llevarA(t, origen.id)
     },
     [llevarA],
   )
 
-  /** Las demás vistas se ponen donde toca según el cursor (al añadir una vista, o al volver a montar). */
+  /**
+   * Las demás vistas se ponen donde toca según la activa, que no se mueve (al añadir una vista, al volver a montar o al
+   * cambiar un desfase: el instante común de su frame puede haber cambiado).
+   */
   const sincronizar = useCallback(() => {
     const activa = vivas.current.find((w) => w.id === activaRef.current)
-    if (!activa) return
-    const t = cursor.current ?? tiempoDe(activa, activa.deseado)
+    if (!activa || !enlazado.current) return
+    const t = tiempoDe(activa, activa.deseado)
     cursor.current = t
     llevarA(t, activa.id)
   }, [llevarA])
+
+  /** Enlaza o desenlaza el cursor; al enlazar, las demás vistas van donde toca según la activa. */
+  const enlazar = useCallback(
+    (si: boolean) => {
+      enlazado.current = si
+      if (si) sincronizar()
+    },
+    [sincronizar],
+  )
 
   /** Cambia la vista activa; el cursor se queda donde estaba (salvo que caiga fuera del vídeo de la nueva). */
   const elegirActiva = useCallback(
@@ -75,14 +92,16 @@ export function useCursorComun(idInicial: string) {
       const t = cursor.current ?? tiempoDe(antes, antes.deseado)
       const visible = frameVisibleEnComun({ tabla: nueva.tabla, desfase: nueva.desfaseS }, t)
       // Mientras `activaRef` aún es la vieja, el aviso de este `ir` se ignora: el cursor se actualiza justo después.
-      if (visible === null) nueva.ir(indiceMasCercano(nueva.tabla, aVideo(t, nueva.desfaseS)))
+      const enlazada = enlazado.current
+      if (enlazada && visible === null) nueva.ir(indiceMasCercano(nueva.tabla, aVideo(t, nueva.desfaseS)))
       activaRef.current = id
       setActivaId(id)
+      if (!enlazada) return
       if (visible === null) propagar(id, indiceMasCercano(nueva.tabla, aVideo(t, nueva.desfaseS)))
       else llevarA(t, id)
     },
     [propagar, llevarA],
   )
 
-  return { activaId, fuera, registrar, propagar, sincronizar, elegirActiva }
+  return { activaId, fuera, registrar, propagar, sincronizar, enlazar, elegirActiva }
 }

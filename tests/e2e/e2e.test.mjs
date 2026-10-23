@@ -3013,6 +3013,184 @@ describe('dos vistas: se sigue de una en una y cada vista conserva lo suyo', () 
   })
 })
 
+describe('dos vistas: sincronizar por un evento visual y ajuste fino', () => {
+  // A = «verde» (30 fps con huecos) y B = «numerado25» (25 fps). El «evento» es el frame 46 de A y el 13 de B: el desfase de B es la diferencia de sus
+  // instantes (los del contenedor, en milisegundos) y con él cada vista debe mostrar el evento a la vez.
+  let p
+  let tB
+  const KA = 45
+  const KB = 12
+  const tA = (k) => Math.round(videos.verde.verdad[k].t * 1000) / 1000
+  const desfaseEsperado = () => tA(KA) - tB[KB]
+  const frameBEn = (t) => tB.reduce((mejor, x, k) => (x <= t + 1e-6 ? k : mejor), 0)
+  const verB = () => leerFrameDibujado(p, videos.numerado25)
+  const signo = (s) => `${s < 0 ? '−' : '+'}${Math.abs(s).toFixed(3).replace('.', ',')} s`
+  const leerDesfase = async () => (await p.getByTestId('desfase-sincronia').innerText()).trim()
+  const cabeceraGuardada = () =>
+    p.evaluate(async () => {
+      const bd = await new Promise((ok) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+      })
+      const todas = await new Promise((ok) => {
+        const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+        r.onsuccess = () => ok(r.result)
+      })
+      bd.close()
+      return todas[0]
+    })
+
+  before(async () => {
+    tB = videos.numerado25.tiempos
+    ;({ p } = await seguirVideo(videos.verde, { ancho: 1280 }))
+    await abrirPestana(p, 'video')
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.numerado25.ruta)
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    await esperarQuieto(p)
+  })
+  after(() => p?.close())
+
+  it('con las dos vistas, la pestaña «Vídeo» ofrece sincronizar y parte sin sincronía', async () => {
+    await abrirPestana(p, 'video')
+    await p.getByTestId('sincronizar-vistas').waitFor()
+    assert.equal(await leerDesfase(), '+0,000 s')
+    assert.equal(await p.getByTestId('metodo-sincronia').innerText(), 'Sin sincronizar')
+    assert.equal(await p.getByTestId('incertidumbre-sincronia').count(), 0)
+  })
+
+  it('marcando el evento, cada vista se mueve sola y el desfase propuesto es la diferencia de instantes', async () => {
+    await p.getByRole('button', { name: 'Marcar el evento en las dos vistas' }).click()
+    await p.getByTestId('marcando-evento').waitFor()
+    // A al frame del evento.
+    await irAFrame(p, KA)
+    // El botón sobre el vídeo marca la vista activa (en el móvil el panel de la pestaña queda fuera de pantalla).
+    await p.getByTestId('marcar-evento-video').click()
+    assert.match(await p.getByTestId('evento-A').innerText(), new RegExp(`frame ${KA + 1}\\)`))
+    // B al suyo (sin arrastrar a A: el cursor está desenlazado).
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await irAFrame(p, KB)
+    await p.getByRole('button', { name: 'Este es el evento en B' }).click()
+    assert.match(await p.getByTestId('evento-B').innerText(), new RegExp(`frame ${KB + 1}\\)`))
+    assert.match(await p.getByTestId('desfase-propuesto').innerText(), new RegExp(`Desfase de B: ${signo(desfaseEsperado()).replace('+', '\\+')}`))
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    assert.equal((await leerPosicion(p)).frame, KA + 1, 'A sigue en su frame del evento')
+  })
+
+  it('al aplicar, el desfase y su precisión salen en pantalla, y los dos vídeos muestran el evento a la vez', async () => {
+    await p.getByRole('button', { name: 'Aplicar' }).click()
+    await p.getByTestId('incertidumbre-sincronia').waitFor()
+    assert.equal(await leerDesfase(), signo(desfaseEsperado()))
+    assert.equal(await p.getByTestId('metodo-sincronia').innerText(), 'Por evento visual')
+    // ± ½ frame de cada vista: (33,3 + 40) / 2 = 36,7 → 37 ms.
+    assert.match(await p.getByTestId('incertidumbre-sincronia').innerText(), /± 37 ms/)
+    // Con A en su frame del evento, B muestra el suyo.
+    await esperarQuieto(p)
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    assert.equal(await verB(), KB, 'B muestra el frame del evento')
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    assert.equal((await leerPosicion(p)).frame, KA + 1)
+  })
+
+  it('el cursor común usa el desfase: moviendo A, B va al frame de t − desfase', async () => {
+    for (const k of [20, 60, 90]) {
+      await irAFrame(p, k)
+      await p.getByTestId('vista-B').click()
+      await esperarQuieto(p)
+      const t = tA(k) - desfaseEsperado()
+      if (t >= 0 && t < tB[tB.length - 1] + 1 / 25) assert.equal(await verB(), frameBEn(t), `A en el frame ${k + 1} (t = ${tA(k)} s)`)
+      await p.getByTestId('vista-A').click()
+      await esperarQuieto(p)
+    }
+  })
+
+  it('el ajuste fino mueve B un frame suyo (40 ms) cada vez y lo dice; volver deja el desfase del evento', async () => {
+    await irAFrame(p, KA)
+    await p.getByRole('button', { name: 'B un frame después' }).click()
+    await p.waitForFunction((t) => document.querySelector('[data-testid=desfase-sincronia]')?.textContent?.trim() === t, signo(desfaseEsperado() + 0.04))
+    assert.match(await p.getByTestId('metodo-sincronia').innerText(), /Por evento visual · ajustada \+40 ms/)
+    // Con B 40 ms más tarde, en el instante del evento B enseña un frame antes.
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    assert.equal(await verB(), KB - 1)
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    await p.getByRole('button', { name: 'B un frame antes' }).click()
+    await p.waitForFunction((t) => document.querySelector('[data-testid=desfase-sincronia]')?.textContent?.trim() === t, signo(desfaseEsperado()))
+    assert.equal(await p.getByTestId('metodo-sincronia').innerText(), 'Por evento visual')
+  })
+
+  it('cancelar a medias no cambia nada y el cursor vuelve a enlazar las vistas', async () => {
+    await p.getByRole('button', { name: 'Marcar el evento en las dos vistas' }).click()
+    await p.getByRole('button', { name: 'Cancelar' }).click()
+    assert.equal(await leerDesfase(), signo(desfaseEsperado()))
+    await irAFrame(p, 30)
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    const t = tA(30) - desfaseEsperado()
+    if (t >= 0) assert.equal(await verB(), frameBEn(t), 'enlazadas otra vez')
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+  })
+
+  it('se guarda con las dos vistas: desfase, método y los instantes del evento', async () => {
+    await esperarGuardado(p, videos.verde.verdad.length)
+    await p.waitForFunction(
+      async (d) => {
+        const bd = await new Promise((ok) => {
+          const r = indexedDB.open('dualkinema')
+          r.onsuccess = () => ok(r.result)
+        })
+        const todas = await new Promise((ok) => {
+          const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+          r.onsuccess = () => ok(r.result)
+        })
+        bd.close()
+        return todas[0]?.vistas?.[1] && Math.abs(todas[0].vistas[1].desfase - d) < 1e-6 && todas[0].vistas[1].sincronia.metodo === 'evento'
+      },
+      desfaseEsperado(),
+      { timeout: 20000, polling: 200 },
+    )
+    const c = await cabeceraGuardada()
+    assert.equal(c.vistas[0].desfase, 0)
+    assert.ok(Math.abs(c.vistas[1].sincronia.evento.referencia - tA(KA)) < 1e-6)
+    assert.ok(Math.abs(c.vistas[1].sincronia.evento.vista - tB[KB]) < 1e-6)
+  })
+
+  it('al recuperar la sesión sigue sincronizada: mismo desfase y B va por tiempo', async () => {
+    await p.reload()
+    await p.setInputFiles('input[type=file]', videos.verde.ruta)
+    await p.getByRole('heading', { name: 'Ya has trabajado con este vídeo' }).waitFor({ timeout: 20000 })
+    await p.getByRole('button', { name: 'Recuperar el trabajo' }).click()
+    await p.getByTestId('faltan-videos').waitFor({ timeout: 20000 })
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Elegir el vídeo que falta' }), videos.numerado25.ruta)
+    await p.getByTestId('conmutador-vista').waitFor({ timeout: 20000 })
+    await esperarQuieto(p)
+    await abrirPestana(p, 'video')
+    assert.equal(await leerDesfase(), signo(desfaseEsperado()))
+    assert.equal(await p.getByTestId('metodo-sincronia').innerText(), 'Por evento visual')
+    await irAFrame(p, 80)
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    const t = tA(80) - desfaseEsperado()
+    if (t >= 0 && t < tB[tB.length - 1] + 1 / 25) assert.equal(await verB(), frameBEn(t))
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+  })
+
+  it('«Quitar la sincronía» deja el desfase en 0 y sin método', async () => {
+    await abrirPestana(p, 'video')
+    await p.getByRole('button', { name: 'Quitar la sincronía' }).click()
+    await p.waitForFunction(() => document.querySelector('[data-testid=desfase-sincronia]')?.textContent?.trim() === '+0,000 s')
+    assert.equal(await p.getByTestId('metodo-sincronia').innerText(), 'Sin sincronizar')
+    assert.equal(await p.getByRole('button', { name: 'Quitar la sincronía' }).count(), 0)
+  })
+})
+
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })
