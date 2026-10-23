@@ -3110,4 +3110,119 @@ describe('móvil girado (horizontal)', () => {
       await p.close()
     }
   })
+
+  it('en la columna de marcado, «a ojo» y «seguir» van en una fila y, con «Rellenar» a la vista, la columna no se desplaza', async () => {
+    const video = videos.corto
+    for (const [ancho, alto] of [
+      [800, 360],
+      [844, 390],
+    ]) {
+      const p = await abrirApp(navegador, { ancho, alto })
+      try {
+        await cargarVideo(p, video.ruta)
+        await p.getByTestId('ampliar-video').click()
+        await esperarVideoAsentado(p, false)
+        await marcarTres(p, video.verdad[0].ps)
+        // Los dos controles, en la misma fila: a la misma altura y uno junto al otro, y con sus nombres de siempre.
+        const aOjo = await p.getByRole('switch', { name: 'Colocar a ojo' }).boundingBox()
+        const seguir = await p.getByRole('button', { name: 'Seguir desde aquí' }).boundingBox()
+        assert.ok(Math.abs(aOjo.y - seguir.y) <= 6, `no van en la misma fila (${ancho} × ${alto}): ${JSON.stringify({ aOjo, seguir })}`)
+        assert.ok(aOjo.x + aOjo.width <= seguir.x + 1, 'el interruptor va a la izquierda del botón')
+        assert.ok(aOjo.height >= 36 && seguir.height >= 36, `alto táctil: ${aOjo.height} y ${seguir.height}`)
+        await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+        const marcado = p.getByTestId('marcado-compacto')
+        await marcado.getByRole('button', { name: /Rellenar 1 hueco corto/ }).waitFor({ timeout: 90000 })
+        // En un frame ya seguido, con «Rellenar» y el aviso a la vista, no hace falta desplazar la columna.
+        await irAFrame(p, 30)
+        await marcado.getByRole('button', { name: /Rellenar 1 hueco corto/ }).waitFor()
+        const { scroll, cliente } = await p.getByTestId('columna-marcado').evaluate((e) => ({ scroll: e.scrollHeight, cliente: e.clientHeight }))
+        assert.ok(scroll <= cliente, `la columna se desplaza a ${ancho} × ${alto}: ${scroll} > ${cliente}`)
+        // Y «Rellenar» no queda tapado por la barra fija.
+        const rellenar = await marcado.getByRole('button', { name: /Rellenar 1 hueco corto/ }).boundingBox()
+        const barra = await p.getByTestId('barra-fija').boundingBox()
+        assert.ok(rellenar.y + rellenar.height <= barra.y + 1, 'Rellenar queda tapado por la barra')
+      } finally {
+        await p.close()
+      }
+    }
+  })
 })
+
+describe('preferencias recordadas en el dispositivo', () => {
+  let navegador
+  let videos
+  before(async () => {
+    videos = await asegurarVideos()
+    navegador = await lanzarNavegador()
+  })
+  after(() => navegador.close())
+
+  const abierta = async (p) => {
+    const ids = ['marcar', 'analisis', 'escala', 'video']
+    const marcas = await Promise.all(ids.map((id) => p.getByTestId(`pestana-${id}`).getAttribute('aria-selected')))
+    return ids.filter((_, i) => marcas[i] === 'true')
+  }
+
+  it('la pestaña abierta se recuerda al recuperar un trabajo, pero un vídeo nuevo empieza en «Marcar»; con un valor ilegible, «Marcar»', async () => {
+    const video = videos.verde
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await cargarVideo(p, video.ruta)
+      assert.deepEqual(await abierta(p), ['marcar'], 'de partida, «Marcar»')
+      await marcarTres(p, video.verdad[0].ps)
+      await abrirPestana(p, 'analisis')
+      assert.deepEqual(await abierta(p), ['analisis'])
+      await esperarGuardado(p, video.verdad.length)
+      // Recuperar el trabajo: vuelve la pestaña que se usó.
+      await p.reload()
+      await p.setInputFiles('input[type=file]', video.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.deepEqual(await abierta(p), ['analisis'], 'al recuperar, la última')
+      // Un vídeo nuevo, sin nada marcado, empieza en «Marcar» aunque la última haya sido otra.
+      await p.reload()
+      await cargarVideo(p, videos.corto.ruta)
+      assert.deepEqual(await abierta(p), ['marcar'], 'un vídeo nuevo empieza en «Marcar»')
+      // Un valor que no es una pestaña no rompe nada al recuperar: «Marcar».
+      await p.evaluate(() => localStorage.setItem('dualkinema.pestana', 'otra'))
+      await p.reload()
+      await p.setInputFiles('input[type=file]', video.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.deepEqual(await abierta(p), ['marcar'])
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('las series que se ven en la gráfica se recuerdan; un guardado roto se ignora', async () => {
+    const p = await abrirApp(navegador, { ancho: 1280 })
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      const serie = (id) => p.getByTestId(`serie-${id}`)
+      assert.equal(await serie('velocidad').getAttribute('aria-pressed'), 'true')
+      assert.equal(await serie('crudo').getAttribute('aria-pressed'), 'true')
+      await serie('velocidad').click()
+      await serie('crudo').click()
+      assert.equal(await serie('velocidad').getAttribute('aria-pressed'), 'false')
+      await p.reload()
+      await cargarVideo(p, videos.verde.ruta)
+      assert.equal(await serie('velocidad').getAttribute('aria-pressed'), 'false', 'la velocidad sigue oculta')
+      assert.equal(await serie('crudo').getAttribute('aria-pressed'), 'false', 'lo crudo sigue oculto')
+      assert.equal(await serie('filtrado').getAttribute('aria-pressed'), 'true', 'lo que no se tocó sigue a la vista')
+      // Se vuelve a encender y se recuerda también.
+      await serie('velocidad').click()
+      await p.reload()
+      await cargarVideo(p, videos.verde.ruta)
+      assert.equal(await serie('velocidad').getAttribute('aria-pressed'), 'true')
+      // Un guardado ilegible se ignora: las de por defecto.
+      await p.evaluate(() => localStorage.setItem('dualkinema.seriesVisibles', '{roto'))
+      await p.reload()
+      await cargarVideo(p, videos.verde.ruta)
+      for (const id of ['crudo', 'filtrado', 'velocidad']) assert.equal(await serie(id).getAttribute('aria-pressed'), 'true')
+    } finally {
+      await p.close()
+    }
+  })
+})
+

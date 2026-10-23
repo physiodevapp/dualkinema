@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { UMBRAL_CONSTANCIA } from '../../core/calibracion/segmentos'
 import { partirInterpolado, type SeriePorFrame } from '../../core/graficas/series'
 import GraficaTiempo, { type SerieGrafica, type TokenColor } from './GraficaTiempo'
+import { guardarSeriesVisibles, leerSeriesVisibles } from './preferencias'
 
 const fmt = (n: number, d: number) =>
   (Math.round(n * 10 ** d) / 10 ** d + 0).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -65,8 +66,13 @@ const porcentaje = (v: number) => `${fmt(v, Math.abs(v) < 10 && v % 1 !== 0 ? 1 
  * sin ninguna serie a la vista no se dibuja.
  */
 export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positivo, crudo, filtrado, velocidad, corte, segmentos, resumen, ampliada }: Props) {
-  // Los segmentos empiezan ocultos: son una comprobación, no el análisis.
-  const [visibles, setVisibles] = useState(VISIBLES_DEFECTO)
+  // Los segmentos empiezan ocultos: son una comprobación, no el análisis. Lo que se elige se recuerda en este dispositivo.
+  const [visibles, setVisibles] = useState(() => leerSeriesVisibles(VISIBLES_DEFECTO))
+  const alternar = (id: string) => {
+    const siguiente = { ...visibles, [id]: !visibles[id] }
+    setVisibles(siguiente)
+    guardarSeriesVisibles(siguiente)
+  }
   const visible = (id: string) => visibles[id] ?? false
   const xs = useMemo(() => Array.from(tiempos), [tiempos])
   const desde = xs[0] ?? 0
@@ -152,7 +158,7 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
               type="button"
               aria-pressed={activo}
               data-testid={`serie-${s.id}`}
-              onClick={() => setVisibles((v) => ({ ...v, [s.id]: !v[s.id] }))}
+              onClick={() => alternar(s.id)}
               className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${activo ? 'border-borde text-texto' : 'border-borde/60 text-texto-2 opacity-60'}`}
             >
               <span
