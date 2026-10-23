@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/purity, react-hooks/refs --
- * Mide lo que tarda cada pasada (`performance.now()`) dentro del `useMemo` y lee las trayectorias de su ref para
- * decidir cuándo refiltrar mientras se sigue (`refiltrado.ts`). Código anterior al refactor; ver la §11. */
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+ * Mide lo que tarda cada pasada (`performance.now()`) dentro del `useMemo` y lo apunta en una ref para decidir cuándo
+ * refiltrar mientras se sigue (`refiltrado.ts`). Las trayectorias ya no se leen de una ref (fase 3, paso 2b). */
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { serieAngular, type MuestraAngulo } from '../../core/articulaciones/calculo'
 import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
 import { corteEfectivo } from '../../core/filtros/butterworth'
@@ -13,7 +13,8 @@ import { fpsMediano, type TablaFrames } from '../../core/tiempo/tablaFrames'
 import { esperaRefiltrado } from './refiltrado'
 
 interface Opciones {
-  readonly trayectorias: RefObject<Map<IdMarcador, (Muestra2D | undefined)[]>>
+  /** Las series de las trayectorias (el mapa del almacén, modificado en sitio): se leen con la versión vigente. */
+  readonly series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>
   /** Contador de cambios de las trayectorias (el `version` del visor). */
   readonly version: number
   readonly ids: readonly IdMarcador[]
@@ -54,7 +55,7 @@ export interface Filtrado {
  * es lineal en el número de frames: unos 8 ms por marcador con 3600 frames
  * (2 min a 30 fps) en un ordenador, varias veces más en un móvil.
  */
-export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articulacion, orientacion, metrosPorPx, siguiendo }: Opciones): Filtrado {
+export function useFiltrado({ series, version, ids, tabla, ajustes, articulacion, orientacion, metrosPorPx, siguiendo }: Opciones): Filtrado {
   const fs = useMemo(() => fpsMediano(tabla), [tabla])
   // Mientras se sigue se filtra con la versión «pedida», que alcanza a la
   // actual como mucho cada `esperaRefiltrado`; parado, con la actual.
@@ -75,7 +76,7 @@ export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articu
     let tramosCortos = 0
     if (Number.isFinite(fs)) {
       for (const id of ids) {
-        const f = filtrarTrayectoria(trayectorias.current.get(id) ?? [], fs, ajustes)
+        const f = filtrarTrayectoria(series.get(id) ?? [], fs, ajustes)
         porMarcador.set(id, f)
         tramosCortos += f.tramos.filter((t) => t.corto).length
       }
@@ -87,7 +88,7 @@ export function useFiltrado({ trayectorias, version, ids, tabla, ajustes, articu
     const derivadas = derivadasAngulares(articulacion, porMarcador, orientacion, fs)
     ultima.current = { inicio, coste: performance.now() - inicio }
     return { porMarcador, serie, fs, corte: corteEfectivo(ajustes.corteHz, fs), tramosCortos, derivadas }
-  }, [vigente, fs, ids, trayectorias, ajustes, articulacion, orientacion])
+  }, [vigente, fs, ids, series, ajustes, articulacion, orientacion])
   // Aparte: cambiar la escala no obliga a volver a filtrar.
   const velocidades = useMemo(
     () => new Map([...filtrado.porMarcador].map(([id, f]) => [id, velocidadMarcador(f, metrosPorPx)])),

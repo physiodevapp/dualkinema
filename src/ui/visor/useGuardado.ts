@@ -2,7 +2,7 @@
  * Patrón «lo último en una ref» (`actual`, `datos`): el guardado lee siempre lo último al disparar sin rehacer los
  * efectos, y la transacción tiene que crearse de forma síncrona (ver CLAUDE.md, «Persistencia»). Código anterior al
  * refactor. */
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
@@ -38,7 +38,8 @@ interface Opciones {
   readonly huella: HuellaArchivo
   readonly orientacion: OrientacionVista
   readonly modelo: ModeloMarcadores
-  readonly trayectorias: RefObject<Map<IdMarcador, (Muestra2D | undefined)[]>>
+  /** Las series de las trayectorias (el mapa del almacén, modificado en sitio): se leen al guardar. */
+  readonly series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>
   readonly filtro: AjustesFiltro
   /** Tramo estático del cero de referencia por id de articulación. */
   readonly ceros: Readonly<Record<string, TramoEstatico>>
@@ -57,7 +58,7 @@ interface Opciones {
  * cerrar el visor. No crea la sesión hasta que hay algo marcado o una escala;
  * una vez creada, quitarlo todo también se guarda (si no, volvería al recuperar).
  */
-export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias, filtro, ceros, calibracion, version, recuperada }: Opciones): EstadoGuardado {
+export function useGuardado({ sesion, huella, orientacion, modelo, series: seriesTrayectorias, filtro, ceros, calibracion, version, recuperada }: Opciones): EstadoGuardado {
   const [estado, setEstado] = useState<EstadoGuardado>({ estado: recuperada ? 'recuperado' : 'nada' })
   // La versión con que se montó ya está guardada (vacía o recuperada).
   const guardada = useRef(version)
@@ -77,7 +78,7 @@ export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias,
     temporizador.current = null
     const v = actual.current
     if (v === guardada.current) return
-    const series = trayectorias.current
+    const series = seriesTrayectorias
     // Calibrar antes de marcar también es trabajo que no se debe perder.
     const hayAlgo = datos.current.calibracion !== null || [...series.values()].some((s) => s.some((m) => m !== undefined))
     if (!hayAlgo && !existe.current) {
@@ -112,7 +113,7 @@ export function useGuardado({ sesion, huella, orientacion, modelo, trayectorias,
         setEstado({ estado: 'error', mensaje: e instanceof Error ? e.message : String(e) })
       },
     )
-  }, [trayectorias])
+  }, [seriesTrayectorias])
 
   // Cada cambio programa un guardado.
   useEffect(() => {

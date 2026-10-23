@@ -1,4 +1,4 @@
-import { useMemo, useState, type RefObject } from 'react'
+import { useMemo, useState } from 'react'
 import { tramoInicial, type TramoEstatico } from '../../core/articulaciones/cero'
 import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
 import { escalaDesfasada, medirEntreMarcadores, type CalibracionVista } from '../../core/calibracion/escala'
@@ -12,7 +12,7 @@ import type { SeriesTrayectorias } from './useTrayectorias'
 interface Opciones {
   readonly tabla: TablaFrames
   readonly articulacion: DefinicionArticulacion
-  readonly trayectorias: RefObject<SeriesTrayectorias>
+  readonly series: SeriesTrayectorias
   /** Contador de cambios de las trayectorias (el `version` de `useTrayectorias`). */
   readonly version: number
   /** Al recuperar: la escala de la vista (null o sin dar = sin escala). */
@@ -27,7 +27,7 @@ interface Opciones {
  * los extremos tocados; los toques en el vídeo, la medida entre dos marcadores (la del borrador y la guardada, medida
  * otra vez con lo seguido ahora) y el aviso si ya no corresponde, y empezar, rehacer, guardar y quitar.
  */
-export function useEscala({ tabla, articulacion, trayectorias, version, calibracionInicial, mostrado, ir }: Opciones) {
+export function useEscala({ tabla, articulacion, series, version, calibracionInicial, mostrado, ir }: Opciones) {
   // Escala (paso 6): la guardada y, mientras se calibra, el borrador con los extremos tocados.
   const [calibracion, setCalibracion] = useState<CalibracionVista | null>(calibracionInicial ?? null)
   const [revCalibracion, setRevCalibracion] = useState(0)
@@ -47,16 +47,16 @@ export function useEscala({ tabla, articulacion, trayectorias, version, calibrac
   const medicion = useMemo(() => {
     void version
     if (borrador?.objeto !== 'marcadores' || !borrador.entre || !borrador.tramo) return null
-    const serie = (id: IdMarcador) => trayectorias.current.get(id) ?? []
+    const serie = (id: IdMarcador) => series.get(id) ?? []
     return medirEntreMarcadores(serie(borrador.entre.desde), serie(borrador.entre.hasta), borrador.tramo)
-  }, [borrador, version, trayectorias])
+  }, [borrador, version, series])
   // La guardada, medida otra vez con lo seguido ahora: si se calibró antes de seguir, hay más frames.
   const medicionGuardada = useMemo(() => {
     void version
     const entre = calibracion?.entre
     if (!entre) return null
-    return medirEntreMarcadores(trayectorias.current.get(entre.desde) ?? [], trayectorias.current.get(entre.hasta) ?? [], entre.tramo)
-  }, [calibracion, version, trayectorias])
+    return medirEntreMarcadores(series.get(entre.desde) ?? [], series.get(entre.hasta) ?? [], entre.tramo)
+  }, [calibracion, version, series])
   // Si lo seguido cambió en el tramo desde que se guardó (más o menos frames, marcadores corregidos), se avisa.
   const desfase = useMemo(() => (calibracion ? escalaDesfasada(calibracion, medicionGuardada) : null), [calibracion, medicionGuardada])
   const framesTramo = useMemo(() => {
