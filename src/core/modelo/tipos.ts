@@ -53,12 +53,34 @@ export interface ArchivoVista {
   readonly rotacion: 0 | 90 | 180 | 270
 }
 
+/**
+ * Cómo se halló el desfase de una vista respecto a la de referencia (fase 3), para poder decir de dónde sale.
+ * - ninguna: la vista de referencia, o una sin sincronizar (desfase 0).
+ * - evento: el mismo evento visto en las dos; `evento` guarda su instante en cada una (s de vídeo).
+ * - audio: por la correlación del audio; `audio` guarda la calidad del pico (pico / segundo pico) y el desfase que dio,
+ *   antes del ajuste fino (la diferencia con `desfase` es lo que se movió a mano).
+ * - manual: puesto o ajustado a mano sin evento ni audio.
+ */
+export type MetodoSincronia = 'ninguna' | 'evento' | 'audio' | 'manual'
+
+export interface Sincronia {
+  readonly metodo: MetodoSincronia
+  readonly evento?: { readonly referencia: number; readonly vista: number }
+  readonly audio?: { readonly calidad: number; readonly desfase: number }
+}
+
 export interface Vista {
   readonly id: string
   readonly nombre: string
   readonly archivo: ArchivoVista
-  /** Segundos respecto a la vista de referencia (0 en la fase 1). */
+  /**
+   * Segundos respecto a la vista de referencia: tiempo común = tiempo del vídeo + desfase. La referencia tiene 0.
+   * Un evento visto en t en esta vista ocurre en el tiempo común t + desfase.
+   */
   readonly desfase: number
+  readonly sincronia: Sincronia
+  /** Marcadores del modelo que se siguen en esta vista (no todos se ven desde todas). */
+  readonly marcadores: readonly IdMarcador[]
   readonly orientacion: OrientacionVista
   /** Escala en el plano (fase 2); DLT o lente más adelante. null = sin escala. */
   readonly calibracion: CalibracionVista | null
@@ -72,4 +94,6 @@ export interface Sesion {
   readonly creada: string
   readonly modelo: ModeloMarcadores
   readonly vistas: readonly Vista[]
+  /** Id de la vista de referencia (desfase 0): su tiempo es el tiempo común. */
+  readonly referencia: string
 }
