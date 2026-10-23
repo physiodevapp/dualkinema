@@ -193,7 +193,7 @@ Si durante el trabajo detectas otras mejoras de arquitectura o de análisis (en 
 
 Trabaja **una fase cada vez**. No adelantes funcionalidad de fases futuras salvo lo necesario para no bloquearlas.
 
-**Estado:** fases 1 y 2 **cerradas**. Lo decidido, cómo quedó cada pieza, la revisión de código y las limitaciones conocidas están en `docs/plan-fase-1.md` (§12) y `docs/plan-fase-2.md` (§12). Siguiente: fase 3 (dos vistas), con su plan por escribir en `docs/plan-fase-3.md`.
+**Estado:** fases 1 y 2 **cerradas**. Lo decidido, cómo quedó cada pieza, la revisión de código y las limitaciones conocidas están en `docs/plan-fase-1.md` (§12) y `docs/plan-fase-2.md` (§12). Siguiente: fase 3 (dos vistas), con su plan propuesto en `docs/plan-fase-3.md` (decisiones D1–D10 pendientes de aceptar).
 
 ## Ideas apuntadas (sin fase asignada)
 - **Glosario / wiki dentro de la app:** explicación de cada parámetro (ángulo sin cero y relativo, filtro y corte, velocidad y aceleración, calidad, interpolado, longitud de los segmentos, precisión de la escala…) y de los avisos de la app, con enlaces desde el propio aviso o valor. Todo local, sin servidor. Para después de cerrar la fase 2 (candidata: fase 6 o un paso propio).
