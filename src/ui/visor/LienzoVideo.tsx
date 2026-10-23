@@ -140,7 +140,7 @@ export default function LienzoVideo({ ancho, alto, lienzo, dibujar, interactivo,
           data-testid="lienzo"
           width={ancho}
           height={alto}
-          className={`block max-w-full ${llenar ? (apaisado ? 'max-h-[calc(100dvh-1.5rem)]' : 'max-h-[calc(100dvh-var(--alto-barra)-14.5rem)]') : `max-h-[30dvh] ${topeLg}`}`}
+          className={`block max-w-full ${llenar ? (apaisado ? 'max-h-[calc(100dvh-1rem)]' : 'max-h-[calc(100dvh-var(--alto-barra)-14.5rem)]') : `max-h-[30dvh] ${topeLg}`}`}
           style={{ aspectRatio: `${ancho} / ${alto}`, maxHeight: topeMovil }}
         />
         <canvas

@@ -400,14 +400,30 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   // Móvil girado con el vídeo grande: dos columnas (el vídeo con todo el alto; a su lado, aviso, marcado y barra fija).
   const dosColumnas = enVideo && apaisado
 
+  const interruptorAOjo = <InterruptorAOjo activo={colocarAOjo} deshabilitado={siguiendo} onCambiar={() => setColocarAOjo((v) => !v)} enFila={dosColumnas} />
+  const avisoAnclas = <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={quitarMarcasPosteriores} compacto />
+  const botonSeguir = <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={seguirDesdeAqui} onParar={pararSeguimiento} compacto enFila={dosColumnas} />
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
       <SelectorMarcadores marcadores={modelo.marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={setSeleccionado} compacto />
-      <InterruptorAOjo activo={colocarAOjo} deshabilitado={siguiendo} onCambiar={() => setColocarAOjo((v) => !v)} />
-      <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={quitarMarcasPosteriores} compacto />
-      <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={seguirDesdeAqui} onParar={pararSeguimiento} compacto />
+      {dosColumnas ? (
+        // Móvil girado: «a ojo» y «seguir» en una fila (la columna tiene poco alto y, con el aviso y los botones de huecos, no cabía sin scroll).
+        <>
+          {avisoAnclas}
+          <div className="flex items-stretch gap-2">
+            {interruptorAOjo}
+            {botonSeguir}
+          </div>
+        </>
+      ) : (
+        <>
+          {interruptorAOjo}
+          {avisoAnclas}
+          {botonSeguir}
+        </>
+      )}
       {extrasCompactos}
-      {aviso && <p className="line-clamp-2 text-xs text-texto-2">{aviso.texto}</p>}
+      {aviso && <p className={`${dosColumnas ? 'line-clamp-1' : 'line-clamp-2'} text-xs text-texto-2`}>{aviso.texto}</p>}
     </div>
   )
 
@@ -433,7 +449,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             inert={videoOculto}
             className={`flex ${dosColumnas ? 'flex-row' : 'flex-col'} gap-2 max-lg:z-30 max-lg:bg-fondo max-lg:transition-[opacity,visibility] max-lg:duration-200 motion-reduce:transition-none ${
               dosColumnas
-                ? 'aparece max-lg:fixed max-lg:inset-0 max-lg:gap-0 max-lg:overflow-hidden max-lg:py-3 max-lg:pl-3'
+                ? 'aparece max-lg:fixed max-lg:inset-0 max-lg:gap-0 max-lg:overflow-hidden max-lg:py-2 max-lg:pl-3'
                 : enVideo
                 ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
                 : videoOculto
@@ -547,7 +563,7 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
             // Sin asa para volver (se tira hacia abajo y aquí no hay sitio): queda el botón del vídeo. La barra fija (más
             // abajo) mide lo mismo y tiene el mismo relleno lateral, para que el contenido de las dos quede alineado; el hueco de abajo
             // es el de la barra.
-            <div data-testid="columna-marcado" className={`flex min-h-0 shrink-0 flex-col gap-2 overflow-y-auto px-4 pb-(--alto-barra) ${ANCHO_COLUMNA_APAISADA}`}>
+            <div data-testid="columna-marcado" className={`flex min-h-0 shrink-0 flex-col gap-2 overflow-y-auto px-4 pb-[calc(var(--alto-barra)-0.5rem)] ${ANCHO_COLUMNA_APAISADA}`}>
               {nodoError}
               {tiraMarcado}
             </div>

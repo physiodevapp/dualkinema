@@ -3110,6 +3110,42 @@ describe('móvil girado (horizontal)', () => {
       await p.close()
     }
   })
+
+  it('en la columna de marcado, «a ojo» y «seguir» van en una fila y, con «Rellenar» a la vista, la columna no se desplaza', async () => {
+    const video = videos.corto
+    for (const [ancho, alto] of [
+      [800, 360],
+      [844, 390],
+    ]) {
+      const p = await abrirApp(navegador, { ancho, alto })
+      try {
+        await cargarVideo(p, video.ruta)
+        await p.getByTestId('ampliar-video').click()
+        await esperarVideoAsentado(p, false)
+        await marcarTres(p, video.verdad[0].ps)
+        // Los dos controles, en la misma fila: a la misma altura y uno junto al otro, y con sus nombres de siempre.
+        const aOjo = await p.getByRole('switch', { name: 'Colocar a ojo' }).boundingBox()
+        const seguir = await p.getByRole('button', { name: 'Seguir desde aquí' }).boundingBox()
+        assert.ok(Math.abs(aOjo.y - seguir.y) <= 6, `no van en la misma fila (${ancho} × ${alto}): ${JSON.stringify({ aOjo, seguir })}`)
+        assert.ok(aOjo.x + aOjo.width <= seguir.x + 1, 'el interruptor va a la izquierda del botón')
+        assert.ok(aOjo.height >= 36 && seguir.height >= 36, `alto táctil: ${aOjo.height} y ${seguir.height}`)
+        await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+        const marcado = p.getByTestId('marcado-compacto')
+        await marcado.getByRole('button', { name: /Rellenar 1 hueco corto/ }).waitFor({ timeout: 90000 })
+        // En un frame ya seguido, con «Rellenar» y el aviso a la vista, no hace falta desplazar la columna.
+        await irAFrame(p, 30)
+        await marcado.getByRole('button', { name: /Rellenar 1 hueco corto/ }).waitFor()
+        const { scroll, cliente } = await p.getByTestId('columna-marcado').evaluate((e) => ({ scroll: e.scrollHeight, cliente: e.clientHeight }))
+        assert.ok(scroll <= cliente, `la columna se desplaza a ${ancho} × ${alto}: ${scroll} > ${cliente}`)
+        // Y «Rellenar» no queda tapado por la barra fija.
+        const rellenar = await marcado.getByRole('button', { name: /Rellenar 1 hueco corto/ }).boundingBox()
+        const barra = await p.getByTestId('barra-fija').boundingBox()
+        assert.ok(rellenar.y + rellenar.height <= barra.y + 1, 'Rellenar queda tapado por la barra')
+      } finally {
+        await p.close()
+      }
+    }
+  })
 })
 
 describe('preferencias recordadas en el dispositivo', () => {
