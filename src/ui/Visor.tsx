@@ -56,7 +56,7 @@ import DatosVideo from './visor/DatosVideo'
 import PanelMarcar from './visor/PanelMarcar'
 import PanelAnalisis from './visor/PanelAnalisis'
 import BarraPosicion, { ANCHO_COLUMNA_APAISADA } from './visor/BarraPosicion'
-import { esPestana, guardarPestana, leerPestana } from './visor/preferencias'
+import { esPestana, guardarPestana, leerPestana, PESTANA_DEFECTO } from './visor/preferencias'
 
 const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)
 
@@ -300,7 +300,8 @@ export default function Visor({ video, orientacion, sesion, modelo: modeloGuarda
   const t = mostrado === null ? null : tabla.tiempos[mostrado]!
 
   // Pestañas de herramientas. Un punto en el nombre avisa de lo que pide atención aunque no se vea.
-  const [pestana, setPestanaAbierta] = useState<string>(leerPestana)
+  // Con un vídeo nuevo (nada marcado todavía) se empieza en «Marcar»; al recuperar un trabajo, en la pestaña que se usó.
+  const [pestana, setPestanaAbierta] = useState<string>(() => (inicial ? leerPestana() : PESTANA_DEFECTO))
   const setPestana = (id: string) => {
     setPestanaAbierta(id)
     if (esPestana(id)) guardarPestana(id)

@@ -3163,24 +3163,32 @@ describe('preferencias recordadas en el dispositivo', () => {
     return ids.filter((_, i) => marcas[i] === 'true')
   }
 
-  it('la pestaña abierta se recuerda al recargar y al abrir otro vídeo; con un valor ilegible, vuelve «Marcar»', async () => {
+  it('la pestaña abierta se recuerda al recuperar un trabajo, pero un vídeo nuevo empieza en «Marcar»; con un valor ilegible, «Marcar»', async () => {
+    const video = videos.verde
     const p = await abrirApp(navegador, { ancho: 390 })
     try {
-      await cargarVideo(p, videos.verde.ruta)
+      await cargarVideo(p, video.ruta)
       assert.deepEqual(await abierta(p), ['marcar'], 'de partida, «Marcar»')
-      await abrirPestana(p, 'escala')
-      assert.deepEqual(await abierta(p), ['escala'])
-      await p.reload()
-      await cargarVideo(p, videos.verde.ruta)
-      assert.deepEqual(await abierta(p), ['escala'], 'al recargar y abrir el vídeo, la última')
+      await marcarTres(p, video.verdad[0].ps)
       await abrirPestana(p, 'analisis')
+      assert.deepEqual(await abierta(p), ['analisis'])
+      await esperarGuardado(p, video.verdad.length)
+      // Recuperar el trabajo: vuelve la pestaña que se usó.
+      await p.reload()
+      await p.setInputFiles('input[type=file]', video.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.deepEqual(await abierta(p), ['analisis'], 'al recuperar, la última')
+      // Un vídeo nuevo, sin nada marcado, empieza en «Marcar» aunque la última haya sido otra.
       await p.reload()
       await cargarVideo(p, videos.corto.ruta)
-      assert.deepEqual(await abierta(p), ['analisis'], 'con otro vídeo, la última también')
-      // Un valor que no es una pestaña no rompe nada: se usa la de por defecto.
+      assert.deepEqual(await abierta(p), ['marcar'], 'un vídeo nuevo empieza en «Marcar»')
+      // Un valor que no es una pestaña no rompe nada al recuperar: «Marcar».
       await p.evaluate(() => localStorage.setItem('dualkinema.pestana', 'otra'))
       await p.reload()
-      await cargarVideo(p, videos.verde.ruta)
+      await p.setInputFiles('input[type=file]', video.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
       assert.deepEqual(await abierta(p), ['marcar'])
     } finally {
       await p.close()
