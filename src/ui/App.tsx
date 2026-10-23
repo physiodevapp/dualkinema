@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowPathIcon, FilmIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, BookOpenIcon, FilmIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores } from '../core/modelo/tipos'
@@ -10,6 +10,7 @@ import { buscarPorHuella, leerSesion } from '../persistencia/almacen'
 import Compatibilidad from './compatibilidad'
 import ElegirOrientacion from './ElegirOrientacion'
 import FaltanVideos from './FaltanVideos'
+import { GlosarioProvider, useGlosario } from './glosario/Glosario'
 import { armarSesion, vistaDeHuella, vistasQueFaltan, type Abiertos } from './recuperacion'
 import RecuperarSesion, { type Candidata } from './RecuperarSesion'
 import SesionesGuardadas from './SesionesGuardadas'
@@ -80,7 +81,24 @@ function videosDe(e: Estado): VideoAbierto[] {
   return []
 }
 
-export default function App() {
+/** Botón de la cabecera: abre el glosario (sin entrada concreta). */
+function BotonGlosario({ conVideo }: { conVideo: boolean }) {
+  const { abrir } = useGlosario()
+  return (
+    <button
+      type="button"
+      onClick={() => abrir()}
+      title="Glosario"
+      data-testid="abrir-glosario"
+      className={`flex items-center justify-center gap-2 rounded-md border border-borde text-texto ${conVideo ? 'max-lg:size-11 lg:px-4 lg:py-2' : 'size-11 sm:w-auto sm:px-4 sm:py-2'}`}
+    >
+      <BookOpenIcon className="size-5" />
+      <span className={conVideo ? 'max-lg:sr-only' : 'max-sm:sr-only'}>Glosario</span>
+    </button>
+  )
+}
+
+function Aplicacion() {
   const [estado, setEstado] = useState<Estado>({ fase: 'inicio' })
   const selector = useRef<HTMLInputElement>(null)
   const { nueva: versionNueva, descartar: descartarVersion } = useVersionNueva()
@@ -269,18 +287,21 @@ export default function App() {
         <h1 className={`font-serif ${hayVideo ? 'text-2xl lg:text-3xl' : 'text-3xl'}`}>
           dual<span className="text-acento">kinema</span>
         </h1>
-        {hayVideo && (
-          <button
-            type="button"
-            onClick={() => elegirArchivo(null)}
-            title="Cambiar vídeo"
-            data-testid="cambiar-video"
-            className="flex items-center justify-center gap-2 rounded-md border border-borde text-texto max-lg:size-11 lg:px-4 lg:py-2"
-          >
-            <ArrowPathIcon className="size-5" />
-            <span className="max-lg:sr-only">Cambiar vídeo</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <BotonGlosario conVideo={hayVideo} />
+          {hayVideo && (
+            <button
+              type="button"
+              onClick={() => elegirArchivo(null)}
+              title="Cambiar vídeo"
+              data-testid="cambiar-video"
+              className="flex items-center justify-center gap-2 rounded-md border border-borde text-texto max-lg:size-11 lg:px-4 lg:py-2"
+            >
+              <ArrowPathIcon className="size-5" />
+              <span className="max-lg:sr-only">Cambiar vídeo</span>
+            </button>
+          )}
+        </div>
       </header>
 
       <input
@@ -376,5 +397,14 @@ export default function App() {
         {__RAMA__} · {__COMMIT__}
       </footer>
     </main>
+  )
+}
+
+/** La app, con el glosario disponible desde cualquier icono de información. */
+export default function App() {
+  return (
+    <GlosarioProvider>
+      <Aplicacion />
+    </GlosarioProvider>
   )
 }

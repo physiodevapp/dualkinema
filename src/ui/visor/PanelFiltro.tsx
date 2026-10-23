@@ -1,4 +1,5 @@
 import { CORTE_DEFECTO_HZ, CORTE_MAX_HZ, CORTE_MIN_HZ, type AjustesFiltro } from '../../core/filtros/tramos'
+import { InfoGlosario } from '../glosario/Glosario'
 
 const fmt = (n: number, d: number) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
 
@@ -24,7 +25,9 @@ export default function PanelFiltro({ ajustes, onCambiar, corte, fs, tramosCorto
   return (
     <section className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="panel-filtro">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Filtro</h2>
+        <h2 className="flex items-center gap-1 font-mono text-xs tracking-wider text-texto-2 uppercase">
+          Filtro <InfoGlosario id="filtro" tema="el filtro y la frecuencia de corte" className="-my-1.5" />
+        </h2>
         <span className="font-mono text-sm">
           corte <span className="text-acento" data-testid="corte">{fmt(ajustes.corteHz, 1)} Hz</span>
         </span>

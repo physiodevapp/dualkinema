@@ -3,6 +3,7 @@ import { UMBRAL_CONSTANCIA } from '../../core/calibracion/segmentos'
 import { partirInterpolado, type SeriePorFrame } from '../../core/graficas/series'
 import GraficaTiempo, { type SerieGrafica, type TokenColor } from './GraficaTiempo'
 import { guardarSeriesVisibles, leerSeriesVisibles } from './preferencias'
+import { InfoGlosario } from '../glosario/Glosario'
 
 const fmt = (n: number, d: number) =>
   (Math.round(n * 10 ** d) / 10 ** d + 0).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -156,7 +157,10 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
   return (
     <section className={`flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-3 ${ampliada ? 'flex-1' : ''}`} data-testid="panel-grafica">
       <div className="flex items-baseline justify-between gap-2 px-1">
-        <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">{titulo}</h2>
+        <div className="flex items-center gap-1">
+          <h2 className="font-mono text-xs tracking-wider text-texto-2 uppercase">{titulo}</h2>
+          <InfoGlosario id="huecos" tema="los huecos y los trazos de la gráfica" className="-my-1.5" />
+        </div>
         {accion ? (
           <div className="-my-2 flex items-center gap-2">
             <span className="font-mono text-xs text-texto-2">{positivo} +</span>

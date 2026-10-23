@@ -1,6 +1,7 @@
 import { SparklesIcon } from '@heroicons/react/24/outline'
 import { HUECO_MAX_S } from '../../core/seguimiento/interpolar'
 import { fmt } from './formato'
+import { InfoGlosario } from '../glosario/Glosario'
 
 interface Props {
   /** Huecos cortos que se pueden rellenar. */
@@ -44,7 +45,8 @@ export default function AccionesHuecos({ huecosCortos, hayInterpolados, onRellen
           </button>
           <p className="text-xs text-texto-2">
             Huecos de {fmt(HUECO_MAX_S, 1)} s o menos entre dos posiciones fiables. Se rellenan con una curva suave que
-            sigue el movimiento de antes y de después, y quedan marcados como interpolados.
+            sigue el movimiento de antes y de después, y quedan marcados como interpolados.{' '}
+            <InfoGlosario id="huecos" tema="los huecos y lo interpolado" className="-my-1.5 align-middle" />
           </p>
         </>
       )}

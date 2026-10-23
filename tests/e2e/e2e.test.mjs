@@ -3191,6 +3191,109 @@ describe('dos vistas: sincronizar por un evento visual y ajuste fino', () => {
   })
 })
 
+describe('glosario', () => {
+  it('desde la cabecera (también en la portada): abre el listado de entradas y Escape lo cierra devolviendo el foco', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      const boton = p.getByTestId('abrir-glosario')
+      await boton.click()
+      const dialogo = p.getByRole('dialog', { name: 'Glosario' })
+      await dialogo.waitFor()
+      assert.ok((await p.locator('[data-testid^=glosario-]').count()) >= 12, 'el listado tiene las entradas')
+      // Ninguna está abierta si no se pidió una concreta.
+      assert.equal(await dialogo.locator('details[open]').count(), 0)
+      await p.getByText('Filtro y frecuencia de corte').click()
+      assert.match(await p.getByTestId('glosario-filtro').innerText(), /Butterworth/)
+      await p.keyboard.press('Escape')
+      await dialogo.waitFor({ state: 'detached' })
+      assert.equal(await boton.evaluate((el) => document.activeElement === el), true, 'el foco vuelve al botón')
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('un icono de información abre su entrada, la página no se mueve ni el teclado mueve el vídeo mientras está abierto', async () => {
+    const p = await abrirApp(navegador, { ancho: 1280 })
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      await abrirPestana(p, 'analisis')
+      await p.getByTestId('info-filtro').click()
+      await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
+      assert.equal(await p.getByTestId('glosario-filtro').evaluate((el) => el.open), true, 'la entrada pedida está abierta')
+      assert.equal(await p.getByTestId('glosario-cero').evaluate((el) => el.open), false)
+      assert.equal(await p.evaluate(() => document.body.style.overflow), 'hidden')
+      // Las flechas son del glosario: el vídeo no avanza.
+      const antes = (await leerPosicion(p)).frame
+      await p.keyboard.press('ArrowRight')
+      await p.waitForTimeout(300)
+      assert.equal((await leerPosicion(p)).frame, antes)
+      await p.getByTestId('cerrar-glosario').click()
+      await p.getByRole('dialog', { name: 'Glosario' }).waitFor({ state: 'detached' })
+      assert.equal(await p.evaluate(() => document.body.style.overflow), '')
+      // Cerrado, las flechas vuelven a mover el vídeo.
+      await p.keyboard.press('ArrowRight')
+      await esperarQuieto(p)
+      assert.equal((await leerPosicion(p)).frame, antes + 1)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('los valores y avisos tienen su icono, cada uno con su entrada', async () => {
+    const p = await abrirApp(navegador, { ancho: 1280 })
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      const esperados = { velocidad: 'Velocidad y aceleración', angulo: 'Ángulo: sin cero y relativo', cero: 'Cero de referencia', filtro: 'Filtro y frecuencia de corte', escala: 'Escala y su precisión', calidad: 'Seguido, dudoso, perdido y a mano', huecos: 'Huecos y huecos cortos', fps: 'Tiempo del vídeo y fps variable' }
+      for (const [id, titulo] of Object.entries(esperados)) {
+        const icono = p.getByTestId(`info-${id}`).first()
+        assert.ok((await p.getByTestId(`info-${id}`).count()) > 0, `no hay icono de «${id}»`)
+        await icono.evaluate((el) => el.click())
+        await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
+        assert.equal(await p.getByTestId(`glosario-${id}`).evaluate((el) => el.open), true, `«${id}» abierta`)
+        assert.match(await p.getByTestId(`glosario-${id}`).innerText(), new RegExp(titulo))
+        await p.keyboard.press('Escape')
+        await p.getByRole('dialog', { name: 'Glosario' }).waitFor({ state: 'detached' })
+      }
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('lo interpolado y los huecos del resumen de la gráfica llevan a su entrada', async () => {
+    const { p } = await seguirVideo(videos.corto, { ancho: 1280 })
+    try {
+      // Con un hueco por rellenar, el resumen dice «sin valor» y lo explica el glosario.
+      await p.getByTestId('resumen-grafica').getByTestId('info-huecos').click()
+      await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
+      assert.equal(await p.getByTestId('glosario-huecos').evaluate((el) => el.open), true)
+      await p.keyboard.press('Escape')
+      await p.getByRole('button', { name: /Rellenar \d+ hueco/ }).click()
+      await p.getByTestId('resumen-grafica').getByTestId('info-interpolado').click()
+      await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
+      assert.match(await p.getByTestId('glosario-interpolado').innerText(), /a trazos en la gráfica/)
+      await p.keyboard.press('Escape')
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('con dos vistas, la sincronía tiene sus iconos (tiempo común y precisión)', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
+    try {
+      await abrirPestana(p, 'video')
+      await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.numerado25.ruta)
+      await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+      await p.getByTestId('conmutador-vista').waitFor()
+      await p.getByTestId('info-tiempo-comun').click()
+      await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
+      assert.match(await p.getByTestId('glosario-tiempo-comun').innerText(), /tiempo común = tiempo del vídeo \+ desfase/)
+      await p.keyboard.press('Escape')
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })
