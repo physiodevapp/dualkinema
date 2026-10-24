@@ -17,7 +17,7 @@ export type OrientacionVista =
  * el único sitio donde se cambia de convención:
  *
  * - sagital: x = hacia delante de la persona, y = hacia arriba.
- *   z = x × y apunta al lado izquierdo de la persona.
+ *   z = x × y apunta al lado derecho de la persona.
  * - frontal: x = hacia la izquierda de la persona, y = hacia arriba.
  *   z = x × y apunta hacia delante de la persona.
  *
