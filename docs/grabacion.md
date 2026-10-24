@@ -1,6 +1,6 @@
 # Cómo grabar el vídeo y colocar los gomets
 
-Guía para la fase 1 (rodilla en el plano sagital, una vista, 3 gomets). Lo que se sabe se ha comprobado con vídeos reales del usuario; lo demás son recomendaciones razonadas, marcadas como tales.
+Guía para la rodilla en el plano sagital (una vista, 3 gomets) y, al final, para la segunda vista de frente (FPPA, fase 3). Lo que se sabe se ha comprobado con vídeos reales del usuario; lo demás son recomendaciones razonadas, marcadas como tales.
 
 ## Gomets
 
@@ -52,3 +52,18 @@ Sirve cualquier objeto rígido de longitud conocida: un palo de 1 m, una cinta m
 4. La gráfica muestra el ángulo en segundos; tocarla o arrastrarla lleva el vídeo a ese instante.
 5. Escala: en el panel «Escala», «Calibrar escala», elegir el objeto, ir a un frame donde se vea, tocar sus dos extremos con la lupa, escribir la longitud en cm y «Guardar escala». Con «Entre dos marcadores», después de seguir: elegir los marcadores y el tramo quieto, y escribir la distancia medida.
 6. «Longitud de los segmentos» (panel «Escala»): si la distancia entre gomets cambia más de un 3 % en algunos frames, ahí la pierna sale del plano o los gomets se deslizan; la escala y los ángulos son menos fiables en esos frames.
+
+## Segunda vista: de frente (FPPA de la rodilla)
+
+Con un segundo móvil, la misma pierna de frente da el valgo dinámico (FPPA). Recomendaciones (sin vídeos reales todavía):
+
+| Gomet | Punto anatómico | Cómo encontrarlo |
+|---|---|---|
+| 1 | **Muslo proximal** | En la cara anterior del muslo, a media distancia entre la espina ilíaca anterosuperior y la rótula (estimación del centro de la cadera visto de frente) |
+| 2 | **Centro de la rodilla** | Centro de la rótula, con la rodilla extendida |
+| 3 | **Centro del tobillo** | Punto medio entre los dos maléolos, en la cara anterior |
+
+- En la misma pierna que se graba de perfil (la app la toma de la vista lateral: si la persona mira a la derecha, la izquierda).
+- **Cámara de frente, perpendicular y a la altura de la rodilla**, a 2–3 m, fija. El FPPA es una proyección: con la cámara en diagonal o la persona girada, una flexión se ve como valgo.
+- Del mismo color que los laterales vale (cada vista sigue los suyos), pero que no se toquen entre sí.
+- **Para sincronizar las dos vistas:** una palmada (o un golpe seco) al empezar, que se vea y se oiga en los dos vídeos. En la app: «Vídeo» → «Añadir la segunda vista» → «La cámara la ve de frente», y en «Sincronizar las vistas», marcar el frame de la palmada en cada una.

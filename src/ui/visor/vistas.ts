@@ -19,10 +19,17 @@ export interface EntradaVista {
   readonly ceros?: Readonly<Record<string, TramoEstatico>>
   /** Al recuperar: la escala de la vista (null = sin escala). */
   readonly calibracion?: CalibracionVista | null
+  /**
+   * Marcadores del modelo que sigue la vista (D4). Sin ellos (una vista nueva), los de la articulación de su plano
+   * (`marcadoresParaVista`).
+   */
+  readonly marcadores?: readonly IdMarcador[]
 }
 
 /** Una vista con todo su estado (lo que devuelve `useVista`) y los datos de su entrada que necesita la sesión. */
 export type VistaViva = ReturnType<typeof useVista> & Pick<EntradaVista, 'id' | 'orientacion' | 'sincronia'> & {
   /** Su desfase respecto a la referencia, en s (`desfase` a secas es el de la escala). */
   readonly desfaseS: number
+  /** Los marcadores que sigue (los de la entrada o, en una vista nueva, los de su plano). */
+  readonly marcadores: readonly IdMarcador[]
 }

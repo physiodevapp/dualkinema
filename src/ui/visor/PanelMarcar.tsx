@@ -17,6 +17,8 @@ import { InfoGlosario } from '../glosario/Glosario'
 interface Props {
   /** Pierna que ve la cámara. */
   lado: Lado
+  /** Vista de frente: se ven las dos piernas (no «la que ve la cámara»). */
+  frontal?: boolean
   marcadores: readonly Marcador[]
   /** Estado de cada marcador en el frame mostrado, en el orden de `marcadores`. */
   estadosMarcadores: readonly string[]
@@ -56,6 +58,7 @@ interface Props {
 /** Pestaña «Marcar»: marcadores, seguimiento, avisos, huecos cortos, trayectoria completa y el ángulo del frame. */
 export default function PanelMarcar({
   lado,
+  frontal = false,
   marcadores,
   estadosMarcadores,
   seleccionado,
@@ -92,7 +95,8 @@ export default function PanelMarcar({
                 <h2 className="flex items-center gap-1 font-mono text-xs tracking-wider text-texto-2 uppercase">
                   Marcadores <InfoGlosario id="calidad" tema="seguido, dudoso, perdido y a mano" className="-my-1.5" />
                 </h2>
-                <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'} (la que ve la cámara)</span>
+                <span className="text-sm text-texto-2">pierna {lado === 'izq' ? 'izquierda' : 'derecha'}{frontal ? '' : ' (la que ve la cámara)'}</span>
+                {frontal && <InfoGlosario id="fppa" tema="el FPPA de la rodilla y dónde van los gomets" className="-my-1.5" />}
               </div>
 
               <SelectorMarcadores marcadores={marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={onElegirMarcador} />

@@ -16,7 +16,17 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     texto: [
       'Es el ángulo que forman los dos segmentos de la articulación (en la rodilla, muslo y pierna), con la convención clínica de esa articulación: la flexión es positiva y sale lo mismo se grabe desde un lado o desde el otro.',
       '«Sin cero» es el ángulo tal cual sale de la imagen. «Relativo» es ese ángulo menos el del cero de referencia (una toma estática, ver «Cero de referencia»). Siempre se ven los dos: nunca uno en lugar del otro sin decirlo.',
-      'Solo se calcula si la vista es del plano de la articulación: la flexión de la rodilla se mide en una vista de perfil; en una de frente no hay ángulo de flexión y se ve «—».',
+      'Cada vista mide la articulación de su plano: en una vista de perfil, la flexión de la rodilla; en una de frente, el FPPA (ver «FPPA de la rodilla»). Con marcadores que no son de su plano no hay ángulo y se ve «—».',
+    ],
+  },
+  {
+    id: 'fppa',
+    titulo: 'FPPA de la rodilla (valgo dinámico)',
+    texto: [
+      'El ángulo de proyección en el plano frontal de la rodilla (FPPA) es la medida en 2D del valgo dinámico más usada en sentadilla a una pierna, escalón y aterrizajes. Se mide en la vista de frente, entre el muslo (muslo proximal → centro de la rodilla) y la pierna (centro de la rodilla → centro del tobillo).',
+      '0° es el muslo y la pierna alineados. Valgo (la rodilla hacia dentro, hacia la otra pierna) es positivo y varo (hacia fuera), negativo; igual en la pierna derecha y en la izquierda, y con la cámara delante o detrás de la persona.',
+      'Gomets: muslo proximal (a media distancia entre la espina ilíaca anterosuperior y la rótula, como estimación del centro de la cadera), centro de la rodilla (centro de la rótula) y centro del tobillo (punto medio entre los maléolos).',
+      'Es una proyección: depende de que la cámara esté de frente a la persona, perpendicular y a la altura de la rodilla. Si la persona gira o la cámara queda en diagonal, una flexión se ve como valgo. Por eso se mira junto con la vista de perfil.',
     ],
   },
   {

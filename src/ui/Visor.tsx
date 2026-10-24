@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
-import { modeloRodilla3 } from '../core/articulaciones/catalogo'
+import { conRodillaFrontal, modeloRodilla3 } from '../core/articulaciones/catalogo'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores, Sincronia } from '../core/modelo/tipos'
@@ -60,10 +60,12 @@ function Anfitriones({ entradas, acumuladas, modelo, filtro, avisoInicial, activ
  * (reparto de la pantalla y guardado).
  */
 export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, avisoInicial, onAnadirVista }: Props) {
-  // Modelo de la fase 1: rodilla con 3 gomets en la pierna que ve la cámara de la vista de referencia.
-  // Una sesión recuperada usa el que se guardó con ella.
+  // Un único modelo por sesión con todos los marcadores (D4): la rodilla con 3 gomets en la pierna que ve la cámara de la
+  // vista de referencia (lateral) y, para una vista de frente, sus 3 marcadores y el FPPA de esa rodilla. Cada vista sigue
+  // los suyos (`modeloDeVista`). Una sesión recuperada parte del que se guardó con ella. Se fija al abrir, ya con lo de la
+  // vista de frente, para que no cambie al añadirla (lo de cada vista depende de él).
   const lado = ladoDeVista(vistas[0]!.orientacion)
-  const modelo = useMemo(() => modeloGuardado ?? modeloRodilla3(lado), [modeloGuardado, lado])
+  const modelo = useMemo(() => conRodillaFrontal(modeloGuardado ?? modeloRodilla3(lado), lado), [modeloGuardado, lado])
   const recuperada = !!vistas[0]!.inicial
   const cursor = useCursorComun(vistas[0]!.id)
   // El desfase y la sincronía de cada vista cambian al sincronizar: se guardan aquí, sobre lo que traía cada vista.
@@ -90,6 +92,7 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
           activa={Math.max(0, vivas.findIndex((w) => w.id === cursor.activaId))}
           sesion={sesion}
           modelo={modelo}
+          lado={lado}
           recuperada={recuperada}
           // Una vista recién añadida (sin lo guardado) hace que la sesión con las dos aún no esté guardada.
           sinGuardar={vistas.length > 1 && vistas.some((v) => !v.inicial)}

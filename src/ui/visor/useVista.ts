@@ -26,7 +26,7 @@ export const valida = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.cal
 interface Opciones {
   readonly video: VideoAbierto
   readonly orientacion: OrientacionVista
-  /** El modelo de marcadores de la sesión. */
+  /** El modelo de marcadores tal como lo ve esta vista: sus marcadores y su articulación (`modeloDeVista`). */
   readonly modelo: ModeloMarcadores
   /** Al recuperar una sesión: las trayectorias de esta vista tal como se guardaron. */
   readonly inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
@@ -277,6 +277,9 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
   }
 
   return {
+    /** El modelo de esta vista (sus marcadores y su articulación). */
+    modelo,
+    articulacion,
     info,
     tabla,
     total,
