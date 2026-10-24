@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { CALIDAD_MINIMA } from '../../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../../core/exportacion/csv'
+import type { SincronizacionExportada } from '../../core/exportacion/csv'
 import { datosCsv } from '../../core/exportacion/datos'
 import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
@@ -225,7 +226,7 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
   const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
   const est = useMemo(() => estadisticas(tabla), [tabla])
   const generarCsv = useCallback(
-    (formato: FormatoCsv) => {
+    (formato: FormatoCsv, sincronia?: SincronizacionExportada) => {
       const datos = datosCsv({
         tiempos: tabla.tiempos,
         marcadores: modelo.marcadores,
@@ -241,6 +242,7 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
         est,
         corteHz: ajustes.corteHz,
         exportado: new Date().toISOString(),
+        sincronia,
       })
       const texto = construirCsv(datos, formato)
       return { nombre: nombreArchivoCsv(info.nombre, datos.angulo ? articulacion.id : null), texto }

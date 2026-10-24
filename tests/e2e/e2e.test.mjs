@@ -3380,6 +3380,201 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
   })
 })
 
+describe('dos vistas: gráficas en el tiempo común y CSV con tiempo común', () => {
+  // A = «verde» (perfil, 30 fps con huecos, flexión real) y B = «frontal25» (de frente, 25 fps, FPPA real de 0 → 20 → 0°). Evento: el frame 46 de A
+  // (1,533 s) y el 26 de B (1,000 s): el desfase de B es 0,533 s, y como 30 y 25 fps no casan, los instantes de las dos vistas se intercalan.
+  let p
+  const KA = 45
+  const KB = 25
+  const tA = (k) => Math.round(videos.verde.verdad[k].t * 1000) / 1000
+  const tB = (k) => videos.frontal25.verdad[k].t
+  const desfase = () => tA(KA) - tB(KB)
+  const frameBEn = (t) => videos.frontal25.verdad.reduce((mejor, x, k) => (x.t <= t + 1e-6 ? k : mejor), -1)
+  const numero = (texto) => Number(texto.replace('°', '').replace(',', '.'))
+  const cursorX = async (id) => {
+    const r = await p.getByTestId(id).evaluate((el) => ({ oculto: el.style.display === 'none', x: Number.parseFloat(/translateX\(([-\d.]+)px/.exec(el.style.transform)?.[1] ?? 'NaN') }))
+    return r.oculto ? null : r.x
+  }
+  const valor = async (letra) => (await p.getByTestId(`comparacion-valor-${letra}`).innerText()).trim()
+  /** Columnas del canvas de una gráfica con algún píxel del color dado (±tolerancia por canal). */
+  const columnasConColor = (testid, [r, g, b], tol = 40) =>
+    p.getByTestId(testid).evaluate(
+      (el, [r, g, b, tol]) => {
+        const c = el.querySelector('canvas')
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data
+        const col = new Array(c.width).fill(0)
+        for (let y = 0; y < c.height; y++)
+          for (let x = 0; x < c.width; x++) {
+            const k = (y * c.width + x) * 4
+            if (Math.abs(d[k] - r) < tol && Math.abs(d[k + 1] - g) < tol && Math.abs(d[k + 2] - b) < tol) col[x] = 1
+          }
+        return col
+      },
+      [r, g, b, tol],
+    )
+
+  before(async () => {
+    ;({ p } = await seguirVideo(videos.verde, { ancho: 1280 }))
+    await abrirPestana(p, 'video')
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.frontal25.ruta)
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    // B: marcar y seguir.
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'marcar')
+    await marcarTres(p, videos.frontal25.verdad[0].ps)
+    assert.match(await seguirHastaElFinal(p), /completado hasta el final del vídeo, sin huecos/)
+    // Sincronizar por el evento.
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'video')
+    await p.getByRole('button', { name: 'Marcar el evento en las dos vistas' }).click()
+    await irAFrame(p, KA)
+    await p.getByTestId('marcar-evento-video').click()
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await irAFrame(p, KB)
+    await p.getByTestId('marcar-evento-video').click()
+    await p.getByRole('button', { name: 'Aplicar' }).click()
+    await p.getByTestId('incertidumbre-sincronia').waitFor()
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+  })
+  after(() => p?.close())
+
+  it('con dos vistas sale la comparación (alineadas por defecto) y con una sola vista no', async () => {
+    await p.getByTestId('comparacion').waitFor()
+    assert.equal(await p.getByTestId('comparacion-alineadas').getAttribute('aria-pressed'), 'true')
+    assert.equal(await p.getByTestId('comparacion-grafica-A').count(), 1)
+    assert.equal(await p.getByTestId('comparacion-grafica-B').count(), 1)
+    const { p: solo } = await seguirVideo(videos.verde, { ancho: 1280 })
+    try {
+      assert.equal(await solo.getByTestId('comparacion').count(), 0)
+    } finally {
+      await solo.close()
+    }
+  })
+
+  it('los valores de cada vista en el cursor son los reales de su vídeo en ese instante común', async () => {
+    for (const k of [45, 70, 100]) {
+      await irAFrame(p, k)
+      const esperadoA = videos.verde.verdad[k].flexion
+      assert.ok(Math.abs(numero(await valor('A')) - esperadoA) < TOLERANCIA_GRADOS, `A, frame ${k + 1}: ${await valor('A')} frente a ${esperadoA.toFixed(2)}°`)
+      const j = frameBEn(tA(k) - desfase())
+      const esperadoB = videos.frontal25.verdad[j].fppa
+      assert.ok(Math.abs(numero(await valor('B')) - esperadoB) < TOLERANCIA_GRADOS, `B (frame ${j + 1}) con A en ${k + 1}: ${await valor('B')} frente a ${esperadoB.toFixed(2)}°`)
+    }
+  })
+
+  it('alineadas: en el mismo instante común los cursores de las dos gráficas caen en la misma X (B va desplazada por su desfase)', async () => {
+    for (const k of [45, 60, 100]) {
+      await irAFrame(p, k)
+      const xa = await cursorX('comparacion-grafica-A-cursor')
+      const xb = await cursorX('comparacion-grafica-B-cursor')
+      assert.ok(xa !== null && xb !== null, `con A en el frame ${k + 1} los dos cursores se ven`)
+      // B enseña el frame visible en ese instante, que empieza hasta 40 ms antes (un frame suyo): como mucho ese desfase en px. Sin el desfase
+      // de la sincronía el cursor de B caería 0,53 s a la izquierda (13 veces más).
+      const ancho = (await p.getByTestId('comparacion-grafica-A-area').boundingBox()).width
+      const rango = tB(videos.frontal25.verdad.length - 1) + 1 / 25 + desfase()
+      const unFrameB = (0.04 / rango) * ancho
+      assert.ok(Math.abs(xa - xb) <= unFrameB + 0.6, `A en ${xa.toFixed(1)} px y B en ${xb.toFixed(1)} px (un frame de B son ${unFrameB.toFixed(1)} px)`)
+      assert.ok(xb <= xa + 0.6, 'el frame de B visible en ese instante no es posterior al instante')
+    }
+  })
+
+  it('antes de que empiece el vídeo de B (en tiempo común) no hay cursor ni valor en su gráfica', async () => {
+    await irAFrame(p, 5)
+    assert.ok(tA(5) < desfase(), 'el frame 6 de A es anterior al inicio de B')
+    assert.equal(await cursorX('comparacion-grafica-B-cursor'), null)
+    assert.equal(await valor('B'), '—')
+    assert.ok((await cursorX('comparacion-grafica-A-cursor')) !== null)
+  })
+
+  it('tocar la gráfica de B lleva el cursor al instante común tocado (la vista activa va a ese instante)', async () => {
+    const caja = await p.getByTestId('comparacion-grafica-B-area').boundingBox()
+    // El eje abarca la sesión: de 0 a lo que acaba B en tiempo común (3,96 s + 0,533 s + el último frame).
+    const hasta = tB(videos.frontal25.verdad.length - 1) + 1 / 25 + desfase()
+    await p.mouse.click(caja.x + caja.width * 0.5, caja.y + caja.height / 2)
+    await p.waitForTimeout(400)
+    await esperarQuieto(p)
+    const t = hasta * 0.5
+    const { t: tVista } = await leerPosicion(p)
+    assert.ok(tVista <= t + 1e-3 && t - tVista < 1 / 30 + 0.01, `se tocó el instante ${t.toFixed(3)} s y A está en ${tVista} s`)
+  })
+
+  it('superpuestas: un solo cursor en el instante común, la curva de A sigue continua entre los instantes de B y se ven las dos', async () => {
+    await irAFrame(p, 60)
+    const xAlineada = await cursorX('comparacion-grafica-A-cursor')
+    await p.getByTestId('comparacion-superpuestas').click()
+    await p.getByTestId('comparacion-grafica').waitFor()
+    assert.equal(await p.getByTestId('comparacion-grafica-A').count(), 0)
+    // El mismo instante, la misma X que en las alineadas (mismo eje).
+    assert.ok(Math.abs((await cursorX('comparacion-grafica-cursor')) - xAlineada) < 1.5)
+    // Las dos curvas se dibujan: el ámbar de A y el claro de B.
+    const AMBAR = [242, 166, 90]
+    const CLARO = [232, 236, 241]
+    const sinB = async () => {
+      // Se oculta B en la leyenda para medir solo la línea de A, ya unida con los instantes de B (join).
+      await p.getByTestId('comparacion-vista-B').click()
+      await p.waitForTimeout(300)
+    }
+    const conB = await columnasConColor('comparacion-grafica', CLARO)
+    assert.ok(conB.some(Boolean), 'se ve la curva de B')
+    await sinB()
+    const colsA = await columnasConColor('comparacion-grafica', AMBAR)
+    const primera = colsA.indexOf(1)
+    const ultima = colsA.lastIndexOf(1)
+    assert.ok(primera >= 0 && ultima > primera, 'se ve la curva de A')
+    const huecos = colsA.slice(primera, ultima + 1).filter((c) => c === 0).length
+    // Unida con los instantes de B (undefined), la línea de A no se corta: ninguna columna sin línea entre su primer y su último punto.
+    assert.ok(huecos <= 1, `la curva de A tiene ${huecos} columnas sin línea entre ${primera} y ${ultima}`)
+    await p.getByTestId('comparacion-vista-B').click()
+    await p.getByTestId('comparacion-alineadas').click()
+  })
+
+  it('el modo elegido se recuerda al recargar', async () => {
+    await p.getByTestId('comparacion-superpuestas').click()
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.comparacion')), 'superpuestas')
+    await p.getByTestId('comparacion-alineadas').click()
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.comparacion')), 'alineadas')
+  })
+
+  it('CSV: la referencia lleva t_comun_s = t_s y su cabecera lo dice; B lleva t_s + desfase, el método y la precisión', async () => {
+    const descargar = async () => {
+      await abrirPestana(p, 'analisis')
+      const [descarga] = await Promise.all([p.waitForEvent('download'), p.getByTestId('panel-exportar').getByTestId('descargar-csv').click()])
+      const { readFile } = await import('node:fs/promises')
+      return leerCsv(await readFile(await descarga.path(), 'utf8'))
+    }
+    // A (referencia).
+    const a = await descargar()
+    assert.deepEqual(a.columnas.slice(0, 3), ['t_s', 't_comun_s', 'frame'])
+    assert.ok(a.cabecera.some((l) => l.startsWith('# sincronización;vista de referencia')))
+    for (const f of [a.filas[0], a.filas[60], a.filas.at(-1)]) assert.equal(f[0], f[1], 'en la referencia, tiempo común = tiempo del vídeo')
+    assert.equal(a.filas.length, videos.verde.verdad.length)
+    // B.
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    const b = await descargar()
+    assert.deepEqual(b.columnas.slice(0, 3), ['t_s', 't_comun_s', 'frame'])
+    const sinc = b.cabecera.find((l) => l.startsWith('# sincronización;'))
+    assert.match(sinc, /desfase 0,533 s/)
+    assert.match(sinc, /método: evento visual/)
+    assert.match(sinc, /±37 ms/)
+    assert.equal(b.filas.length, videos.frontal25.verdad.length)
+    for (const f of [b.filas[0], b.filas[50], b.filas.at(-1)]) {
+      const dif = Number(f[1].replace(',', '.')) - Number(f[0].replace(',', '.'))
+      assert.ok(Math.abs(dif - desfase()) < 1e-3, `t_comun − t = ${dif}, desfase ${desfase()}`)
+    }
+    // Los valores de la tabla siguen siendo los de siempre: el FPPA real en el frame 51 (columna del ángulo).
+    const iAng = b.columnas.findIndex((c) => c.endsWith('_filtrado_grados'))
+    assert.ok(Math.abs(Number(b.filas[50][iAng].replace(',', '.')) - videos.frontal25.verdad[50].fppa) < TOLERANCIA_GRADOS)
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+  })
+})
+
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })

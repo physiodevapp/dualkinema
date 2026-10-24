@@ -56,6 +56,10 @@ interface Props {
   lado?: boolean
   /** Un botón en la fila del título (el de volver, en «Solo gráficas» con el móvil girado, donde no hay cabecera propia). */
   accion?: ReactNode
+  /** Con dos vistas: lo que abarca la sesión en tiempo común (la unión de los dos vídeos): el eje X de todas las gráficas. `tiempos` ya va en tiempo común. */
+  rango?: { readonly desde: number; readonly hasta: number }
+  /** Con dos vistas: la comparación en el tiempo común, un bloque más tras las gráficas de esta vista (en columna o debajo, como ellas). */
+  comparacion?: ReactNode
 }
 
 const VISIBLES_DEFECTO: Record<string, boolean> = { crudo: true, filtrado: true, velocidad: true }
@@ -70,7 +74,7 @@ const porcentaje = (v: number) => `${fmt(v, Math.abs(v) < 10 && v % 1 !== 0 ? 1 
  * u oculta con su botón, que da además su valor en el frame actual; un panel
  * sin ninguna serie a la vista no se dibuja.
  */
-export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positivo, crudo, filtrado, velocidad, corte, segmentos, resumen, ampliada, lado, accion }: Props) {
+export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positivo, crudo, filtrado, velocidad, corte, segmentos, resumen, ampliada, lado, accion, comparacion, rango }: Props) {
   // Los segmentos empiezan ocultos: son una comprobación, no el análisis. Lo que se elige se recuerda en este dispositivo.
   const [visibles, setVisibles] = useState(() => leerSeriesVisibles(VISIBLES_DEFECTO))
   const alternar = (id: string) => {
@@ -80,8 +84,8 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
   }
   const visible = (id: string) => visibles[id] ?? false
   const xs = useMemo(() => Array.from(tiempos), [tiempos])
-  const desde = xs[0] ?? 0
-  const hasta = xs.at(-1) ?? 1
+  const desde = rango?.desde ?? xs[0] ?? 0
+  const hasta = rango?.hasta ?? xs.at(-1) ?? 1
 
   // Todas las series con un valor por frame, aunque lo seguido no llegue al final.
   const n = xs.length
@@ -198,6 +202,9 @@ export default function PanelGrafica({ tiempos, indice, onBuscar, titulo, positi
       </div>
 
       {enFila(<>
+      {/* Con dos vistas, lo primero que se ve es la comparación; lo de esta vista, debajo. */}
+      {comparacion && <div className={`flex flex-col gap-1 ${bloque} ${lado ? 'min-w-[14rem] shrink-0' : 'shrink-0'}`}>{comparacion}</div>}
+
       {columnaAngulo(<>
       {(visibles.crudo || visibles.filtrado) && (
         <div className={cajaGrafica('relative min-h-[110px] flex-[1.2_1_0]')}>

@@ -29,6 +29,12 @@ interface Props {
   hasta: number
   /** Frame actual (índice en `xs`), o null. */
   indice: number | null
+  /**
+   * Alternativa a `indice` para series de varias vistas combinadas (cada una con sus instantes en `xs`): el instante del
+   * cursor, en el eje X. El punto del cursor sale en la primera serie visible que tenga un valor justo en ese instante.
+   * `null` = sin cursor. Sin esta prop se usa `indice`.
+   */
+  instante?: number | null
   /** Etiqueta de los valores del eje Y. */
   unidad: (v: number) => string
   /** Alto mínimo del rango Y, en las unidades de la serie. */
@@ -43,6 +49,19 @@ interface Props {
   onBuscar: (t: number) => void
 }
 
+/** Índice de `xs` (ascendente) cuyo valor es exactamente `t`, o null si no hay ninguno. */
+function indiceExacto(xs: ArrayLike<number>, t: number): number | null {
+  let lo = 0
+  let hi = xs.length - 1
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1
+    if (xs[m]! < t) lo = m + 1
+    else if (xs[m]! > t) hi = m - 1
+    else return m
+  }
+  return null
+}
+
 const FUENTE = '11px "DM Mono", ui-monospace, monospace'
 
 const color = (token: TokenColor) => getComputedStyle(document.documentElement).getPropertyValue(`--color-${token}`).trim() || '#888'
@@ -53,7 +72,7 @@ const color = (token: TokenColor) => getComputedStyle(document.documentElement).
  * frame actual y, tocando o arrastrando la gráfica, el vídeo salta a ese
  * instante. El gesto vertical sigue desplazando la página.
  */
-export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad, altoMinimo, banda, alto, etiqueta, testid, onBuscar }: Props) {
+export default function GraficaTiempo({ xs, series, desde, hasta, indice, instante, unidad, altoMinimo, banda, alto, etiqueta, testid, onBuscar }: Props) {
   const contenedor = useRef<HTMLDivElement>(null)
   const grafica = useRef<uPlot | null>(null)
   const cursor = useRef<() => void>(() => {})
@@ -65,9 +84,9 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
   const forma = series.map((s) => `${s.id}:${s.color}:${s.ancho ?? 2}:${s.trazos ? 1 : 0}:${s.puntos ? 1 : 0}`).join('|')
 
   // Lo que leen los hooks de dibujo y los manejadores sin recrear la gráfica.
-  const vivo = useRef({ datos, series, desde, hasta, indice, unidad, altoMinimo, banda, onBuscar })
+  const vivo = useRef({ datos, series, desde, hasta, indice, instante, unidad, altoMinimo, banda, onBuscar })
   useEffect(() => {
-    vivo.current = { datos, series, desde, hasta, indice, unidad, altoMinimo, banda, onBuscar }
+    vivo.current = { datos, series, desde, hasta, indice, instante, unidad, altoMinimo, banda, onBuscar }
   })
 
   useEffect(() => {
@@ -149,13 +168,16 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
     punto.className = 'pointer-events-none absolute top-0 left-0 -mt-[5px] -ml-[5px] size-2.5 rounded-full border-2 bg-white will-change-transform'
     u.over.append(linea, punto)
     const colocarCursor = () => {
-      const { datos: d, indice: i, series: ss } = vivo.current
-      const x = i === null || i >= d[0].length ? NaN : u.valToPos(d[0][i]!, 'x')
+      const { datos: d, indice: i0, instante: t, series: ss } = vivo.current
+      // Con `instante`, el cursor va a ese instante y el punto, a la fila que tiene exactamente ese instante (si la hay).
+      const i = t === undefined ? i0 : t === null ? null : indiceExacto(d[0], t)
+      const x = t !== undefined ? (t === null ? NaN : u.valToPos(t, 'x')) : i === null || i >= d[0].length ? NaN : u.valToPos(d[0][i]!, 'x')
       const dentro = Number.isFinite(x) && x >= 0 && x <= u.over.clientWidth
       linea.style.display = dentro ? '' : 'none'
       punto.style.display = 'none'
       if (!dentro) return
       linea.style.transform = `translateX(${x}px)`
+      if (i === null) return
       // Punto sobre la curva: la primera serie visible con valor en este frame.
       const k = ss.findIndex((s, j) => s.visible && d[j + 1]![i!] != null)
       const v = k >= 0 ? d[k + 1]![i!] : null
@@ -226,7 +248,7 @@ export default function GraficaTiempo({ xs, series, desde, hasta, indice, unidad
   }, [visibles])
   useEffect(() => {
     cursor.current()
-  }, [indice])
+  }, [indice, instante])
 
   return (
     <div

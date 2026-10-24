@@ -5,7 +5,7 @@ import type { Derivadas, VelocidadMarcador } from '../filtros/derivadas'
 import type { TrayectoriaFiltrada } from '../filtros/tramos'
 import type { OrientacionVista } from '../geometria/canonico'
 import type { IdMarcador, Marcador, Muestra2D } from '../modelo/tipos'
-import type { DatosExportacion } from './csv'
+import type { DatosExportacion, SincronizacionExportada } from './csv'
 
 /** Lo filtrado que se exporta: coordenadas, velocidad de cada marcador, derivadas del ángulo y corte aplicado. */
 export interface FiltradoExportable {
@@ -42,6 +42,8 @@ export interface EntradaDatosCsv {
   readonly corteHz: number
   /** ISO 8601, de quien llama (así la función es pura). */
   readonly exportado: string
+  /** Solo con varias vistas: cómo se sincronizó esta con la de referencia. */
+  readonly sincronia?: SincronizacionExportada
 }
 
 /**
@@ -74,6 +76,7 @@ export function datosCsv(e: EntradaDatosCsv): DatosExportacion {
         }
       : null,
     calibracion: e.calibracion,
+    ...(e.sincronia ? { sincronia: e.sincronia } : {}),
     meta: {
       archivo: e.info.nombre,
       ancho: e.info.ancho,
