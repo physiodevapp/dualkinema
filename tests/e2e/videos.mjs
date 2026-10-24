@@ -101,13 +101,16 @@ function posiciones(t) {
  * Pierna color piel sobre un fondo gris con ruido y 3 gomets de color con
  * antialiasing (centros reales conocidos). `oculto(t)` tapa el tobillo.
  */
-async function generarRodilla(dir, nombre, color, oculto = () => false, { posicionesEn = posiciones, verdadEn = (t) => ({ flexion: flexionEn(t) }) } = {}) {
-  const { ancho, alto, n, huecos } = RODILLA
-  const tiempos = tiemposDe(n, huecos)
+async function generarRodilla(dir, nombre, color, oculto = () => false, { posicionesEn = posiciones, verdadEn = (t) => ({ flexion: flexionEn(t) }), fps } = {}) {
+  // Con `fps` (distinto del de los demás): constante, sin huecos, y 4 s como los otros.
+  const { ancho, alto } = RODILLA
+  const n = fps ? Math.round(4 * fps) : RODILLA.n
+  const huecos = fps ? [] : RODILLA.huecos
+  const tiempos = fps ? Array.from({ length: n }, (_, i) => i / fps) : tiemposDe(n, huecos)
   let semilla = 7
   const azar = () => ((semilla = (semilla * 1103515245 + 12345) % 2147483648) / 2147483648)
   await escribirVideo({
-    ancho, alto, n, huecos, kbps: 1500, salida: join(dir, `${nombre}.webm`),
+    ancho, alto, n, huecos, kbps: 1500, salida: join(dir, `${nombre}.webm`), ...(fps ? { fps } : {}),
     dibujar: (i) => {
       const t = tiempos[i]
       const ps = posicionesEn(t)
@@ -232,6 +235,8 @@ export async function asegurarVideos() {
   }
   // Añadido después de la primera versión: se genera aparte si falta (sin invalidar los demás).
   if (!existsSync(join(dir, 'numerado25.json'))) await generarNumerado25(dir)
+  // La misma pierna de frente a 25 fps constantes: con `verde` (30 fps con huecos) los instantes de las dos vistas se intercalan.
+  if (!existsSync(join(dir, 'frontal25.json'))) await generarRodilla(dir, 'frontal25', VERDE, () => false, { posicionesEn: posicionesFrontales, verdadEn: (t) => ({ fppa: valgoEn(t) }), fps: 25 })
   if (!existsSync(join(dir, 'frontal.json'))) await generarRodilla(dir, 'frontal', VERDE, () => false, { posicionesEn: posicionesFrontales, verdadEn: (t) => ({ fppa: valgoEn(t) }) })
   const leer = (nombre) => JSON.parse(readFileSync(join(dir, `${nombre}.json`), 'utf8'))
   return {
@@ -241,6 +246,8 @@ export async function asegurarVideos() {
     rojo: { ruta: join(dir, 'rojo.webm'), verdad: leer('rojo') },
     // La pierna izquierda de frente, con el FPPA real de cada frame (`fppa`).
     frontal: { ruta: join(dir, 'frontal.webm'), verdad: leer('frontal') },
+    // Lo mismo a 25 fps constantes (100 frames).
+    frontal25: { ruta: join(dir, 'frontal25.webm'), verdad: leer('frontal25') },
     oculto: { ruta: join(dir, 'oculto.webm'), verdad: leer('oculto') },
     corto: { ruta: join(dir, 'corto.webm'), verdad: leer('corto') },
     // El vídeo «verde» girado 90° (360×640): solo para probar la distribución con un vídeo vertical, sin verdad conocida.

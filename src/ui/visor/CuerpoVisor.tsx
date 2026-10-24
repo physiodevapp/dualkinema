@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
@@ -41,7 +41,11 @@ import { textoOrientacion } from '../sesion'
 import AnadirVista from './AnadirVista'
 import ConmutadorVista from './ConmutadorVista'
 import MiniaturaVista from './MiniaturaVista'
+import PanelComparacion, { useVistaComparada } from './PanelComparacion'
 import SincronizarVistas, { type MarcaEvento } from './SincronizarVistas'
+import { rangoSesion } from '../../core/tiempo/comun'
+import type { SincronizacionExportada } from '../../core/exportacion/csv'
+import { incertidumbreEvento, pasoTipico } from '../../core/sincronia/evento'
 import type { VistaViva } from './vistas'
 
 /** Letra de cada vista, en el orden de la sesión. */
@@ -207,6 +211,34 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   }
   const marcarEvento = (clave: keyof MarcaEvento, t: number) => setMarcaEvento((m) => ({ ...m, [clave]: t }))
   const claveActiva: keyof MarcaEvento = activa === 0 ? 'referencia' : 'vista'
+  // Con dos vistas, las gráficas van en el tiempo común (tiempo del vídeo + desfase de cada vista) y el CSV lleva el desfase.
+  // La vista de referencia tiene desfase 0, así que con una vista (o con A) nada cambia.
+  const desfaseActiva = activaViva.desfaseS
+  const tiemposGrafica = useMemo(() => (desfaseActiva === 0 ? tabla.tiempos : tabla.tiempos.map((t) => t + desfaseActiva)), [tabla, desfaseActiva])
+  const buscarEnComun = useCallback((t: number) => buscarEnTiempo(t - desfaseActiva), [buscarEnTiempo, desfaseActiva])
+  const dosVistas = vistas.length === 2
+  const vistaA = vistas[0]
+  const vistaB = vistas[1]
+  const [tablaA, desfaseA, tablaB, desfaseB] = [vistaA?.tabla, vistaA?.desfaseS, vistaB?.tabla, vistaB?.desfaseS]
+  // Se memoriza por lo que lo define: calcularlo (fps mediano) en cada cambio de frame sería trabajo de más.
+  const rangoComun = useMemo(
+    () => (tablaA && tablaB && desfaseA !== undefined && desfaseB !== undefined ? rangoSesion([{ tabla: tablaA, desfase: desfaseA }, { tabla: tablaB, desfase: desfaseB }]) : null),
+    [tablaA, desfaseA, tablaB, desfaseB],
+  )
+  const comparadaA = useVistaComparada(vistaA, LETRAS[0])
+  const comparadaB = useVistaComparada(vistaB, LETRAS[1])
+  // ± medio frame de cada vista (para el CSV): fps mediano, que se memoriza por las tablas.
+  const incertidumbreS = useMemo(() => (tablaA && tablaB ? incertidumbreEvento(pasoTipico(tablaA), pasoTipico(tablaB)) : undefined), [tablaA, tablaB])
+  const indiceComun = (w: VistaViva) => (fuera.has(w.id) || w.deseado >= w.total ? null : w.deseado)
+  const sincroniaCsv: SincronizacionExportada | undefined = dosVistas
+    ? {
+        referencia: activa === 0,
+        desfaseS: activaViva.desfaseS,
+        metodo: activaViva.sincronia.metodo,
+        ...(activaViva.sincronia.evento ? { evento: activaViva.sincronia.evento } : {}),
+        ...(activaViva.sincronia.metodo === 'evento' && incertidumbreS !== undefined ? { incertidumbreS } : {}),
+      }
+    : undefined
   // La sesión conoce las vistas vivas (el cursor común mueve las demás) y, al abrir otra vista, la pone donde toca.
   useEffect(() => {
     registrarVistas(vistas)
@@ -453,9 +485,9 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           )}
           {!anchoLg && vista === 'mixta' && (
             <MiniGrafica
-              tiempos={tabla.tiempos}
+              tiempos={tiemposGrafica}
               indice={deseado < total ? deseado : null}
-              onBuscar={buscarEnTiempo}
+              onBuscar={buscarEnComun}
               crudo={crudoPorFrame}
               filtrado={filtradoPorFrame}
               velocidad={filtrado.derivadas.velocidad}
@@ -523,7 +555,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             (oculta pero montada en las demás, para no perder qué series se ven) y en la mixta se ve la pequeña. */}
         <div
           data-testid="vista-graficas"
-          className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0 ${
+          // Con dos vistas hay más gráficas de las que caben en la altura de la ventana: la columna se desplaza por dentro.
+          className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0${dosVistas ? ' lg:overflow-y-auto' : ''} ${
             enGraficas ? `aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo ${apaisado ? 'max-lg:p-2' : 'max-lg:p-4'}` : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
@@ -546,9 +579,22 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
 
           <PanelGrafica
             ampliada={enGraficas || anchoLg}
-            tiempos={tabla.tiempos}
+            tiempos={tiemposGrafica}
             indice={deseado < total ? deseado : null}
-            onBuscar={buscarEnTiempo}
+            onBuscar={buscarEnComun}
+            rango={rangoComun ?? undefined}
+            comparacion={
+              comparadaA && comparadaB && rangoComun ? (
+                <PanelComparacion
+                  vistas={[comparadaA, comparadaB]}
+                  indices={[indiceComun(vistaA!), indiceComun(vistaB!)]}
+                  desde={rangoComun.desde}
+                  hasta={rangoComun.hasta}
+                  instante={deseado < total ? tabla.tiempos[deseado]! + desfaseActiva : null}
+                  onBuscar={buscarEnComun}
+                />
+              ) : undefined
+            }
             titulo={articulacion.nombre.replace(/\s*\(.*\)$/, '')}
             positivo={articulacion.positivo}
             crudo={crudoPorFrame}
@@ -674,7 +720,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               tiempos={tabla.tiempos}
               total={total}
               onCambiarTramo={cambiarTramo}
-              generarCsv={generarCsv}
+              generarCsv={(formato) => generarCsv(formato, sincroniaCsv)}
               conEscala={!!calibracion}
               mismoPlano={orientacion.plano === articulacion.plano}
               siguiendo={siguiendo}

@@ -120,6 +120,7 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     texto: [
       'Con dos vistas, una es la referencia (A) y su tiempo es el tiempo común. Cada vista tiene un desfase respecto a ella: tiempo común = tiempo del vídeo + desfase. Un evento visto en el instante t en la vista B ocurre en el tiempo común t + desfase de B.',
       'Cada vista conserva su propia lista de frames (a 30 y a 25 fps el frame 50 de una no es el frame 50 de la otra): el cursor común lleva la otra vista al frame que se ve en ese instante. Si el instante cae fuera de su vídeo, se queda donde estaba y pone «Fuera de este vídeo».',
+      'Las gráficas de las dos vistas comparten el eje X en tiempo común (alineadas, una debajo de la otra, o superpuestas en la misma), con el cursor compartido. En el CSV de cada vista, la columna `t_comun_s` es su tiempo del vídeo más su desfase, y la cabecera dice cómo se sincronizó. Nada se interpola: cada fila es un frame real de su vídeo.',
     ],
   },
   {

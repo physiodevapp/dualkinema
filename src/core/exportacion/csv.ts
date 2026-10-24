@@ -4,7 +4,7 @@ import { distanciaPx, incertidumbreEscala, metrosPorPx, type CalibracionVista } 
 import type { VelocidadMarcador } from '../filtros/derivadas'
 import type { TrayectoriaFiltrada } from '../filtros/tramos'
 import type { OrientacionVista } from '../geometria/canonico'
-import type { IdMarcador, Muestra2D } from '../modelo/tipos'
+import type { IdMarcador, MetodoSincronia, Muestra2D, Sincronia } from '../modelo/tipos'
 
 /*
  * Exportación CSV (paso 7 de la fase 2, decisión D7). Una fila por frame, con
@@ -53,6 +53,23 @@ export interface AnguloExportado {
   readonly cero: CeroReferencia | null
 }
 
+/**
+ * Cómo se sincronizó esta vista con la de referencia (fase 3, §8). Solo con varias vistas: el CSV lleva entonces la
+ * columna `t_comun_s` (tiempo del vídeo + desfase) y estos datos en la cabecera. Sin ella (una sola vista) el archivo es
+ * el de siempre.
+ */
+export interface SincronizacionExportada {
+  /** Esta es la vista de referencia: su tiempo es el tiempo común (desfase 0). */
+  readonly referencia: boolean
+  /** Segundos que se suman al tiempo del vídeo para dar el tiempo común. */
+  readonly desfaseS: number
+  readonly metodo: MetodoSincronia
+  /** Si se halló por un evento visual: su instante en la vista de referencia y en esta (s de vídeo). */
+  readonly evento?: Sincronia['evento']
+  /** ± s (suma de medio frame de cada vista); solo con un evento visual. */
+  readonly incertidumbreS?: number
+}
+
 export interface DatosExportacion {
   /** Tiempo de cada frame, en segundos de vídeo. */
   readonly tiempos: ArrayLike<number>
@@ -60,6 +77,8 @@ export interface DatosExportacion {
   /** null si la articulación no es del plano de la vista. */
   readonly angulo: AnguloExportado | null
   readonly calibracion: CalibracionVista | null
+  /** Solo con varias vistas (ver `SincronizacionExportada`). */
+  readonly sincronia?: SincronizacionExportada
   readonly meta: {
     readonly archivo: string
     readonly ancho: number
@@ -142,6 +161,19 @@ function cabecera(d: DatosExportacion, e: Estilo): [string, string][] {
         : ['cero de referencia', 'ninguno (la columna relativa queda vacía)'],
     )
   }
+  const s = d.sincronia
+  if (s) {
+    const metodo = { ninguna: 'sin sincronizar', evento: 'evento visual', audio: 'audio', manual: 'puesta a mano' }[s.metodo]
+    filas.push([
+      'sincronización',
+      s.referencia
+        ? 'vista de referencia: su tiempo es el tiempo común (desfase 0)'
+        : `desfase ${n(s.desfaseS, 3)} s respecto a la vista de referencia; método: ${metodo}` +
+          (s.incertidumbreS !== undefined ? `; precisión ±${n(s.incertidumbreS * 1000, 0)} ms` : '') +
+          (s.evento ? `; evento en ${n(s.evento.referencia, 3)} s de la referencia y en ${n(s.evento.vista, 3)} s de esta vista` : ''),
+    ])
+    filas.push(['t_comun_s', 'tiempo común = tiempo del vídeo (t_s) + desfase: el eje de tiempo que comparten las vistas'])
+  }
   const c = d.calibracion
   if (c) {
     const mpp = metrosPorPx(c)
@@ -168,7 +200,7 @@ function cabecera(d: DatosExportacion, e: Estilo): [string, string][] {
 /** Nombres de columna, en el mismo orden que las celdas de `fila`. */
 function columnas(d: DatosExportacion): string[] {
   const conEscala = d.calibracion !== null
-  const cols = ['t_s', 'frame']
+  const cols = d.sincronia ? ['t_s', 't_comun_s', 'frame'] : ['t_s', 'frame']
   for (const k of d.marcadores) {
     const p = k.id
     cols.push(`${p}_x_px`, `${p}_y_px`, `${p}_calidad`, `${p}_manual`, `${p}_interpolado`, `${p}_filtrado_x_px`, `${p}_filtrado_y_px`)
@@ -195,7 +227,7 @@ export function construirCsv(d: DatosExportacion, formato: FormatoCsv = 'es'): s
   for (const [clave, valor] of cabecera(d, e)) lineas.push(`# ${celda(clave, e)}${e.sep}${celda(valor, e)}`)
   lineas.push(columnas(d).join(e.sep))
   for (let i = 0; i < d.tiempos.length; i++) {
-    const f: string[] = [n(d.tiempos[i], 6), String(i + 1)]
+    const f: string[] = d.sincronia ? [n(d.tiempos[i], 6), n(d.tiempos[i]! + d.sincronia.desfaseS, 6), String(i + 1)] : [n(d.tiempos[i], 6), String(i + 1)]
     for (const mk of d.marcadores) {
       const c = mk.crudo[i]
       const utilizable = c !== undefined && Number.isFinite(c.x) && Number.isFinite(c.y)

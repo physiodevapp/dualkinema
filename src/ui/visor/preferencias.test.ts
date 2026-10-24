@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { esPestana, PESTANA_DEFECTO, pestanaDeTexto, seriesDeTexto } from './preferencias'
+import { comparacionDeTexto, esPestana, PESTANA_DEFECTO, pestanaDeTexto, seriesDeTexto } from './preferencias'
 
 describe('pestaña recordada', () => {
   it('cada una de las cuatro pestañas se reconoce', () => {
@@ -36,5 +36,16 @@ describe('series visibles recordadas', () => {
 
   it('solo valen los valores booleanos: lo demás se ignora y no pisa el de por defecto', () => {
     expect(seriesDeTexto('{"crudo":0,"filtrado":"no","velocidad":null,"extra":false}', defecto)).toEqual({ ...defecto, extra: false })
+  })
+})
+
+describe('modo de comparar las dos vistas recordado', () => {
+  it('los dos modos se reconocen', () => {
+    expect(comparacionDeTexto('alineadas')).toBe('alineadas')
+    expect(comparacionDeTexto('superpuestas')).toBe('superpuestas')
+  })
+
+  it('sin valor o con uno ajeno, las alineadas', () => {
+    for (const v of [null, '', 'superpuesta', 'Alineadas', '{}', 'null']) expect(comparacionDeTexto(v)).toBe('alineadas')
   })
 })

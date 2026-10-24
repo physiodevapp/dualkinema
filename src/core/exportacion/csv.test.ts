@@ -133,6 +133,65 @@ describe('construirCsv', () => {
   })
 })
 
+describe('construirCsv con varias vistas: tiempo común', () => {
+  const conSincronia = (sincronia: NonNullable<DatosExportacion['sincronia']>): DatosExportacion => ({ ...datos(false), sincronia })
+  const columnasDe = (csv: string) => filas(csv).find((l) => !l.startsWith('#'))!.split(';')
+
+  it('una sola vista (sin sincronía): el archivo de siempre, sin columna de tiempo común', () => {
+    const csv = construirCsv(datos(false))
+    expect(columnasDe(csv).slice(0, 3)).toEqual(['t_s', 'frame', 'rodilla_x_px'])
+    expect(filas(csv).some((l) => l.includes('sincronización'))).toBe(false)
+  })
+
+  it('la columna t_comun_s es t_s + desfase en cada fila, justo tras t_s', () => {
+    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.733, metodo: 'evento', evento: { referencia: 1.5, vista: 0.767 }, incertidumbreS: 0.0367 }))
+    expect(columnasDe(csv).slice(0, 4)).toEqual(['t_s', 't_comun_s', 'frame', 'rodilla_x_px'])
+    expect(cuerpo(csv).map((f) => f.split(';').slice(0, 3))).toEqual([
+      ['0,000000', '0,733000', '1'],
+      ['0,100000', '0,833000', '2'],
+      ['0,200000', '0,933000', '3'],
+      ['0,300000', '1,033000', '4'],
+    ])
+    // El resto de columnas no se mueve: las celdas de la fila 0 siguen donde estaban, una más a la derecha.
+    expect(cuerpo(csv)[0]!.split(';')).toHaveLength(cuerpo(construirCsv(datos(false)))[0]!.split(';').length + 1)
+  })
+
+  it('un desfase negativo da tiempo común menor que el del vídeo', () => {
+    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: -0.25, metodo: 'manual' }))
+    expect(cuerpo(csv)[0]!.split(';').slice(0, 2)).toEqual(['0,000000', '-0,250000'])
+    expect(cuerpo(csv)[3]!.split(';').slice(0, 2)).toEqual(['0,300000', '0,050000'])
+  })
+
+  it('la vista de referencia: tiempo común = t_s y la cabecera lo dice', () => {
+    const csv = construirCsv(conSincronia({ referencia: true, desfaseS: 0, metodo: 'ninguna' }))
+    expect(cuerpo(csv)[1]!.split(';').slice(0, 2)).toEqual(['0,100000', '0,100000'])
+    expect(filas(csv).find((l) => l.startsWith('# sincronización'))).toContain('vista de referencia')
+  })
+
+  it('la cabecera da el desfase, el método, la precisión y los instantes del evento', () => {
+    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.48, metodo: 'evento', evento: { referencia: 1, vista: 0.52 }, incertidumbreS: 0.03667 }))
+    const linea = filas(csv).find((l) => l.startsWith('# sincronización'))!
+    expect(linea).toContain('desfase 0,480 s')
+    expect(linea).toContain('método: evento visual')
+    expect(linea).toContain('±37 ms')
+    expect(linea).toContain('evento en 1,000 s de la referencia y en 0,520 s de esta vista')
+    expect(filas(csv).some((l) => l.startsWith('# t_comun_s'))).toBe(true)
+  })
+
+  it('sin evento ni precisión (puesta a mano) la cabecera no inventa ninguno', () => {
+    const linea = filas(construirCsv(conSincronia({ referencia: false, desfaseS: 0.1, metodo: 'manual' }))).find((l) => l.startsWith('# sincronización'))!
+    expect(linea).toContain('método: puesta a mano')
+    expect(linea).not.toContain('precisión')
+    expect(linea).not.toContain('evento en')
+  })
+
+  it('en internacional: punto decimal y la misma columna', () => {
+    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.733, metodo: 'evento' }), 'internacional')
+    expect(csv.split('\r\n').find((l) => !l.startsWith('#'))!.split(',').slice(0, 2)).toEqual(['t_s', 't_comun_s'])
+    expect(csv.split('\r\n').filter((l) => l && !l.startsWith('#'))[1]!.split(',').slice(0, 2)).toEqual(['0.000000', '0.733000'])
+  })
+})
+
 describe('angulosPorFrame', () => {
   it('alinea por t exacto y deja NaN donde no hay valor', () => {
     const r = angulosPorFrame([{ t: 0.1, valor: 5, interpolado: false }, { t: 0.3, valor: 7, interpolado: false }], tiempos)

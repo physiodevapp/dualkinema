@@ -11,6 +11,15 @@ export type IdPestana = (typeof PESTANAS)[number]
 export const PESTANA_DEFECTO: IdPestana = 'marcar'
 export const CLAVE_PESTANA = 'dualkinema.pestana'
 export const CLAVE_SERIES = 'dualkinema.seriesVisibles'
+export const CLAVE_COMPARACION = 'dualkinema.comparacion'
+
+/** Cómo se comparan las dos vistas: una gráfica por vista (alineadas en el tiempo común) o las dos en la misma. */
+export const MODOS_COMPARACION = ['alineadas', 'superpuestas'] as const
+export type ModoComparacion = (typeof MODOS_COMPARACION)[number]
+export const MODO_COMPARACION_DEFECTO: ModoComparacion = 'alineadas'
+
+/** El modo guardado, o el de por defecto si no hay o no es uno de los dos. */
+export const comparacionDeTexto = (v: string | null): ModoComparacion => MODOS_COMPARACION.find((m) => m === v) ?? MODO_COMPARACION_DEFECTO
 
 export const esPestana = (v: unknown): v is IdPestana => typeof v === 'string' && (PESTANAS as readonly string[]).includes(v)
 
@@ -56,3 +65,6 @@ export const guardarPestana = (id: IdPestana) => guardar(CLAVE_PESTANA, id)
 
 export const leerSeriesVisibles = (defecto: Readonly<Record<string, boolean>>) => seriesDeTexto(leer(CLAVE_SERIES), defecto)
 export const guardarSeriesVisibles = (visibles: Readonly<Record<string, boolean>>) => guardar(CLAVE_SERIES, JSON.stringify(visibles))
+
+export const leerModoComparacion = (): ModoComparacion => comparacionDeTexto(leer(CLAVE_COMPARACION))
+export const guardarModoComparacion = (m: ModoComparacion) => guardar(CLAVE_COMPARACION, m)
