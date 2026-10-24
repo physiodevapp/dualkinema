@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { conRodillaFrontal, modeloRodilla3 } from '../core/articulaciones/catalogo'
 import type { OrientacionVista } from '../core/geometria/canonico'
-import type { AjustesFiltro } from '../core/filtros/tramos'
+import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores, Sincronia } from '../core/modelo/tipos'
 import type { VideoAbierto } from '../media/video'
 import { ladoDeVista } from './marcadores'
@@ -29,7 +29,7 @@ interface PropsAnfitriones {
   readonly entradas: readonly EntradaVista[]
   readonly acumuladas: readonly VistaViva[]
   readonly modelo: ModeloMarcadores
-  readonly filtro?: AjustesFiltro | null
+  readonly filtro: AjustesFiltro
   readonly avisoInicial?: string
   readonly activaId: string
   readonly alCambiarFrame: (id: string, frame: number) => void
@@ -77,6 +77,14 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
     setRevSinc((n) => n + 1)
   }, [])
   const entradas = useMemo(() => vistas.map((v) => (sinc[v.id] ? { ...v, ...sinc[v.id] } : v)), [vistas, sinc])
+  // Un solo filtro para toda la sesión: las vistas se comparan con el mismo corte y se guarda uno (cada vista lo limita a
+  // 0,4·sus fps). Vive aquí, como la sincronía, y no en cada vista: antes cada una tenía el suyo y solo se guardaba el de A.
+  const [ajustes, setAjustes] = useState<AjustesFiltro>(filtro ?? AJUSTES_FILTRO_DEFECTO)
+  const [revAjustes, setRevAjustes] = useState(0)
+  const cambiarAjustes = useCallback((a: AjustesFiltro) => {
+    setAjustes(a)
+    setRevAjustes((n) => n + 1)
+  }, [])
   // Pestañas de herramientas. Con un vídeo nuevo (nada marcado todavía) se empieza en «Marcar»; al recuperar un trabajo,
   // en la pestaña que se usó. Viven aquí (no en el cuerpo) para no perderse al abrir otra vista.
   const [pestana, setPestanaAbierta] = useState<string>(() => (recuperada ? leerPestana() : PESTANA_DEFECTO))
@@ -85,7 +93,7 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
     if (esPestana(id)) guardarPestana(id)
   }
   return (
-    <Anfitriones entradas={entradas} acumuladas={[]} modelo={modelo} filtro={filtro} avisoInicial={avisoInicial} activaId={cursor.activaId} alCambiarFrame={cursor.propagar}>
+    <Anfitriones entradas={entradas} acumuladas={[]} modelo={modelo} filtro={ajustes} avisoInicial={avisoInicial} activaId={cursor.activaId} alCambiarFrame={cursor.propagar}>
       {(vivas) => (
         <CuerpoVisor
           vistas={vivas}
@@ -104,6 +112,9 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
           enlazarCursor={cursor.enlazar}
           onSincronia={fijarSincronia}
           revSinc={revSinc}
+          ajustes={ajustes}
+          onCambiarAjustes={cambiarAjustes}
+          revAjustes={revAjustes}
           onElegirVista={cursor.elegirActiva}
           onAnadirVista={onAnadirVista}
         />

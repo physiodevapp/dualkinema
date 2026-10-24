@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
+import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { Sincronia } from '../../core/modelo/tipos'
@@ -79,11 +80,15 @@ interface Props {
   onSincronia: (id: string, desfase: number, sincronia: Sincronia) => void
   /** Sube con cada cambio de desfase o sincronía (para el guardado). */
   revSinc: number
+  /** El filtro de la sesión (uno para todas las vistas), su cambio y su contador de cambios para el guardado. */
+  ajustes: AjustesFiltro
+  onCambiarAjustes: (a: AjustesFiltro) => void
+  revAjustes: number
   onElegirVista: (id: string) => void
   onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista) => void
 }
 
-export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, onElegirVista, onAnadirVista }: Props) {
+export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, ajustes, onCambiarAjustes: cambiarAjustes, revAjustes, onElegirVista, onAnadirVista }: Props) {
   const activaViva = vistas[activa]!
   const orientacion = activaViva.orientacion
   // Lo de la vista activa: sus marcadores y su articulación.
@@ -136,8 +141,6 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     guardarEscala,
     quitarEscala,
     segmentos,
-    ajustes,
-    cambiarAjustes,
     cambiarTramo,
     resumen,
     filtrado,
@@ -169,11 +172,11 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     quitarMarcasPosteriores,
   } = activaViva
 
-  // Se guardan todas las vistas; los ajustes del filtro son los de la vista de referencia (la primera).
+  // Se guardan todas las vistas, con el filtro de la sesión.
   const guardado = useGuardado({
     sesion,
     modelo,
-    filtro: vistas[0]!.ajustes,
+    filtro: ajustes,
     vistas: vistas.map((w) => ({
       id: w.id,
       huella: w.huella,
@@ -186,7 +189,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       marcadores: w.marcadores,
     })),
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: revSinc + vistas.reduce((suma, w) => suma + w.version + w.revAjustes + w.revCeros + w.revCalibracion, 0),
+    version: revSinc + revAjustes + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion, 0),
     recuperada,
     sinGuardar,
   })

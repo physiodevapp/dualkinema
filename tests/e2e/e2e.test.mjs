@@ -724,6 +724,47 @@ describe('filtro: el corte se guarda con la sesión', () => {
   })
 })
 
+describe('filtro: uno para toda la sesión, también con dos vistas', () => {
+  // Antes cada vista tenía su corte y solo se guardaba el de A: cambiado con B activa, al recuperar B volvía al de A.
+  it('cambiar el corte con B activa lo cambia en las dos, se guarda y se mantiene al recuperar', async () => {
+    const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
+    const corte = () => p.getByRole('slider', { name: 'Frecuencia de corte del filtro' })
+    try {
+      await abrirPestana(p, 'video')
+      await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.frontal.ruta)
+      await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+      await p.getByTestId('conmutador-vista').waitFor()
+      await esperarQuieto(p)
+      await p.getByTestId('vista-B').click()
+      await esperarQuieto(p)
+      await abrirPestana(p, 'analisis')
+      assert.equal(await corte().inputValue(), '6', 'B arranca con el corte de la sesión')
+      await corte().fill('9')
+      assert.match(await textoDe(p, 'corte'), /9,0 Hz/)
+      await p.getByTestId('vista-A').click()
+      await esperarQuieto(p)
+      assert.equal(await corte().inputValue(), '9', 'A tiene el mismo corte')
+      assert.match(await textoDe(p, 'corte'), /9,0 Hz/)
+      await esperarFiltroGuardado(p, 9)
+      await p.reload()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('heading', { name: 'Ya has trabajado con este vídeo' }).waitFor({ timeout: 20000 })
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click()
+      await p.getByTestId('faltan-videos').waitFor({ timeout: 20000 })
+      await elegirArchivoDesde(p, p.getByRole('button', { name: 'Elegir el vídeo que falta' }), videos.frontal.ruta)
+      await p.getByTestId('conmutador-vista').waitFor({ timeout: 20000 })
+      await esperarQuieto(p)
+      await abrirPestana(p, 'analisis')
+      assert.equal(await corte().inputValue(), '9', 'A al recuperar')
+      await p.getByTestId('vista-B').click()
+      await esperarQuieto(p)
+      assert.equal(await corte().inputValue(), '9', 'B al recuperar (antes volvía al de A sin aviso)')
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('persistencia: recuperar a medio marcar', () => {
   it('elige el primer marcador que falta, como al marcar', async () => {
     const p = await abrirApp(navegador)
