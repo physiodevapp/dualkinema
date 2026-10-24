@@ -20,6 +20,9 @@ import type { SesionAbierta } from './visor/useGuardado'
 import type { EntradaVista } from './visor/vistas'
 // El visor (con la gráfica y uPlot) solo se descarga al abrir un vídeo.
 const Visor = lazy(() => import('./Visor'))
+// El laboratorio de la fase 4 (qué da este móvil al grabar) solo existe con `?laboratorio` y solo se descarga entonces.
+const Laboratorio = lazy(() => import('./Laboratorio'))
+const HAY_LABORATORIO = new URLSearchParams(location.search).has('laboratorio')
 
 type Estado =
   | { fase: 'inicio'; error?: string }
@@ -334,6 +337,11 @@ function Aplicacion() {
           )}
           <Compatibilidad />
           <SesionesGuardadas ocupado={estado.fase === 'cargando'} onContinuar={(c) => elegirArchivo(c)} />
+          {HAY_LABORATORIO && (
+            <Suspense fallback={<p className="text-texto-2">Cargando el laboratorio…</p>}>
+              <Laboratorio alAbrir={(archivo) => void cargar(archivo, null)} />
+            </Suspense>
+          )}
         </div>
       )}
 

@@ -26,6 +26,7 @@ import {
   frameMasCercano,
   irAFrame,
   lanzarNavegador,
+  lanzarNavegadorConCamaraFalsa,
   leerAngulo,
   textoDe,
   leerFrameDibujado,
@@ -3814,6 +3815,88 @@ describe('dos vistas: gráficas en el tiempo común y CSV con tiempo común', ()
     assert.ok(Math.abs(Number(b.filas[50][iAng].replace(',', '.')) - videos.frontal25.verdad[50].fppa) < TOLERANCIA_GRADOS)
     await p.getByTestId('vista-A').click()
     await esperarQuieto(p)
+  })
+})
+
+describe('laboratorio de grabación (fase 4, paso 1)', () => {
+  let nav
+  before(async () => {
+    nav = await lanzarNavegadorConCamaraFalsa()
+  })
+  after(() => nav?.close())
+
+  /** Lo que dice el informe de una clave («frames: 90» → 90). */
+  const numeroDe = (informe, clave) => {
+    const m = new RegExp(`^\\s*${clave}: (-?[\\d.]+)$`, 'm').exec(informe)
+    assert.ok(m, `el informe no tiene «${clave}»:\n${informe}`)
+    return Number(m[1])
+  }
+
+  it('sin ?laboratorio no aparece', async () => {
+    const p = await abrirApp(nav)
+    try {
+      assert.equal(await p.getByTestId('laboratorio').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('mide el móvil: entorno, códecs, micrófono y la cámara en cada modo, con los fps que entrega', async () => {
+    const p = await abrirApp(nav, { consulta: '?laboratorio' })
+    try {
+      await p.getByTestId('lab-medir').click()
+      await p.getByTestId('lab-informe').waitFor({ timeout: 10000 })
+      // El último apartado es el de las cámaras: cuando está, están todos.
+      await p.waitForFunction(() => document.querySelector('[data-testid=lab-informe]')?.value.includes('## Cámaras'), null, { timeout: 120000 })
+      const informe = await p.getByTestId('lab-informe').inputValue()
+      for (const titulo of ['## Entorno', '## Almacenamiento y pantalla', '## Códecs que codifica', '## Micrófono sin procesar', '## Cámaras']) {
+        assert.ok(informe.includes(titulo), `falta ${titulo}`)
+      }
+      assert.match(informe, /VideoEncoder: sí/)
+      assert.match(informe, /MediaStreamTrackProcessor: sí/)
+      assert.match(informe, /echoCancellation: no/, 'el micrófono se abre sin cancelación de eco')
+      assert.match(informe, /autoGainControl: no/)
+      // La cámara falsa da 20 fps aunque se le pidan 30: el laboratorio mide lo que entrega (no se fía de lo pedido), dice
+      // que no es lo pedido, y lo medido coincide con lo concedido.
+      const modo = informe.slice(informe.indexOf('pedido: 1280×720 a 30'))
+      const concedido = Number(/concedido: \d+×\d+ a ([\d.]+)/.exec(modo)?.[1])
+      assert.ok(Math.abs(numeroDe(modo, 'fpsMediano') - concedido) < 0.1 * concedido, `medido ${numeroDe(modo, 'fpsMediano')}, concedido ${concedido}`)
+      assert.match(modo, /esLoPedido: no/)
+      assert.equal(await p.getByTestId('lab-error').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('graba una prueba, la analiza y se abre en el visor con los frames que el informe cuenta', async () => {
+    const p = await abrirApp(nav, { consulta: '?laboratorio&duracion=3' })
+    try {
+      await p.getByTestId('lab-modo').selectOption('720p30')
+      // La cámara falsa no tiene control de exposición: la opción no debe romper la grabación y el informe lo dice.
+      await p.getByTestId('lab-exposicion').selectOption('corta')
+      await p.getByTestId('lab-grabar').click()
+      // La vista previa se ve mientras graba.
+      await p.getByTestId('lab-vista').waitFor({ state: 'visible', timeout: 10000 })
+      await p.getByTestId('lab-resultado').waitFor({ timeout: 60000 })
+      assert.equal(await p.getByTestId('lab-error').count(), 0)
+      const informe = await p.getByTestId('lab-informe').inputValue()
+      const grabado = informe.slice(informe.indexOf('vídeoGrabado:'))
+      const frames = numeroDe(grabado, 'frames')
+      assert.ok(frames >= 50 && frames <= 100, `frames de 3 s (la cámara falsa da 20 fps): ${frames}`)
+      assert.match(informe, /exposicion:\n\s+modo: corta/)
+      assert.ok(numeroDe(grabado, 'duracionS') > 2.5 && numeroDe(grabado, 'duracionS') < 4)
+      assert.ok(numeroDe(grabado, 'fotogramasClave') >= 2, 'un fotograma clave por segundo')
+      assert.match(informe, /audioGrabado:\n\s+codec: /, 'el archivo lleva audio')
+      assert.ok(Number.isFinite(numeroDe(informe, 'inicioAudioMenosVideoMs')))
+
+      // Lo que dice el informe es lo que abre el visor: el mismo número de frames.
+      await p.getByTestId('lab-abrir').click()
+      await p.getByRole('button', { name: 'Mira a la derecha' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      assert.equal((await leerPosicion(p)).total, frames)
+    } finally {
+      await p.close()
+    }
   })
 })
 

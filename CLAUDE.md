@@ -202,7 +202,7 @@ Si durante el trabajo detectas otras mejoras de arquitectura o de análisis (en 
 
 Trabaja **una fase cada vez**. No adelantes funcionalidad de fases futuras salvo lo necesario para no bloquearlas.
 
-**Estado:** fases 1, 2 y 3 **cerradas**. Lo decidido, cómo quedó cada pieza, la revisión de código y las limitaciones conocidas están en `docs/plan-fase-1.md` (§12), `docs/plan-fase-2.md` (§12) y `docs/plan-fase-3.md` (§10). Siguiente: fase 4 (grabación con dos móviles), sin plan todavía.
+**Estado:** fases 1, 2 y 3 **cerradas**. Lo decidido, cómo quedó cada pieza, la revisión de código y las limitaciones conocidas están en `docs/plan-fase-1.md` (§12), `docs/plan-fase-2.md` (§12) y `docs/plan-fase-3.md` (§10). **Fase 4** (grabación con dos móviles) en curso: plan aceptado en `docs/plan-fase-4.md` (decisiones D1–D12 y orden de pasos); hecho el paso 1, el laboratorio (`?laboratorio`: qué da cada móvil al grabar; `src/media/laboratorio.ts`, `src/ui/Laboratorio.tsx`).
 
 ## Ideas apuntadas (sin fase asignada)
 - **Glosario:** hecho en la fase 3 (paso 1): ver «Glosario» en las reglas de interfaz.
