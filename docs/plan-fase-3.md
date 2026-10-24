@@ -142,7 +142,7 @@ Un CSV por vista, con el formato de la fase 2 más una columna `t_comun_s` (tiem
 | 5 | Sincronización por audio (decodificar, envolvente, GCC-PHAT en un worker) | Opus |
 | 6 | Medida frontal (FPPA de rodilla) en el catálogo, con su convención y test; modelo frontal | Opus |
 | 7 | Gráficas en el tiempo común (alineadas y superpuestas) y CSV con tiempo común | Sonnet |
-| 8 | Cierre de fase: revisión, documentación y limitaciones | Opus |
+| 8 | Cierre de fase: revisión, documentación y limitaciones. **Además, apuntar en «Ideas apuntadas» de `CLAUDE.md`** (pedido por el usuario): protocolos de colocación de marcadores tipo BTS (modelo + vistas + articulaciones por vista + colocación de cada gomet; varias articulaciones por vista; ángulos absolutos respecto a la vertical; segmentos con 3 marcadores pensando en 3D), miembro superior (hombro, codo; limitado en 2D) como fase previa a la 3D, y la marcha (eventos del ciclo, % del ciclo, curva media ± DE, parámetros espaciotemporales) como fase aparte | Opus |
 
 Los pasos 4 y 5 se pueden intercambiar: el 4 da antes algo usable con cualquier vídeo; el 5 necesita vídeos reales con palmada para afinarse.
 
