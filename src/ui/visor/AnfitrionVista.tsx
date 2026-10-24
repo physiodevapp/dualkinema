@@ -8,8 +8,8 @@ import type { EntradaVista, VistaViva } from './vistas'
 interface Props {
   readonly entrada: EntradaVista
   readonly modelo: ModeloMarcadores
-  /** Al recuperar: el ajuste del filtro guardado (null = el de por defecto). */
-  readonly filtro?: AjustesFiltro | null
+  /** El ajuste del filtro, uno para toda la sesión. */
+  readonly filtro: AjustesFiltro
   readonly avisoInicial?: string
   /** Es la vista que se marca; las demás siguen el cursor común. */
   readonly activa: boolean

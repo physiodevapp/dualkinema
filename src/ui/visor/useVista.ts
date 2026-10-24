@@ -31,8 +31,8 @@ interface Opciones {
   readonly modelo: ModeloMarcadores
   /** Al recuperar una sesión: las trayectorias de esta vista tal como se guardaron. */
   readonly inicial?: Map<IdMarcador, (Muestra2D | undefined)[]>
-  /** Al recuperar: el ajuste del filtro guardado (null = el de por defecto). */
-  readonly filtro?: AjustesFiltro | null
+  /** El ajuste del filtro, uno para toda la sesión (lo lleva `Visor.tsx`). */
+  readonly filtro: AjustesFiltro
   /** Al recuperar: el tramo estático del cero de referencia, por articulación. */
   readonly cerosGuardados?: Readonly<Record<string, TramoEstatico>>
   /** Al recuperar: la escala de la vista (null = sin escala). */
@@ -145,11 +145,9 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
     return [articulacion.proximal, articulacion.distal].map((s) => ({ desde: s.desde, hasta: s.hasta, nombre: `${nombre(s.desde)} – ${nombre(s.hasta)}` }))
   }, [modelo, articulacion])
-  // Análisis: ajuste del filtro, cero de referencia, serie del ángulo, lo filtrado, series por frame y segmentos.
+  // Análisis: cero de referencia, serie del ángulo, lo filtrado (con el filtro de la sesión), series por frame y segmentos.
   const {
     ajustes,
-    cambiarAjustes,
-    revAjustes,
     ceros,
     cambiarTramo,
     revCeros,
@@ -172,7 +170,7 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     segmentos,
     calibracion,
     siguiendo,
-    filtroInicial: filtro,
+    ajustes: filtro,
     cerosIniciales: cerosGuardados,
   })
   // ---- Escala ----
@@ -335,8 +333,6 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     quitarEscala,
     segmentos,
     ajustes,
-    cambiarAjustes,
-    revAjustes,
     ceros,
     cambiarTramo,
     revCeros,

@@ -4,7 +4,7 @@ import { ceroDeReferencia, type TramoEstatico } from '../../core/articulaciones/
 import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
 import { metrosPorPx, type CalibracionVista } from '../../core/calibracion/escala'
 import { constanciaSegmento } from '../../core/calibracion/segmentos'
-import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../../core/filtros/tramos'
+import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import { resumirSerie } from '../../core/graficas/rango'
 import { seriePorFrame } from '../../core/graficas/series'
@@ -26,13 +26,14 @@ interface Opciones {
   /** Escala de la vista: con ella, las velocidades de los marcadores en m/s. */
   readonly calibracion: CalibracionVista | null
   readonly siguiendo: boolean
-  /** Al recuperar: el ajuste del filtro guardado (null o sin dar = el de por defecto) y los tramos del cero. */
-  readonly filtroInicial?: AjustesFiltro | null
+  /** El ajuste del filtro, uno para toda la sesión (lo lleva `Visor.tsx`, que lo guarda). */
+  readonly ajustes: AjustesFiltro
+  /** Al recuperar: los tramos del cero. */
   readonly cerosIniciales?: Readonly<Record<string, TramoEstatico>>
 }
 
 /**
- * El análisis de la vista: ajuste del filtro y cero de referencia (con sus contadores de cambios, para el guardado),
+ * El análisis de la vista: cero de referencia (con su contador de cambios, para el guardado), con el filtro de la sesión;
  * la serie del ángulo sin filtrar y su resumen, lo filtrado (coordenadas, ángulo, derivadas y velocidades), las series
  * por frame de la gráfica y del CSV, el cero, y la longitud de los segmentos.
  */
@@ -46,17 +47,9 @@ export function useAnalisis({
   segmentos,
   calibracion,
   siguiendo,
-  filtroInicial,
+  ajustes,
   cerosIniciales,
 }: Opciones) {
-  // Ajuste del filtro: se guarda con la sesión. `revAjustes` cuenta sus cambios
-  // para que el guardado automático los vea (como `version` con las trayectorias).
-  const [ajustes, setAjustes] = useState<AjustesFiltro>(filtroInicial ?? AJUSTES_FILTRO_DEFECTO)
-  const [revAjustes, setRevAjustes] = useState(0)
-  const cambiarAjustes = useCallback((a: AjustesFiltro) => {
-    setAjustes(a)
-    setRevAjustes((r) => r + 1)
-  }, [])
   // Cero de referencia (paso 5): tramo estático por articulación; se guarda
   // el tramo y la media se recalcula con lo filtrado.
   const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>(cerosIniciales ?? {})
@@ -125,8 +118,6 @@ export function useAnalisis({
 
   return {
     ajustes,
-    cambiarAjustes,
-    revAjustes,
     ceros,
     cambiarTramo,
     revCeros,
