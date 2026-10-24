@@ -347,13 +347,16 @@ export async function informeAudio(): Promise<Dato> {
  * - auto: como la app de cámara;
  * - bloqueada: tras 1 s de ajuste automático, se fijan exposición, ISO y enfoque en lo que la cámara eligió (sin que el
  *   enfoque «busque» ni la exposición cambie a mitad de la toma);
- * - corta: exposición manual de 1/120 s con ISO alto (menos desenfoque de movimiento y fps constantes si hay luz; la imagen
+ * - corta: exposición manual de 1/100 s con ISO alto (menos desenfoque de movimiento y fps constantes si hay luz; la imagen
  *   sale más oscura).
  */
 export type ModoExposicion = 'auto' | 'bloqueada' | 'corta'
 
-/** Exposición (en unidades de 100 µs que usa Chrome) de «corta»: 1/120 s. */
-const EXPOSICION_CORTA = 83
+/**
+ * Exposición (en unidades de 100 µs que usa Chrome) de «corta»: 1/100 s. Con red de 50 Hz las bombillas parpadean a 100 Hz, y
+ * una exposición que es múltiplo de ese ciclo da el mismo brillo en todos los frames (1/120 s lo haría pulsar).
+ */
+const EXPOSICION_CORTA = 100
 
 export interface OpcionesGrabacion {
   readonly exposicion?: ModoExposicion

@@ -50,7 +50,7 @@ const duracionDePrueba = (): number => {
 const EXPOSICIONES: readonly { id: ModoExposicion; etiqueta: string }[] = [
   { id: 'auto', etiqueta: 'Automáticos (como la app de cámara)' },
   { id: 'bloqueada', etiqueta: 'Bloqueados en lo que elija la cámara' },
-  { id: 'corta', etiqueta: 'Exposición corta (1/120 s), más oscura' },
+  { id: 'corta', etiqueta: 'Exposición corta (1/100 s), más oscura' },
 ]
 
 const estiloBoton = 'flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3 text-texto disabled:opacity-40'
