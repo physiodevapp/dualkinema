@@ -9,7 +9,7 @@ import { join } from 'node:path'
 
 export const FPS = 30
 /** Súbelo si cambias cualquier generador: invalida la caché de vídeos. */
-const VERSION = 3
+const VERSION = 4
 
 export const VERDE = [40, 200, 90]
 export const ROJO = [210, 45, 55]
@@ -159,15 +159,17 @@ async function generarRodilla(dir, nombre, color, oculto = () => false, { posici
 export const valgoEn = (t) => 10 * (1 - Math.cos((Math.PI * t) / 2))
 
 /**
- * Pierna izquierda vista de frente (la cámara delante: la izquierda de la persona queda a la derecha de la imagen), con
- * los gomets del FPPA: muslo proximal, centro de la rodilla y centro del tobillo. La rodilla va hacia dentro (hacia la
- * izquierda de la imagen) repartiendo el valgo entre el muslo y la pierna, así que el FPPA es exactamente `valgoEn(t)`.
+ * Pierna derecha vista de frente (la cámara delante: la derecha de la persona queda a la izquierda de la imagen), con
+ * los gomets del FPPA: muslo proximal, centro de la rodilla y centro del tobillo. Es la pierna que ve la vista de perfil
+ * `verde` (la persona mira a la derecha de la imagen: se ve su lado derecho). La rodilla va hacia dentro (hacia la línea
+ * media, a la derecha de la imagen) repartiendo el valgo entre el muslo y la pierna, así que el FPPA es exactamente
+ * `valgoEn(t)`.
  */
 function posicionesFrontales(t) {
   const v = (valgoEn(t) * Math.PI) / 180
-  const muslo = { x: 330, y: 50 }
-  const rodilla = { x: muslo.x - 130 * Math.sin(v / 2), y: muslo.y + 130 * Math.cos(v / 2) }
-  const tobillo = { x: rodilla.x + 120 * Math.sin(v / 2), y: rodilla.y + 120 * Math.cos(v / 2) }
+  const muslo = { x: 310, y: 50 }
+  const rodilla = { x: muslo.x + 130 * Math.sin(v / 2), y: muslo.y + 130 * Math.cos(v / 2) }
+  const tobillo = { x: rodilla.x - 120 * Math.sin(v / 2), y: rodilla.y + 120 * Math.cos(v / 2) }
   return [muslo, rodilla, tobillo]
 }
 
@@ -282,7 +284,7 @@ export async function asegurarVideos() {
     numerado25: { ruta: join(dir, 'numerado25.webm'), ...leer('numerado25') },
     verde: { ruta: join(dir, 'verde.webm'), verdad: leer('verde') },
     rojo: { ruta: join(dir, 'rojo.webm'), verdad: leer('rojo') },
-    // La pierna izquierda de frente, con el FPPA real de cada frame (`fppa`).
+    // La pierna derecha de frente (la que ve `verde` de perfil), con el FPPA real de cada frame (`fppa`).
     frontal: { ruta: join(dir, 'frontal.webm'), verdad: leer('frontal') },
     // Lo mismo a 25 fps constantes (100 frames).
     frontal25: { ruta: join(dir, 'frontal25.webm'), verdad: leer('frontal25') },

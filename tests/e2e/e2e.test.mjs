@@ -3429,7 +3429,7 @@ describe('glosario', () => {
 })
 
 describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
-  // A = «verde» (perfil, la persona mira a la derecha: pierna izquierda) y B = «frontal» (la misma pierna de frente, con
+  // A = «verde» (perfil, la persona mira a la derecha: pierna derecha) y B = «frontal» (la misma pierna de frente, con
   // gomets en el muslo proximal, el centro de la rodilla y el centro del tobillo, y un valgo real de 0 → 20 → 0°).
   let p
   const verdad = () => videos.frontal.verdad
@@ -3452,7 +3452,7 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
     assert.match(radios, /Centro del tobillo/)
     assert.doesNotMatch(radios, /Trocánter|Epicóndilo|Maléolo/)
     // De frente se ven las dos piernas: no dice «la que ve la cámara».
-    assert.match(await p.getByText(/^pierna izquierda/).innerText(), /^pierna izquierda$/)
+    assert.match(await p.getByText(/^pierna derecha/).innerText(), /^pierna derecha$/)
     const grafica = await p.getByTestId('panel-grafica').innerText()
     assert.match(grafica, /RODILLA IZQUIERDA/i)
     assert.match(grafica, /valgo \+/)
@@ -3492,9 +3492,9 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
       bd.close()
       return todas[0]
     })
-    assert.deepEqual(c.vistas[0].marcadores, ['trocanter_izq', 'epicondilo_femoral_izq', 'maleolo_izq'])
-    assert.deepEqual(c.vistas[1].marcadores, ['muslo_proximal_izq', 'centro_rodilla_izq', 'centro_tobillo_izq'])
-    assert.deepEqual(c.modelo.articulaciones.map((a) => a.id), ['rodilla_sagital_izq', 'rodilla_frontal_izq'])
+    assert.deepEqual(c.vistas[0].marcadores, ['trocanter_der', 'epicondilo_femoral_der', 'maleolo_der'])
+    assert.deepEqual(c.vistas[1].marcadores, ['muslo_proximal_der', 'centro_rodilla_der', 'centro_tobillo_der'])
+    assert.deepEqual(c.modelo.articulaciones.map((a) => a.id), ['rodilla_sagital_der', 'rodilla_frontal_der'])
     await p.reload()
     await p.setInputFiles('input[type=file]', videos.frontal.ruta)
     await p.getByRole('heading', { name: 'Ya has trabajado con este vídeo' }).waitFor({ timeout: 20000 })

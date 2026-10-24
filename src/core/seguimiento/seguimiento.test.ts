@@ -200,9 +200,9 @@ describe('seguir', () => {
 
 describe('SeguidorMultiple', () => {
   it('rodilla sintética: 3 gomets seguidos dan el ángulo real con error < 1°', () => {
-    const l = 'izq' as const
+    const l = 'der' as const
     const m = marcadores(l)
-    // Persona mirando a la derecha (se ve su lado izquierdo). Flexión 0 → 90° → 0.
+    // Persona mirando a la derecha (se ve su lado derecho). Flexión 0 → 90° → 0.
     const flexion = (t: number) => 45 * (1 - Math.cos(Math.PI * t))
     const discos = (t: number): Disco[] => {
       const k = (flexion(t) * Math.PI) / 180

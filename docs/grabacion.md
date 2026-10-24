@@ -63,7 +63,7 @@ Con un segundo móvil, la misma pierna de frente da el valgo dinámico (FPPA). R
 | 2 | **Centro de la rodilla** | Centro de la rótula, con la rodilla extendida |
 | 3 | **Centro del tobillo** | Punto medio entre los dos maléolos, en la cara anterior |
 
-- En la misma pierna que se graba de perfil (la app la toma de la vista lateral: si la persona mira a la derecha, la izquierda).
+- En la misma pierna que se graba de perfil (la app la toma de la vista lateral: la que ve la cámara; si la persona mira a la derecha de la imagen, su pierna derecha).
 - **Cámara de frente, perpendicular y a la altura de la rodilla**, a 2–3 m, fija. El FPPA es una proyección: con la cámara en diagonal o la persona girada, una flexión se ve como valgo.
 - Del mismo color que los laterales vale (cada vista sigue los suyos), pero que no se toquen entre sí.
 - **Para sincronizar las dos vistas:** una palmada (o un golpe seco) al empezar, que se vea y se oiga en los dos vídeos. En la app: «Vídeo» → «Añadir la segunda vista» → «La cámara la ve de frente», y en «Sincronizar las vistas», marcar el frame de la palmada en cada una.
