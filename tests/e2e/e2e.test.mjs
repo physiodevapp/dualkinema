@@ -3284,7 +3284,8 @@ describe('glosario', () => {
       await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.numerado25.ruta)
       await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
       await p.getByTestId('conmutador-vista').waitFor()
-      await p.getByTestId('info-tiempo-comun').click()
+      // Dos iconos llevan a esta entrada (la comparación de las gráficas y la sincronía): se prueba el de la sincronía.
+      await p.getByTestId('sincronizar-vistas').getByTestId('info-tiempo-comun').click()
       await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
       assert.match(await p.getByTestId('glosario-tiempo-comun').innerText(), /tiempo común = tiempo del vídeo \+ desfase/)
       await p.keyboard.press('Escape')
