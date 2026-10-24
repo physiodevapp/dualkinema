@@ -4,13 +4,15 @@ Análisis cinemático diferido a partir de vídeo, siguiendo marcadores colocado
 
 **Todo el procesamiento ocurre en el navegador**: los vídeos y los datos nunca salen del dispositivo.
 
-Estado: fases 1 (base y prototipo, [`docs/plan-fase-1.md`](docs/plan-fase-1.md)) y 2 (calibración y cálculos, [`docs/plan-fase-2.md`](docs/plan-fase-2.md)) cerradas; siguiente, la fase 3 (dos vistas sincronizadas).
+Estado: fases 1 (base y prototipo, [`docs/plan-fase-1.md`](docs/plan-fase-1.md)), 2 (calibración y cálculos, [`docs/plan-fase-2.md`](docs/plan-fase-2.md)) y 3 (dos vistas, [`docs/plan-fase-3.md`](docs/plan-fase-3.md)) cerradas; siguiente, la fase 4 (grabación con dos móviles).
 
-Qué hace hoy, con una vista de perfil y 3 gomets en la pierna (rodilla en el plano sagital):
+Qué hace hoy, con una vista de perfil y 3 gomets en la pierna (rodilla en el plano sagital) y, si se quiere, otra de frente:
 - avance frame a frame con el tiempo real de cada frame (también con fps variable), seguimiento de los gomets por color, corrección a mano con lupa y relleno de huecos cortos solo a petición;
 - ángulo de rodilla crudo y filtrado (Butterworth de fase cero), velocidad y aceleración angulares, cero de referencia en un tramo estático;
 - escala en metros (con un objeto de longitud conocida o entre dos gomets medidos con cinta), velocidad de cada gomet en m/s y comprobación de la longitud de los segmentos;
 - gráficas en segundos y trayectoria sobre el vídeo; exportación a CSV (Excel en español o formato internacional).
+- una segunda vista de frente (FPPA de la rodilla: valgo dinámico), sincronizada por un evento visual o por el audio (con la comprobación del evento), con cursor común, las dos medidas en el tiempo común (alineadas o superpuestas) y un CSV por vista con el tiempo común;
+- glosario dentro de la app, con un icono junto a cada valor o aviso.
 
 El trabajo se guarda solo en el dispositivo (IndexedDB), sin el vídeo: al volver a abrir el mismo archivo se puede recuperar. Cómo grabar y colocar los gomets: [`docs/grabacion.md`](docs/grabacion.md).
 

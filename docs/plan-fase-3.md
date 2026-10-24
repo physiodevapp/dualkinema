@@ -152,7 +152,7 @@ Un CSV por vista, con el formato de la fase 2 más una columna `t_comun_s` (tiem
 | 5 | Sincronización por audio (decodificar, envolvente, GCC-PHAT en un worker) | Opus |
 | 6 | Medida frontal (FPPA de rodilla) en el catálogo, con su convención y test; modelo frontal | Opus |
 | 7 | Gráficas en el tiempo común (alineadas y superpuestas) y CSV con tiempo común | Sonnet |
-| 8 | Cierre de fase: revisión, documentación y limitaciones | Opus |
+| 8 | Cierre de fase: revisión, documentación y limitaciones. **Además, apuntar en «Ideas apuntadas» de `CLAUDE.md`** (pedido por el usuario): protocolos de colocación de marcadores tipo BTS (modelo + vistas + articulaciones por vista + colocación de cada gomet; varias articulaciones por vista; ángulos absolutos respecto a la vertical; segmentos con 3 marcadores pensando en 3D), miembro superior (hombro, codo; limitado en 2D) como fase previa a la 3D, y la marcha (eventos del ciclo, % del ciclo, curva media ± DE, parámetros espaciotemporales) como fase aparte (hecho en el cierre) | Opus |
 
 Los pasos 4 y 5 se pueden intercambiar: el 4 da antes algo usable con cualquier vídeo; el 5 necesita vídeos reales con palmada para afinarse.
 
@@ -181,3 +181,60 @@ Los pasos 4 y 5 se pueden intercambiar: el 4 da antes algo usable con cualquier 
 ## Qué necesito del usuario
 
 - Antes del paso 5: **dos vídeos reales** de la misma sentadilla, grabados a la vez con dos móviles (uno de lado, otro de frente, a la altura de la rodilla), con una **palmada** al principio que se vea y se oiga en los dos. Con ellos se mide el retardo audio–vídeo y se afina la sincronización.
+
+## 10. Cierre de la fase 3
+
+### Revisión de código (paso 8)
+
+Revisado lo que añade la fase 3: núcleo (`tiempo/comun.ts`, `sincronia/`, `articulaciones/modeloVista.ts` y el FPPA del catálogo, la cabecera del CSV, el esquema 3 y su migración), los workers del seguimiento y del audio con su protocolo, `media/audio.ts`, y la interfaz de las dos vistas (`Visor.tsx`, `AnfitrionVista`, `CuerpoVisor`, `useVista`, `useCursorComun`, `AnadirVista`, `SincronizarVistas`, `useSincronizarAudio`, `PanelComparacion`, `App.tsx` y `recuperacion.ts`), además de `tests/e2e/`. Como en la fase 2, se ha buscado sobre todo lo que puede dar un resultado equivocado sin avisar, y cada hallazgo se ha comprobado con una prueba que fallaba sin el arreglo. El usuario eligió un PR por hallazgo (A, B, C y D) y este, el de cierre, con la documentación.
+
+**Corregido (un PR cada uno):**
+
+- **A. Cada vista tenía su propio filtro, pero solo se guardaba el de la referencia.** Con B activa se podía poner otro corte (p. ej. 9 Hz en B y 6 Hz en A): las dos medidas de la comparación salían filtradas distinto sin decirlo, y al recuperar B volvía con el de A. Decidido por el usuario: **un solo filtro para la sesión**. El ajuste vive en `Visor.tsx` (como la sincronía) y cada vista lo recibe (`useAnalisis` ya no tiene estado propio); cambiarlo desde cualquier vista cambia las dos y se guarda. e2e: con B activa a 9 Hz, A también muestra 9 Hz, y al recuperar las dos siguen en 9.
+- **B. Las gráficas «Alineadas» se redibujaban enteras con cada cambio de frame** (sus series se creaban en cada render, y `GraficaTiempo` veía datos nuevos). Rompía la regla de la fase 2 (el cursor va en su capa y cambiar de frame no llama a `redraw`) y hacía ir a tirones el avance mantenido con dos vistas en el móvil. Ahora las series se memorizan. e2e: `data-redibujos` de las gráficas de la comparación (alineadas y superpuestas) no cambia al ir a los frames 30, 60 y 90.
+- **C. La cabecera del CSV, con la sincronía por audio, daba la precisión del evento y no la del audio,** y no decía la calidad del pico, ni la comprobación con el evento, ni un ajuste a mano. Ahora: con audio, `método: audio; calidad del pico Q; precisión del audio ±0,5 ms (no incluye el retardo entre sonido e imagen de cada móvil)` y, si hay evento, otra línea `sincronización: comprobación` con los instantes del evento, el desfase que da (±N ms) y la diferencia con el audio (y si discrepan); con un evento como método, su precisión y los instantes; un ajuste fino, en los dos casos, «ajustada ±N ms a mano sobre lo que dio el método». Tests de núcleo (evento ajustado, audio sin evento, audio con comprobación que discrepa, audio ajustado) y e2e con el CSV de B tras sincronizar por audio.
+- **D. Cuatro arreglos pequeños** (sin efecto visible en el uso normal):
+  1. «Añadir vista» dejaba abierto el vídeo pendiente (el que espera a que se diga cómo se ve a la persona) si el panel se desmontaba —cambiar de vídeo, salir del visor— o si la lectura acababa después. Ahora se cierra.
+  2. Al abrir el vídeo que falta de una sesión de dos vistas, el error de una apertura ya sustituida (se abrió otra cosa mientras tanto) se aplicaba a la nueva. Ahora se ignora, como ya se hacía al acabar bien.
+  3. La sincronía por audio ignora los mensajes de un worker ya sustituido (se volvió a empezar o se descartó).
+  4. El ajuste fino con un vídeo de un solo frame (sin fps mediano) dejaba el desfase en NaN. Ahora no lo mueve y sus botones están desactivados. Test de núcleo.
+
+**Revisado sin fallos:** convenio del desfase (`t_ref − t_vista`) igual en el evento, el audio, el tiempo común y el CSV; `frameVisibleEnComun` con 30 y 25 fps y fuera de cada vídeo; incertidumbre del evento (medio paso de cada vista); envolvente (colocación por recuento de muestras, huecos de más de 1 ms, arranque ignorado, trozos frente a una vez); GCC-PHAT (correlación lineal sin vuelta, ventana y solape, parábola acotada, tope de la calidad); comparación audio–evento (solo informa); esquema 3 (validación de la referencia y su desfase 0, migración 2 → 3); recuperar una sesión de dos vistas (huella sin el nombre, el vídeo que no es de la sesión se rechaza, nunca se reabre con una sola vista); reparto de la memoria de la caché; un seguimiento cada vez (D8); los `undefined` de `uPlot.join` en las superpuestas; cierre de workers, decodificadores y vídeos al cambiar de vídeo.
+
+**Pruebas:** e2e de 183 a 186 (A, B y C añaden una cada uno) y tests de núcleo nuevos en `csv.test.ts` y `evento.test.ts`. Huecos de cobertura que quedan: `useCursorComun` no tiene tests propios (se prueba por las e2e); faltan e2e de tocar una gráfica con B activa, de cancelar el audio a mitad de lectura, de añadir B mientras A sigue y de recuperar una sesión de una vista y después añadir B.
+
+### Qué se ha comprobado con vídeos reales
+
+Dos móviles Android del usuario (24-10-2026), sentadilla de perfil y de frente a 30 fps, AAC en MP4, una palmada (ver paso 5b): el audio dio +6,456 s con **calidad 7,7** y el evento visual +6,499 s ± 33 ms, **diferencia de +43 ms**. Se decodifica el audio sin problema en Chrome para Android. El usuario no pudo grabar una toma frontal con resolución suficiente para seguir los gomets a la vez que la lateral (está solo y el segundo móvil no da para más): **el FPPA solo se ha comprobado con vídeos sintéticos**.
+
+### Limitaciones conocidas
+
+**Sincronía:**
+
+1. **Una sola medida real del audio** (+43 ms con la imagen). No se sabe cuánto es el retardo entre audio e imagen de cada móvil y cuánto el error al marcar la palmada de perfil. `CALIDAD_AUDIO_MINIMA` (2) es provisional.
+2. **La comprobación compara el desfase del audio tal como salió,** no el ajustado a mano con el ajuste fino: tras ajustar, la diferencia mostrada es la del audio sin ajustar.
+3. **La envolvente cuenta dos veces** un trozo de audio que llega antes de lo esperado (más de 1 ms de solape): se toma como hueco al revés y sus muestras se suman a las ya colocadas. No se ha visto con Mediabunny.
+4. **El segundo pico de la calidad no se busca como máximo local:** es el valor más alto fuera de ±50 ms del primero. Con picos anchos puede salir algo más baja de lo que es.
+5. **El progreso del audio puede no llegar al 100 %** antes del resultado (se reparte por la duración de cada vídeo, y se analizan los primeros 60 s).
+
+**Dos vistas:**
+
+6. **La vista de referencia es siempre la primera** (D1 decía que se podría cambiar; no se ha hecho). Como el modelo de la sesión parte de ella, **la primera tiene que ser la de perfil** (lo recuerda el panel al abrirla).
+7. **Las dos vistas a la vez en el escritorio y con el móvil girado (D5) no se han hecho:** también ahí es una vista activa con la miniatura de la otra.
+8. **Tocar una gráfica en un instante fuera del vídeo de la vista activa** lleva esa vista a su borde (su primer o último frame), no deja el cursor en ese instante.
+9. **Mientras se marca el evento** (cursor desenlazado), la miniatura puede decir «Fuera de este vídeo» con el instante de antes.
+10. **La segunda vista tiene el id fijo `v2`:** basta mientras haya como mucho dos vistas.
+11. **Sesiones anteriores a la corrección de la pierna (#69)** con la persona mirando a la derecha mezclarían la pierna izquierda y la derecha. El usuario no tiene ninguna.
+
+**Código:**
+
+12. **Siguen las supresiones de `react-hooks`** en `useFiltrado`, `useGuardado`, `useMiniGrande` y `useNavegacionFrames` (la de `useTrayectorias` se quitó en el paso 2), más una nueva en `PanelComparacion` (B: la función de las series solo lee los ids de las vistas). Cada una con su motivo.
+
+Las de la fase 2 siguen valiendo salvo la 1 (en parte: la vista frontal da el FPPA, pero no corrige la flexión de la lateral; eso es el 3D) y la 2 (hay vista frontal, aunque sigue sin editor de modelos).
+
+### Pendientes y propuestas
+
+- **Más medidas reales de la sincronía por audio** (otra pareja de móviles, la palmada de cara a la cámara de perfil) para afinar `CALIDAD_AUDIO_MINIMA` y conocer el orden del retardo audio–imagen.
+- **Elegir la vista de referencia** (D1) y **las dos vistas a la vez** en escritorio y girado (D5): sin fase asignada; se proponen cuando haga falta.
+- **Fase 4** (grabación con dos móviles: emparejamiento, inicio programado, pitido de referencia): resolvería también la toma doble que el usuario no puede hacer solo.
+- Ideas del usuario para fases futuras (protocolos tipo BTS, miembro superior, marcha): en «Ideas apuntadas» de `CLAUDE.md`.
