@@ -1,5 +1,6 @@
 import type { IdMarcador } from '../core/modelo/tipos'
 import type { Hueco } from '../core/seguimiento/huecos'
+import type { ResultadoAudio } from '../core/sincronia/audio'
 
 export type { Hueco }
 
@@ -41,4 +42,31 @@ export type DelWorker =
       /** Frames sin encontrar cada marcador: primero y total. */
       readonly huecos: readonly Hueco[]
     }
+  | { readonly tipo: 'error'; readonly mensaje: string }
+
+/** Mensaje del hilo principal al worker del audio (sincronía, fase 3 paso 5). Para pararlo, se cierra el worker. */
+export interface AlWorkerAudio {
+  readonly tipo: 'sincronizar'
+  /** El vídeo de la referencia (A) y el de la vista que se sincroniza (B). */
+  readonly referencia: File
+  readonly vista: File
+}
+
+/** Qué le falta al audio de un vídeo para poder usarlo. */
+export interface FaltaAudio {
+  readonly cual: 'referencia' | 'vista'
+  /** 'sinAudio': no tiene pista de audio; 'sinCodec': este navegador no la decodifica. */
+  readonly motivo: 'sinAudio' | 'sinCodec'
+  readonly codec?: string
+}
+
+/** Mensajes del worker del audio al hilo principal. */
+export type DelWorkerAudio =
+  | { readonly tipo: 'progreso'; readonly fraccion: number }
+  | {
+      readonly tipo: 'resultado'
+      /** null: no hay nada que correlacionar (silencio, o los audios no se solapan dentro de la ventana). */
+      readonly resultado: ResultadoAudio | null
+    }
+  | { readonly tipo: 'falta'; readonly faltas: readonly FaltaAudio[] }
   | { readonly tipo: 'error'; readonly mensaje: string }

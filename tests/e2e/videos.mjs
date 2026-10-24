@@ -185,6 +185,42 @@ async function girarVideo(entrada, salida) {
   if (codigo !== 0) throw new Error(`ffmpeg ha fallado (${codigo}) al girar ${entrada}`)
 }
 
+// ------------------------------------------------------------------ con audio
+
+/**
+ * Copia el vídeo `entrada` (sin volver a codificar la imagen: mismos pts) y le añade una pista de audio Opus a 48 kHz con
+ * un ruido de fondo flojo y un pitido de 30 ms (1,5 kHz, con un ataque brusco y una caída de 10 ms) que empieza en
+ * `pitido` s del contenedor: la «palmada» de la sincronía por audio, en un instante conocido.
+ */
+async function anadirPitido(entrada, salida, pitido, duracion) {
+  const sonido = `0.004*(2*random(0)-1)+if(between(t,${pitido},${pitido + 0.03}),0.8*sin(2*PI*1500*(t-${pitido}))*exp(-(t-${pitido})/0.01),0)`
+  const ff = spawn(
+    'ffmpeg',
+    ['-loglevel', 'error', '-y', '-i', entrada, '-f', 'lavfi', '-i', `aevalsrc='${sonido}':s=48000:d=${duracion}`,
+      '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'libopus', '-b:a', '96k', salida],
+    { stdio: 'inherit' },
+  )
+  const [codigo] = await once(ff, 'close')
+  if (codigo !== 0) throw new Error(`ffmpeg ha fallado (${codigo}) al añadir el audio a ${entrada}`)
+}
+
+/**
+ * La pareja de la sincronía por audio: `verde` y `numerado25` con un pitido. En A suena en el instante del frame 46 (el
+ * del evento visual de las pruebas de sincronía) y en B, 40 ms después del instante de su frame 13 (el suyo): como un
+ * móvil que guarda el sonido 40 ms tarde respecto a la imagen. Así el audio da un desfase 40 ms menor que el evento visual.
+ */
+export const RETARDO_AUDIO_B = 0.04
+async function generarConAudio(dir) {
+  const leer = (nombre) => JSON.parse(readFileSync(join(dir, `${nombre}.json`), 'utf8'))
+  const verde = leer('verde')
+  const tA = Math.round(verde[45].t * 1000) / 1000
+  await anadirPitido(join(dir, 'verde.webm'), join(dir, 'verdeAudio.webm'), tA, verde[verde.length - 1].t + 1 / FPS)
+  writeFileSync(join(dir, 'verdeAudio.json'), JSON.stringify({ pitido: tA }))
+  const tB = 12 / 25 + RETARDO_AUDIO_B
+  await anadirPitido(join(dir, 'numerado25.webm'), join(dir, 'numerado25Audio.webm'), tB, 90 / 25)
+  writeFileSync(join(dir, 'numerado25Audio.json'), JSON.stringify({ pitido: tB }))
+}
+
 // ------------------------------------------------------------------- conjunto
 
 /**
@@ -238,6 +274,8 @@ export async function asegurarVideos() {
   // La misma pierna de frente a 25 fps constantes: con `verde` (30 fps con huecos) los instantes de las dos vistas se intercalan.
   if (!existsSync(join(dir, 'frontal25.json'))) await generarRodilla(dir, 'frontal25', VERDE, () => false, { posicionesEn: posicionesFrontales, verdadEn: (t) => ({ fppa: valgoEn(t) }), fps: 25 })
   if (!existsSync(join(dir, 'frontal.json'))) await generarRodilla(dir, 'frontal', VERDE, () => false, { posicionesEn: posicionesFrontales, verdadEn: (t) => ({ fppa: valgoEn(t) }) })
+  // La pareja con audio (sincronía por audio), hecha de `verde` y `numerado25`.
+  if (!existsSync(join(dir, 'numerado25Audio.json'))) await generarConAudio(dir)
   const leer = (nombre) => JSON.parse(readFileSync(join(dir, `${nombre}.json`), 'utf8'))
   return {
     numerado: { ruta: join(dir, 'numerado.webm'), ...leer('numerado') },
@@ -250,6 +288,9 @@ export async function asegurarVideos() {
     frontal25: { ruta: join(dir, 'frontal25.webm'), verdad: leer('frontal25') },
     oculto: { ruta: join(dir, 'oculto.webm'), verdad: leer('oculto') },
     corto: { ruta: join(dir, 'corto.webm'), verdad: leer('corto') },
+    // Los mismos con un pitido en un instante conocido (`pitido`, s del contenedor): el de B, RETARDO_AUDIO_B después de su evento.
+    verdeAudio: { ruta: join(dir, 'verdeAudio.webm'), ...leer('verdeAudio') },
+    numerado25Audio: { ruta: join(dir, 'numerado25Audio.webm'), ...leer('numerado25Audio') },
     // El vídeo «verde» girado 90° (360×640): solo para probar la distribución con un vídeo vertical, sin verdad conocida.
     vertical: { ruta: join(dir, 'vertical.webm') },
   }
