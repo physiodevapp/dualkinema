@@ -10,7 +10,7 @@ import { comoMuestras, filtrarTrayectoria, type AjustesFiltro, type TrayectoriaF
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
 import { fpsMediano, type TablaFrames } from '../../core/tiempo/tablaFrames'
-import { esperaRefiltrado } from './refiltrado'
+import { esperaRefiltrado, versionAFiltrar } from './refiltrado'
 
 interface Opciones {
   /** Las series de las trayectorias (el mapa del almacén, modificado en sitio): se leen con la versión vigente. */
@@ -58,9 +58,18 @@ export interface Filtrado {
 export function useFiltrado({ series, version, ids, tabla, ajustes, articulacion, orientacion, metrosPorPx, siguiendo }: Opciones): Filtrado {
   const fs = useMemo(() => fpsMediano(tabla), [tabla])
   // Mientras se sigue se filtra con la versión «pedida», que alcanza a la
-  // actual como mucho cada `esperaRefiltrado`; parado, con la actual.
+  // actual como mucho cada `esperaRefiltrado`; parado, con la actual. Al
+  // empezar a seguir, la pedida arranca desde la actual (`versionAFiltrar`):
+  // la que trae lo que «Seguir desde aquí» acaba de borrar.
   const [pedida, setPedida] = useState(version)
-  const vigente = siguiendo ? pedida : version
+  const [siguiendoAntes, setSiguiendoAntes] = useState(!!siguiendo)
+  const empieza = !!siguiendo && !siguiendoAntes
+  if (!!siguiendo !== siguiendoAntes) {
+    // Ajuste del estado durante el render (patrón de React para estado derivado de una prop).
+    setSiguiendoAntes(!!siguiendo)
+    if (siguiendo) setPedida(version)
+  }
+  const vigente = versionAFiltrar(!!siguiendo, empieza, version, pedida)
   // Inicio y coste (ms) de la última pasada.
   const ultima = useRef({ inicio: -Infinity, coste: 0 })
   useEffect(() => {

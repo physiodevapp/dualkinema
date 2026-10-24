@@ -21,3 +21,14 @@ export function esperaRefiltrado(ahora: number, inicioUltima: number, costeUltim
   const intervalo = Math.max(INTERVALO_MIN_MS, FACTOR_COSTE * costeUltima)
   return Math.max(0, inicioUltima + intervalo - ahora)
 }
+
+/**
+ * La versión de las trayectorias con que se filtra. Parado, la actual. Mientras se sigue, la «pedida», que alcanza a la
+ * actual a intervalos (`esperaRefiltrado`), salvo en el render en que se empieza a seguir: entonces también la actual.
+ * «Seguir desde aquí» borra lo seguido después del frame (la versión sube) a la vez que empieza a seguir; si se tomara
+ * la pedida, que viene de la pasada anterior y puede ser justo la versión de antes de borrar, lo filtrado no se rehacía
+ * y se veía la pasada anterior donde ya no había nada seguido hasta el siguiente intervalo.
+ */
+export function versionAFiltrar(siguiendo: boolean, empiezaASeguir: boolean, version: number, pedida: number): number {
+  return siguiendo && !empiezaASeguir ? pedida : version
+}
