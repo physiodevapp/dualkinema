@@ -21,6 +21,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # El relé de salas (senal/) de verdad en local con wrangler dev (workerd viene con npm ci).
+      - run: npm run test:senal
       - run: npm run build
 
   e2e:
