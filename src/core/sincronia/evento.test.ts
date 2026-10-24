@@ -50,6 +50,12 @@ describe('sincronía por evento visual', () => {
     expect(ajustarDesfase(0.48, 0, paso)).toBe(0.48)
   })
 
+  it('sin un paso utilizable el ajuste no mueve el desfase (nunca NaN)', () => {
+    expect(ajustarDesfase(0.48, 1, NaN)).toBe(0.48)
+    expect(ajustarDesfase(0.48, -1, Infinity)).toBe(0.48)
+    expect(ajustarDesfase(0.48, 1, 0)).toBe(0.48)
+  })
+
   it('tras mover a mano, un evento sigue siendo de dónde partió y sin método pasa a manual', () => {
     expect(sincroniaTrasAjuste({ metodo: 'ninguna' })).toEqual({ metodo: 'manual' })
     const evento = { metodo: 'evento', evento: { referencia: 1, vista: 0.52 } } as const
