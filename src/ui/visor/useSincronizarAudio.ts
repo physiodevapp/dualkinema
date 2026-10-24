@@ -6,7 +6,8 @@ export type EstadoAudio =
   | { readonly fase: 'parado' }
   | { readonly fase: 'leyendo'; readonly progreso: number }
   /** El audio dio un desfase (fiable o no: `resultado.fiable`). */
-  | { readonly fase: 'resultado'; readonly resultado: ResultadoAudio }
+  /** `segundos`: lo que tardó en leer los dos audios y correlacionarlos. */
+  | { readonly fase: 'resultado'; readonly resultado: ResultadoAudio; readonly segundos: number }
   /** El audio no da nada: silencio, o los dos audios no se solapan en la ventana. */
   | { readonly fase: 'sinPico' }
   | { readonly fase: 'falta'; readonly faltas: readonly FaltaAudio[] }
@@ -31,13 +32,14 @@ export function useSincronizarAudio() {
     const w = new Worker(new URL('../../workers/audio.worker.ts', import.meta.url), { type: 'module' })
     worker.current = w
     setEstado({ fase: 'leyendo', progreso: 0 })
+    const inicio = performance.now()
     w.onmessage = (e: MessageEvent<DelWorkerAudio>) => {
       const m = e.data
       if (m.tipo === 'progreso') {
         setEstado({ fase: 'leyendo', progreso: m.fraccion })
         return
       }
-      if (m.tipo === 'resultado') setEstado(m.resultado ? { fase: 'resultado', resultado: m.resultado } : { fase: 'sinPico' })
+      if (m.tipo === 'resultado') setEstado(m.resultado ? { fase: 'resultado', resultado: m.resultado, segundos: (performance.now() - inicio) / 1000 } : { fase: 'sinPico' })
       else if (m.tipo === 'falta') setEstado({ fase: 'falta', faltas: m.faltas })
       else setEstado({ fase: 'error', mensaje: m.mensaje })
       cerrar()

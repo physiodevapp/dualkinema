@@ -134,7 +134,7 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
             <>
               <p className="flex gap-2 text-sm text-acento" data-testid="aviso-discrepan">
                 <ExclamationTriangleIcon className="size-5 shrink-0" />
-                Discrepan más de lo que explica la precisión del evento: el retardo entre sonido e imagen de los móviles no es el mismo. La imagen es la que manda.
+                Discrepan más de lo que explica la precisión del evento: puede ser el distinto retardo entre sonido e imagen de cada móvil o un frame mal marcado. La imagen es la que manda.
               </p>
               {s.metodo === 'audio' && s.evento && (
                 <button
@@ -273,6 +273,9 @@ function PorAudio({ estado, onEmpezar, onAplicar, onDescartar, onEvento }: Props
         <div className="flex flex-col gap-2 rounded-md border border-borde p-3" data-testid="resultado-audio">
           <p className="font-mono text-sm" data-testid="desfase-audio">
             Desfase de B por el audio: {segundos(estado.resultado.desfase)} (calidad {fmt(estado.resultado.calidad, 1)})
+          </p>
+          <p className="font-mono text-xs text-texto-2" data-testid="tiempo-audio">
+            Leído en {fmt(estado.segundos, 1)} s
           </p>
           {estado.resultado.fiable ? (
             <div className="flex gap-2">

@@ -3271,6 +3271,7 @@ describe('dos vistas: sincronizar por el audio y comprobar con el evento visual'
     const propuesto = (m[1] === '−' ? -1 : 1) * Number(m[2].replace(',', '.'))
     assert.ok(Math.abs(propuesto - desfaseAudio()) <= 0.0015, `${propuesto} frente a ${desfaseAudio()}`)
     assert.ok(Number(m[3].replace(',', '.')) >= 2, `calidad ${m[3]}`)
+    assert.match(await p.getByTestId('tiempo-audio').innerText(), /^Leído en \d+,\d s$/)
     assert.equal(await leerDesfase(), 0)
     assert.equal(await p.getByTestId('metodo-sincronia').innerText(), 'Sin sincronizar')
   })
