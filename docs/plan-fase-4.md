@@ -1,6 +1,6 @@
 # Fase 4: grabación con dos móviles
 
-Estado: **propuesta** (2026-10-24), pendiente de que el usuario acepte las decisiones D1–D12. No hay nada escrito todavía. Cuando se acepte, este documento recogerá cómo queda cada pieza, como `docs/plan-fase-3.md`.
+Estado: **plan aceptado** (2026-10-24). Decisiones D1–D12 aceptadas por el usuario tal como se proponen. En curso: paso 1 hecho (ver «Hecho»); este documento recoge cómo queda cada pieza, como `docs/plan-fase-3.md`.
 
 Objetivo de la fase (de `CLAUDE.md`): emparejamiento por código o QR, sincronización de relojes, inicio programado, pitido de referencia y ajuste fino por audio. Además, lo que la fase 3 dejó para aquí:
 - la **toma doble que el usuario no puede hacer solo** (cierre de la fase 3: con los dos móviles arrancados a mano, la toma de frente salió sin resolución suficiente);
@@ -185,6 +185,19 @@ El análisis necesita los dos vídeos en el mismo dispositivo, y el vídeo **no 
 
   En Playwright el códec será VP9 (su Chromium no trae H.264).
 - **Lo que no se puede probar aquí:** la cadena acústica real (el altavoz de un móvil grabado por el micrófono del otro: la cámara falsa no oye los pitidos de la app), H.264 por hardware, el retardo entre audio e imagen de cada móvil y el comportamiento de Android con la pantalla y la batería. Eso va al paso 8, con los móviles del usuario.
+
+## Hecho
+
+**Paso 1 — laboratorio** (`src/media/laboratorio.ts`, `informe.ts`, `src/ui/Laboratorio.tsx`, `core/tiempo/saltos.ts`). Una sección de la portada que solo existe con **`?laboratorio`** en la dirección (`App.tsx`; se descarga entonces, la portada normal no cambia). «Medir este móvil» mide y escribe un informe de texto para copiar y pegar («Copiar informe»):
+- **Entorno:** modelo, Android y Chrome (`userAgentData`), pantalla, núcleos y memoria, y qué APIs hay (`VideoEncoder`, `AudioEncoder`, `MediaStreamTrackProcessor`, `wakeLock`, `share` con archivos, OPFS).
+- **Almacenamiento y pantalla:** cuota y uso, escritura de 16 MB en OPFS (velocidad, y que se lea lo escrito) y si se concede mantener la pantalla encendida.
+- **Códecs:** H.264, HEVC, VP9 y AV1 a 1080p30, 1080p60 y 4K30, cada uno «hardware», «software» o «no» (`VideoEncoder.isConfigSupported` con `prefer-hardware` y `prefer-software`), más AAC y Opus.
+- **Micrófono sin procesar:** lo que Chrome concede con la cancelación de eco, la supresión de ruido y el control de ganancia desactivados.
+- **Cámaras:** por cada una (hasta 4), sus capacidades (rangos, enfoque, exposición, zoom, linterna) y, en cuatro modos (720p30, 1080p30, 1080p60, 4K30), qué concede Chrome y **qué entrega de verdad**: frames contados 1,5 s con `MediaStreamTrackProcessor` (fps medido, paso máximo, saltos y frames perdidos). Se pide con `ideal`, porque con `exact` una combinación que la cámara no tiene solo da un error y no dice qué da; el informe anota si lo concedido es lo pedido (`esLoPedido`).
+
+«Grabar 10 s» (con resolución, códec y cámara a elegir y vista previa): es ya la grabación del paso 2 en pequeño: Mediabunny con `MediaStreamVideoTrackSource` y `MediaStreamAudioTrackSource` a un MP4 en memoria, fotograma clave cada 1 s, `latencyMode: 'realtime'`, micrófono sin procesar y **`frameRate: null`** (un frame por cada que entrega la cámara con su instante real: con el fps de la pista Mediabunny repetiría o saltaría frames y la prueba no mediría lo que la cámara da). Después **abre el archivo escrito y lo analiza**: códec, frames, fotogramas clave, fps medio y mediano, paso mínimo y máximo, saltos y frames perdidos (`saltosDeFrames`), duración y, sobre todo, **dónde empieza el sonido respecto a la imagen dentro del archivo** (`inicioAudioMenosVideoMs`: el primer dato sobre el retardo audio–imagen de la app). El archivo se puede «Abrir en el visor», «Compartir» (hoja de Android) o «Guardar». `?laboratorio&duracion=N` cambia los 10 s (las pruebas e2e usan 3).
+
+Núcleo con tests de valor conocido: `saltosDeFrames` (sin saltos a 30 fps, un hueco de 4 pasos = 3 frames perdidos, el jitter normal de ±20 % no cuenta, menos de 2 frames) y `formatearInforme` (texto del informe). Pruebas e2e con la cámara y el micrófono falsos de Chromium (`lanzarNavegadorConCamaraFalsa`): sin `?laboratorio` no aparece; «Medir este móvil» da las cinco secciones, el micrófono sin eco ni ganancia automática y los fps medidos coinciden con los concedidos (la cámara falsa da 20 aunque se le pidan 30, y el informe lo dice); la grabación de 3 s se abre en el visor con **el mismo número de frames que cuenta el informe**, con audio, duración y fotogramas clave. Lo que no se puede probar ahí (H.264 por hardware, cámaras y micrófonos reales, Quick Share) lo da el informe en los móviles del usuario.
 
 ## Orden de trabajo (un PR por paso)
 

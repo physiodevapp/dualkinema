@@ -29,8 +29,21 @@ export async function servirApp() {
 /** `CHROMIUM_PATH` permite usar un Chromium ya instalado en vez del de Playwright. */
 export const lanzarNavegador = () => chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 
-/** Abre la app como un móvil (o ancho de escritorio con `ancho` ≥ 800). El idioma es es-ES: uPlot lo necesita. */
-export async function abrirApp(navegador, { ancho = 390, alto } = {}) {
+/**
+ * Como `lanzarNavegador`, con cámara y micrófono falsos (Chromium genera una imagen en movimiento y un pitido) y los
+ * permisos concedidos sin preguntar: para el laboratorio de grabación y lo que se construya sobre él.
+ */
+export const lanzarNavegadorConCamaraFalsa = () =>
+  chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH || undefined,
+    args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+  })
+
+/**
+ * Abre la app como un móvil (o ancho de escritorio con `ancho` ≥ 800). El idioma es es-ES: uPlot lo necesita.
+ * `consulta` va tras la dirección (p. ej. `?laboratorio`).
+ */
+export async function abrirApp(navegador, { ancho = 390, alto, consulta = '' } = {}) {
   const pagina = await navegador.newPage({
     locale: 'es-ES',
     viewport: { width: ancho, height: alto ?? (ancho >= 800 ? 900 : 844) },
@@ -39,7 +52,7 @@ export async function abrirApp(navegador, { ancho = 390, alto } = {}) {
   })
   pagina.on('pageerror', (e) => errores.push(`pageerror: ${e.message}`))
   pagina.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()}`))
-  await pagina.goto(URL_APP)
+  await pagina.goto(URL_APP + consulta)
   return pagina
 }
 
