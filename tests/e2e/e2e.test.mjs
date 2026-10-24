@@ -2754,6 +2754,28 @@ describe('app instalable', () => {
   })
 })
 
+describe('el primer vídeo es el de perfil', () => {
+  it('al abrir el primer vídeo se recuerda empezar por el de perfil; al añadir la segunda vista, no', async () => {
+    const p = await abrirApp(navegador, { ancho: 1280 })
+    try {
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      const recordatorio = p.getByTestId('recordatorio-perfil')
+      await recordatorio.waitFor({ timeout: 20000 })
+      assert.match(await recordatorio.innerText(), /empieza por el vídeo de perfil: de él sale la pierna que se analiza/)
+      // Solo opciones de perfil para el primero.
+      assert.equal(await p.getByRole('button', { name: 'La cámara la ve de frente' }).count(), 0)
+      await p.getByRole('button', { name: 'Mira a la derecha' }).click()
+      await esperarQuieto(p)
+      await abrirPestana(p, 'video')
+      await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.frontal.ruta)
+      await p.getByTestId('anadir-vista-orientacion').waitFor()
+      assert.equal(await p.getByTestId('recordatorio-perfil').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('dos vistas: añadir la segunda, cursor común, A / B y recuperarlas', () => {
   // A = «verde» (30 fps con huecos, 4,03 s, seguida: ángulo real conocido) y B = «numerado25» (25 fps constantes, 3,6 s, con el número de cada frame
   // en bloques). Por tiempo común (desfase 0): al frame k de A le toca en B el último con t_B ≤ t_A(k), y A acaba (4,03 s) después que B (3,6 s).
@@ -3454,7 +3476,7 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
     // De frente se ven las dos piernas: no dice «la que ve la cámara».
     assert.match(await p.getByText(/^pierna derecha/).innerText(), /^pierna derecha$/)
     const grafica = await p.getByTestId('panel-grafica').innerText()
-    assert.match(grafica, /RODILLA IZQUIERDA/i)
+    assert.match(grafica, /RODILLA DERECHA/i)
     assert.match(grafica, /valgo \+/)
   })
 
