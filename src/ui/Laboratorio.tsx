@@ -18,6 +18,7 @@ import {
   grabarPrueba,
   listarCamaras,
   type CamaraListada,
+  type ModoExposicion,
 } from '../media/laboratorio'
 
 /*
@@ -46,6 +47,12 @@ const duracionDePrueba = (): number => {
   return Number.isFinite(d) && d >= 1 && d <= 60 ? d : 10
 }
 
+const EXPOSICIONES: readonly { id: ModoExposicion; etiqueta: string }[] = [
+  { id: 'auto', etiqueta: 'Automáticos (como la app de cámara)' },
+  { id: 'bloqueada', etiqueta: 'Bloqueados en lo que elija la cámara' },
+  { id: 'corta', etiqueta: 'Exposición corta (1/120 s), más oscura' },
+]
+
 const estiloBoton = 'flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3 text-texto disabled:opacity-40'
 
 export default function Laboratorio({ alAbrir }: { alAbrir: (archivo: File) => void }) {
@@ -55,6 +62,7 @@ export default function Laboratorio({ alAbrir }: { alAbrir: (archivo: File) => v
   const [camaras, setCamaras] = useState<CamaraListada[]>([])
   const [camaraId, setCamaraId] = useState('')
   const [modo, setModo] = useState<(typeof MODOS)[number]['id']>('1080p30')
+  const [exposicion, setExposicion] = useState<ModoExposicion>('auto')
   const [codec, setCodec] = useState<(typeof CODECS)[number]['id']>('auto')
   const [progreso, setProgreso] = useState<number | null>(null)
   const [flujo, setFlujo] = useState<MediaStream | null>(null)
@@ -117,6 +125,7 @@ export default function Laboratorio({ alAbrir }: { alAbrir: (archivo: File) => v
         alto: m.alto,
         fps: m.fps,
         codec,
+        exposicion,
         duracion,
         camaraId: camaraId || undefined,
         senal: control.signal,
@@ -126,7 +135,10 @@ export default function Laboratorio({ alAbrir }: { alAbrir: (archivo: File) => v
       poner('Grabación de prueba', r.informe)
       setArchivo(r.archivo)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      const texto = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+      setError(texto)
+      // También en el informe: es lo que se pega, y sin esto un fallo de la grabación no llegaba a quien lo lee.
+      poner('Grabación de prueba', { error: texto })
     } finally {
       setProgreso(null)
       cancelar.current = null
@@ -200,6 +212,16 @@ export default function Laboratorio({ alAbrir }: { alAbrir: (archivo: File) => v
             {CODECS.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.etiqueta}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-texto-2">
+          Enfoque y exposición
+          <select value={exposicion} onChange={(e) => setExposicion(e.target.value as ModoExposicion)} disabled={grabando} data-testid="lab-exposicion" className="rounded-md border border-borde bg-fondo px-3 py-3 text-texto">
+            {EXPOSICIONES.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.etiqueta}
               </option>
             ))}
           </select>

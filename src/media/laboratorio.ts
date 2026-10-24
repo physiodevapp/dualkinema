@@ -195,7 +195,13 @@ interface ProcesadorDePista {
   readable: ReadableStream<VideoFrame>
 }
 
-/** Cuenta los frames que entrega una pista durante `ms` (por MediaStreamTrackProcessor: no depende de pintar). */
+/** Lo que se descarta al principio de la medida (s): la cámara arranca y ajusta enfoque y exposición, y entrega menos fps. */
+const ARRANQUE_CAMARA_S = 0.7
+
+/**
+ * Cuenta los frames que entrega una pista durante `ms` (por MediaStreamTrackProcessor: no depende de pintar), sin los
+ * primeros ARRANQUE_CAMARA_S s. El fps de referencia es el mediano (el medio lo bajan unos pocos frames lentos).
+ */
 async function medirFrames(pista: MediaStreamTrack, ms: number): Promise<Dato> {
   const Procesador = (globalThis as unknown as { MediaStreamTrackProcessor?: new (o: { track: MediaStreamTrack }) => ProcesadorDePista })
     .MediaStreamTrackProcessor
@@ -213,10 +219,19 @@ async function medirFrames(pista: MediaStreamTrack, ms: number): Promise<Dato> {
   } finally {
     await lector.cancel().catch(() => {})
   }
-  const tabla = crearTablaFrames(tiempos)
+  const inicio = tiempos[0] ?? 0
+  const tabla = crearTablaFrames(tiempos.filter((t) => t - inicio >= ARRANQUE_CAMARA_S))
   const est = estadisticas(tabla)
   const s = saltosDeFrames(tabla)
-  return { frames: est.frames, fpsMedido: est.fpsMedio, pasoMaxMs: s.pasoMax * 1000, saltos: s.saltos, framesPerdidos: s.framesPerdidos }
+  return {
+    frames: est.frames,
+    fpsMediano: 1 / s.pasoMediano,
+    fpsMedio: est.fpsMedio,
+    pasoMedianoMs: s.pasoMediano * 1000,
+    pasoMaxMs: s.pasoMax * 1000,
+    saltos: s.saltos,
+    framesPerdidos: s.framesPerdidos,
+  }
 }
 
 const MODOS_CAMARA = [
@@ -236,7 +251,7 @@ const subconjunto = (o: object, claves: readonly string[]): Dato => {
 }
 
 /**
- * Para cada cámara: lo que dice poder hacer (capacidades) y, modo a modo, lo que entrega de verdad medido 1,5 s. Se pide con
+ * Para cada cámara: lo que dice poder hacer (capacidades) y, modo a modo, lo que entrega de verdad medido 3 s (sin el arranque). Se pide con
  * `ideal` (con `exact`, una combinación que la cámara no tiene solo da un error y no dice qué da en su lugar).
  */
 export async function informeCamaras(alProgreso?: (texto: string) => void): Promise<Dato> {
@@ -283,7 +298,7 @@ export async function informeCamaras(alProgreso?: (texto: string) => void): Prom
           return {
             concedido: `${s.width}×${s.height} a ${s.frameRate}`,
             esLoPedido: exacto && Math.round(s.frameRate ?? 0) === m.fps,
-            ...(await medirFrames(pista, 1500)),
+            ...(await medirFrames(pista, 3000)),
           }
         } finally {
           flujo.getTracks().forEach((t) => t.stop())
@@ -326,7 +341,22 @@ export async function informeAudio(): Promise<Dato> {
 
 // ── Grabación de prueba ────────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Cómo se trata la exposición y el enfoque de la cámara al grabar (hipótesis del paso 1: con poca luz la exposición
+ * automática se alarga y la cámara baja los fps):
+ * - auto: como la app de cámara;
+ * - bloqueada: tras 1 s de ajuste automático, se fijan exposición, ISO y enfoque en lo que la cámara eligió (sin que el
+ *   enfoque «busque» ni la exposición cambie a mitad de la toma);
+ * - corta: exposición manual de 1/120 s con ISO alto (menos desenfoque de movimiento y fps constantes si hay luz; la imagen
+ *   sale más oscura).
+ */
+export type ModoExposicion = 'auto' | 'bloqueada' | 'corta'
+
+/** Exposición (en unidades de 100 µs que usa Chrome) de «corta»: 1/120 s. */
+const EXPOSICION_CORTA = 83
+
 export interface OpcionesGrabacion {
+  readonly exposicion?: ModoExposicion
   readonly ancho: number
   readonly alto: number
   readonly fps: number
@@ -340,6 +370,44 @@ export interface OpcionesGrabacion {
   readonly alProgreso?: (segundos: number) => void
   /** Se llama con el flujo de la cámara para enseñar la vista previa (y con null al acabar). */
   readonly alFlujo?: (flujo: MediaStream | null) => void
+}
+
+const CLAVES_AJUSTES = ['exposureMode', 'exposureTime', 'iso', 'focusMode', 'focusDistance', 'whiteBalanceMode', 'zoom', 'frameRate'] as const
+
+/** Lo que la cámara está usando ahora (null → «—»: esa cámara no lo da). */
+function ajustesDeCamara(pista: MediaStreamTrack): Dato {
+  const s = pista.getSettings() as Record<string, unknown>
+  const r: Record<string, ValorInforme> = {}
+  for (const k of CLAVES_AJUSTES) r[k] = (s[k] as ValorInforme) ?? null
+  return r
+}
+
+/** Aplica el modo de exposición pedido. Devuelve qué se aplicó (o por qué no) para el informe. */
+async function aplicarExposicion(pista: MediaStreamTrack, modo: ModoExposicion): Promise<Dato> {
+  if (modo === 'auto') return { modo }
+  const cap = pista.getCapabilities() as unknown as Record<string, { min?: number; max?: number } | readonly string[] | undefined>
+  const rango = (k: string) => cap[k] as { min?: number; max?: number } | undefined
+  try {
+    let avanzado: Record<string, unknown>
+    if (modo === 'corta') {
+      const t = rango('exposureTime')
+      const iso = rango('iso')
+      avanzado = {
+        exposureMode: 'manual',
+        ...(t ? { exposureTime: Math.min(Math.max(EXPOSICION_CORTA, t.min ?? 0), t.max ?? EXPOSICION_CORTA) } : {}),
+        ...(iso ? { iso: Math.min(iso.max ?? 800, 800) } : {}),
+      }
+    } else {
+      await new Promise((r) => setTimeout(r, 1000))
+      const s = pista.getSettings() as Record<string, unknown>
+      avanzado = { exposureMode: 'manual', focusMode: 'manual' }
+      for (const k of ['exposureTime', 'iso', 'focusDistance']) if (typeof s[k] === 'number') avanzado[k] = s[k]
+    }
+    await pista.applyConstraints({ advanced: [avanzado as MediaTrackConstraintSet] })
+    return { modo, pedido: JSON.stringify(avanzado) }
+  } catch (e) {
+    return { modo, error: mensaje(e) }
+  }
 }
 
 export interface ResultadoGrabacion {
@@ -371,6 +439,8 @@ export async function grabarPrueba(op: OpcionesGrabacion): Promise<ResultadoGrab
     const alto = ajustes.height ?? op.alto
     const fps = Math.round(ajustes.frameRate ?? op.fps)
     const bitrate = bitrateDe(ancho, alto, fps)
+    const ajustesAntes = ajustesDeCamara(pistaVideo)
+    const exposicion = await aplicarExposicion(pistaVideo, op.exposicion ?? 'auto')
 
     const codec = op.codec === 'auto' ? await getFirstEncodableVideoCodec(['avc', 'vp9', 'av1', 'hevc'], { width: ancho, height: alto, frameRate: fps, bitrate }) : op.codec
     if (!codec) throw new Error('Este móvil no codifica ningún códec de vídeo a esa resolución.')
@@ -419,13 +489,14 @@ export async function grabarPrueba(op: OpcionesGrabacion): Promise<ResultadoGrab
     const buffer = destino.buffer
     if (!buffer) throw new Error('La grabación no ha producido ningún archivo.')
     const archivo = new File([buffer], `prueba-${new Date().toISOString().replace(/[:.]/g, '-')}.mp4`, { type: 'video/mp4' })
+    const ajustesDespues = ajustesDeCamara(pistaVideo)
     const cfg = configVideo as VideoEncoderConfig | null
     const analisis = await analizarArchivo(archivo)
     return {
       archivo,
       informe: {
         pedido: `${op.ancho}×${op.alto} a ${op.fps}, códec ${op.codec}`,
-        camara: { concedido: `${ancho}×${alto} a ${ajustes.frameRate}`, nombre: pistaVideo.label },
+        camara: { concedido: `${ancho}×${alto} a ${ajustes.frameRate}`, nombre: pistaVideo.label, ajustesAntes, exposicion, ajustesAlAcabar: ajustesDespues },
         codificador: {
           codec,
           cadena: cfg?.codec ?? '—',

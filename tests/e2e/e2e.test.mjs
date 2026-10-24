@@ -3860,7 +3860,7 @@ describe('laboratorio de grabación (fase 4, paso 1)', () => {
       // que no es lo pedido, y lo medido coincide con lo concedido.
       const modo = informe.slice(informe.indexOf('pedido: 1280×720 a 30'))
       const concedido = Number(/concedido: \d+×\d+ a ([\d.]+)/.exec(modo)?.[1])
-      assert.ok(Math.abs(numeroDe(modo, 'fpsMedido') - concedido) < 0.1 * concedido, `medido ${numeroDe(modo, 'fpsMedido')}, concedido ${concedido}`)
+      assert.ok(Math.abs(numeroDe(modo, 'fpsMediano') - concedido) < 0.1 * concedido, `medido ${numeroDe(modo, 'fpsMediano')}, concedido ${concedido}`)
       assert.match(modo, /esLoPedido: no/)
       assert.equal(await p.getByTestId('lab-error').count(), 0)
     } finally {
@@ -3872,6 +3872,8 @@ describe('laboratorio de grabación (fase 4, paso 1)', () => {
     const p = await abrirApp(nav, { consulta: '?laboratorio&duracion=3' })
     try {
       await p.getByTestId('lab-modo').selectOption('720p30')
+      // La cámara falsa no tiene control de exposición: la opción no debe romper la grabación y el informe lo dice.
+      await p.getByTestId('lab-exposicion').selectOption('corta')
       await p.getByTestId('lab-grabar').click()
       // La vista previa se ve mientras graba.
       await p.getByTestId('lab-vista').waitFor({ state: 'visible', timeout: 10000 })
@@ -3881,6 +3883,7 @@ describe('laboratorio de grabación (fase 4, paso 1)', () => {
       const grabado = informe.slice(informe.indexOf('vídeoGrabado:'))
       const frames = numeroDe(grabado, 'frames')
       assert.ok(frames >= 50 && frames <= 100, `frames de 3 s (la cámara falsa da 20 fps): ${frames}`)
+      assert.match(informe, /exposicion:\n\s+modo: corta/)
       assert.ok(numeroDe(grabado, 'duracionS') > 2.5 && numeroDe(grabado, 'duracionS') < 4)
       assert.ok(numeroDe(grabado, 'fotogramasClave') >= 2, 'un fotograma clave por segundo')
       assert.match(informe, /audioGrabado:\n\s+codec: /, 'el archivo lleva audio')
