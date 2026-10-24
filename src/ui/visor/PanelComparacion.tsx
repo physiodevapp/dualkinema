@@ -68,6 +68,14 @@ export default function PanelComparacion({ vistas, indices, desde, hasta, instan
     { id: `${vistas[k]!.id}-interpolado`, color: 'interpolado', valores: valores.interpolada, ancho: 1.5, trazos: true, visible: v },
   ]
 
+  // Alineadas: las series de cada vista, memorizadas. Si se crearan en cada render, `GraficaTiempo` vería datos nuevos con
+  // cada cambio de frame y redibujaría la gráfica entera (el cursor va en una capa aparte: mover el frame no redibuja).
+  const seriesAlineadas = useMemo<readonly [SerieGrafica[], SerieGrafica[]]>(
+    () => [serieDe(0, datosA.partida, true), serieDe(1, datosB.partida, true)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- serieDe solo lee los ids de las vistas, que no cambian
+    [datosA, datosB, a.id, b.id],
+  )
+
   // Superpuestas: las dos tablas en una sola con los instantes de las dos (join de uPlot; cada serie conserva sus huecos).
   const unidas = useMemo(() => {
     const t = uPlot.join([
@@ -139,7 +147,7 @@ export default function PanelComparacion({ vistas, indices, desde, hasta, instan
             <div key={v.id}>
               <GraficaTiempo
                 xs={datos[k]!.xs}
-                series={serieDe(k, datos[k]!.partida, true)}
+                series={seriesAlineadas[k]!}
                 desde={desde}
                 hasta={hasta}
                 indice={indices[k]!}

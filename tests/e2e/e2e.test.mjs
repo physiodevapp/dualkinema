@@ -3654,6 +3654,32 @@ describe('dos vistas: gráficas en el tiempo común y CSV con tiempo común', ()
     }
   })
 
+  it('cambiar de frame no redibuja las gráficas de la comparación (el cursor va en su capa), alineadas ni superpuestas', async () => {
+    const redibujos = (ids) => Promise.all(ids.map((id) => p.getByTestId(id).getAttribute('data-redibujos')))
+    const mover = async () => {
+      for (const k of [30, 60, 90]) await irAFrame(p, k)
+    }
+    const alineadas = ['comparacion-grafica-A', 'comparacion-grafica-B']
+    const antes = await redibujos(alineadas)
+    await mover()
+    // Antes, en «Alineadas», las series se creaban en cada render y la gráfica entera se redibujaba con cada frame.
+    assert.deepEqual(await redibujos(alineadas), antes, 'alineadas')
+    await p.getByTestId('comparacion-superpuestas').click()
+    await p.getByTestId('comparacion-grafica').waitFor()
+    // Recién creada se dibuja al tomar su tamaño: se espera a que se quede quieta antes de contar.
+    let antesSuper = await redibujos(['comparacion-grafica'])
+    for (let i = 0; i < 20; i++) {
+      await p.waitForTimeout(100)
+      const ahora = await redibujos(['comparacion-grafica'])
+      if (ahora[0] === antesSuper[0]) break
+      antesSuper = ahora
+    }
+    await mover()
+    assert.deepEqual(await redibujos(['comparacion-grafica']), antesSuper, 'superpuestas')
+    await p.getByTestId('comparacion-alineadas').click()
+    await p.getByTestId('comparacion-grafica-A').waitFor()
+  })
+
   it('los valores de cada vista en el cursor son los reales de su vídeo en ese instante común', async () => {
     for (const k of [45, 70, 100]) {
       await irAFrame(p, k)
