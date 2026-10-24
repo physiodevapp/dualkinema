@@ -54,7 +54,7 @@ Si una tarea mezcla tipos, usa el modelo de la parte más exigente.
 |---|---|
 | `modelo/` | tipos: sesión, vista, modelo de marcadores, `Muestra2D` |
 | `geometria/` | ángulo con signo, normalización y desenrollado (`angulo.ts`); paso al marco canónico de la vista (`canonico.ts`, único sitio donde se cambia de convención) |
-| `articulaciones/` | definición declarativa, cálculo, catálogo (convenciones fijadas por `catalogo.test.ts`) y cero de referencia (`cero.ts`) |
+| `articulaciones/` | definición declarativa, cálculo, catálogo (convenciones fijadas por `catalogo.test.ts`; incluye el FPPA de la rodilla de frente), cero de referencia (`cero.ts`) y lo que ve cada vista del modelo de la sesión (`modeloVista.ts`) |
 | `tiempo/` | tabla de frames: pts ordenados, frame visible en un instante, `indiceDeFrame`, fps mediano; tiempo común de varias vistas (`comun.ts`: tiempo común = tiempo del vídeo + desfase) |
 | `sincronia/` | desfase de una vista respecto a la referencia: por evento visual (`evento.ts`: desfase = t_ref − t_vista, incertidumbre de medio frame de cada vista, ajuste fino de a un frame); el audio (GCC-PHAT) se añadirá aquí |
 | `seguimiento/` | color, manchas, seguidor, varios marcadores con anclas, huecos, interpolación de huecos cortos, imágenes sintéticas |
@@ -156,6 +156,7 @@ Estas decisiones pueden revisarse si hay buenos motivos; si cambian, actualiza e
 - Una **sesión** contiene una o más **vistas** (vídeos) con su desfase temporal respecto a la referencia.
 - Un **modelo de marcadores** define qué marcadores existen (identificador, nombre anatómico, color esperado) y qué **articulaciones** se calculan a partir de ellos. Es configurable, no está fijado en el código.
 - Cada **marcador** tiene un identificador común a todas las vistas.
+- **Un único modelo por sesión con todos los marcadores (D4 de la fase 3), y cada vista sigue los suyos** (`Vista.marcadores`, guardado): la lateral, trocánter, epicóndilo y maléolo (flexión de la rodilla); la de frente, muslo proximal, centro de la rodilla y centro del tobillo (FPPA de la misma rodilla). El visor abre ya el modelo con lo de frente (`conRodillaFrontal`) para que no cambie al añadir la vista B, y cada vista trabaja con su recorte (`modeloDeVista`: sus marcadores y, primero, la articulación de su plano); una vista nueva sigue los de su plano (`marcadoresParaVista`). **FPPA** (`rodilla_frontal_*`): muslo y pierna vistos de frente; 0° alineados, **valgo +** y varo −, igual en las dos piernas y con la cámara delante o detrás (fijado por `catalogo.test.ts`).
 - Cada vista guarda, por marcador, una trayectoria 2D: lista de `{t (s), x, y (px), calidad, editadoManual}`.
 - Todo cálculo trabaja con **tiempo en segundos** (tiempo del vídeo), no con número de frame ni con `Date.now()`: los móviles graban con fps variable.
 - La calibración (escala 2D, DLT o parámetros de lente) se guarda por vista.

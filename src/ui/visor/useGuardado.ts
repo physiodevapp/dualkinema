@@ -40,6 +40,8 @@ export interface VistaAGuardar {
   /** Segundos respecto a la vista de referencia. */
   readonly desfase: number
   readonly sincronia: Sincronia
+  /** Marcadores del modelo que sigue. */
+  readonly marcadores: readonly IdMarcador[]
 }
 
 export type EstadoGuardado =

@@ -13,8 +13,13 @@ import type { DefinicionArticulacion } from './definicion'
  *     forma +90° con la pierna → cero 90. Flexión dorsal = +.
  *   - hombro: tronco (hombro → cadera) y brazo. Flexión = brazo hacia delante = +.
  *   - codo: brazo y antebrazo. Flexión = antebrazo hacia delante = +.
- * Frontal (x hacia la izquierda de la persona, y arriba):
+ * Frontal (x hacia la izquierda de la persona, y arriba; el espejo de la cámara delante o detrás ya lo quita el marco):
  *   - cadera: abducción izquierda = muslo hacia +x = +; derecha = hacia −x → signo −1.
+ *   - rodilla (FPPA, ángulo de proyección en el plano frontal): muslo (muslo proximal → centro de la rodilla) y pierna
+ *     (centro de la rodilla → centro del tobillo). Valgo = la rodilla hacia dentro (hacia la línea media): en la pierna
+ *     izquierda la línea media queda hacia −x, así que el muslo baja hacia −x y la pierna vuelve hacia +x, un giro
+ *     antihorario del muslo a la pierna → signo +1; en la derecha, al revés → signo −1. 0° con muslo y pierna alineados;
+ *     valgo +, varo −, igual en las dos piernas y con la cámara delante o detrás.
  */
 
 export type Lado = 'der' | 'izq'
@@ -32,6 +37,10 @@ export const marcadores = (l: Lado) => ({
   tobillo: `maleolo_${l}`,
   talon: `calcaneo_${l}`,
   antepie: `metatarsiano5_${l}`,
+  // Vista de frente (FPPA de la rodilla).
+  musloProximal: `muslo_proximal_${l}`,
+  centroRodilla: `centro_rodilla_${l}`,
+  centroTobillo: `centro_tobillo_${l}`,
 })
 
 export function articulacionesSagitales(l: Lado): DefinicionArticulacion[] {
@@ -110,6 +119,17 @@ export function articulacionesFrontales(l: Lado): DefinicionArticulacion[] {
       positivo: 'abducción',
       negativo: 'aducción',
     },
+    {
+      id: `rodilla_frontal_${l}`,
+      nombre: `Rodilla ${NOMBRE_LADO[l]} (FPPA, valgo-varo)`,
+      plano: 'frontal',
+      proximal: { desde: m.musloProximal, hasta: m.centroRodilla },
+      distal: { desde: m.centroRodilla, hasta: m.centroTobillo },
+      signo: l === 'izq' ? 1 : -1,
+      cero: 0,
+      positivo: 'valgo',
+      negativo: 'varo',
+    },
   ]
 }
 
@@ -127,4 +147,33 @@ export function modeloRodilla3(l: Lado): ModeloMarcadores {
   ]
   const rodilla = articulacionesSagitales(l).find((a) => a.id === `rodilla_sagital_${l}`)!
   return { marcadores: lista, articulaciones: [rodilla] }
+}
+
+/**
+ * Los marcadores de la vista de frente para el FPPA de la rodilla (D3 de la fase 3): muslo proximal (a media distancia
+ * entre la espina ilíaca anterosuperior y la rodilla, como estimación del centro de la cadera), centro de la rodilla
+ * (centro de la rótula o punto medio entre los cóndilos) y centro del tobillo (punto medio entre los maléolos).
+ */
+export function marcadoresFrontalesRodilla(l: Lado): Marcador[] {
+  const m = marcadores(l)
+  const lado = NOMBRE_LADO[l]
+  return [
+    { id: m.musloProximal, nombre: `Muslo proximal (${lado})` },
+    { id: m.centroRodilla, nombre: `Centro de la rodilla (${lado})` },
+    { id: m.centroTobillo, nombre: `Centro del tobillo (${lado})` },
+  ]
+}
+
+/**
+ * Un modelo con lo de la vista de frente añadido (D4: un único modelo por sesión con todos los marcadores; cada vista
+ * sigue los suyos): sus tres marcadores y el FPPA de la rodilla del mismo lado. Lo que ya tenía no cambia (ni de orden:
+ * las trayectorias guardadas van por id) y no se repite si ya estaba.
+ */
+export function conRodillaFrontal(modelo: ModeloMarcadores, l: Lado): ModeloMarcadores {
+  const fppa = articulacionesFrontales(l).find((a) => a.id === `rodilla_frontal_${l}`)!
+  const ids = new Set(modelo.marcadores.map((mk) => mk.id))
+  const nuevos = marcadoresFrontalesRodilla(l).filter((mk) => !ids.has(mk.id))
+  const tiene = modelo.articulaciones.some((a) => a.id === fppa.id)
+  if (nuevos.length === 0 && tiene) return modelo
+  return { marcadores: [...modelo.marcadores, ...nuevos], articulaciones: tiene ? modelo.articulaciones : [...modelo.articulaciones, fppa] }
 }

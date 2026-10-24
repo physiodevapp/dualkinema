@@ -101,7 +101,7 @@ function posiciones(t) {
  * Pierna color piel sobre un fondo gris con ruido y 3 gomets de color con
  * antialiasing (centros reales conocidos). `oculto(t)` tapa el tobillo.
  */
-async function generarRodilla(dir, nombre, color, oculto = () => false) {
+async function generarRodilla(dir, nombre, color, oculto = () => false, { posicionesEn = posiciones, verdadEn = (t) => ({ flexion: flexionEn(t) }) } = {}) {
   const { ancho, alto, n, huecos } = RODILLA
   const tiempos = tiemposDe(n, huecos)
   let semilla = 7
@@ -110,7 +110,7 @@ async function generarRodilla(dir, nombre, color, oculto = () => false) {
     ancho, alto, n, huecos, kbps: 1500, salida: join(dir, `${nombre}.webm`),
     dibujar: (i) => {
       const t = tiempos[i]
-      const ps = posiciones(t)
+      const ps = posicionesEn(t)
       const buf = Buffer.alloc(ancho * alto * 3)
       for (let y = 0; y < alto; y++) {
         for (let x = 0; x < ancho; x++) {
@@ -148,8 +148,24 @@ async function generarRodilla(dir, nombre, color, oculto = () => false) {
   })
   writeFileSync(
     join(dir, `${nombre}.json`),
-    JSON.stringify(tiempos.map((t) => ({ t, flexion: flexionEn(t), ps: posiciones(t), tobilloOculto: oculto(t) }))),
+    JSON.stringify(tiempos.map((t) => ({ t, ...verdadEn(t), ps: posicionesEn(t), tobilloOculto: oculto(t) }))),
   )
+}
+
+/** Valgo real (FPPA, grados) en el instante t del vídeo «frontal»: 0 → 20 → 0 en 4 s. */
+export const valgoEn = (t) => 10 * (1 - Math.cos((Math.PI * t) / 2))
+
+/**
+ * Pierna izquierda vista de frente (la cámara delante: la izquierda de la persona queda a la derecha de la imagen), con
+ * los gomets del FPPA: muslo proximal, centro de la rodilla y centro del tobillo. La rodilla va hacia dentro (hacia la
+ * izquierda de la imagen) repartiendo el valgo entre el muslo y la pierna, así que el FPPA es exactamente `valgoEn(t)`.
+ */
+function posicionesFrontales(t) {
+  const v = (valgoEn(t) * Math.PI) / 180
+  const muslo = { x: 330, y: 50 }
+  const rodilla = { x: muslo.x - 130 * Math.sin(v / 2), y: muslo.y + 130 * Math.cos(v / 2) }
+  const tobillo = { x: rodilla.x + 120 * Math.sin(v / 2), y: rodilla.y + 120 * Math.cos(v / 2) }
+  return [muslo, rodilla, tobillo]
 }
 
 /** Intervalo en que el tobillo queda tapado en el vídeo «oculto» (segundos de vídeo). */
@@ -216,12 +232,15 @@ export async function asegurarVideos() {
   }
   // Añadido después de la primera versión: se genera aparte si falta (sin invalidar los demás).
   if (!existsSync(join(dir, 'numerado25.json'))) await generarNumerado25(dir)
+  if (!existsSync(join(dir, 'frontal.json'))) await generarRodilla(dir, 'frontal', VERDE, () => false, { posicionesEn: posicionesFrontales, verdadEn: (t) => ({ fppa: valgoEn(t) }) })
   const leer = (nombre) => JSON.parse(readFileSync(join(dir, `${nombre}.json`), 'utf8'))
   return {
     numerado: { ruta: join(dir, 'numerado.webm'), ...leer('numerado') },
     numerado25: { ruta: join(dir, 'numerado25.webm'), ...leer('numerado25') },
     verde: { ruta: join(dir, 'verde.webm'), verdad: leer('verde') },
     rojo: { ruta: join(dir, 'rojo.webm'), verdad: leer('rojo') },
+    // La pierna izquierda de frente, con el FPPA real de cada frame (`fppa`).
+    frontal: { ruta: join(dir, 'frontal.webm'), verdad: leer('frontal') },
     oculto: { ruta: join(dir, 'oculto.webm'), verdad: leer('oculto') },
     corto: { ruta: join(dir, 'corto.webm'), verdad: leer('corto') },
     // El vídeo «verde» girado 90° (360×640): solo para probar la distribución con un vídeo vertical, sin verdad conocida.

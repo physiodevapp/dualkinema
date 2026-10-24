@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { OrientacionVista } from '../geometria/canonico'
 import { serieAngular } from './calculo'
-import { articulacionesFrontales, articulacionesSagitales, marcadores, modeloRodilla3, type Lado } from './catalogo'
+import { articulacionesFrontales, articulacionesSagitales, conRodillaFrontal, marcadores, marcadoresFrontalesRodilla, modeloRodilla3, type Lado } from './catalogo'
 import type { DefinicionArticulacion } from './definicion'
 import { aImagen, direccion, frame } from './poses'
 
@@ -127,6 +127,55 @@ describe.each(LADOS)('convención frontal, lado %s', (l) => {
       }
       expect(medir(def(l, 'cadera_frontal'), puntos, o)).toBeCloseTo(esperado)
     })
+
+    /**
+     * FPPA de la rodilla. Marco frontal: x = izquierda de la persona. La línea media queda hacia −x en la pierna izquierda y
+     * hacia +x en la derecha. `muslo` y `pierna`: hacia dónde se desvía cada segmento de la vertical, en grados hacia la línea
+     * media (+) o hacia fuera (−).
+     */
+    function poseFrontal(l: Lado, a: { muslo: number; pierna: number }) {
+      const m = marcadores(l)
+      const haciaDentro = l === 'izq' ? -1 : 1
+      const musloProximal = { x: l === 'izq' ? 0.15 : -0.15, y: 0 }
+      const rodilla = sumar(musloProximal, haciaDentro * a.muslo, 0.9)
+      const tobillo = sumar(rodilla, haciaDentro * a.pierna, 1.2)
+      return { [m.musloProximal]: musloProximal, [m.centroRodilla]: rodilla, [m.centroTobillo]: tobillo }
+    }
+
+    it.each([
+      [0, 0],
+      [10, 10],
+      [25, 25],
+      [-8, -8],
+    ])('FPPA de la rodilla: %d° de valgo (rodilla hacia dentro, repartido entre muslo y pierna) → %d°', (valgo, esperado) => {
+      // El muslo baja hacia dentro y la pierna vuelve hacia fuera: la rodilla queda medial a la línea cadera–tobillo.
+      expect(medir(def(l, 'rodilla_frontal'), poseFrontal(l, { muslo: valgo / 2, pierna: -valgo / 2 }), o)).toBeCloseTo(esperado)
+    })
+
+    it('FPPA de la rodilla: con el muslo vertical y la pierna 12° hacia fuera, 12° de valgo', () => {
+      expect(medir(def(l, 'rodilla_frontal'), poseFrontal(l, { muslo: 0, pierna: -12 }), o)).toBeCloseTo(12)
+    })
+
+    it('FPPA de la rodilla: el muslo hacia dentro con la pierna paralela a él es 0° (alineados, aunque no verticales)', () => {
+      expect(medir(def(l, 'rodilla_frontal'), poseFrontal(l, { muslo: 15, pierna: 15 }), o)).toBeCloseTo(0)
+    })
+
+    it('FPPA de la rodilla: la rodilla hacia fuera es varo (negativo)', () => {
+      expect(medir(def(l, 'rodilla_frontal'), poseFrontal(l, { muslo: -6, pierna: 4 }), o)).toBeCloseTo(-10)
+    })
+  })
+})
+
+describe('modelo con la vista de frente', () => {
+  it.each(LADOS)('añade los tres marcadores frontales y el FPPA del mismo lado sin tocar lo que había (%s)', (l) => {
+    const base = modeloRodilla3(l)
+    const ampliado = conRodillaFrontal(base, l)
+    expect(ampliado.marcadores.slice(0, 3)).toEqual(base.marcadores)
+    expect(ampliado.marcadores.slice(3)).toEqual(marcadoresFrontalesRodilla(l))
+    expect(ampliado.articulaciones.map((a) => a.id)).toEqual([`rodilla_sagital_${l}`, `rodilla_frontal_${l}`])
+    expect(ampliado.articulaciones[1]!.positivo).toBe('valgo')
+    // Ampliar dos veces no repite nada.
+    expect(conRodillaFrontal(ampliado, l)).toBe(ampliado)
   })
 })
 

@@ -1,4 +1,5 @@
-import { useCallback, type ReactNode } from 'react'
+import { useCallback, useMemo, type ReactNode } from 'react'
+import { marcadoresParaVista, modeloDeVista } from '../../core/articulaciones/modeloVista'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
 import { useVista } from './useVista'
@@ -25,10 +26,13 @@ interface Props {
 export default function AnfitrionVista({ entrada, modelo, filtro, avisoInicial, activa, alCambiarFrame, children }: Props) {
   const id = entrada.id
   const alCambiar = useCallback((frame: number) => alCambiarFrame(id, frame), [alCambiarFrame, id])
+  // Lo que ve esta vista del modelo de la sesión: sus marcadores y la articulación de su plano (D4).
+  const marcadores = useMemo(() => entrada.marcadores ?? marcadoresParaVista(modelo, entrada.orientacion), [entrada.marcadores, modelo, entrada.orientacion])
+  const modeloVista = useMemo(() => modeloDeVista(modelo, marcadores, entrada.orientacion), [modelo, marcadores, entrada.orientacion])
   const vista = useVista({
     video: entrada.video,
     orientacion: entrada.orientacion,
-    modelo,
+    modelo: modeloVista,
     inicial: entrada.inicial,
     filtro,
     cerosGuardados: entrada.ceros,
@@ -37,5 +41,5 @@ export default function AnfitrionVista({ entrada, modelo, filtro, avisoInicial, 
     activa,
     alCambiarFrame: alCambiar,
   })
-  return children({ id: entrada.id, orientacion: entrada.orientacion, desfaseS: entrada.desfase, sincronia: entrada.sincronia, ...vista })
+  return children({ id: entrada.id, orientacion: entrada.orientacion, desfaseS: entrada.desfase, sincronia: entrada.sincronia, marcadores, ...vista })
 }

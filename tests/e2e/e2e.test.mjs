@@ -3294,6 +3294,92 @@ describe('glosario', () => {
   })
 })
 
+describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
+  // A = «verde» (perfil, la persona mira a la derecha: pierna izquierda) y B = «frontal» (la misma pierna de frente, con
+  // gomets en el muslo proximal, el centro de la rodilla y el centro del tobillo, y un valgo real de 0 → 20 → 0°).
+  let p
+  const verdad = () => videos.frontal.verdad
+  before(async () => {
+    ;({ p } = await seguirVideo(videos.verde, { ancho: 1280 }))
+    await abrirPestana(p, 'video')
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.frontal.ruta)
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'marcar')
+  })
+  after(() => p?.close())
+
+  it('la vista de frente sigue sus tres marcadores (no los de perfil) y mide el FPPA, valgo positivo', async () => {
+    const radios = await p.getByRole('radiogroup').innerText()
+    assert.match(radios, /Muslo proximal/)
+    assert.match(radios, /Centro de la rodilla/)
+    assert.match(radios, /Centro del tobillo/)
+    assert.doesNotMatch(radios, /Trocánter|Epicóndilo|Maléolo/)
+    // De frente se ven las dos piernas: no dice «la que ve la cámara».
+    assert.match(await p.getByText(/^pierna izquierda/).innerText(), /^pierna izquierda$/)
+    const grafica = await p.getByTestId('panel-grafica').innerText()
+    assert.match(grafica, /RODILLA IZQUIERDA/i)
+    assert.match(grafica, /valgo \+/)
+  })
+
+  it('marcar y seguir en la vista de frente da el FPPA real en todo el vídeo', async () => {
+    await irAFrame(p, 0)
+    await marcarTres(p, verdad()[0].ps)
+    const aviso = await seguirHastaElFinal(p)
+    assert.match(aviso, /completado hasta el final del vídeo, sin huecos/, `aviso: «${aviso}»`)
+    for (const i of FRAMES_A_COMPARAR) {
+      await irAFrame(p, i)
+      const medido = await leerAngulo(p)
+      assert.ok(Math.abs(medido - verdad()[i].fppa) < TOLERANCIA_GRADOS, `frame ${i + 1}: FPPA medido ${medido}°, real ${verdad()[i].fppa.toFixed(2)}°`)
+    }
+  })
+
+  it('la vista de perfil sigue con su flexión real, sin los marcadores de frente', async () => {
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    assert.doesNotMatch(await p.getByRole('radiogroup').innerText(), /Muslo proximal|Centro/)
+    await irAFrame(p, 60)
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+  })
+
+  it('se guarda (cada vista con sus marcadores) y al recuperar la vista de frente sigue dando el FPPA real', async () => {
+    await esperarGuardado(p, videos.verde.verdad.length * 2)
+    const c = await p.evaluate(async () => {
+      const bd = await new Promise((ok) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+      })
+      const todas = await new Promise((ok) => {
+        const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+        r.onsuccess = () => ok(r.result)
+      })
+      bd.close()
+      return todas[0]
+    })
+    assert.deepEqual(c.vistas[0].marcadores, ['trocanter_izq', 'epicondilo_femoral_izq', 'maleolo_izq'])
+    assert.deepEqual(c.vistas[1].marcadores, ['muslo_proximal_izq', 'centro_rodilla_izq', 'centro_tobillo_izq'])
+    assert.deepEqual(c.modelo.articulaciones.map((a) => a.id), ['rodilla_sagital_izq', 'rodilla_frontal_izq'])
+    await p.reload()
+    await p.setInputFiles('input[type=file]', videos.frontal.ruta)
+    await p.getByRole('heading', { name: 'Ya has trabajado con este vídeo' }).waitFor({ timeout: 20000 })
+    await p.getByRole('button', { name: 'Recuperar el trabajo' }).click()
+    await p.getByTestId('faltan-videos').waitFor({ timeout: 20000 })
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Elegir el vídeo que falta' }), videos.verde.ruta)
+    await p.getByTestId('conmutador-vista').waitFor({ timeout: 20000 })
+    await esperarQuieto(p)
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'marcar')
+    for (const i of [20, 60, 100]) {
+      await irAFrame(p, i)
+      const medido = await leerAngulo(p)
+      assert.ok(Math.abs(medido - verdad()[i].fppa) < TOLERANCIA_GRADOS, `recuperado, frame ${i + 1}: ${medido}°, real ${verdad()[i].fppa.toFixed(2)}°`)
+    }
+  })
+})
+
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })

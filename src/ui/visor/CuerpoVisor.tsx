@@ -5,7 +5,8 @@ import type { ModeloMarcadores } from '../../core/modelo/tipos'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { Sincronia } from '../../core/modelo/tipos'
 import type { VideoAbierto } from '../../media/video'
-import { COLORES_MARCADOR, ladoDeVista, nombreCorto } from '../marcadores'
+import type { Lado } from '../../core/articulaciones/catalogo'
+import { COLORES_MARCADOR, nombreCorto } from '../marcadores'
 import PanelGrafica from './PanelGrafica'
 import MiniGrafica from './MiniGrafica'
 import LienzoVideo from './LienzoVideo'
@@ -52,7 +53,10 @@ interface Props {
   /** Índice de la vista activa: la que se pinta y se marca. */
   activa: number
   sesion: SesionAbierta
+  /** El modelo de la sesión (todos los marcadores; cada vista ve los suyos en `modelo` de su `VistaViva`). */
   modelo: ModeloMarcadores
+  /** La pierna que se analiza (la que ve la cámara de la vista lateral de referencia). */
+  lado: Lado
   /** La sesión viene de lo guardado (no es nueva). */
   recuperada: boolean
   /** La sesión que se abre no está guardada tal como es (se acaba de añadir una vista): se guarda al montar. */
@@ -75,12 +79,13 @@ interface Props {
   onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista) => void
 }
 
-export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, onElegirVista, onAnadirVista }: Props) {
+export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, onElegirVista, onAnadirVista }: Props) {
   const activaViva = vistas[activa]!
   const orientacion = activaViva.orientacion
-  const lado = ladoDeVista(orientacion)
-  const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
-  const articulacion = modelo.articulaciones[0]!
+  // Lo de la vista activa: sus marcadores y su articulación.
+  const modeloVista = activaViva.modelo
+  const ids = useMemo(() => modeloVista.marcadores.map((m) => m.id), [modeloVista])
+  const articulacion = modeloVista.articulaciones[0]!
 
   // Todo lo de la vista activa (trayectorias, frames, marcado, seguimiento, escala, análisis, dibujo, valores y CSV).
   const {
@@ -174,6 +179,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
       calibracion: w.calibracion,
       desfase: w.desfaseS,
       sincronia: w.sincronia,
+      marcadores: w.marcadores,
     })),
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
     version: revSinc + vistas.reduce((suma, w) => suma + w.version + w.revAjustes + w.revCeros + w.revCalibracion, 0),
@@ -288,7 +294,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
   const botonSeguir = <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={seguirDesdeAqui} onParar={pararSeguimiento} compacto enFila={dosColumnas} />
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
-      <SelectorMarcadores marcadores={modelo.marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={setSeleccionado} compacto />
+      <SelectorMarcadores marcadores={modeloVista.marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={setSeleccionado} compacto />
       {dosColumnas ? (
         // Móvil girado: «a ojo» y «seguir» en una fila (la columna tiene poco alto y, con el aviso y los botones de huecos, no cabía sin scroll).
         <>
@@ -379,7 +385,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
                   className="size-3 rounded-full"
                   style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
                 />
-                Toca: {nombreCorto(modelo.marcadores.find((x) => x.id === seleccionado)!.nombre)}
+                Toca: {nombreCorto(modeloVista.marcadores.find((x) => x.id === seleccionado)!.nombre)}
                 {colocarAOjo && <span className="text-texto-2">· a ojo</span>}
               </p>
             )}
@@ -621,7 +627,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
           <PanelPestana id="marcar" activa={pestana === 'marcar'}>
             <PanelMarcar
               lado={lado}
-              marcadores={modelo.marcadores}
+              frontal={orientacion.plano === 'frontal'}
+              marcadores={modeloVista.marcadores}
               estadosMarcadores={estadosMarcadores}
               seleccionado={seleccionado}
               onElegirMarcador={setSeleccionado}
@@ -660,7 +667,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, recuperada
               filtrado={filtrado}
               anguloFiltrado={anguloFiltrado}
               mostrado={mostrado}
-              marcadores={modelo.marcadores}
+              marcadores={modeloVista.marcadores}
               tramoEstatico={tramoEstatico}
               cero={cero}
               t={t}
