@@ -234,9 +234,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     ? {
         referencia: activa === 0,
         desfaseS: activaViva.desfaseS,
-        metodo: activaViva.sincronia.metodo,
-        ...(activaViva.sincronia.evento ? { evento: activaViva.sincronia.evento } : {}),
-        ...(activaViva.sincronia.metodo === 'evento' && incertidumbreS !== undefined ? { incertidumbreS } : {}),
+        sincronia: activaViva.sincronia,
+        ...(incertidumbreS !== undefined && Number.isFinite(incertidumbreS) ? { incertidumbreEventoS: incertidumbreS } : {}),
       }
     : undefined
   // La sesión conoce las vistas vivas (el cursor común mueve las demás) y, al abrir otra vista, la pone donde toca.

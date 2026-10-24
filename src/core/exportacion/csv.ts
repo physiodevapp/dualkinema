@@ -4,7 +4,10 @@ import { distanciaPx, incertidumbreEscala, metrosPorPx, type CalibracionVista } 
 import type { VelocidadMarcador } from '../filtros/derivadas'
 import type { TrayectoriaFiltrada } from '../filtros/tramos'
 import type { OrientacionVista } from '../geometria/canonico'
-import type { IdMarcador, MetodoSincronia, Muestra2D, Sincronia } from '../modelo/tipos'
+import type { IdMarcador, Muestra2D, Sincronia } from '../modelo/tipos'
+import { compararConEvento } from '../sincronia/audio'
+import { TASA_ENVOLVENTE } from '../sincronia/envolvente'
+import { ajusteManual, desfaseDeEvento } from '../sincronia/evento'
 
 /*
  * Exportación CSV (paso 7 de la fase 2, decisión D7). Una fila por frame, con
@@ -63,11 +66,10 @@ export interface SincronizacionExportada {
   readonly referencia: boolean
   /** Segundos que se suman al tiempo del vídeo para dar el tiempo común. */
   readonly desfaseS: number
-  readonly metodo: MetodoSincronia
-  /** Si se halló por un evento visual: su instante en la vista de referencia y en esta (s de vídeo). */
-  readonly evento?: Sincronia['evento']
-  /** ± s (suma de medio frame de cada vista); solo con un evento visual. */
-  readonly incertidumbreS?: number
+  /** Cómo se halló, tal como se guarda: método, el evento (que lo dio o que comprobó el audio) y lo que dio el audio. */
+  readonly sincronia: Sincronia
+  /** ± s de un evento visual: la suma de medio frame de cada vista. */
+  readonly incertidumbreEventoS?: number
 }
 
 export interface DatosExportacion {
@@ -94,6 +96,41 @@ export interface DatosExportacion {
     /** ISO 8601, de quien llama (así la función es pura). */
     readonly exportado: string
   }
+}
+
+/**
+ * Las filas de la cabecera sobre la sincronía de la vista: de dónde sale el desfase y con qué precisión. Por evento, sus
+ * instantes; por audio, la calidad del pico y la precisión del audio (que no incluye el retardo entre sonido e imagen de
+ * cada móvil) y, si se comprobó con un evento visual, la comprobación aparte (el evento no dio el desfase). Lo movido a mano
+ * sobre lo que dio el método, como «ajustada».
+ */
+function filasSincronia(x: SincronizacionExportada, n: (v: number, d: number) => string): [string, string][] {
+  if (x.referencia) return [['sincronización', 'vista de referencia: su tiempo es el tiempo común (desfase 0)']]
+  const s = x.sincronia
+  const metodo = { ninguna: 'sin sincronizar', evento: 'evento visual', audio: 'audio', manual: 'puesta a mano' }[s.metodo]
+  const ms = (v: number) => `${v < 0 ? '−' : '+'}${n(Math.abs(v) * 1000, 0)} ms`
+  const inc = x.incertidumbreEventoS
+  const instantes = (e: NonNullable<Sincronia['evento']>) => `evento en ${n(e.referencia, 3)} s de la referencia y en ${n(e.vista, 3)} s de esta vista`
+  let texto = `desfase ${n(x.desfaseS, 3)} s respecto a la vista de referencia; método: ${metodo}`
+  const filas: [string, string][] = []
+  if (s.metodo === 'evento') {
+    if (inc !== undefined) texto += `; precisión ±${n(inc * 1000, 0)} ms`
+    if (s.evento) texto += `; ${instantes(s.evento)}`
+  } else if (s.metodo === 'audio' && s.audio) {
+    texto += `; calidad del pico ${n(s.audio.calidad, 1)}; precisión del audio ±${n(1000 / TASA_ENVOLVENTE, 1)} ms (no incluye el retardo entre sonido e imagen de cada móvil)`
+    if (s.evento) {
+      const c = compararConEvento({ desfase: s.audio.desfase, incertidumbre: 1 / TASA_ENVOLVENTE }, s.evento, inc ?? 0)
+      filas.push([
+        'sincronización: comprobación',
+        `con un evento visual (no da el desfase): ${instantes(s.evento)}; desfase por el evento ${n(desfaseDeEvento(s.evento), 3)} s` +
+          (inc !== undefined ? ` ±${n(inc * 1000, 0)} ms` : '') +
+          `; diferencia con el audio ${ms(c.diferencia)}${c.discrepan ? ' (discrepan)' : ''}`,
+      ])
+    }
+  }
+  const ajuste = ajusteManual(x.desfaseS, s)
+  if (ajuste !== null && Math.abs(ajuste) > 1e-9) texto += `; ajustada ${ms(ajuste)} a mano sobre lo que dio el método`
+  return [['sincronización', texto], ...filas]
 }
 
 /** Alinea una serie angular (solo frames con todos los marcadores) con la tabla de frames, por `t` exacto. */
@@ -161,17 +198,8 @@ function cabecera(d: DatosExportacion, e: Estilo): [string, string][] {
         : ['cero de referencia', 'ninguno (la columna relativa queda vacía)'],
     )
   }
-  const s = d.sincronia
-  if (s) {
-    const metodo = { ninguna: 'sin sincronizar', evento: 'evento visual', audio: 'audio', manual: 'puesta a mano' }[s.metodo]
-    filas.push([
-      'sincronización',
-      s.referencia
-        ? 'vista de referencia: su tiempo es el tiempo común (desfase 0)'
-        : `desfase ${n(s.desfaseS, 3)} s respecto a la vista de referencia; método: ${metodo}` +
-          (s.incertidumbreS !== undefined ? `; precisión ±${n(s.incertidumbreS * 1000, 0)} ms` : '') +
-          (s.evento ? `; evento en ${n(s.evento.referencia, 3)} s de la referencia y en ${n(s.evento.vista, 3)} s de esta vista` : ''),
-    ])
+  if (d.sincronia) {
+    filas.push(...filasSincronia(d.sincronia, n))
     filas.push(['t_comun_s', 'tiempo común = tiempo del vídeo (t_s) + desfase: el eje de tiempo que comparten las vistas'])
   }
   const c = d.calibracion
