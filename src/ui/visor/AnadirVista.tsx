@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FilmIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import { claveHuella, type HuellaArchivo } from '../../core/persistencia/huella'
@@ -23,7 +23,23 @@ export default function AnadirVista({ existentes, onAnadir }: Props) {
   const [cargando, setCargando] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   // El vídeo ya abierto, a la espera de que se diga cómo se ve a la persona.
-  const [pendiente, setPendiente] = useState<VideoAbierto | null>(null)
+  const [pendiente, setPendienteEstado] = useState<VideoAbierto | null>(null)
+  // El mismo vídeo pendiente, para cerrarlo si el componente se desmonta (se cambia de vídeo o se sale del visor) antes de
+  // decir cómo se ve a la persona: si no, se quedaba abierto. `montado` evita dejarlo pendiente si la lectura acaba después.
+  const pendienteRef = useRef<VideoAbierto | null>(null)
+  const montado = useRef(true)
+  const setPendiente = (v: VideoAbierto | null) => {
+    pendienteRef.current = v
+    setPendienteEstado(v)
+  }
+  useEffect(() => {
+    montado.current = true
+    return () => {
+      montado.current = false
+      void pendienteRef.current?.cerrar()
+      pendienteRef.current = null
+    }
+  }, [])
 
   const abrir = async (archivo: File) => {
     setError(null)
@@ -32,6 +48,10 @@ export default function AnadirVista({ existentes, onAnadir }: Props) {
     try {
       const { VideoAbierto } = await import('../../media/video')
       video = await VideoAbierto.abrir(archivo)
+      if (!montado.current) {
+        void video.cerrar()
+        return
+      }
       const clave = claveHuella(huellaDe(video))
       if (existentes.some((h) => claveHuella(h) === clave)) {
         void video.cerrar()

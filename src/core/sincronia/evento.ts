@@ -30,8 +30,12 @@ export const pasoTipico = (tabla: TablaFrames): number => 1 / fpsMediano(tabla)
  */
 export const incertidumbreEvento = (pasoReferencia: number, pasoVista: number): number => (pasoReferencia + pasoVista) / 2
 
-/** Mueve el desfase `frames` pasos de la vista (positivo: la vista se desplaza hacia más tarde en el tiempo común). */
-export const ajustarDesfase = (desfase: number, frames: number, pasoVista: number): number => desfase + frames * pasoVista
+/**
+ * Mueve el desfase `frames` pasos de la vista (positivo: la vista se desplaza hacia más tarde en el tiempo común). Sin un
+ * paso utilizable (un vídeo de un solo frame) no lo mueve: un desfase NaN dejaría la vista fuera del tiempo común.
+ */
+export const ajustarDesfase = (desfase: number, frames: number, pasoVista: number): number =>
+  Number.isFinite(pasoVista) && pasoVista > 0 ? desfase + frames * pasoVista : desfase
 
 /** Cómo queda anotada la sincronía tras mover el desfase a mano: un evento sigue siendo de dónde partió; sin método, es manual. */
 export const sincroniaTrasAjuste = (s: Sincronia): Sincronia => (s.metodo === 'ninguna' ? { metodo: 'manual' } : s)

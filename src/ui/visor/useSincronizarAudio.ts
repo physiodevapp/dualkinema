@@ -33,7 +33,9 @@ export function useSincronizarAudio() {
     worker.current = w
     setEstado({ fase: 'leyendo', progreso: 0 })
     const inicio = performance.now()
+    // Un mensaje de un worker ya sustituido (se volvió a empezar o se descartó) no cambia el estado.
     w.onmessage = (e: MessageEvent<DelWorkerAudio>) => {
+      if (worker.current !== w) return
       const m = e.data
       if (m.tipo === 'progreso') {
         setEstado({ fase: 'leyendo', progreso: m.fraccion })
@@ -47,6 +49,7 @@ export function useSincronizarAudio() {
     // Si el worker no llega a cargar (una versión nueva publicada con la app abierta), no llegaría ningún mensaje.
     w.onerror = (ev) => {
       ev.preventDefault()
+      if (worker.current !== w) return
       setEstado({ fase: 'error', mensaje: ev.message || 'no se ha podido cargar el proceso del audio. Recarga la página.' })
       cerrar()
     }

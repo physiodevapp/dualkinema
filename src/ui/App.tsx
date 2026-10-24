@@ -226,6 +226,8 @@ function Aplicacion() {
       setEstado(estadoDeSesion(cabecera, datos, { ...abiertos, [vista.id]: video }, apertura))
     } catch (e) {
       void video?.cerrar()
+      // Como al acabar bien: si mientras tanto se abrió otra cosa, el error de esta apertura ya no toca.
+      if (aperturas.current !== apertura) return
       setEstado({ fase: 'faltan', apertura, cabecera, datos, abiertos, error: e instanceof Error ? e.message : String(e) })
     }
   }

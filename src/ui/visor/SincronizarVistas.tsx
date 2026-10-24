@@ -216,10 +216,10 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
         <div className="flex flex-col gap-2">
           <h3 className="text-xs tracking-wider text-texto-2 uppercase">Ajuste fino</h3>
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => ajustar(-1)} className="rounded-md border border-borde px-3 py-2">
+            <button type="button" onClick={() => ajustar(-1)} disabled={!Number.isFinite(pasoVista)} className="rounded-md border border-borde px-3 py-2 disabled:opacity-40">
               B un frame antes
             </button>
-            <button type="button" onClick={() => ajustar(1)} className="rounded-md border border-borde px-3 py-2">
+            <button type="button" onClick={() => ajustar(1)} disabled={!Number.isFinite(pasoVista)} className="rounded-md border border-borde px-3 py-2 disabled:opacity-40">
               B un frame después
             </button>
           </div>
