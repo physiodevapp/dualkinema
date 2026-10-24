@@ -4,7 +4,7 @@ Análisis cinemático diferido a partir de vídeo, siguiendo marcadores colocado
 
 **Todo el procesamiento ocurre en el navegador**: los vídeos y los datos nunca salen del dispositivo.
 
-Estado: fases 1 (base y prototipo, [`docs/plan-fase-1.md`](docs/plan-fase-1.md)), 2 (calibración y cálculos, [`docs/plan-fase-2.md`](docs/plan-fase-2.md)) y 3 (dos vistas, [`docs/plan-fase-3.md`](docs/plan-fase-3.md)) cerradas; en curso, la fase 4 (grabación con dos móviles, [`docs/plan-fase-4.md`](docs/plan-fase-4.md)): hecho el laboratorio, que mide qué da cada móvil al grabar (`?laboratorio`).
+Estado: fases 1 (base y prototipo, [`docs/plan-fase-1.md`](docs/plan-fase-1.md)), 2 (calibración y cálculos, [`docs/plan-fase-2.md`](docs/plan-fase-2.md)) y 3 (dos vistas, [`docs/plan-fase-3.md`](docs/plan-fase-3.md)) cerradas; en curso, la fase 4 (grabación con dos móviles, [`docs/plan-fase-4.md`](docs/plan-fase-4.md)): hechos el laboratorio, que mide qué da cada móvil al grabar (`?laboratorio`), y la grabación con un móvil dentro de la app.
 
 Qué hace hoy, con una vista de perfil y 3 gomets en la pierna (rodilla en el plano sagital) y, si se quiere, otra de frente:
 - avance frame a frame con el tiempo real de cada frame (también con fps variable), seguimiento de los gomets por color, corrección a mano con lupa y relleno de huecos cortos solo a petición;

@@ -53,6 +53,16 @@ Sirve cualquier objeto rígido de longitud conocida: un palo de 1 m, una cinta m
 5. Escala: en el panel «Escala», «Calibrar escala», elegir el objeto, ir a un frame donde se vea, tocar sus dos extremos con la lupa, escribir la longitud en cm y «Guardar escala». Con «Entre dos marcadores», después de seguir: elegir los marcadores y el tramo quieto, y escribir la distancia medida.
 6. «Longitud de los segmentos» (panel «Escala»): si la distancia entre gomets cambia más de un 3 % en algunos frames, ahí la pierna sale del plano o los gomets se deslizan; la escala y los ángulos son menos fiables en esos frames.
 
+## Grabar con la app
+
+En la portada, «Grabar con este móvil» graba con la cámara trasera dentro de la app (sin la app de cámara del móvil):
+
+- **1080p a 30 fps** por defecto. 60 fps no se ofrece: en el Pixel 8 Chrome los concede pero la cámara entrega unos 40.
+- **Luz:** al parar, la app cuenta los frames que de verdad hay y avisa si la cámara dio menos del 90 % de los fps (por ejemplo, 25 de 30). Con una bombilla de techo normal el Pixel 8 dio 30 fps (exposición automática de 1/120 s); en una toma anterior con la misma luz dio unos 25, sin explicación clara. Si sale el aviso, más luz delante de la persona (una lámpara, una ventana de día) y volver a grabar. Recomendación razonada: con más luz la cámara acorta la exposición, lo que además reduce el desenfoque de movimiento de los gomets.
+- **Sin estabilización ni recorte**, a diferencia de la app de cámara (mejor para medir).
+- Las grabaciones quedan en el almacenamiento de la app, en ese móvil. Para pasarlas a otro dispositivo, «Compartir» (Quick Share) o «Guardar» (Descargas); así además quedan a salvo si Android limpia el almacenamiento de la app.
+- No cerrar la app ni bloquear el móvil mientras graba (la pantalla se queda encendida sola): una grabación interrumpida se pierde. Como mucho 5 minutos seguidos.
+
 ## Segunda vista: de frente (FPPA de la rodilla)
 
 Con un segundo móvil, la misma pierna de frente da el valgo dinámico (FPPA). Recomendaciones (sin vídeos reales todavía):

@@ -14,6 +14,7 @@ import {
 } from 'mediabunny'
 import { saltosDeFrames } from '../core/tiempo/saltos'
 import { crearTablaFrames, estadisticas } from '../core/tiempo/tablaFrames'
+import { bitrateDe } from './grabadora'
 import type { ValorInforme } from './informe'
 
 /*
@@ -417,10 +418,6 @@ export interface ResultadoGrabacion {
   readonly archivo: File
   readonly informe: Dato
 }
-
-/** Bitrate de partida: unos 0,12 bits por píxel y frame (1080p30: 7,5 Mb/s), entre 4 y 40 Mb/s. */
-export const bitrateDe = (ancho: number, alto: number, fps: number): number =>
-  Math.min(40_000_000, Math.max(4_000_000, Math.round(ancho * alto * fps * 0.12)))
 
 export async function grabarPrueba(op: OpcionesGrabacion): Promise<ResultadoGrabacion> {
   const flujo = await navigator.mediaDevices.getUserMedia({

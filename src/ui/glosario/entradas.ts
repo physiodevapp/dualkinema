@@ -142,10 +142,19 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'grabacion',
+    titulo: 'Grabar con este móvil',
+    texto: [
+      'La app graba con la cámara trasera a la resolución elegida y a 30 fps, en H.264 si el móvil lo codifica (si no, VP9, AV1 o HEVC), con un fotograma clave cada segundo para que el visor salte rápido a cualquier frame. El sonido se graba sin procesar (sin cancelación de eco, supresión de ruido ni control de ganancia), como hará falta para sincronizar dos móviles por el pitido. 60 fps no se ofrece: en los móviles probados Chrome los concede pero la cámara entrega unos 40.',
+      'Cada vídeo se guarda en el almacenamiento de la app en este móvil y no sale de él. Se pueden abrir en el visor, compartir (con Quick Share, al otro móvil o a otro dispositivo tuyo), guardar en Descargas o borrar. Si el navegador no garantiza ese almacenamiento, Android podría borrarlo con muy poco espacio: compartir o guardar una grabación la pone a salvo. Se graba como mucho 5 minutos seguidos, y si la app se cierra a mitad (una llamada que la tapa, quedarse sin batería) esa grabación se pierde.',
+      'Al parar, la app cuenta los frames que de verdad hay en el archivo. Si la cámara da menos del 90 % de los fps pedidos (por ejemplo, 25 de 30), avisa. Puede ser poca luz (la cámara alarga la exposición y baja los fps) u otra causa del móvil: con más luz suele dar los 30. Los fps variables no son un problema para los cálculos (se usa el tiempo de cada frame), pero con menos frames y más desenfoque de movimiento el seguimiento y las velocidades son menos finos.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [
-      'Todo se procesa en este dispositivo, en el navegador: los vídeos y los datos nunca salen de él. El vídeo no se guarda nunca; lo que se guarda (marcado, seguimiento, ajustes, escala, desfase) queda en este navegador y se actualiza solo.',
+      'Todo se procesa en este dispositivo, en el navegador: los vídeos y los datos nunca salen de él. Un vídeo que se abre no se guarda nunca (los grabados con la app quedan en su almacenamiento hasta que los borres: ver «Grabar con este móvil»); lo que se guarda (marcado, seguimiento, ajustes, escala, desfase) queda en este navegador y se actualiza solo.',
       'Para continuar una sesión hay que volver a abrir el mismo vídeo (el navegador no puede reabrirlo solo); con dos vistas, los dos. Se reconocen por su tamaño, duración y número de frames, no por el nombre.',
     ],
   },

@@ -5,7 +5,7 @@
 //   npm run build && npm run test:e2e
 //
 import assert from 'node:assert/strict'
-import { copyFile } from 'node:fs/promises'
+import { copyFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
@@ -3897,6 +3897,73 @@ describe('laboratorio de grabación (fase 4, paso 1)', () => {
     } finally {
       await p.close()
     }
+  })
+})
+
+describe('grabar con este móvil (fase 4, paso 2)', () => {
+  let nav
+  let p
+  let frames
+  before(async () => {
+    nav = await lanzarNavegadorConCamaraFalsa()
+    p = await abrirApp(nav)
+  })
+  after(async () => {
+    await p?.close()
+    await nav?.close()
+  })
+
+  /** Abre «Grabar con este móvil» y espera a la cámara. Devuelve los fps que concede. */
+  async function entrarAGrabar() {
+    await p.getByTestId('ir-grabar').click()
+    await p.waitForFunction(() => document.querySelector('[data-testid=grabar-camara]')?.textContent.includes(' fps · '), null, { timeout: 20000 })
+    return Number(/a (\d+) fps/.exec(await p.getByTestId('grabar-camara').innerText())[1])
+  }
+
+  it('graba, para y revisa lo grabado: frames y fps de verdad, datos de la app dentro y aviso si faltan fps', async () => {
+    const concedidos = await entrarAGrabar()
+    await p.getByTestId('grabar-empezar').click()
+    await p.getByTestId('grabar-parar').waitFor({ timeout: 20000 })
+    await p.waitForTimeout(3000)
+    await p.getByTestId('grabar-parar').click()
+    await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
+    assert.equal(await p.getByTestId('grabar-error').count(), 0)
+    assert.equal(await p.getByTestId('grabar-resultado').getAttribute('data-metadatos'), 'sí', 'el MP4 lleva los datos de dualkinema y se leen')
+    frames = Number(await p.getByTestId('grabar-frames').innerText())
+    const fps = Number((await p.getByTestId('grabar-fps').innerText()).replace(',', '.'))
+    // Los fps contados en el archivo son los que da la cámara (la falsa: 20), no los pedidos (30).
+    assert.ok(Math.abs(fps - concedidos) < 0.1 * concedidos, `fps en el archivo ${fps}, concedidos ${concedidos}`)
+    assert.ok(frames >= 2.5 * concedidos, `${frames} frames en unos 3 s a ${concedidos} fps`)
+    // 20 de 30 pedidos (< 90 %): se avisa en el momento.
+    assert.ok(concedidos < 27, 'la cámara falsa da menos de 30 fps')
+    assert.ok(await p.getByTestId('grabar-aviso-fps').isVisible())
+    assert.match(await p.getByTestId('grabar-revision').innerText(), /con sonido/)
+    assert.equal(await p.getByTestId('grabacion').count(), 1)
+  })
+
+  it('«Abrir en el visor» abre la grabación con los mismos frames que contó la revisión', async () => {
+    await p.getByTestId('grabar-abrir').click()
+    await p.getByRole('button', { name: 'Mira a la derecha' }).click({ timeout: 20000 })
+    await esperarQuieto(p)
+    assert.equal((await leerPosicion(p)).total, frames)
+  })
+
+  it('sigue en la lista al recargar; «Guardar» descarga el archivo entero y «Borrar» pide confirmación', async () => {
+    await p.reload()
+    await entrarAGrabar()
+    const item = p.getByTestId('grabacion')
+    await item.first().waitFor({ timeout: 10000 })
+    assert.equal(await item.count(), 1)
+    const bytes = Number(await item.getAttribute('data-bytes'))
+    const [descarga] = await Promise.all([p.waitForEvent('download'), p.getByTestId('grabacion-guardar').click()])
+    assert.match(descarga.suggestedFilename(), /^dualkinema-\d{4}-\d{2}-\d{2}-\d{6}\.mp4$/)
+    assert.equal((await stat(await descarga.path())).size, bytes)
+    await p.getByTestId('grabacion-borrar').click()
+    // El primer toque solo pregunta.
+    assert.equal(await item.count(), 1)
+    await p.getByTestId('grabacion-confirmar-borrar').click()
+    await p.getByTestId('grabaciones-vacia').waitFor()
+    assert.equal(await item.count(), 0)
   })
 })
 
