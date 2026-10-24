@@ -1,8 +1,8 @@
 {
   // Relé de salas de dualkinema (fase 4, paso 4; D4 de docs/plan-fase-4.md): reenvía mensajes cortos entre los dos
   // móviles de una sala. Worker aparte del de la app (que sigue siendo solo archivos estáticos): las previsualizaciones
-  // de la app no se pierden por tener Durable Objects. Workers Builds lo despliega desde `main` con
-  // `npx wrangler deploy --config senal/wrangler.jsonc` (ver «Despliegue» en CLAUDE.md).
+  // de la app no se pierden por tener Durable Objects. Workers Builds lo despliega desde `main` con el directorio raíz
+  // `senal` y `npx wrangler deploy` (ver «Despliegue» en CLAUDE.md).
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "dualkinema-senal",
   "main": "src/index.ts",
