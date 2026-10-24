@@ -3191,6 +3191,139 @@ describe('dos vistas: sincronizar por un evento visual y ajuste fino', () => {
   })
 })
 
+describe('dos vistas: sincronizar por el audio y comprobar con el evento visual', () => {
+  // A = «verde» y B = «numerado25», cada uno con un pitido (`verdeAudio`, `numerado25Audio`): en A suena en el instante de su
+  // frame 46 y en B 40 ms después del de su frame 13, como un móvil que guarda el sonido 40 ms tarde. El audio debe dar
+  // pitido_A − pitido_B (a menos de 1 ms) y el evento visual (frames 46 y 13), 40 ms más: la comparación lo dice y no corrige nada.
+  let p
+  const KA = 45
+  const KB = 12
+  const tA = (k) => Math.round(videos.verde.verdad[k].t * 1000) / 1000
+  const desfaseAudio = () => videos.verdeAudio.pitido - videos.numerado25Audio.pitido
+  const desfaseEvento = () => tA(KA) - videos.numerado25.tiempos[KB]
+  const leerDesfase = async () => {
+    const texto = (await p.getByTestId('desfase-sincronia').innerText()).trim()
+    return (texto.startsWith('−') ? -1 : 1) * Number(texto.slice(1).replace(' s', '').replace(',', '.'))
+  }
+  /** La vista B guardada, cuando cumpla `cond` (se reintenta durante 20 s: el guardado va con retraso). */
+  const vistaGuardada = async (cond) => {
+    const leer = () =>
+      p.evaluate(async () => {
+        const bd = await new Promise((ok) => {
+          const r = indexedDB.open('dualkinema')
+          r.onsuccess = () => ok(r.result)
+        })
+        const todas = await new Promise((ok) => {
+          const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+          r.onsuccess = () => ok(r.result)
+        })
+        bd.close()
+        return todas[0]?.vistas?.[1] ?? null
+      })
+    const hasta = Date.now() + 20000
+    for (;;) {
+      const v = await leer()
+      if (v && cond(v)) return v
+      if (Date.now() > hasta) throw new Error(`La vista B guardada no cumple la condición: ${JSON.stringify(v?.sincronia)}`)
+      await new Promise((r) => setTimeout(r, 200))
+    }
+  }
+
+  before(async () => {
+    ;({ p } = await seguirVideo({ ...videos.verde, ruta: videos.verdeAudio.ruta }, { ancho: 1280 }))
+    await abrirPestana(p, 'video')
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.numerado25Audio.ruta)
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'video')
+  })
+  after(() => p?.close())
+
+  it('el audio propone el desfase del pitido, con calidad suficiente, y no cambia nada hasta aplicarlo', async () => {
+    await p.getByRole('button', { name: 'Sincronizar por el audio' }).click()
+    await p.getByTestId('resultado-audio').waitFor({ timeout: 60000 })
+    const texto = await p.getByTestId('desfase-audio').innerText()
+    const m = texto.match(/([+−])(\d+,\d{3}) s \(calidad (\d+(?:,\d)?)\)/)
+    assert.ok(m, texto)
+    const propuesto = (m[1] === '−' ? -1 : 1) * Number(m[2].replace(',', '.'))
+    assert.ok(Math.abs(propuesto - desfaseAudio()) <= 0.0015, `${propuesto} frente a ${desfaseAudio()}`)
+    assert.ok(Number(m[3].replace(',', '.')) >= 2, `calidad ${m[3]}`)
+    assert.equal(await leerDesfase(), 0)
+    assert.equal(await p.getByTestId('metodo-sincronia').innerText(), 'Sin sincronizar')
+  })
+
+  it('al aplicarlo: método, calidad y precisión del audio, y se guarda el desfase a menos de 1 ms del real', async () => {
+    await p.getByTestId('resultado-audio').getByRole('button', { name: 'Aplicar' }).click()
+    await p.getByTestId('incertidumbre-sincronia').waitFor()
+    assert.match(await p.getByTestId('metodo-sincronia').innerText(), /^Por audio \(calidad \d+(,\d)?\)$/)
+    assert.equal(await p.getByTestId('incertidumbre-sincronia').innerText(), '± 0,5 ms del audio')
+    assert.ok(Math.abs((await leerDesfase()) - desfaseAudio()) <= 0.0015)
+    const v = await vistaGuardada((v) => v.sincronia.metodo === 'audio')
+    assert.ok(Math.abs(v.desfase - desfaseAudio()) < 0.001, `guardado ${v.desfase}, real ${desfaseAudio()}`)
+    assert.equal(v.sincronia.audio.desfase, v.desfase)
+    assert.ok(v.sincronia.audio.calidad >= 2)
+  })
+
+  it('comprobar con el evento visual muestra los dos desfases y la diferencia (40 ms: discrepan) sin cambiar el desfase', async () => {
+    const antes = await leerDesfase()
+    await p.getByRole('button', { name: 'Comprobar con un evento visual' }).click()
+    await p.getByTestId('marcando-evento').waitFor()
+    await irAFrame(p, KA)
+    await p.getByTestId('marcar-evento-video').click()
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await irAFrame(p, KB)
+    await p.getByRole('button', { name: 'Este es el evento en B' }).click()
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    await p.getByRole('button', { name: 'Comprobar', exact: true }).click()
+    await p.getByTestId('comprobacion-audio').waitFor()
+    assert.equal(await leerDesfase(), antes, 'el desfase sigue siendo el del audio')
+    assert.match(await p.getByTestId('metodo-sincronia').innerText(), /^Por audio/)
+    const texto = await p.getByTestId('comparacion-audio-evento').innerText()
+    const evento = desfaseEvento().toFixed(3).replace('.', ',')
+    assert.ok(texto.includes(`evento visual +${evento} s (± 37 ms)`), texto)
+    assert.match(texto, /diferencia \+40 ms$/)
+    await p.getByTestId('aviso-discrepan').waitFor()
+    const v = await vistaGuardada((v) => v.sincronia.metodo === 'audio' && !!v.sincronia.evento)
+    assert.ok(Math.abs(v.sincronia.evento.referencia - tA(KA)) < 1e-6)
+    assert.ok(Math.abs(v.desfase - desfaseAudio()) < 0.001)
+  })
+
+  it('«Usar el desfase del evento visual» pasa al de la imagen, a petición, y sigue mostrando la comparación', async () => {
+    await p.getByRole('button', { name: 'Usar el desfase del evento visual' }).click()
+    await p.waitForFunction(() => document.querySelector('[data-testid=metodo-sincronia]')?.textContent === 'Por evento visual')
+    assert.ok(Math.abs((await leerDesfase()) - desfaseEvento()) <= 0.0005)
+    assert.match(await p.getByTestId('comparacion-audio-evento').innerText(), /diferencia \+40 ms$/)
+    assert.equal(await p.getByRole('button', { name: 'Usar el desfase del evento visual' }).count(), 0)
+    const v = await vistaGuardada((v) => v.sincronia.metodo === 'evento')
+    assert.ok(Math.abs(v.desfase - desfaseEvento()) < 1e-6)
+    assert.ok(Math.abs(v.sincronia.audio.desfase - desfaseAudio()) < 0.001, 'conserva lo que dio el audio')
+  })
+
+  it('con un vídeo sin sonido lo dice y propone el evento visual', async () => {
+    const q = await abrirApp(navegador, { ancho: 1280 })
+    try {
+      await cargarVideo(q, videos.verde.ruta)
+      await abrirPestana(q, 'video')
+      await q.getByTestId('archivo-segunda-vista').setInputFiles(videos.numerado25Audio.ruta)
+      await q.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+      await q.getByTestId('conmutador-vista').waitFor()
+      await esperarQuieto(q)
+      await abrirPestana(q, 'video')
+      await q.getByRole('button', { name: 'Sincronizar por el audio' }).click()
+      const aviso = q.getByTestId('aviso-audio')
+      await aviso.waitFor({ timeout: 60000 })
+      assert.match(await aviso.innerText(), /El vídeo A no tiene sonido\. Usa el evento visual\./)
+      await aviso.getByRole('button', { name: 'Marcar el evento visual' }).click()
+      await q.getByTestId('marcando-evento').waitFor()
+    } finally {
+      await q.close()
+    }
+  })
+})
+
 describe('glosario', () => {
   it('desde la cabecera (también en la portada): abre el listado de entradas y Escape lo cierra devolviendo el foco', async () => {
     const p = await abrirApp(navegador)
