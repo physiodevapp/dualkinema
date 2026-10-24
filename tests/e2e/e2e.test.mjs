@@ -3355,6 +3355,24 @@ describe('dos vistas: sincronizar por el audio y comprobar con el evento visual'
     assert.ok(Math.abs(v.desfase - desfaseAudio()) < 0.001)
   })
 
+  it('el CSV de B dice que el desfase es del audio, con su calidad, y el evento va aparte como comprobación', async () => {
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'analisis')
+    const [descarga] = await Promise.all([p.waitForEvent('download'), p.getByTestId('panel-exportar').getByTestId('descargar-csv').click()])
+    const { readFile } = await import('node:fs/promises')
+    const { cabecera } = leerCsv(await readFile(await descarga.path(), 'utf8'))
+    const sinc = cabecera.find((l) => l.startsWith('# sincronización;'))
+    assert.match(sinc, /método: audio; calidad del pico \d+(,\d)?; precisión del audio ±0,5 ms/)
+    assert.doesNotMatch(sinc, /evento en/)
+    const comprobacion = cabecera.find((l) => l.startsWith('# sincronización: comprobación;'))
+    assert.match(comprobacion, /con un evento visual \(no da el desfase\)/)
+    assert.match(comprobacion, /diferencia con el audio \+40 ms \(discrepan\)/)
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'video')
+  })
+
   it('«Usar el desfase del evento visual» pasa al de la imagen, a petición, y sigue mostrando la comparación', async () => {
     await p.getByRole('button', { name: 'Usar el desfase del evento visual' }).click()
     await p.waitForFunction(() => document.querySelector('[data-testid=metodo-sincronia]')?.textContent === 'Por evento visual')

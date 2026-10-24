@@ -144,7 +144,7 @@ describe('construirCsv con varias vistas: tiempo común', () => {
   })
 
   it('la columna t_comun_s es t_s + desfase en cada fila, justo tras t_s', () => {
-    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.733, metodo: 'evento', evento: { referencia: 1.5, vista: 0.767 }, incertidumbreS: 0.0367 }))
+    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.733, sincronia: { metodo: 'evento', evento: { referencia: 1.5, vista: 0.767 } }, incertidumbreEventoS: 0.0367 }))
     expect(columnasDe(csv).slice(0, 4)).toEqual(['t_s', 't_comun_s', 'frame', 'rodilla_x_px'])
     expect(cuerpo(csv).map((f) => f.split(';').slice(0, 3))).toEqual([
       ['0,000000', '0,733000', '1'],
@@ -157,19 +157,19 @@ describe('construirCsv con varias vistas: tiempo común', () => {
   })
 
   it('un desfase negativo da tiempo común menor que el del vídeo', () => {
-    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: -0.25, metodo: 'manual' }))
+    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: -0.25, sincronia: { metodo: 'manual' } }))
     expect(cuerpo(csv)[0]!.split(';').slice(0, 2)).toEqual(['0,000000', '-0,250000'])
     expect(cuerpo(csv)[3]!.split(';').slice(0, 2)).toEqual(['0,300000', '0,050000'])
   })
 
   it('la vista de referencia: tiempo común = t_s y la cabecera lo dice', () => {
-    const csv = construirCsv(conSincronia({ referencia: true, desfaseS: 0, metodo: 'ninguna' }))
+    const csv = construirCsv(conSincronia({ referencia: true, desfaseS: 0, sincronia: { metodo: 'ninguna' } }))
     expect(cuerpo(csv)[1]!.split(';').slice(0, 2)).toEqual(['0,100000', '0,100000'])
     expect(filas(csv).find((l) => l.startsWith('# sincronización'))).toContain('vista de referencia')
   })
 
   it('la cabecera da el desfase, el método, la precisión y los instantes del evento', () => {
-    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.48, metodo: 'evento', evento: { referencia: 1, vista: 0.52 }, incertidumbreS: 0.03667 }))
+    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.48, sincronia: { metodo: 'evento', evento: { referencia: 1, vista: 0.52 } }, incertidumbreEventoS: 0.03667 }))
     const linea = filas(csv).find((l) => l.startsWith('# sincronización'))!
     expect(linea).toContain('desfase 0,480 s')
     expect(linea).toContain('método: evento visual')
@@ -179,14 +179,57 @@ describe('construirCsv con varias vistas: tiempo común', () => {
   })
 
   it('sin evento ni precisión (puesta a mano) la cabecera no inventa ninguno', () => {
-    const linea = filas(construirCsv(conSincronia({ referencia: false, desfaseS: 0.1, metodo: 'manual' }))).find((l) => l.startsWith('# sincronización'))!
+    const linea = filas(construirCsv(conSincronia({ referencia: false, desfaseS: 0.1, sincronia: { metodo: 'manual' } }))).find((l) => l.startsWith('# sincronización'))!
     expect(linea).toContain('método: puesta a mano')
     expect(linea).not.toContain('precisión')
     expect(linea).not.toContain('evento en')
   })
 
+  const lineas = (x: NonNullable<DatosExportacion['sincronia']>) => filas(construirCsv(conSincronia(x)))
+  const linea = (x: NonNullable<DatosExportacion['sincronia']>, clave = '# sincronización;') => lineas(x).find((l) => l.startsWith(clave))
+
+  it('un evento ajustado a mano lo dice: el desfase ya no es la diferencia de los instantes', () => {
+    const l = linea({ referencia: false, desfaseS: 0.52, sincronia: { metodo: 'evento', evento: { referencia: 1, vista: 0.52 } }, incertidumbreEventoS: 0.03667 })!
+    expect(l).toContain('desfase 0,520 s')
+    expect(l).toContain('evento en 1,000 s de la referencia y en 0,520 s de esta vista')
+    expect(l).toContain('ajustada +40 ms a mano sobre lo que dio el método')
+  })
+
+  it('por audio: la calidad y la precisión del audio, y no hay comprobación sin evento', () => {
+    const x = { referencia: false, desfaseS: 0.456, sincronia: { metodo: 'audio', audio: { calidad: 7.7, desfase: 0.456 } }, incertidumbreEventoS: 0.0333 } as const
+    const l = linea(x)!
+    expect(l).toContain('desfase 0,456 s')
+    expect(l).toContain('método: audio')
+    expect(l).toContain('calidad del pico 7,7')
+    expect(l).toContain('precisión del audio ±0,5 ms (no incluye el retardo entre sonido e imagen de cada móvil)')
+    expect(l).not.toContain('evento en')
+    expect(l).not.toContain('ajustada')
+    expect(linea(x, '# sincronización: comprobación;')).toBeUndefined()
+  })
+
+  it('por audio comprobado con un evento: el evento va aparte, como comprobación, con la diferencia', () => {
+    // Audio 0,480 s; evento visual 1,040 − 0,520 = 0,520 s (±37 ms): diferencia +40 ms, discrepan. El desfase es el del audio.
+    const x = {
+      referencia: false,
+      desfaseS: 0.48,
+      sincronia: { metodo: 'audio', audio: { calidad: 9, desfase: 0.48 }, evento: { referencia: 1.04, vista: 0.52 } },
+      incertidumbreEventoS: 0.03667,
+    } as const
+    const l = linea(x)!
+    expect(l).toContain('desfase 0,480 s')
+    expect(l).not.toContain('evento en')
+    const c = linea(x, '# sincronización: comprobación;')!
+    expect(c).toContain('con un evento visual (no da el desfase): evento en 1,040 s de la referencia y en 0,520 s de esta vista')
+    expect(c).toContain('desfase por el evento 0,520 s ±37 ms')
+    expect(c).toContain('diferencia con el audio +40 ms (discrepan)')
+  })
+
+  it('por audio ajustado a mano: lo movido se cuenta sobre lo que dio el audio', () => {
+    expect(linea({ referencia: false, desfaseS: 0.4467, sincronia: { metodo: 'audio', audio: { calidad: 9, desfase: 0.48 } } })).toContain('ajustada −33 ms')
+  })
+
   it('en internacional: punto decimal y la misma columna', () => {
-    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.733, metodo: 'evento' }), 'internacional')
+    const csv = construirCsv(conSincronia({ referencia: false, desfaseS: 0.733, sincronia: { metodo: 'evento' } }), 'internacional')
     expect(csv.split('\r\n').find((l) => !l.startsWith('#'))!.split(',').slice(0, 2)).toEqual(['t_s', 't_comun_s'])
     expect(csv.split('\r\n').filter((l) => l && !l.startsWith('#'))[1]!.split(',').slice(0, 2)).toEqual(['0.000000', '0.733000'])
   })
