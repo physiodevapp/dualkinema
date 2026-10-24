@@ -143,7 +143,7 @@ Algoritmo, por marcador y frame:
   - Un botón por marcador; tocar la imagen con una lupa sobre el dedo; «Seguir desde aquí», que descarta lo seguido después de ese frame salvo lo marcado a mano.
   - Franja de estado por frame (seguido, a mano, hueco).
   - Estela de los últimos frames y ángulo de la rodilla en directo.
-  - La pierna marcada sale de la orientación (mirando a la derecha → pierna izquierda).
+  - La pierna marcada sale de la orientación. *(Aquí decía «mirando a la derecha → pierna izquierda», y así lo hacía `ladoVisible`: era al revés. Corregido en la fase 3, ver `docs/plan-fase-3.md`, «Corrección: la pierna que ve la cámara».)*
 - **Corrección manual mínima:** elegir un marcador y tocar en cualquier frame lo coloca a mano (`editadoManual`). La edición avanzada de trayectorias es de la fase 2.
 - **Comprobado** con vídeos sintéticos codificados en VP9 (flexión de rodilla 0–90–0 con fps variable):
   - Ángulo en pantalla frente al real: diferencia máxima de 0,06°.

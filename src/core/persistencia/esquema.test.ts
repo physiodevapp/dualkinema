@@ -326,6 +326,14 @@ describe('varias vistas (esquema 3)', () => {
     expect(desempaquetarTrayectoria(d.valor.trayectorias.v2![cadera]!, FRAMES).every((x) => x === undefined)).toBe(true)
   })
 
+  it('la sincronía por audio guarda también el evento visual que la comprueba', () => {
+    const e = entradaDos()
+    const sincronia = { metodo: 'audio', audio: { calidad: 7.5, desfase: 0.48 }, evento: { referencia: 1, vista: 0.48 } } as const
+    const { cabecera } = prepararGuardado({ ...e, vistas: [e.vistas[0]!, { ...e.vistas[1]!, desfase: 0.48, sincronia }] })
+    const c = leerCabecera(comoIDB(cabecera))
+    expect(c.ok && c.valor.vistas[1]!.sincronia).toEqual(sincronia)
+  })
+
   it('la referencia puede ser otra vista, y entonces es la que tiene desfase 0', () => {
     const e = entradaDos()
     const vistas = [{ ...e.vistas[0]!, desfase: 0.7333 }, { ...e.vistas[1]!, desfase: 0 }]

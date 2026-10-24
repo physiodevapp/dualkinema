@@ -133,6 +133,15 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'sincronia-audio',
+    titulo: 'Sincronizar por el audio',
+    texto: [
+      'La palmada (o cualquier sonido fuerte) la graban los micrófonos de los dos móviles. La app lee en este dispositivo el sonido de los primeros 60 s de cada vídeo, se queda con los instantes en que sube su energía (sin los graves) y busca el desfase de B, hasta ±10 s, con una correlación (GCC-PHAT) a la que no le importan el volumen ni el micrófono de cada móvil.',
+      'La calidad compara el mejor pico de la correlación con el segundo. Por debajo de 2 no es fiable (varios golpes parecidos, pasos, música, mucho ruido o un golpe que solo oye un móvil) y se propone el evento visual. La precisión del audio es de ±0,5 ms.',
+      'Lo que el audio no sabe: dentro del archivo, cada móvil guarda el sonido con su propio retardo respecto a la imagen, distinto en cada grabación (de unos pocos ms a varias decenas). Por eso se comprueba con un evento visual: se ven los dos desfases y su diferencia y, si discrepan más de lo que explica la precisión del evento, manda la imagen. La app no corrige nada por su cuenta.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [

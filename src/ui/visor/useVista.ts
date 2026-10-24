@@ -283,6 +283,8 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     modelo,
     articulacion,
     info,
+    /** El archivo del vídeo, para los workers que lo abren por su cuenta (el audio de la sincronía). */
+    archivo: video.archivo,
     tabla,
     total,
     series,

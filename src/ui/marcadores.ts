@@ -9,10 +9,12 @@ export const COLORES_MARCADOR = ['#E69F00', '#56B4E9', '#CC79A7', '#F0E442', '#D
 
 /**
  * Pierna que ve la cámara en una vista sagital: si la persona mira hacia la
- * derecha de la imagen, la cámara ve su lado izquierdo, y al revés.
+ * derecha de la imagen, la cámara ve su lado derecho, y al revés (como quien
+ * cruza un escenario hacia la derecha del público: le enseña su lado derecho).
+ * Lo fija `marcadores.test.ts`: de esta pierna sale el signo del FPPA.
  */
 export function ladoVisible(o: Extract<OrientacionVista, { plano: 'sagital' }>): Lado {
-  return o.mira === 'derecha' ? 'izq' : 'der'
+  return o.mira === 'derecha' ? 'der' : 'izq'
 }
 
 /** Nombre corto para los botones: lo que va antes del paréntesis, sin «mayor», etc. */

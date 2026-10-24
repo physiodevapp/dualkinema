@@ -46,8 +46,13 @@ export default function ElegirOrientacion({ onElegir, conFrontal = false }: Prop
         <p className="mt-1 text-texto-2">
           {conFrontal
             ? 'En un vídeo de perfil, hacia dónde mira; en uno de frente, si la cámara la ve de frente o de espaldas.'
-            : 'En el vídeo de perfil. Fija el signo de los ángulos (flexión positiva) sea cual sea el lado grabado, y qué pierna se marca: la que ve la cámara (si mira a la derecha, su pierna izquierda).'}
+            : 'En el vídeo de perfil. Fija el signo de los ángulos (flexión positiva) sea cual sea el lado grabado, y qué pierna se marca: la que ve la cámara (si mira a la derecha, su pierna derecha).'}
         </p>
+        {!conFrontal && (
+          <p className="mt-2 text-sm text-texto-2" data-testid="recordatorio-perfil">
+            Si vas a usar dos vistas, empieza por el vídeo de perfil: de él sale la pierna que se analiza. El de frente se añade después, en la pestaña «Vídeo».
+          </p>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-3">
         {opciones.map(({ mira, texto }) => (
