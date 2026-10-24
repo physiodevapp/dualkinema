@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowPathIcon, BookOpenIcon, FilmIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, BookOpenIcon, FilmIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores } from '../core/modelo/tipos'
@@ -23,9 +23,17 @@ const Visor = lazy(() => import('./Visor'))
 // El laboratorio de la fase 4 (qué da este móvil al grabar) solo existe con `?laboratorio` y solo se descarga entonces.
 const Laboratorio = lazy(() => import('./Laboratorio'))
 const HAY_LABORATORIO = new URLSearchParams(location.search).has('laboratorio')
+// Grabar con la cámara del móvil (fase 4, paso 2): solo se descarga al entrar, y solo se ofrece si el navegador puede.
+const Grabar = lazy(() => import('./Grabar'))
+const PUEDE_GRABAR =
+  typeof navigator.mediaDevices?.getUserMedia === 'function' &&
+  typeof globalThis.VideoEncoder === 'function' &&
+  typeof (globalThis as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor === 'function'
 
 type Estado =
   | { fase: 'inicio'; error?: string }
+  /** Grabar con la cámara de este móvil (fase 4). */
+  | { fase: 'grabar' }
   | { fase: 'cargando'; nombre: string }
   | { fase: 'recuperar'; video: VideoAbierto; apertura: number; candidatas: Candidata[]; ocupado?: boolean; error?: string }
   | { fase: 'orientacion'; video: VideoAbierto; apertura: number; aviso?: string }
@@ -331,6 +339,18 @@ function Aplicacion() {
             vídeos nunca salen de él.
           </p>
           {botonCargar}
+          {PUEDE_GRABAR && (
+            <button
+              type="button"
+              onClick={() => setEstado({ fase: 'grabar' })}
+              disabled={estado.fase === 'cargando'}
+              data-testid="ir-grabar"
+              className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3 text-texto disabled:opacity-40"
+            >
+              <VideoCameraIcon className="size-5" />
+              Grabar con este móvil
+            </button>
+          )}
           {estado.fase === 'cargando' && <p className="text-texto-2">Leyendo «{estado.nombre}»…</p>}
           {estado.fase === 'inicio' && estado.error && (
             <p className="rounded-md border border-red-400/50 p-3 text-red-300">{estado.error}</p>
@@ -343,6 +363,12 @@ function Aplicacion() {
             </Suspense>
           )}
         </div>
+      )}
+
+      {estado.fase === 'grabar' && (
+        <Suspense fallback={<p className="text-texto-2">Cargando la cámara…</p>}>
+          <Grabar alAbrir={(archivo) => void cargar(archivo, null)} alSalir={() => setEstado({ fase: 'inicio' })} />
+        </Suspense>
       )}
 
       {estado.fase === 'recuperar' && (
