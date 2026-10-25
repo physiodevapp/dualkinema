@@ -134,6 +134,9 @@ export class Captura {
     this.modo = paso ? 'captura' : 'llegada'
     this.pasoVideo = paso?.diferenciaMs ?? porLlegada ?? 0
     this.origen = origen
+    // El paso es fijo durante la grabación: el `<video>` del aviso ya no hace falta, y en un aparato lento le quitaba
+    // potencia al codificador (la tablet bajó a 6 fps con él abierto).
+    this.estimador.cerrar()
   }
 
   /** Para de leer y espera a que se codifique lo pendiente. */
