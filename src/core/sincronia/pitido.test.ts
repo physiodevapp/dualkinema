@@ -75,6 +75,14 @@ describe('localizarSecuencia', () => {
     expect(d!.calidad).toBeGreaterThan(CALIDAD_PITIDO_MINIMA)
   })
 
+  it('el directo con un 40 % de la altura de un reflejo 9 ms después (la tercera prueba real) también se toma', () => {
+    const d = localizarSecuencia(
+      grabar({ duracion: 3, secuencias: [{ t: 1.2, amplitud: 0.2 }], ecos: [{ retardo: 0.009, amplitud: 2.5 }, { retardo: 0.013, amplitud: 2 }], ruido: 0.003, semilla: 13 }),
+      1.0,
+    )
+    expect(Math.abs(d!.t - 1.2)).toBeLessThan(0.0001)
+  })
+
   it('el propio pitido saturado en el micrófono se encuentra igual', () => {
     const d = localizarSecuencia(grabar({ duracion: 2, secuencias: [{ t: 0.98, amplitud: 5 }], saturacion: 1, ruido: 0.01 }), 1.0)
     expect(Math.abs(d!.t - 0.98)).toBeLessThan(0.00005)
