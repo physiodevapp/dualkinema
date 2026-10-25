@@ -7,6 +7,7 @@ import type { Mensaje, MotivoCancelar } from '../core/sala/protocolo'
 import { instantePitido } from '../core/sincronia/pitido'
 import { analizarGrabacion, type AnalisisGrabacion } from '../media/grabaciones'
 import { DURACION_MAXIMA_S, Grabadora, type Calidad } from '../media/grabadora'
+import type { Tiempos } from '../media/captura'
 import { buscarPitidos, type PitidosGrabados } from '../media/pitido'
 import { ahora } from './config'
 import { emitirSecuencia, pitar } from './sonido'
@@ -46,6 +47,8 @@ export type FaseDoble =
       readonly pitidos: PitidosGrabados | null
       /** Este móvil llegó a programar su pitido (con el audio desbloqueado y grabando). */
       readonly pito: boolean
+      /** Cómo quedaron colocados los frames y el audio (`media/captura.ts`). */
+      readonly tiempos: Tiempos
       readonly aviso?: string
     }
 
@@ -132,7 +135,7 @@ export function useGrabacionDoble(
         const t = await g.parar()
         const analisis = await analizarGrabacion(t.archivo).catch(() => null)
         const oidos = plan ? await buscarPitidos(t.archivo, plan.propio, plan.otro).catch(() => null) : null
-        setFase({ f: 'hecha', id, archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, arranque, pitidos: oidos, pito: plan?.pito ?? false })
+        setFase({ f: 'hecha', id, archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, arranque, pitidos: oidos, pito: plan?.pito ?? false, tiempos: g.tiempos })
       } catch (e) {
         setFase({ f: 'libre', aviso: `No se ha podido terminar la grabación: ${e instanceof Error ? e.message : String(e)}` })
       }
@@ -180,7 +183,8 @@ export function useGrabacionDoble(
         if (faseRef.current.f !== 'programada' || faseRef.current.id !== id) return void p?.descartar()
         try {
           if (!p) throw new Error('no se ha podido preparar la grabación')
-          const g = await p.arrancar()
+          // El tiempo 0 del vídeo es el instante programado (en el reloj de la página: `ahora` puede llevar un desfase de prueba).
+          const g = await p.arrancar(inicio - (ahora() - performance.now()))
           grabadora.current = g
           const arranque = ahora()
           const finReal = Math.min(fin ?? Infinity, inicio + DURACION_MAXIMA_S * 1000)

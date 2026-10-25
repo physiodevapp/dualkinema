@@ -1,7 +1,6 @@
 import {
+  AudioSampleSource,
   BufferTarget,
-  MediaStreamAudioTrackSource,
-  MediaStreamVideoTrackSource,
   Mp4OutputFormat,
   Output,
   StreamTarget,
@@ -9,7 +8,9 @@ import {
   getFirstEncodableVideoCodec,
   type StreamTargetChunk,
   type Target,
+  VideoSampleSource,
 } from 'mediabunny'
+import { Captura, type Tiempos } from './captura'
 import { FORMATO_METADATOS, textoMetadatos, type DatosDoble, type MetadatosGrabacion } from '../core/grabacion/metadatos'
 import { abrirGrabacion, crearArchivoGrabacion } from './grabaciones'
 
@@ -20,8 +21,8 @@ import { abrirGrabacion, crearArchivoGrabacion } from './grabaciones'
  * - Micrófono sin procesar: sin cancelación de eco (borraría el pitido del propio móvil, paso 6), sin supresión de ruido
  *   ni control de ganancia (cambiaría el nivel a mitad de la toma).
  * - Mediabunny codifica con WebCodecs (H.264 si el móvil lo codifica; si no, VP9, AV1 o HEVC) un frame por cada uno que
- *   entrega la cámara, con su instante real (`frameRate: null`: con un fps fijo repetiría o saltaría frames), y un
- *   fotograma clave cada segundo (el visor salta rápido a cualquier frame).
+ *   entrega la cámara, cada uno en su instante de captura (`captura.ts`: no por cuándo llega, que dejaba el audio hasta
+ *   87 ms desplazado de la imagen), y un fotograma clave cada segundo (el visor salta rápido a cualquier frame).
  * - Se escribe sobre la marcha en OPFS (`grabaciones.ts`); si el navegador no lo deja, en memoria con una duración máxima
  *   más corta.
  */
@@ -41,6 +42,9 @@ export const CALIDADES: readonly Calidad[] = [
 ]
 
 export const CALIDAD_POR_DEFECTO: Calidad = CALIDADES[1]!
+
+/** Cuánto se espera, como mucho, al paso entre los relojes del vídeo y de la página al empezar a grabar (ms). */
+const ESPERA_PASO_MS = 800
 
 /** Duración máxima (s) escribiendo en OPFS (D3) y escribiendo en memoria si OPFS falla. */
 export const DURACION_MAXIMA_S = 300
@@ -81,7 +85,13 @@ export class Grabadora {
     readonly duracionMaxima: number,
     /** Rechaza si el codificador falla a mitad. */
     readonly error: Promise<never>,
+    private readonly captura: Captura,
   ) {}
+
+  /** Cómo quedaron colocados los frames y el audio: por su captura o, si no se pudo, por su llegada. */
+  get tiempos(): Tiempos {
+    return this.captura.tiempos
+  }
 
   /** Empieza a grabar el flujo de la cámara en un archivo `nombre`. */
   static async empezar(flujo: MediaStream, calidad: Calidad, nombre: string, id: string): Promise<Grabadora> {
@@ -92,6 +102,7 @@ export class Grabadora {
    * Lo que tarda (códec, archivo, metadatos), sin empezar a grabar: la grabación doble lo hace antes del instante
    * programado y arranca justo entonces (`arrancar`). Los metadatos van ya escritos (Mediabunny no deja cambiarlos
    * después de empezar), así que `doble.inicio` es el instante programado. Si no se llega a arrancar, `descartar`.
+   * `arrancar(origen)`: el tiempo 0 del archivo en el reloj de la página (ms); sin él, cuando arranca.
    */
   static async preparar(
     flujo: MediaStream,
@@ -99,7 +110,7 @@ export class Grabadora {
     nombre: string,
     id: string,
     doble?: DatosDoble,
-  ): Promise<{ arrancar: () => Promise<Grabadora>; descartar: () => Promise<void> }> {
+  ): Promise<{ arrancar: (origen?: number) => Promise<Grabadora>; descartar: () => Promise<void> }> {
     const pistaVideo = flujo.getVideoTracks()[0]
     if (!pistaVideo) throw new Error('La cámara no da imagen.')
     const pistaAudio = flujo.getAudioTracks()[0]
@@ -127,30 +138,29 @@ export class Grabadora {
     }
     salida.setMetadataTags({ comment: textoMetadatos(metadatos) })
 
-    const fuenteVideo = new MediaStreamVideoTrackSource(pistaVideo, { codec, bitrate, keyFrameInterval: 1, latencyMode: 'realtime' }, { frameRate: null })
+    const fuenteVideo = new VideoSampleSource({ codec, bitrate, keyFrameInterval: 1, latencyMode: 'realtime' })
     salida.addVideoTrack(fuenteVideo)
-    const errores: Promise<void>[] = [fuenteVideo.errorPromise]
-    if (pistaAudio && codecAudio) {
-      const fuenteAudio = new MediaStreamAudioTrackSource(pistaAudio, { codec: codecAudio, bitrate: 128_000 })
-      salida.addAudioTrack(fuenteAudio)
-      errores.push(fuenteAudio.errorPromise)
-    }
-    const error = Promise.race(errores) as Promise<never>
-    // Que un error no quede sin capturar si nadie lo está esperando en ese momento.
-    error.catch(() => {})
+    const fuenteAudio = pistaAudio && codecAudio ? new AudioSampleSource({ codec: codecAudio, bitrate: 128_000 }) : null
+    if (fuenteAudio) salida.addAudioTrack(fuenteAudio)
+    // Se empieza a leer ya (para tener el paso entre relojes al arrancar); hasta entonces, nada entra en el archivo.
+    const captura = new Captura(pistaVideo, fuenteAudio ? pistaAudio! : null, fuenteVideo, fuenteAudio)
     const descartar = async () => {
+      await captura.detener()
       if (salida.state !== 'finalized' && salida.state !== 'canceled') await salida.cancel().catch(() => {})
       await almacen?.quitar()
     }
     return {
-      arrancar: async () => {
+      arrancar: async (origen?: number) => {
         try {
           await salida.start()
+          // Grabando con un móvil, se espera un poco al paso entre relojes; en la grabación doble ya ha dado tiempo.
+          if (origen === undefined) await captura.esperarPaso(ESPERA_PASO_MS)
+          captura.empezar(origen ?? performance.now())
         } catch (e) {
           await descartar()
           throw e
         }
-        return new Grabadora(salida, nombre, almacen, destino, almacen ? DURACION_MAXIMA_S : DURACION_MAXIMA_MEMORIA_S, error)
+        return new Grabadora(salida, nombre, almacen, destino, almacen ? DURACION_MAXIMA_S : DURACION_MAXIMA_MEMORIA_S, captura.error, captura)
       },
       descartar,
     }
@@ -159,6 +169,7 @@ export class Grabadora {
   /** Termina el archivo y lo devuelve. */
   async parar(): Promise<GrabacionTerminada> {
     try {
+      await this.captura.detener()
       await this.salida.finalize()
     } catch (e) {
       await this.almacen?.quitar()
@@ -174,6 +185,7 @@ export class Grabadora {
 
   /** Descarta la grabación (no queda nada en el almacén). */
   async cancelar(): Promise<void> {
+    await this.captura.detener()
     if (this.salida.state !== 'finalized' && this.salida.state !== 'canceled') await this.salida.cancel().catch(() => {})
     await this.almacen?.quitar()
   }

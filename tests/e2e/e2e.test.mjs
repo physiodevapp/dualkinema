@@ -3954,6 +3954,8 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
     assert.equal(await p.getByTestId('grabar-error').count(), 0)
     assert.equal(await p.getByTestId('grabar-resultado').getAttribute('data-metadatos'), 'sí', 'el MP4 lleva los datos de dualkinema y se leen')
+    // Cada frame y cada trozo de audio, en su instante de captura (con el aviso de cada frame pintado: paso 8).
+    assert.equal(await p.getByTestId('grabar-resultado').getAttribute('data-tiempos'), 'captura')
     frames = Number(await p.getByTestId('grabar-frames').innerText())
     const fps = Number((await p.getByTestId('grabar-fps').innerText()).replace(',', '.'))
     // Los fps contados en el archivo son los que da la cámara (la falsa: 20), no los pedidos (30).
@@ -4259,6 +4261,7 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
       const pitidos = await p.evaluate(() => window.__pitidos)
       assert.equal(pitidos.length, 1, 'una secuencia por móvil')
       assert.equal(await p.getByTestId('pitidos-doble').getAttribute('data-pito'), 'true')
+      assert.equal(await p.getByTestId('resultado-doble').getAttribute('data-tiempos'), 'captura')
       // Cuándo sonará, en el reloj de la app de la página: el instante pedido (inicio + su turno), con la latencia de
       // salida ya descontada al programarlo.
       const x = pitidos[0]

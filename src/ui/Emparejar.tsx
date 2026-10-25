@@ -273,6 +273,7 @@ function ResultadoDoble({
       data-inicio={a?.metadatos?.doble?.inicio ?? ''}
       data-arranque={fase.arranque}
       data-frames={a?.frames ?? ''}
+      data-tiempos={fase.tiempos}
       data-plan-pitidos={a?.metadatos?.doble?.pitidos ? JSON.stringify(a.metadatos.doble.pitidos) : ''}
     >
       <p className="font-mono text-xs break-all">{fase.archivo.name}</p>

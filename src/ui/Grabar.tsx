@@ -14,6 +14,7 @@ import {
 } from '../media/grabaciones'
 import { CALIDAD_POR_DEFECTO, CALIDADES, Grabadora, datosCamara, type Calidad } from '../media/grabadora'
 import { InfoGlosario } from './glosario/Glosario'
+import type { Tiempos } from '../media/captura'
 import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { AVISO_MICRO_EXTERNO } from '../media/microfono'
 import { useCamara } from './useCamara'
@@ -41,6 +42,8 @@ interface Resultado {
   readonly enAlmacen: boolean
   readonly analisis: AnalisisGrabacion | null
   readonly fpsPedidos: number
+  /** Cómo quedaron colocados los frames y el audio (`media/captura.ts`). */
+  readonly tiempos: Tiempos
 }
 
 async function compartir(archivo: File, alError: (m: string) => void) {
@@ -137,7 +140,7 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
       } catch (e) {
         setError(`Grabado, pero no se ha podido revisar: ${mensajeDe(e)}`)
       }
-      setResultado({ archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, fpsPedidos: calidad.fps })
+      setResultado({ archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, fpsPedidos: calidad.fps, tiempos: g.tiempos })
       await refrescar()
     } catch (e) {
       setGrabadora(null)
@@ -281,7 +284,7 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
       )}
 
       {resultado && (
-        <div className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="grabar-resultado" data-metadatos={resultado.analisis?.metadatos ? 'sí' : 'no'}>
+        <div className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="grabar-resultado" data-metadatos={resultado.analisis?.metadatos ? 'sí' : 'no'} data-tiempos={resultado.tiempos}>
           <h3 className="font-medium">Grabado</h3>
           {resultado.analisis && (
             <p className="font-mono text-sm text-texto-2" data-testid="grabar-revision">
