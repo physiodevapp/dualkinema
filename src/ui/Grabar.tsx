@@ -17,6 +17,7 @@ import { InfoGlosario } from './glosario/Glosario'
 import type { Tiempos } from '../media/captura'
 import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { AVISO_MICRO_EXTERNO } from '../media/microfono'
+import CalibrarCamara from './CalibrarCamara'
 import { useCamara } from './useCamara'
 import { useCodificador } from './useCodificador'
 import { useMicroExterno } from './useMicroExterno'
@@ -277,6 +278,8 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
         )}
       </div>
 
+      <CalibrarCamara flujo={flujo} calidad={calidad} ocupado={grabando || ocupado} />
+
       {error && (
         <p role="alert" data-testid="grabar-error" className="rounded-md border border-red-400/50 p-3 text-sm text-red-300">
           {error}
@@ -284,7 +287,7 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
       )}
 
       {resultado && (
-        <div className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="grabar-resultado" data-metadatos={resultado.analisis?.metadatos ? 'sí' : 'no'} data-tiempos={resultado.tiempos}>
+        <div className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="grabar-resultado" data-metadatos={resultado.analisis?.metadatos ? 'sí' : 'no'} data-tiempos={resultado.tiempos} data-retraso-camara={resultado.analisis?.metadatos?.camara?.retrasoMs ?? ''}>
           <h3 className="font-medium">Grabado</h3>
           {resultado.analisis && (
             <p className="font-mono text-sm text-texto-2" data-testid="grabar-revision">

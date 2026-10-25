@@ -39,6 +39,25 @@ describe('pasoDeReloj', () => {
     expect(Math.abs(r.diferenciaMs - 1234567.8)).toBeLessThan(0.1)
   })
 
+  it('con frames exactamente regulares, solo las llegadas desempatan (la cámara falsa de Chromium: uno cada 50 ms)', () => {
+    const capturas = Array.from({ length: 60 }, (_, i) => 1000 + 50 * i)
+    const diferencia = 304924.8
+    const marcas = capturas.slice(0, 40).map((c) => c + diferencia)
+    const llegadas = capturas.slice(0, 40).map((c, i) => c + 0.8 + (i % 3) * 0.3)
+    const avisos = capturas.slice(5)
+    // Sin llegadas no se puede saber qué frame es cuál: no se fía.
+    expect(pasoDeReloj(marcas, avisos)).toBeNull()
+    const r = pasoDeReloj(marcas, avisos, llegadas)!
+    expect(Math.abs(r.diferenciaMs - diferencia)).toBeLessThan(0.1)
+  })
+
+  it('con las llegadas, también con frames irregulares y un retraso de llegada como el de la tablet (17 ms de 70)', () => {
+    const { marcas, avisos } = frames(7, -39256556.8, 0.1, 6)
+    const llegadas = marcas.map((m) => m - -39256556.8 + 16.6)
+    const r = pasoDeReloj(marcas, avisos, llegadas)!
+    expect(Math.abs(r.diferenciaMs - -39256556.8)).toBeLessThan(0.1)
+  })
+
   it('sin frames en común (los avisos de otro momento), no se fía', () => {
     const { marcas } = frames(4, 5000)
     const lejos = frames(5, 5000 + 1e6).avisos

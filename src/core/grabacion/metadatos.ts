@@ -24,6 +24,11 @@ export interface MetadatosGrabacion {
   readonly pedido: { readonly ancho: number; readonly alto: number; readonly fps: number }
   /** Solo en una grabación doble. */
   readonly doble?: DatosDoble
+  /**
+   * El retraso de la cámara de este móvil que se descuenta a cada frame (calibración del paso 8), con su cota (ms).
+   * Opcional: sin calibrar no va.
+   */
+  readonly camara?: { readonly retrasoMs: number; readonly cotaMs: number }
 }
 
 /** Lo que añade una grabación doble. Los instantes, en ms del reloj de la sala de ese móvil (`performance.now()`). */
@@ -65,6 +70,8 @@ export function leerMetadatos(texto: string | null | undefined): MetadatosGrabac
   if (typeof o.id !== 'string' || o.id === '' || typeof o.creada !== 'string' || Number.isNaN(Date.parse(o.creada))) return null
   if (typeof p !== 'object' || p === null || !esPositivo(p.ancho) || !esPositivo(p.alto) || !esPositivo(p.fps)) return null
   const doble = leerDoble(o.doble)
+  const c = o.camara as Record<string, unknown> | null | undefined
+  const camara = c && finito(c.retrasoMs) && finito(c.cotaMs) && c.cotaMs >= 0 ? { retrasoMs: c.retrasoMs, cotaMs: c.cotaMs } : null
   return {
     app: APP_METADATOS,
     formato: o.formato as number,
@@ -72,6 +79,7 @@ export function leerMetadatos(texto: string | null | undefined): MetadatosGrabac
     creada: o.creada,
     pedido: { ancho: p.ancho, alto: p.alto, fps: p.fps },
     ...(doble ? { doble } : {}),
+    ...(camara ? { camara } : {}),
   }
 }
 

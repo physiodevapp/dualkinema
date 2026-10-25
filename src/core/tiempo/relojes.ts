@@ -28,11 +28,20 @@ export interface PasoDeReloj {
   readonly votos: number
 }
 
+/** Un frame no puede llegar antes de capturarse: se tolera esto de redondeo (ms). */
+export const TOLERANCIA_LLEGADA_MS = 1
+
 /**
  * La diferencia entre dos relojes con las marcas de unos mismos frames vistas en cada uno (`marcasMs`, en el reloj del
  * vídeo; `capturasMs`, en el de la página), sin saber cuál es cuál. null si no hay VOTOS_MINIMOS parejas que coincidan.
+ *
+ * Con frames muy regulares (la cámara falsa de Chromium da uno cada 50,0 ms; la tablet del usuario, cada 70 ± 3), un
+ * frame emparejado con el siguiente da casi tantas coincidencias como consigo mismo, a un paso entre frames de
+ * distancia. Con `llegadasMs` (cuándo llegó cada marca, en el reloj de la página, en el mismo orden) se desempata: la
+ * buena es la que deja cada frame capturado antes de llegar, y por poco (de 1 a 17 ms en Chromium y en los móviles del
+ * usuario, menos que el paso entre frames). Sin llegadas, la más repetida tiene que doblar a cualquier otra.
  */
-export function pasoDeReloj(marcasMs: readonly number[], capturasMs: readonly number[]): PasoDeReloj | null {
+export function pasoDeReloj(marcasMs: readonly number[], capturasMs: readonly number[], llegadasMs?: readonly number[]): PasoDeReloj | null {
   const casillas = new Map<number, number[]>()
   for (const m of marcasMs) {
     for (const c of capturasMs) {
@@ -44,23 +53,43 @@ export function pasoDeReloj(marcasMs: readonly number[], capturasMs: readonly nu
     }
   }
   // Una diferencia en el borde entre dos casillas se reparte: se cuentan las dos vecinas juntas.
+  const junto = (k: number) => [...(casillas.get(k) ?? []), ...(casillas.get(k + 1) ?? [])]
+  const centro = (lista: readonly number[]) => {
+    const c = lista.reduce((s, d) => s + d, 0) / lista.length
+    const cerca = lista.filter((d) => Math.abs(d - c) <= CASILLA_MS)
+    return { diferenciaMs: cerca.reduce((s, d) => s + d, 0) / cerca.length, votos: cerca.length }
+  }
+
+  if (llegadasMs && llegadasMs.length === marcasMs.length) {
+    // Candidatas: los máximos locales con votos suficientes; de ellas, la de menor retraso de llegada no negativo.
+    let mejor: { paso: PasoDeReloj; retraso: number } | null = null
+    for (const k of casillas.keys()) {
+      const n = junto(k).length
+      if (n < VOTOS_MINIMOS || junto(k - 1).length > n || junto(k + 1).length > n) continue
+      const paso = centro(junto(k))
+      const retrasos = marcasMs.map((m, i) => llegadasMs[i]! - (m - paso.diferenciaMs)).sort((a, b) => a - b)
+      const retraso = retrasos[Math.floor(retrasos.length / 2)]!
+      if (retrasos[0]! < -TOLERANCIA_LLEGADA_MS) continue
+      if (!mejor || retraso < mejor.retraso) mejor = { paso, retraso }
+    }
+    return mejor?.paso ?? null
+  }
+
   let mejor: number[] | null = null
   let kMejor = 0
-  for (const [k, lista] of casillas) {
-    const junto = [...lista, ...(casillas.get(k + 1) ?? [])]
-    if (!mejor || junto.length > mejor.length) {
-      mejor = junto
+  for (const k of casillas.keys()) {
+    const lista = junto(k)
+    if (!mejor || lista.length > mejor.length) {
+      mejor = lista
       kMejor = k
     }
   }
   if (!mejor || mejor.length < VOTOS_MINIMOS) return null
   let segunda = 0
-  for (const [k, lista] of casillas) {
+  for (const k of casillas.keys()) {
     if (k >= kMejor - 1 && k <= kMejor + 2) continue
-    segunda = Math.max(segunda, lista.length + (casillas.get(k + 1)?.length ?? 0))
+    segunda = Math.max(segunda, junto(k).length)
   }
   if (mejor.length < DOMINIO_MINIMO * segunda) return null
-  const centro = mejor.reduce((s, d) => s + d, 0) / mejor.length
-  const cerca = mejor.filter((d) => Math.abs(d - centro) <= CASILLA_MS)
-  return { diferenciaMs: cerca.reduce((s, d) => s + d, 0) / cerca.length, votos: cerca.length }
+  return centro(mejor)
 }

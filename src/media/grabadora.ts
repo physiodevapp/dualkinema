@@ -10,6 +10,7 @@ import {
   type Target,
   VideoSampleSource,
 } from 'mediabunny'
+import { leerCalibracion } from './calibracionCamara'
 import { Captura, type Tiempos } from './captura'
 import { FORMATO_METADATOS, textoMetadatos, type DatosDoble, type MetadatosGrabacion } from '../core/grabacion/metadatos'
 import { abrirGrabacion, crearArchivoGrabacion } from './grabaciones'
@@ -69,6 +70,11 @@ export function datosCamara(flujo: MediaStream): { ancho: number; alto: number; 
   return { ancho: s.width ?? 0, alto: s.height ?? 0, fps: s.frameRate ?? 0, nombre: pista?.label ?? '' }
 }
 
+export interface OpcionesGrabadora {
+  /** Es la grabación con que se calibra la cámara: no se le descuenta la calibración anterior. */
+  readonly calibrando?: boolean
+}
+
 export interface GrabacionTerminada {
   readonly archivo: File
   /** Se escribió en OPFS (está en la lista de grabaciones); si no, solo existe en memoria hasta guardarla. */
@@ -94,8 +100,8 @@ export class Grabadora {
   }
 
   /** Empieza a grabar el flujo de la cámara en un archivo `nombre`. */
-  static async empezar(flujo: MediaStream, calidad: Calidad, nombre: string, id: string): Promise<Grabadora> {
-    return (await Grabadora.preparar(flujo, calidad, nombre, id)).arrancar()
+  static async empezar(flujo: MediaStream, calidad: Calidad, nombre: string, id: string, opciones: OpcionesGrabadora = {}): Promise<Grabadora> {
+    return (await Grabadora.preparar(flujo, calidad, nombre, id, undefined, opciones)).arrancar()
   }
 
   /**
@@ -110,7 +116,10 @@ export class Grabadora {
     nombre: string,
     id: string,
     doble?: DatosDoble,
+    opciones: OpcionesGrabadora = {},
   ): Promise<{ arrancar: (origen?: number) => Promise<Grabadora>; descartar: () => Promise<void> }> {
+    // El retraso de la cámara calibrado en este móvil (no al grabar la propia calibración, que lo mide).
+    const calibracion = opciones.calibrando ? null : leerCalibracion()
     const pistaVideo = flujo.getVideoTracks()[0]
     if (!pistaVideo) throw new Error('La cámara no da imagen.')
     const pistaAudio = flujo.getAudioTracks()[0]
@@ -135,6 +144,7 @@ export class Grabadora {
       creada: new Date().toISOString(),
       pedido: { ancho: calidad.ancho, alto: calidad.alto, fps: calidad.fps },
       ...(doble ? { doble } : {}),
+      ...(calibracion ? { camara: { retrasoMs: calibracion.ms, cotaMs: calibracion.cotaMs } } : {}),
     }
     salida.setMetadataTags({ comment: textoMetadatos(metadatos) })
 
@@ -143,7 +153,7 @@ export class Grabadora {
     const fuenteAudio = pistaAudio && codecAudio ? new AudioSampleSource({ codec: codecAudio, bitrate: 128_000 }) : null
     if (fuenteAudio) salida.addAudioTrack(fuenteAudio)
     // Se empieza a leer ya (para tener el paso entre relojes al arrancar); hasta entonces, nada entra en el archivo.
-    const captura = new Captura(pistaVideo, fuenteAudio ? pistaAudio! : null, fuenteVideo, fuenteAudio)
+    const captura = new Captura(pistaVideo, fuenteAudio ? pistaAudio! : null, fuenteVideo, fuenteAudio, calibracion?.ms ?? 0)
     const descartar = async () => {
       await captura.detener()
       if (salida.state !== 'finalized' && salida.state !== 'canceled') await salida.cancel().catch(() => {})

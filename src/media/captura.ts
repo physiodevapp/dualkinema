@@ -59,19 +59,19 @@ class EstimadorPaso {
 
   anotar(marcaMs: number, llegadaMs: number) {
     recortar(this.marcas, marcaMs)
-    recortar(this.llegadas, marcaMs - llegadaMs)
+    recortar(this.llegadas, llegadaMs)
   }
 
   paso(): PasoDeReloj | null {
     const n = this.capturas.length + this.marcas.length
-    if (n !== this.cache.n) this.cache = { n, paso: pasoDeReloj(this.marcas, this.capturas) }
+    if (n !== this.cache.n) this.cache = { n, paso: pasoDeReloj(this.marcas, this.capturas, this.llegadas) }
     return this.cache.paso
   }
 
   /** marca − llegada mediana (ms): el paso suponiendo que los frames llegan al momento. */
   pasoPorLlegada(): number | null {
-    if (!this.llegadas.length) return null
-    const o = [...this.llegadas].sort((a, b) => a - b)
+    if (!this.marcas.length) return null
+    const o = this.marcas.map((m, i) => m - this.llegadas[i]!).sort((a, b) => a - b)
     return o[Math.floor(o.length / 2)]!
   }
 
@@ -108,6 +108,11 @@ export class Captura {
     pistaAudio: MediaStreamTrack | null,
     private readonly fuenteVideo: VideoSampleSource,
     private readonly fuenteAudio: AudioSampleSource | null,
+    /**
+     * Retraso de la cámara de este móvil (ms; `core/grabacion/calibracion.ts`): la «captura» que da Chrome no incluye
+     * lo que tarda la cámara, así que se adelanta cada frame esto. Solo cuando los frames van por su captura.
+     */
+    private readonly retrasoCamaraMs = 0,
   ) {
     this.error = new Promise<never>((_, rechazar) => (this.rechazar = rechazar))
     this.error.catch(() => {})
@@ -149,8 +154,13 @@ export class Captura {
 
   /** La marca de un trozo en el reloj de la página (ms). */
   private aPagina(marcaMs: number, clase: 'video' | 'audio'): number {
-    if (clase === 'audio' && this.audioEnPagina) return marcaMs
-    return marcaMs - this.pasoVideo
+    if (clase === 'audio') return this.audioEnPagina ? marcaMs : marcaMs - this.pasoVideo
+    return marcaMs - this.pasoVideo - (this.modo === 'captura' ? this.retrasoCamaraMs : 0)
+  }
+
+  /** El retraso de la cámara descontado (ms): 0 sin calibrar o si los frames van por su llegada. */
+  get retrasoAplicadoMs(): number {
+    return this.modo === 'captura' ? this.retrasoCamaraMs : 0
   }
 
   private async leer(pista: MediaStreamTrack, clase: 'video' | 'audio') {

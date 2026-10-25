@@ -4019,6 +4019,43 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     assert.equal(await p.getByTestId('grabar-error').count(), 0)
     assert.ok(Number(await p.getByTestId('grabar-frames').innerText()) > 15)
   })
+
+  it('calibrar la cámara (paso 8): palmadas en el sonido, se marca el frame, se guarda y la grabadora lo descuenta', async () => {
+    const enLista = await p.getByTestId('grabacion').count()
+    await p.getByTestId('calibrar-empezar').click()
+    await p.getByTestId('calibrar-parar').waitFor({ timeout: 20000 })
+    await p.waitForTimeout(2500)
+    await p.getByTestId('calibrar-parar').click()
+    // El micrófono falso pita cada medio segundo: son las «palmadas».
+    await p.waitForFunction(() => document.querySelector('[data-testid=calibrar-camara]')?.dataset.fase === 'marcar', null, { timeout: 30000 })
+    const palmadas = p.getByTestId('palmada')
+    assert.ok((await palmadas.count()) >= 2)
+    // En las dos primeras, el primer frame a partir del sonido: la imagen, entre −1 frame y 0 respecto al sonido.
+    for (const i of [0, 1]) {
+      const frames = palmadas.nth(i).getByTestId('frame-palmada')
+      const sonido = Number(/empieza a ([\d,]+) s/.exec(await palmadas.nth(i).innerText())[1].replace(',', '.'))
+      const ts = await frames.evaluateAll((els) => els.map((e) => Number(e.dataset.t)))
+      await frames.nth(ts.findIndex((t) => t >= sonido)).click()
+    }
+    const r = p.getByTestId('calibracion-resultado')
+    const ms = Number(await r.getAttribute('data-ms'))
+    const cota = Number(await r.getAttribute('data-cota'))
+    assert.ok(cota < 60 && Math.abs(ms) < 60, `retraso ${ms} ± ${cota} ms`)
+    await p.getByTestId('calibrar-guardar').click()
+    assert.match(await p.getByTestId('calibracion-guardada').innerText(), /^Calibrada: -?\d+ ms ± \d+ ms \(2 palmadas/)
+    // La grabación de la calibración no queda en la lista.
+    assert.equal(await p.getByTestId('grabacion').count(), enLista)
+    // Una grabación después lleva en el MP4 el retraso que se le ha descontado.
+    await p.getByTestId('grabar-empezar').click()
+    await p.getByTestId('grabar-parar').waitFor({ timeout: 20000 })
+    await p.waitForTimeout(1500)
+    await p.getByTestId('grabar-parar').click()
+    await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
+    const descontado = Number(await p.getByTestId('grabar-resultado').getAttribute('data-retraso-camara'))
+    assert.ok(Math.abs(descontado - ms) < 1e-6, `descontado ${descontado}, calibrado ${ms}`)
+    await p.getByRole('button', { name: 'Quitar la calibración' }).click()
+    assert.match(await p.getByTestId('calibracion-guardada').innerText(), /^Sin calibrar/)
+  })
 })
 
 describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {

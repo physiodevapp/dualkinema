@@ -28,7 +28,8 @@ export async function listarGrabaciones(): Promise<GrabacionGuardada[]> {
   const dir = await carpeta()
   const lista: GrabacionGuardada[] = []
   for await (const [nombre, h] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
-    if (h.kind !== 'file' || !nombre.endsWith('.mp4')) continue
+    // Las de la calibración de la cámara son temporales: no son grabaciones de la persona.
+    if (h.kind !== 'file' || !nombre.endsWith('.mp4') || nombre.startsWith('calibracion-')) continue
     const f = await (h as FileSystemFileHandle).getFile()
     if (f.size > 0) lista.push({ nombre, tamano: f.size, modificada: f.lastModified })
   }

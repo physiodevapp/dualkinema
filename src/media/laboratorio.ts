@@ -647,6 +647,7 @@ export async function informeMarcas(): Promise<Dato> {
       const paso = pasoDeReloj(
         v.map(([ts]) => ts / 1000),
         capturas,
+        v.map(([, llegada]) => llegada / 1000),
       )
       // Con el paso, cuánto antes de llegar se capturó cada frame; el audio, si va en el reloj del vídeo (como en la tablet).
       const retraso = (marcas: readonly (readonly [number, number])[]) => {
