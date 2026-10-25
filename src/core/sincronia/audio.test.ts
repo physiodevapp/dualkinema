@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ARRANQUE_IGNORADO_S, CalculoEnvolvente, envolvente, mezclarMono, TASA_ENVOLVENTE, type Envolvente } from './envolvente'
 import { CALIDAD_MAX, correlacionGccPhat } from './gccPhat'
-import { CALIDAD_AUDIO_MINIMA, compararConEvento, conComprobacion, desfaseDeAudio, sincroniaDeAudio } from './audio'
+import { CALIDAD_AUDIO_MINIMA, compararConEvento, conComprobacion, desfaseComprobado, desfaseDeAudio, sincroniaDeAudio } from './audio'
 import { ajusteManual, incertidumbreEvento } from './evento'
 import { grabar, type Microfono } from './sintetico'
 
@@ -197,5 +197,16 @@ describe('sincronía por audio', () => {
     const s = conComprobacion({ metodo: 'audio', audio: { calidad: 9, desfase: 0.48 } }, evento)
     expect(s).toEqual({ metodo: 'audio', audio: { calidad: 9, desfase: 0.48 }, evento })
     expect(ajusteManual(0.48, s)).toBe(0)
+  })
+})
+
+describe('desfaseComprobado', () => {
+  it('con el método aplicado, el desfase aplicado (con su ajuste fino); pasado al evento, el que dio el método', () => {
+    const audio = { calidad: 9, desfase: 0.48 }
+    expect(desfaseComprobado({ metodo: 'audio', audio }, 0.513)).toEqual({ metodo: 'audio', desfase: 0.513, incertidumbre: 0.0005 })
+    expect(desfaseComprobado({ metodo: 'evento', evento: { referencia: 1, vista: 0.48 }, audio }, 0.52)).toEqual({ metodo: 'audio', desfase: 0.48, incertidumbre: 0.0005 })
+    expect(desfaseComprobado({ metodo: 'reloj', reloj: { desfase: 0.01, cota: 0.038 } }, 0.01)).toEqual({ metodo: 'reloj', desfase: 0.01, incertidumbre: 0.038 })
+    expect(desfaseComprobado({ metodo: 'evento', evento: { referencia: 1, vista: 0.48 } }, 0.52)).toBeNull()
+    expect(desfaseComprobado({ metodo: 'manual' }, 0.52)).toBeNull()
   })
 })

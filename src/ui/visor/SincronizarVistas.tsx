@@ -1,6 +1,6 @@
 import { CheckIcon, ExclamationTriangleIcon, SpeakerWaveIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { Sincronia } from '../../core/modelo/tipos'
-import { CALIDAD_AUDIO_MINIMA, compararConEvento, conComprobacion, precisionDelMetodo, seComprueba, sincroniaDeAudio } from '../../core/sincronia/audio'
+import { CALIDAD_AUDIO_MINIMA, compararConEvento, conComprobacion, desfaseComprobado, precisionDelMetodo, seComprueba, sincroniaDeAudio } from '../../core/sincronia/audio'
 import { sincroniaDePropuesta, type PropuestaDoble } from '../../core/sincronia/doble'
 import { TASA_ENVOLVENTE } from '../../core/sincronia/envolvente'
 import { ajustarDesfase, ajusteManual, desfaseDeEvento, incertidumbreEvento, pasoTipico, sincroniaTrasAjuste, type EventoVisual } from '../../core/sincronia/evento'
@@ -89,8 +89,9 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
 
   const sinSincronia = s.metodo === 'ninguna' && vista.desfaseS === 0
   const ajuste = ajusteManual(vista.desfaseS, s)
-  // El desfase aplicado (con su ajuste fino) frente al del evento que lo comprueba.
-  const comparacion = comprobando && s.evento ? compararConEvento({ desfase: vista.desfaseS, incertidumbre: precision ?? 0 }, s.evento, incEvento) : null
+  // El desfase aplicado (con su ajuste fino), o el que dio el método si se pasó al evento, frente al del evento.
+  const comprobado = desfaseComprobado(s, vista.desfaseS)
+  const comparacion = comprobado && s.evento ? compararConEvento(comprobado, s.evento, incEvento) : null
   const filas = [
     { letra: 'A', v: referencia, clave: 'referencia' as const },
     { letra: 'B', v: vista, clave: 'vista' as const },
@@ -152,7 +153,7 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
       {comparacion && (
         <div className="flex flex-col gap-2 rounded-md border border-borde p-3" data-testid="comprobacion-audio">
           <p className="font-mono text-sm" data-testid="comparacion-audio-evento">
-            {s.metodo === 'audio' ? 'Audio' : s.metodo === 'pitido' ? 'Pitido' : 'Reloj'} {segundos(comparacion.audio)} · evento visual {segundos(comparacion.evento)} (± {fmt(incEvento * 1000, 0)} ms) · diferencia{' '}
+            {{ audio: 'Audio', pitido: 'Pitido', reloj: 'Reloj' }[comprobado!.metodo]} {segundos(comparacion.audio)} · evento visual {segundos(comparacion.evento)} (± {fmt(incEvento * 1000, 0)} ms) · diferencia{' '}
             {milis(comparacion.diferencia)}
           </p>
           {comparacion.discrepan ? (
@@ -161,7 +162,7 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
                 <ExclamationTriangleIcon className="size-5 shrink-0" />
                 Discrepan más de lo que explican las dos precisiones: puede ser el distinto retardo entre sonido e imagen de cada móvil o un frame mal marcado. La imagen es la que manda.
               </p>
-              {s.evento && (
+              {comprobando && s.evento && (
                 <button
                   type="button"
                   // Pasa a ser por evento, conservando lo que dio el método comprobado.

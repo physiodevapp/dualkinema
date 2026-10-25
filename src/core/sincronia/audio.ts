@@ -55,6 +55,20 @@ export function precisionDelMetodo(s: Sincronia): number | null {
 /** Métodos que un evento visual comprueba (sin cambiar el desfase): los que no salen de la imagen. */
 export const seComprueba = (s: Sincronia): boolean => s.metodo === 'audio' || s.metodo === 'pitido' || s.metodo === 'reloj'
 
+/**
+ * Lo que un evento visual compara: con el audio, el pitido o el reloj aplicados, el desfase aplicado (con el ajuste
+ * fino); si se pasó al evento conservando lo que dio uno de ellos, ese. Con su precisión y de qué método es. null si no
+ * hay nada que comparar.
+ */
+export function desfaseComprobado(s: Sincronia, aplicado: number): { readonly metodo: 'audio' | 'pitido' | 'reloj'; readonly desfase: number; readonly incertidumbre: number } | null {
+  if (s.metodo === 'audio' || s.metodo === 'pitido' || s.metodo === 'reloj') return { metodo: s.metodo, desfase: aplicado, incertidumbre: precisionDelMetodo(s) ?? 0 }
+  if (s.metodo !== 'evento') return null
+  if (s.pitido) return { metodo: 'pitido', desfase: s.pitido.desfase, incertidumbre: PRECISION_PITIDO_S }
+  if (s.audio) return { metodo: 'audio', desfase: s.audio.desfase, incertidumbre: 1 / TASA_ENVOLVENTE }
+  if (s.reloj) return { metodo: 'reloj', desfase: s.reloj.desfase, incertidumbre: s.reloj.cota }
+  return null
+}
+
 /** La sincronía por audio con el evento visual que la comprueba (no cambia el desfase ni el método). */
 export const conComprobacion = (s: Sincronia, evento: EventoVisual): Sincronia => ({ ...s, evento })
 
