@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowPathIcon, BookOpenIcon, FilmIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, BookOpenIcon, DevicePhoneMobileIcon, FilmIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
+import { codigoDeBusqueda } from '../core/sala/codigo'
 import type { AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores } from '../core/modelo/tipos'
 import type { CabeceraSesion, DatosSesion } from '../core/persistencia/esquema'
@@ -25,6 +26,8 @@ const Laboratorio = lazy(() => import('./Laboratorio'))
 const HAY_LABORATORIO = new URLSearchParams(location.search).has('laboratorio')
 // Grabar con la cámara del móvil (fase 4, paso 2): solo se descarga al entrar, y solo se ofrece si el navegador puede.
 const Grabar = lazy(() => import('./Grabar'))
+// Grabar con dos móviles (fase 4, paso 4): emparejar por código o QR. Un QR lleva `?sala=CÓDIGO` y abre la app ya en la sala.
+const Emparejar = lazy(() => import('./Emparejar'))
 const PUEDE_GRABAR =
   typeof navigator.mediaDevices?.getUserMedia === 'function' &&
   typeof globalThis.VideoEncoder === 'function' &&
@@ -34,6 +37,8 @@ type Estado =
   | { fase: 'inicio'; error?: string }
   /** Grabar con la cámara de este móvil (fase 4). */
   | { fase: 'grabar' }
+  /** Grabar con dos móviles: la sala (con su código si ya se ha creado o se llega por el QR). */
+  | { fase: 'emparejar'; codigo: string | null }
   | { fase: 'cargando'; nombre: string }
   | { fase: 'recuperar'; video: VideoAbierto; apertura: number; candidatas: Candidata[]; ocupado?: boolean; error?: string }
   | { fase: 'orientacion'; video: VideoAbierto; apertura: number; aviso?: string }
@@ -110,7 +115,10 @@ function BotonGlosario({ conVideo }: { conVideo: boolean }) {
 }
 
 function Aplicacion() {
-  const [estado, setEstado] = useState<Estado>({ fase: 'inicio' })
+  const [estado, setEstado] = useState<Estado>(() => {
+    const codigo = PUEDE_GRABAR ? codigoDeBusqueda(location.search) : null
+    return codigo ? { fase: 'emparejar', codigo } : { fase: 'inicio' }
+  })
   const selector = useRef<HTMLInputElement>(null)
   const { nueva: versionNueva, descartar: descartarVersion } = useVersionNueva()
   // Identifica cada apertura de un vídeo: el visor se monta de cero aunque se
@@ -351,6 +359,18 @@ function Aplicacion() {
               Grabar con este móvil
             </button>
           )}
+          {PUEDE_GRABAR && (
+            <button
+              type="button"
+              onClick={() => setEstado({ fase: 'emparejar', codigo: null })}
+              disabled={estado.fase === 'cargando'}
+              data-testid="ir-emparejar"
+              className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3 text-texto disabled:opacity-40"
+            >
+              <DevicePhoneMobileIcon className="size-5" />
+              Grabar con dos móviles
+            </button>
+          )}
           {estado.fase === 'cargando' && <p className="text-texto-2">Leyendo «{estado.nombre}»…</p>}
           {estado.fase === 'inicio' && estado.error && (
             <p className="rounded-md border border-red-400/50 p-3 text-red-300">{estado.error}</p>
@@ -368,6 +388,12 @@ function Aplicacion() {
       {estado.fase === 'grabar' && (
         <Suspense fallback={<p className="text-texto-2">Cargando la cámara…</p>}>
           <Grabar alAbrir={(archivo) => void cargar(archivo, null)} alSalir={() => setEstado({ fase: 'inicio' })} />
+        </Suspense>
+      )}
+
+      {estado.fase === 'emparejar' && (
+        <Suspense fallback={<p className="text-texto-2">Cargando…</p>}>
+          <Emparejar codigoInicial={estado.codigo} alSalir={() => setEstado({ fase: 'inicio' })} />
         </Suspense>
       )}
 

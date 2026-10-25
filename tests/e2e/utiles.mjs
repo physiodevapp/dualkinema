@@ -26,6 +26,28 @@ export async function servirApp() {
   throw new Error(`El servidor no ha arrancado en ${URL_APP}: ¿falta \`npm run build\`?`)
 }
 
+export const PUERTO_RELE = Number(process.env.E2E_PUERTO_RELE ?? 8799)
+/** Dirección del relé local para la app (`?senal=`: solo se acepta en localhost). */
+export const URL_RELE = `ws://127.0.0.1:${PUERTO_RELE}`
+
+/** Levanta el relé de salas (senal/) con `wrangler dev` (workerd). Devuelve una función para pararlo. */
+export async function servirRele() {
+  const rele = spawn(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'dev', '--config', 'senal/wrangler.jsonc', '--port', String(PUERTO_RELE), '--ip', '127.0.0.1'], {
+    stdio: 'ignore',
+  })
+  const parar = () => rele.kill()
+  for (let i = 0; i < 300; i++) {
+    try {
+      if ((await fetch(`http://127.0.0.1:${PUERTO_RELE}/salud`)).ok) return parar
+    } catch {
+      /* arrancando */
+    }
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  parar()
+  throw new Error('El relé de salas no ha arrancado')
+}
+
 /** `CHROMIUM_PATH` permite usar un Chromium ya instalado en vez del de Playwright. */
 export const lanzarNavegador = () => chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
 

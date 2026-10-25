@@ -27,6 +27,9 @@ import {
   irAFrame,
   lanzarNavegador,
   lanzarNavegadorConCamaraFalsa,
+  servirRele,
+  URL_APP,
+  URL_RELE,
   leerAngulo,
   textoDe,
   leerFrameDibujado,
@@ -3964,6 +3967,126 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     await p.getByTestId('grabacion-confirmar-borrar').click()
     await p.getByTestId('grabaciones-vacia').waitFor()
     assert.equal(await item.count(), 0)
+  })
+})
+
+describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
+  // El reloj de la app de B lleva 1,5 s más (`?reloj=`, solo en localhost). El de cada página es su `performance.now()`,
+  // que cuenta desde que se abrió la página (`performance.timeOrigin`, en el reloj del sistema, común a los dos
+  // navegadores): el desfase real de B respecto a A es 1500 + (inicio de A − inicio de B).
+  const DESFASE_B = 1500
+  let navA
+  let navB
+  let pararRele
+  let a
+  let b
+  let codigo
+
+  before(async () => {
+    pararRele = await servirRele()
+    navA = await lanzarNavegadorConCamaraFalsa()
+    navB = await lanzarNavegadorConCamaraFalsa()
+  })
+  after(async () => {
+    await navA?.close()
+    await navB?.close()
+    pararRele?.()
+  })
+
+  const conexion = (p, valor) =>
+    p.waitForFunction((v) => document.querySelector('[data-testid=conexion]')?.dataset.conexion === v, valor, { timeout: 20000 })
+
+  /** reloj de B − reloj de A, de verdad (ms). */
+  const desfaseReal = async () =>
+    DESFASE_B + (await a.evaluate(() => performance.timeOrigin)) - (await b.evaluate(() => performance.timeOrigin))
+
+  /** Espera a tener reloj común y devuelve su desfase y su cota (ms). */
+  async function relojDe(p) {
+    await p.waitForFunction(() => document.querySelector('[data-testid=reloj-comun]')?.dataset.desfase, null, { timeout: 20000 })
+    const el = p.getByTestId('reloj-comun')
+    return { desfase: Number(await el.getAttribute('data-desfase')), cota: Number(await el.getAttribute('data-cota')) }
+  }
+
+  it('A crea la sala: código, QR con la dirección de la sala y esperando al otro', async () => {
+    a = await abrirApp(navA, { consulta: `?senal=${URL_RELE}` })
+    await a.getByTestId('ir-emparejar').click()
+    await a.getByTestId('crear-sala').click()
+    await conexion(a, 'esperando')
+    codigo = (await a.getByTestId('codigo-sala').innerText()).replace('-', '')
+    assert.match(codigo, /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/)
+    assert.equal(await a.getByTestId('qr-sala').getAttribute('data-url'), `${URL_APP}?sala=${codigo}`)
+    // El QR tiene módulos dibujados y la dirección guarda la sala (al recargar se vuelve a ella) sin perder lo demás.
+    assert.ok((await a.locator('[data-testid=qr-sala] path').getAttribute('d')).length > 200)
+    assert.ok(a.url().includes(`sala=${codigo}`) && a.url().includes('senal='))
+  })
+
+  it('B se une por la dirección del QR: los dos conectados y cada uno con el desfase del otro dentro de su cota', async () => {
+    b = await abrirApp(navB, { consulta: `?sala=${codigo}&senal=${URL_RELE}&reloj=${DESFASE_B}` })
+    await conexion(b, 'emparejado')
+    await conexion(a, 'emparejado')
+    const ra = await relojDe(a)
+    const rb = await relojDe(b)
+    const real = await desfaseReal()
+    // A mide el reloj de B y B el de A (con el signo contrario); en la misma máquina la red es casi inmediata.
+    assert.ok(Math.abs(ra.desfase - real) <= ra.cota + 0.5, `A: ${ra.desfase} ± ${ra.cota}, real ${real}`)
+    assert.ok(Math.abs(rb.desfase + real) <= rb.cota + 0.5, `B: ${rb.desfase} ± ${rb.cota}, real ${-real}`)
+    assert.ok(ra.cota < 50 && rb.cota < 50, `cotas ${ra.cota} y ${rb.cota}`)
+    assert.match(await a.getByTestId('reloj-comun').innerText(), /Reloj común ± [\d.,]+ ms/)
+  })
+
+  it('cada uno ve la vista y la cámara del otro, y se avisa si los dos están en el mismo plano', async () => {
+    await a.getByTestId('vista-perfil-derecha').click()
+    await b.getByTestId('vista-frente').click()
+    await a.getByTestId('otro-vista').filter({ hasText: 'de frente' }).waitFor()
+    await b.getByTestId('otro-vista').filter({ hasText: 'de perfil, mira a la derecha' }).waitFor()
+    assert.equal(await a.getByTestId('aviso-vistas').count(), 0)
+    await a.getByTestId('otro-estado').filter({ hasText: /Cámara \d+×\d+ a \d+ fps/ }).waitFor({ timeout: 10000 })
+    await b.getByTestId('vista-perfil-izquierda').click()
+    await a.getByTestId('aviso-vistas').waitFor()
+    await b.getByTestId('aviso-vistas').waitFor()
+    await b.getByTestId('vista-frente').click()
+    await a.getByTestId('aviso-vistas').waitFor({ state: 'detached' })
+  })
+
+  it('un tercer móvil no entra: «la sala está llena»', async () => {
+    const c = await abrirApp(navB, { consulta: `?sala=${codigo}&senal=${URL_RELE}` })
+    try {
+      await conexion(c, 'llena')
+      assert.match(await c.getByTestId('conexion').innerText(), /llena/)
+    } finally {
+      await c.close()
+    }
+    // Los otros dos siguen emparejados.
+    assert.equal(await a.getByTestId('conexion').getAttribute('data-conexion'), 'emparejado')
+  })
+
+  it('al salir B, A vuelve a esperar; B vuelve a entrar escribiendo el código, y el reloj empieza de cero', async () => {
+    await b.getByTestId('salir-sala').click()
+    await b.getByTestId('ir-emparejar').waitFor()
+    await conexion(a, 'esperando')
+    assert.equal(await a.getByTestId('otro-movil').count(), 0)
+    await b.getByTestId('ir-emparejar').click()
+    await b.getByTestId('codigo-escrito').fill(`${codigo.slice(0, 3).toLowerCase()}-${codigo.slice(3)}`)
+    await b.getByTestId('unirse-sala').click()
+    await conexion(b, 'emparejado')
+    await conexion(a, 'emparejado')
+    // B no ha recargado (mismo origen de reloj): el desfase real es el mismo de antes, medido de cero.
+    const ra = await relojDe(a)
+    const real = await desfaseReal()
+    assert.ok(Math.abs(ra.desfase - real) <= ra.cota + 0.5, `A: ${ra.desfase} ± ${ra.cota}, real ${real}`)
+  })
+
+  it('un código mal escrito no se acepta', async () => {
+    const p = await abrirApp(navA, { consulta: `?senal=${URL_RELE}` })
+    try {
+      await p.getByTestId('ir-emparejar').click()
+      await p.getByTestId('codigo-escrito').fill('ABC1EF')
+      await p.getByTestId('unirse-sala').click()
+      assert.match(await p.getByTestId('error-codigo').innerText(), /no es válido/)
+      assert.equal(await p.getByTestId('codigo-sala').count(), 0)
+    } finally {
+      await p.close()
+    }
   })
 })
 
