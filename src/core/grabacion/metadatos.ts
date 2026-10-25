@@ -6,7 +6,7 @@ import type { OrientacionVista } from '../geometria/canonico'
  * aleatorio, cuándo se grabó y qué se pidió a la cámara; en una grabación doble (paso 5), además, `doble`: el id común
  * de la pareja de vídeos, la vista de este móvil y su reloj (cuándo empezó en su reloj y cuánto va por delante el del
  * otro móvil, con su cota). Con eso, al abrir los dos vídeos se sabe que son pareja y, a falta del pitido, cuánto se
- * desfasan (paso 7). `doble` es opcional: no cambia la versión del formato (un archivo sin él se lee igual).
+ * desfasan (paso 7); desde el paso 6, también cuándo pitó cada uno. `doble` es opcional: no cambia la versión del formato (un archivo sin él se lee igual).
  */
 
 export const APP_METADATOS = 'dualkinema'
@@ -38,6 +38,11 @@ export interface DatosDoble {
   readonly relojOtro: { readonly desfase: number; readonly cota: number } | null
   /** Deriva medida entre los dos relojes (ppm) con su error típico; null si no había bastante. */
   readonly deriva: { readonly ppm: number; readonly errorPpm: number } | null
+  /**
+   * Cuándo debía empezar la secuencia de pitidos de cada móvil (s desde el inicio; `core/sincronia/pitido.ts`), para
+   * buscarlas al abrir la pareja. Opcional: las grabaciones dobles anteriores al paso 6 no pitaban.
+   */
+  readonly pitidos?: { readonly propio: number; readonly otro: number }
 }
 
 export const textoMetadatos = (m: MetadatosGrabacion): string => JSON.stringify(m)
@@ -90,5 +95,7 @@ function leerDoble(v: unknown): DatosDoble | null {
   const d = o.deriva as Record<string, unknown> | null | undefined
   const relojOtro = r && finito(r.desfase) && finito(r.cota) && r.cota >= 0 ? { desfase: r.desfase, cota: r.cota } : null
   const deriva = d && finito(d.ppm) && finito(d.errorPpm) ? { ppm: d.ppm, errorPpm: d.errorPpm } : null
-  return { id: o.id, vista, inicio: o.inicio, relojOtro, deriva }
+  const p = o.pitidos as Record<string, unknown> | null | undefined
+  const pitidos = p && finito(p.propio) && finito(p.otro) && p.propio >= 0 && p.otro >= 0 ? { propio: p.propio, otro: p.otro } : null
+  return { id: o.id, vista, inicio: o.inicio, relojOtro, deriva, ...(pitidos ? { pitidos } : {}) }
 }

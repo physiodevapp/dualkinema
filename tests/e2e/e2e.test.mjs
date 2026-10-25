@@ -3923,6 +3923,25 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     return Number(/a (\d+) fps/.exec(await p.getByTestId('grabar-camara').innerText())[1])
   }
 
+  it('pitido de claqueta en la portada (paso 6): cuenta atrás de 3 s y la secuencia programada a los 3 s del toque', async () => {
+    await p.evaluate(() => {
+      window.__pitidos = []
+      const original = AudioBufferSourceNode.prototype.start
+      AudioBufferSourceNode.prototype.start = function (cuando = 0, ...resto) {
+        const c = this.context
+        window.__pitidos.push({ ahora: performance.now(), cuando, actual: c.currentTime, latencia: (c.baseLatency || 0) + (c.outputLatency || 0) })
+        return original.call(this, cuando, ...resto)
+      }
+    })
+    const toque = await p.evaluate(() => performance.now())
+    await p.getByTestId('claqueta').click()
+    await p.waitForFunction(() => document.querySelector('[data-testid=claqueta]')?.dataset.estado === '2', null, { timeout: 5000 })
+    await p.waitForFunction(() => document.querySelector('[data-testid=claqueta]')?.dataset.estado === 'hecho', null, { timeout: 6000 })
+    const [x] = await p.evaluate(() => window.__pitidos)
+    const suena = x.ahora + (x.cuando - x.actual + x.latencia) * 1000
+    assert.ok(Math.abs(suena - toque - 3000) < 150, `suena a ${(suena - toque).toFixed(0)} ms del toque`)
+  })
+
   it('graba, para y revisa lo grabado: frames y fps de verdad, datos de la app dentro y aviso si faltan fps', async () => {
     const concedidos = await entrarAGrabar()
     await p.getByTestId('grabar-empezar').click()
@@ -4117,7 +4136,7 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
   })
 })
 
-describe('grabar con dos móviles: grabación doble (fase 4, paso 5)', () => {
+describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 y 6)', () => {
   // Como en el emparejamiento: el reloj de la app de B lleva 1500 ms más, y la hora de verdad de un instante del reloj
   // de una página es su `performance.timeOrigin` + el instante (− 1500 en B).
   const DESFASE_B = 1500
@@ -4200,9 +4219,22 @@ describe('grabar con dos móviles: grabación doble (fase 4, paso 5)', () => {
     assert.match(await b.getByTestId('resultado-doble').innerText(), /-frente\.mp4/)
   })
 
-  it('con la duración fijada (10 s), los dos paran solos', async () => {
+  it('con la duración fijada (10 s), los dos paran solos; cada uno pita a su hora (paso 6)', async () => {
     await a.getByTestId('grabar-otra-vez').click()
     await b.getByTestId('grabar-otra-vez').click()
+    // Se anota cada sonido programado con Web Audio (la secuencia de pitidos es el único AudioBufferSourceNode: la
+    // cuenta atrás usa osciladores), para comprobar cuándo sonará en el reloj de la página.
+    for (const p of [a, b]) {
+      await p.evaluate(() => {
+        window.__pitidos = []
+        const original = AudioBufferSourceNode.prototype.start
+        AudioBufferSourceNode.prototype.start = function (cuando = 0, ...resto) {
+          const c = this.context
+          window.__pitidos.push({ ahora: performance.now(), cuando, actual: c.currentTime, latencia: (c.baseLatency || 0) + (c.outputLatency || 0) })
+          return original.call(this, cuando, ...resto)
+        }
+      })
+    }
     await a.getByTestId('cuenta-atras-s').selectOption('5')
     await a.getByTestId('duracion-s').selectOption('10')
     await a.getByTestId('grabar-los-dos').click()
@@ -4210,10 +4242,25 @@ describe('grabar con dos móviles: grabación doble (fase 4, paso 5)', () => {
     await fase(b, 'grabando', 15000)
     await fase(a, 'hecha', 30000)
     await fase(b, 'hecha', 30000)
-    for (const p of [a, b]) {
+    for (const [p, desplazado, propio, otro] of [
+      [a, false, 1, 2.5],
+      [b, true, 2.5, 1],
+    ]) {
       const r = await resultado(p)
       // La cámara falsa da 20 fps: 10 s son unos 200 frames.
       assert.ok(r.frames > 170 && r.frames < 230, `frames ${r.frames}`)
+      // El de perfil pita al segundo y el otro a los 2,5 s, y cada MP4 lo lleva escrito.
+      assert.deepEqual(JSON.parse(await p.getByTestId('resultado-doble').getAttribute('data-plan-pitidos')), { propio, otro })
+      const pitidos = await p.evaluate(() => window.__pitidos)
+      assert.equal(pitidos.length, 1, 'una secuencia por móvil')
+      assert.equal(await p.getByTestId('pitidos-doble').getAttribute('data-pito'), 'true')
+      // Cuándo sonará, en el reloj de la app de la página: el instante pedido (inicio + su turno), con la latencia de
+      // salida ya descontada al programarlo.
+      const x = pitidos[0]
+      const suena = x.ahora + (x.cuando - x.actual + x.latencia) * 1000 + (desplazado ? DESFASE_B : 0)
+      assert.ok(Math.abs(suena - (r.inicio + propio * 1000)) < 50, `suena a ${(suena - r.inicio).toFixed(1)} ms del inicio (debía a ${propio * 1000})`)
+      // El micrófono falso no oye los altavoces: se dice que no se oyen bien y qué hacer.
+      await p.getByTestId('aviso-pitidos').waitFor()
     }
   })
 

@@ -6,13 +6,18 @@ import { revisarFps } from '../core/grabacion/revision'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
 import { CUENTAS_ATRAS_S, DURACIONES_S, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil } from '../core/sala/protocolo'
+import { CALIDAD_PITIDO_MINIMA, DURACION_SECUENCIA_S, PITIDO_OTRA_S, VENTANA_DESPUES_S, type Deteccion } from '../core/sincronia/pitido'
+import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { espacio } from '../media/grabaciones'
-import { CALIDAD_POR_DEFECTO, datosCamara } from '../media/grabadora'
+import { CALIDAD_POR_DEFECTO, datosCamara, type Calidad } from '../media/grabadora'
+import { AVISO_MICRO_EXTERNO } from '../media/microfono'
 import { ahora } from '../sala/config'
 import { useGrabacionDoble, type GrabacionDoble } from '../sala/useGrabacionDoble'
 import { useSala, type Conexion, type Sala } from '../sala/useSala'
 import { InfoGlosario } from './glosario/Glosario'
 import { useCamara } from './useCamara'
+import { useCodificador } from './useCodificador'
+import { useMicroExterno } from './useMicroExterno'
 import { usePantallaEncendida } from './usePantallaEncendida'
 
 /*
@@ -61,8 +66,8 @@ function QrSala({ url }: { url: string }) {
   )
 }
 
-/** Lo que este móvil cuenta al otro: su cámara (la vista previa), espacio libre y batería. */
-function useMiEstado(flujo: MediaStream | null, grabando: boolean): EstadoMovil {
+/** Lo que este móvil cuenta al otro: su cámara (la vista previa), espacio libre, batería, codificador y micrófono. */
+function useMiEstado(flujo: MediaStream | null, grabando: boolean, codificador: EstadoMovil['codificador'], microExterno: boolean): EstadoMovil {
   const [libreMB, setLibreMB] = useState<number | null>(null)
   const [bateria, setBateria] = useState<number | null>(null)
   useEffect(() => {
@@ -84,8 +89,10 @@ function useMiEstado(flujo: MediaStream | null, grabando: boolean): EstadoMovil 
       libreMB,
       bateria,
       grabando,
+      codificador,
+      microExterno,
     }
-  }, [flujo, libreMB, bateria, grabando])
+  }, [flujo, libreMB, bateria, grabando, codificador, microExterno])
 }
 
 function Aviso({ children, testid }: { children: React.ReactNode; testid: string }) {
@@ -209,6 +216,34 @@ function TarjetaGrabar({ doble, puede }: { doble: GrabacionDoble; puede: boolean
   )
 }
 
+const oido = (d: Deteccion | null | undefined) => d != null && d.calidad >= CALIDAD_PITIDO_MINIMA
+const textoPitido = (d: Deteccion | null | undefined) =>
+  oido(d) ? `oído (calidad ${d!.calidad.toLocaleString('es-ES', { maximumFractionDigits: 1 })})` : 'no se oye bien'
+
+/** Si este vídeo ha oído los dos pitidos de ida y vuelta, y qué hacer si no. */
+function PitidosDoble({ fase }: { fase: Extract<GrabacionDoble['fase'], { f: 'hecha' }> }) {
+  const p = fase.pitidos
+  const corta = (fase.analisis?.duracion ?? Infinity) < PITIDO_OTRA_S + DURACION_SECUENCIA_S + VENTANA_DESPUES_S
+  const consejo = corta
+    ? 'La grabación ha sido demasiado corta para los pitidos: suenan en los 3 primeros segundos.'
+    : !fase.pito
+      ? 'Este móvil no ha podido pitar: toca su pantalla antes de grabar (el navegador no deja sonar sin un toque).'
+      : !oido(p?.propio)
+        ? 'No se oye bien el pitido de este móvil: sube su volumen multimedia y desconecta los auriculares.'
+        : !oido(p?.otro)
+          ? 'No se oye bien el pitido del otro móvil: sube el volumen multimedia de los dos o acércalos.'
+          : null
+  return (
+    <div className="flex flex-col gap-2" data-testid="pitidos-doble" data-pito={fase.pito} data-propio={p?.propio?.calidad ?? ''} data-otro={p?.otro?.calidad ?? ''}>
+      <p className="flex items-center gap-1 font-mono text-sm text-texto-2">
+        Pitidos: el de este móvil {textoPitido(p?.propio)} · el del otro {textoPitido(p?.otro)}
+        <InfoGlosario id="pitido" tema="el pitido de ida y vuelta" className="-my-1.5" />
+      </p>
+      {consejo && <Aviso testid="aviso-pitidos">{consejo}</Aviso>}
+    </div>
+  )
+}
+
 function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'], { f: 'hecha' }>; otraVez: () => void }) {
   const a = fase.analisis
   const revision = a ? revisarFps(30, a.fpsMediano) : null
@@ -220,6 +255,7 @@ function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'
       data-inicio={a?.metadatos?.doble?.inicio ?? ''}
       data-arranque={fase.arranque}
       data-frames={a?.frames ?? ''}
+      data-plan-pitidos={a?.metadatos?.doble?.pitidos ? JSON.stringify(a.metadatos.doble.pitidos) : ''}
     >
       <p className="font-mono text-xs break-all">{fase.archivo.name}</p>
       {a && (
@@ -230,9 +266,10 @@ function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'
       )}
       {revision?.bajos && (
         <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="aviso-fps-doble">
-          La cámara ha dado {a!.fpsMediano.toLocaleString('es-ES', { maximumFractionDigits: 1 })} fps de los 30 pedidos. Puede ser poca luz.
+          Ha grabado a {a!.fpsMediano.toLocaleString('es-ES', { maximumFractionDigits: 1 })} fps de los 30 pedidos. Puede ser poca luz o que este aparato no da para más.
         </p>
       )}
+      <PitidosDoble fase={fase} />
       <p className="text-sm text-texto-2">
         Está en «Grabaciones de este móvil». Para analizar los dos vídeos juntos, pasa el de un móvil al otro con «Compartir» (Quick Share).
       </p>
@@ -259,15 +296,22 @@ function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'
 function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
   usePantallaEncendida()
   const [vista, setVista] = useState<OrientacionVista | null>(null)
+  // 1080p, o 720p si este móvil codifica por software (no llega a 30 fps: algo ayuda).
+  const [calidad, setCalidad] = useState<Calidad>(CALIDAD_POR_DEFECTO)
+  useEffect(() => {
+    void calidadInicial().then(setCalidad)
+  }, [])
+  const codificador = useCodificador(calidad)
   // Vista previa para encuadrar (y para decirle al otro qué da la cámara); se reabre si Android la apaga.
-  const { flujo, error: errorCamara } = useCamara(CALIDAD_POR_DEFECTO)
+  const { flujo, error: errorCamara } = useCamara(calidad)
+  const microExterno = useMicroExterno(flujo)
   const video = useRef<HTMLVideoElement>(null)
   // Los pitidos de la cuenta atrás necesitan un contexto de audio creado tras un toque (norma de los navegadores).
   const [audio, setAudio] = useState<AudioContext | null>(null)
   const [grabando, setGrabando] = useState(false)
-  const miEstado = useMiEstado(flujo, grabando)
+  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null)
   const sala: Sala = useSala(codigo, vista, miEstado)
-  const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio)
+  const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio, calidad)
   const ocupado = doble.fase.f === 'esperando' || doble.fase.f === 'programada' || doble.fase.f === 'grabando' || doble.fase.f === 'parando'
   if (grabando !== (doble.fase.f === 'grabando')) setGrabando(doble.fase.f === 'grabando')
 
@@ -335,6 +379,8 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
         </div>
         <video ref={video} autoPlay muted playsInline className={`max-h-[40dvh] w-full rounded-md bg-black object-contain ${flujo ? '' : 'hidden'}`} />
         {errorCamara && <p className="text-sm text-red-300">No se puede abrir la cámara: {errorCamara}</p>}
+        {codificador === 'software' && <Aviso testid="aviso-codificador">{AVISO_SOFTWARE}</Aviso>}
+        {microExterno && <Aviso testid="aviso-micro">{AVISO_MICRO_EXTERNO}</Aviso>}
       </div>
 
       {emparejado && (
@@ -347,7 +393,14 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
             {camaraOtro ? `Cámara ${camaraOtro.ancho}×${camaraOtro.alto} a ${camaraOtro.fps} fps` : 'Cámara sin abrir'}
             {otro?.estado?.libreMB != null && ` · ${otro.estado.libreMB.toLocaleString('es-ES')} MB libres`}
             {otro?.estado?.bateria != null && ` · batería ${Math.round(otro.estado.bateria * 100)} %`}
+            {otro?.estado?.codificador === 'software' && ' · vídeo por software'}
           </p>
+          {otro?.estado?.codificador === 'software' && (
+            <Aviso testid="aviso-codificador-otro">El otro móvil codifica el vídeo por software: puede grabar a menos de 30 fps.</Aviso>
+          )}
+          {otro?.estado?.microExterno && (
+            <Aviso testid="aviso-micro-otro">El otro móvil tiene unos auriculares o un micrófono externo conectados: que los desconecte, o no se oirá su pitido.</Aviso>
+          )}
           <p className="flex items-center gap-1 font-mono text-sm" data-testid="reloj-comun" data-desfase={reloj?.desfase} data-cota={reloj?.cota} data-metodo={reloj?.metodo}>
             {reloj ? `Reloj común ± ${reloj.cota < 1 ? reloj.cota.toFixed(1) : Math.round(reloj.cota)} ms` : 'Midiendo el reloj común…'}
             {deriva && ` · deriva ${Math.round(deriva.ppm)} ± ${Math.round(deriva.errorPpm)} ppm`}

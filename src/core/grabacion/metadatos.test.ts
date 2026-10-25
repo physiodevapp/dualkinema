@@ -31,6 +31,10 @@ describe('metadatos de la grabación', () => {
     expect(leerMetadatos(JSON.stringify({ ...m, doble: { ...doble.doble, inicio: 'ayer' } }))).toEqual(m)
     // Un reloj del otro roto no tira la grabación doble: queda sin reloj.
     expect(leerMetadatos(JSON.stringify({ ...m, doble: { ...doble.doble, relojOtro: { desfase: 1, cota: -1 } } }))?.doble?.relojOtro).toBeNull()
+    // Los pitidos (paso 6): ida y vuelta; rotos o ausentes, la grabación doble se lee sin ellos.
+    const conPitidos = { ...m, doble: { ...doble.doble, pitidos: { propio: 2.5, otro: 1 } } }
+    expect(leerMetadatos(textoMetadatos(conPitidos))).toEqual(conPitidos)
+    expect(leerMetadatos(JSON.stringify({ ...m, doble: { ...doble.doble, pitidos: { propio: -1, otro: 1 } } }))).toEqual(doble)
   })
 
   it('lo que no es de dualkinema o está roto no se lee', () => {

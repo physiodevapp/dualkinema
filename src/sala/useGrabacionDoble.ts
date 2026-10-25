@@ -4,9 +4,12 @@ import type { DatosDoble } from '../core/grabacion/metadatos'
 import { nombreGrabacion } from '../core/grabacion/revision'
 import { aMiReloj, ESPERA_CONFIRMACION_MS, MARGEN_PREPARAR_MS, motivoNoPreparado, vistasCompatibles } from '../core/sala/doble'
 import type { Mensaje, MotivoCancelar } from '../core/sala/protocolo'
+import { instantePitido } from '../core/sincronia/pitido'
 import { analizarGrabacion, type AnalisisGrabacion } from '../media/grabaciones'
-import { CALIDAD_POR_DEFECTO, DURACION_MAXIMA_S, Grabadora } from '../media/grabadora'
+import { DURACION_MAXIMA_S, Grabadora, type Calidad } from '../media/grabadora'
+import { buscarPitidos, type PitidosGrabados } from '../media/pitido'
 import { ahora } from './config'
+import { emitirSecuencia, pitar } from './sonido'
 import type { Sala } from './useSala'
 
 /*
@@ -19,6 +22,11 @@ import type { Sala } from './useSala'
  * grabar: no quedan en el vídeo), arranca justo en el inicio y para solo al acabar la duración, aunque se corte la
  * conexión. «Parar» en cualquiera de los dos para los dos (`parar`). Todos los instantes, en ms del reloj de la sala
  * (`ahora`).
+ *
+ * Pitido de ida y vuelta (paso 6, `core/sincronia/pitido.ts`): ya grabando, el móvil de perfil emite su secuencia a
+ * PITIDO_REFERENCIA_S del inicio y el otro a PITIDO_OTRA_S (los dos instantes van en los metadatos). Al parar, cada uno
+ * busca las dos secuencias en su vídeo y dice si las ha oído: el desfase con los dos vídeos se calcula al abrirlos
+ * juntos (paso 7).
  */
 
 export type FaseDoble =
@@ -34,6 +42,10 @@ export type FaseDoble =
       readonly enAlmacen: boolean
       readonly analisis: AnalisisGrabacion | null
       readonly arranque: number
+      /** Las dos secuencias de pitidos en este vídeo; null si no se pudo leer el audio. */
+      readonly pitidos: PitidosGrabados | null
+      /** Este móvil llegó a programar su pitido (con el audio desbloqueado y grabando). */
+      readonly pito: boolean
       readonly aviso?: string
     }
 
@@ -51,20 +63,10 @@ export const TEXTO_MOTIVO: Record<MotivoCancelar, string> = {
 
 const SUFIJO = (v: OrientacionVista) => (v.plano === 'sagital' ? 'perfil' : v.ve === 'delante' ? 'frente' : 'espalda')
 
-const ocupado = (f: FaseDoble) => f.f === 'esperando' || f.f === 'programada' || f.f === 'grabando' || f.f === 'parando'
+/** Cuánto antes se programa el pitido en Web Audio (ms): los temporizadores se retrasan; Web Audio, no. */
+const ANTELACION_PITIDO_MS = 300
 
-/** Un pitido corto (cuenta atrás). Sin contexto de audio desbloqueado, no suena (la cuenta atrás se ve igual). */
-function pitar(ctx: AudioContext | null, hz = 880) {
-  if (!ctx || ctx.state !== 'running') return
-  const o = ctx.createOscillator()
-  const g = ctx.createGain()
-  g.gain.setValueAtTime(0.25, ctx.currentTime)
-  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12)
-  o.frequency.value = hz
-  o.connect(g).connect(ctx.destination)
-  o.start()
-  o.stop(ctx.currentTime + 0.12)
-}
+const ocupado = (f: FaseDoble) => f.f === 'esperando' || f.f === 'programada' || f.f === 'grabando' || f.f === 'parando'
 
 export interface GrabacionDoble {
   readonly fase: FaseDoble
@@ -83,6 +85,7 @@ export function useGrabacionDoble(
   otraVista: OrientacionVista | null,
   libreMB: number | null,
   audio: AudioContext | null,
+  calidad: Calidad,
 ): GrabacionDoble {
   const [fase, setFaseEstado] = useState<FaseDoble>({ f: 'libre' })
   const faseRef = useRef<FaseDoble>(fase)
@@ -93,10 +96,12 @@ export function useGrabacionDoble(
   const temporizadores = useRef<ReturnType<typeof setTimeout>[]>([])
   const preparada = useRef<Promise<Awaited<ReturnType<typeof Grabadora.preparar>> | null> | null>(null)
   const grabadora = useRef<Grabadora | null>(null)
+  // Cuándo pita cada uno (s desde el inicio) en la grabación en curso, y si este llegó a pitar.
+  const pitidos = useRef<{ propio: number; otro: number; pito: boolean } | null>(null)
   // Lo que cambia y leen los temporizadores y los mensajes.
-  const vivo = useRef({ sala, flujo, vista, otraVista, libreMB, audio })
+  const vivo = useRef({ sala, flujo, vista, otraVista, libreMB, audio, calidad })
   useEffect(() => {
-    vivo.current = { sala, flujo, vista, otraVista, libreMB, audio }
+    vivo.current = { sala, flujo, vista, otraVista, libreMB, audio, calidad }
   })
 
   const limpiar = useCallback(() => {
@@ -121,10 +126,13 @@ export function useGrabacionDoble(
       grabadora.current = null
       if (!g) return
       setFase({ f: 'parando', id })
+      const plan = pitidos.current
+      pitidos.current = null
       try {
         const t = await g.parar()
         const analisis = await analizarGrabacion(t.archivo).catch(() => null)
-        setFase({ f: 'hecha', id, archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, arranque })
+        const oidos = plan ? await buscarPitidos(t.archivo, plan.propio, plan.otro).catch(() => null) : null
+        setFase({ f: 'hecha', id, archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, arranque, pitidos: oidos, pito: plan?.pito ?? false })
       } catch (e) {
         setFase({ f: 'libre', aviso: `No se ha podido terminar la grabación: ${e instanceof Error ? e.message : String(e)}` })
       }
@@ -135,13 +143,16 @@ export function useGrabacionDoble(
   /** Lo de este móvil una vez acordado el inicio (en mi reloj). */
   const prepararYArrancar = useCallback(
     (id: string, inicio: number, fin: number | null) => {
-      const { sala: s, flujo: f, vista: v, audio: a } = vivo.current
+      const { sala: s, flujo: f, vista: v, audio: a, calidad } = vivo.current
       if (!f || !v) {
         s.enviar({ tipo: 'cancelar', grabacion: id, motivo: f ? 'sin-vista' : 'sin-camara' })
         setFase({ f: 'libre', aviso: `No se graba: ${f ? 'falta elegir la vista de este móvil' : 'la cámara de este móvil no está abierta'}.` })
         return
       }
       setFase({ f: 'programada', id, inicio, fin })
+      const esReferencia = v.plano === 'sagital'
+      const plan = { propio: instantePitido(esReferencia), otro: instantePitido(!esReferencia), pito: false }
+      pitidos.current = plan
       en(inicio - MARGEN_PREPARAR_MS, () => {
         const reloj = s.relojAhora()
         const deriva = s.derivaAhora()
@@ -151,11 +162,18 @@ export function useGrabacionDoble(
           inicio,
           relojOtro: reloj ? { desfase: reloj.desfase, cota: reloj.cota } : null,
           deriva: deriva ? { ppm: deriva.ppm, errorPpm: deriva.errorPpm } : null,
+          pitidos: { propio: plan.propio, otro: plan.otro },
         }
         const nombre = nombreGrabacion(new Date(Date.now() + (inicio - ahora()))).replace('.mp4', `-${SUFIJO(v)}.mp4`)
-        preparada.current = Grabadora.preparar(f, CALIDAD_POR_DEFECTO, nombre, crypto.randomUUID(), doble).catch(() => null)
+        preparada.current = Grabadora.preparar(f, calidad, nombre, crypto.randomUUID(), doble).catch(() => null)
       })
       for (const s3 of [3, 2, 1]) en(inicio - s3 * 1000, () => pitar(a))
+      // El pitido de ida y vuelta, ya grabando: se programa en Web Audio un poco antes para que suene a su hora exacta.
+      const instantePropio = inicio + plan.propio * 1000
+      en(instantePropio - ANTELACION_PITIDO_MS, () => {
+        const ff = faseRef.current
+        if (ff.f === 'grabando' && ff.id === id) plan.pito = emitirSecuencia(vivo.current.audio, instantePropio, ahora())
+      })
       en(inicio, async () => {
         const p = await preparada.current
         preparada.current = null

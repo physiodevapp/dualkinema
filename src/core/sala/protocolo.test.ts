@@ -9,8 +9,9 @@ const mensajes: Mensaje[] = [
   { tipo: 'hola', version: VERSION_PROTOCOLO, vista: null },
   { tipo: 'ping', id: 7, t1: 12345.678 },
   { tipo: 'pong', id: 7, t1: 12345.678, t2: -998.5, t3: -998.25 },
-  { tipo: 'estado', camara: { ancho: 1080, alto: 1920, fps: 30 }, libreMB: 9800.5, bateria: 0.83, grabando: false },
-  { tipo: 'estado', camara: null, libreMB: null, bateria: null, grabando: true },
+  { tipo: 'estado', camara: { ancho: 1080, alto: 1920, fps: 30 }, libreMB: 9800.5, bateria: 0.83, grabando: false, codificador: 'hardware', microExterno: false },
+  { tipo: 'estado', camara: null, libreMB: null, bateria: null, grabando: true, codificador: null, microExterno: null },
+  { tipo: 'estado', camara: null, libreMB: null, bateria: null, grabando: false, codificador: 'software', microExterno: true },
   { tipo: 'programar', grabacion: id, inicio: 50_000.5, duracion: 20 },
   { tipo: 'programar', grabacion: id, inicio: 50_000.5, duracion: null },
   { tipo: 'confirmar', grabacion: id },
@@ -28,7 +29,10 @@ describe('protocolo de la sala', () => {
     const m = leerMensaje(JSON.stringify({ tipo: 'confirmar', grabacion: id, paciente: 'Fulano', notas: 'dolor' }))
     expect(m).toEqual({ tipo: 'confirmar', grabacion: id })
     const e = leerMensaje(JSON.stringify({ tipo: 'estado', camara: { ancho: 1, alto: 1, fps: 30, modelo: 'x' }, libreMB: 1, bateria: 1, grabando: false, extra: 1 }))
-    expect(e).toEqual({ tipo: 'estado', camara: { ancho: 1, alto: 1, fps: 30 }, libreMB: 1, bateria: 1, grabando: false })
+    // Sin `codificador` ni `microExterno` (un móvil anterior al paso 6): no se sabe.
+    expect(e).toEqual({ tipo: 'estado', camara: { ancho: 1, alto: 1, fps: 30 }, libreMB: 1, bateria: 1, grabando: false, codificador: null, microExterno: null })
+    const raro = leerMensaje(JSON.stringify({ tipo: 'estado', camara: null, libreMB: 1, bateria: 1, grabando: false, codificador: 'gpu', microExterno: 'sí' }))
+    expect(raro).toEqual({ tipo: 'estado', camara: null, libreMB: 1, bateria: 1, grabando: false, codificador: null, microExterno: null })
   })
 
   it('no se entiende (null): roto, de otro tipo, campos inválidos o demasiado grande', () => {

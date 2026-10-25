@@ -16,6 +16,7 @@ import { saltosDeFrames } from '../core/tiempo/saltos'
 import { crearTablaFrames, estadisticas } from '../core/tiempo/tablaFrames'
 import { bitrateDe } from './grabadora'
 import type { ValorInforme } from './informe'
+import { microExterno } from './microfono'
 
 /*
  * Laboratorio (fase 4, paso 1; §1–3 de docs/plan-fase-4.md): mide qué da cada móvil en Chrome antes de construir la
@@ -332,6 +333,9 @@ export async function informeAudio(): Promise<Dato> {
         canales: s.channelCount,
         sampleRate: s.sampleRate,
         latenciaS: s.latency,
+        // Con los nombres se comprueba el aviso de auriculares o micrófono externo (`microfono.ts`).
+        entradas: (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput').map((d) => d.label || '(sin nombre)'),
+        externo: (await microExterno(flujo)) ?? 'no',
       }
     } finally {
       flujo.getTracks().forEach((t) => t.stop())

@@ -170,6 +170,15 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'pitido',
+    titulo: 'Pitido de ida y vuelta',
+    texto: [
+      'En la grabación con dos móviles, ya grabando, pita cada uno por turnos: el de perfil al segundo de empezar y el otro a los 2,5 s. Cada pitido son tres barridos cortos (de 2 a 5 kHz, 40 ms) con separaciones distintas, una forma que no se confunde con la voz, los pasos ni una palmada. Los dos vídeos oyen los dos pitidos: el propio de cerca y el del otro desde donde esté.',
+      'Un sonido llega antes al micrófono más cercano (3 m de diferencia son 8,7 ms). Con un solo pitido ese retraso quedaría en el desfase; con dos, uno desde cada lado, el retraso suma en uno y resta en el otro: la media da el desfase de los vídeos sin él, y la diferencia da la distancia entre los móviles, que sirve de comprobación. No importa cuánto tarda en sonar cada altavoz: los dos micrófonos graban el mismo sonido.',
+      'Al parar, cada móvil busca los dos pitidos en su vídeo y dice si los ha oído, con su calidad (pico entre segundo pico; desde 3 se dan por buenos). Para que se oigan: volumen multimedia alto en los dos y nada de auriculares conectados (el sonido saldría por ellos). Como con el audio de la fase 3, no incluye el retardo entre el sonido y la imagen de cada móvil: se comprueba con un evento visual.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [

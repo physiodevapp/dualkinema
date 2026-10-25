@@ -9,6 +9,7 @@ import { diferenciasHuella } from '../core/persistencia/huella'
 import type { VideoAbierto } from '../media/video'
 import { buscarPorHuella, leerSesion } from '../persistencia/almacen'
 import Compatibilidad from './compatibilidad'
+import Claqueta from './Claqueta'
 import ElegirOrientacion from './ElegirOrientacion'
 import FaltanVideos from './FaltanVideos'
 import { GlosarioProvider, useGlosario } from './glosario/Glosario'
@@ -32,6 +33,8 @@ const PUEDE_GRABAR =
   typeof navigator.mediaDevices?.getUserMedia === 'function' &&
   typeof globalThis.VideoEncoder === 'function' &&
   typeof (globalThis as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor === 'function'
+// Pitido de claqueta (fase 4, paso 6): el pitido de la grabación doble desde un solo móvil, para cámaras arrancadas a mano.
+const HAY_AUDIO = typeof globalThis.AudioContext === 'function'
 
 type Estado =
   | { fase: 'inicio'; error?: string }
@@ -371,6 +374,7 @@ function Aplicacion() {
               Grabar con dos móviles
             </button>
           )}
+          {HAY_AUDIO && <Claqueta />}
           {estado.fase === 'cargando' && <p className="text-texto-2">Leyendo «{estado.nombre}»…</p>}
           {estado.fase === 'inicio' && estado.error && (
             <p className="rounded-md border border-red-400/50 p-3 text-red-300">{estado.error}</p>
