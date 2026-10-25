@@ -3371,7 +3371,7 @@ describe('dos vistas: sincronizar por el audio y comprobar con el evento visual'
     assert.doesNotMatch(sinc, /evento en/)
     const comprobacion = cabecera.find((l) => l.startsWith('# sincronización: comprobación;'))
     assert.match(comprobacion, /con un evento visual \(no da el desfase\)/)
-    assert.match(comprobacion, /diferencia con el audio \+40 ms \(discrepan\)/)
+    assert.match(comprobacion, /diferencia con el desfase aplicado \+40 ms \(discrepan\)/)
     await p.getByTestId('vista-A').click()
     await esperarQuieto(p)
     await abrirPestana(p, 'video')
