@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowPathIcon, BookOpenIcon, DevicePhoneMobileIcon, FilmIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, BookOpenIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { codigoDeBusqueda } from '../core/sala/codigo'
 import type { AjustesFiltro } from '../core/filtros/tramos'
@@ -43,6 +43,8 @@ type Estado =
   /** Grabar con dos móviles: la sala (con su código si ya se ha creado o se llega por el QR). */
   | { fase: 'emparejar'; codigo: string | null }
   | { fase: 'cargando'; nombre: string }
+  /** Abrir una grabación doble (fase 4): ya hay un vídeo de la pareja; falta elegir el otro. */
+  | { fase: 'doble'; primero: File; error?: string }
   | { fase: 'recuperar'; video: VideoAbierto; apertura: number; candidatas: Candidata[]; ocupado?: boolean; error?: string }
   | { fase: 'orientacion'; video: VideoAbierto; apertura: number; aviso?: string }
   /** Una sesión de varias vistas, con parte de sus vídeos abiertos: faltan los demás. */
@@ -57,6 +59,8 @@ type Estado =
       modelo?: ModeloMarcadores
       filtro?: AjustesFiltro | null
       aviso?: string
+      /** Pestaña con que empezar (una grabación doble abre en «Vídeo», con la sincronía propuesta). */
+      pestana?: string
     }
 
 const NOMBRE_DIFERENCIA = { nombre: 'nombre', tamano: 'tamaño', duracion: 'duración', frames: 'número de frames' } as const
@@ -123,6 +127,7 @@ function Aplicacion() {
     return codigo ? { fase: 'emparejar', codigo } : { fase: 'inicio' }
   })
   const selector = useRef<HTMLInputElement>(null)
+  const selectorDoble = useRef<HTMLInputElement>(null)
   const { nueva: versionNueva, descartar: descartarVersion } = useVersionNueva()
   // Identifica cada apertura de un vídeo: el visor se monta de cero aunque se
   // vuelva a abrir un archivo con el mismo nombre (antes la clave era el nombre).
@@ -204,6 +209,80 @@ function Aplicacion() {
     }
   }, [])
 
+  /**
+   * Abre los dos vídeos de una grabación doble (fase 4, paso 7): comprueba por sus metadatos que son pareja, pone el de
+   * perfil como referencia con la orientación de cada uno y propone el desfase (pitido o reloj: `core/sincronia/doble.ts`).
+   * Si ya hay una sesión de esos dos vídeos, la recupera.
+   */
+  const abrirDoble = useCallback(async (archivos: readonly [File, File]) => {
+    setEstado({ fase: 'cargando', nombre: 'la grabación doble' })
+    const apertura = ++aperturas.current
+    const abiertos: VideoAbierto[] = []
+    try {
+      const [{ VideoAbierto }, { leerMetadatosArchivo }, { idaVueltaDePareja }, { parejaDoble, TEXTO_MOTIVO_PAREJA }, { desfaseDeReloj, proponerDesfase }] = await Promise.all([
+        import('../media/video'),
+        import('../media/grabaciones'),
+        import('../media/pitido'),
+        import('../core/grabacion/pareja'),
+        import('../core/sincronia/doble'),
+      ])
+      const metas = await Promise.all(archivos.map(leerMetadatosArchivo))
+      const pareja = parejaDoble(metas[0]!, metas[1]!)
+      if (!pareja.ok) {
+        const quien = pareja.cual === undefined ? 'Estos dos vídeos no son una grabación doble' : `«${archivos[pareja.cual].name}» no sirve`
+        setEstado({ fase: 'inicio', error: `${quien}: ${TEXTO_MOTIVO_PAREJA[pareja.motivo]}. Ábrelos con «Cargar vídeo» y añade el otro como segunda vista.` })
+        return
+      }
+      const iRef = pareja.referencia
+      const iVista = (1 - iRef) as 0 | 1
+      const [dRef, dVista] = [pareja.doble[iRef], pareja.doble[iVista]]
+      for (const i of [iRef, iVista]) abiertos.push(await VideoAbierto.abrir(archivos[i]))
+      const [ref, otra] = abiertos as [VideoAbierto, VideoAbierto]
+      if (aperturas.current !== apertura) return
+      // ¿Ya se trabajó con esta pareja? Entonces se continúa donde se dejó.
+      const candidatas = await buscarPorHuella(huellaDe(ref)).catch(() => [])
+      for (const { cabecera } of candidatas) {
+        const vRef = vistaDeHuella(cabecera, huellaDe(ref), {})
+        const vOtra = vRef && vistaDeHuella(cabecera, huellaDe(otra), { [vRef.id]: ref })
+        if (vRef && vOtra && cabecera.vistas.length === 2) {
+          const { cabecera: c, datos } = await leerSesion(cabecera.id)
+          if (aperturas.current !== apertura) return
+          setEstado(estadoDeSesion(c, datos, { [vRef.id]: ref, [vOtra.id]: otra }, apertura))
+          return
+        }
+      }
+      const pitido =
+        dRef.pitidos && dVista.pitidos
+          ? await idaVueltaDePareja({ archivo: archivos[iRef], pitidos: dRef.pitidos }, { archivo: archivos[iVista], pitidos: dVista.pitidos }).catch(() => null)
+          : null
+      const propuesta = proponerDesfase(pitido, desfaseDeReloj(dRef, dVista))
+      if (aperturas.current !== apertura) return
+      for (const v of abiertos) v.repartirMemoria(2)
+      setEstado({
+        fase: 'visor',
+        apertura,
+        sesion: sesionNueva(ref),
+        pestana: 'video',
+        vistas: [
+          { id: ID_VISTA_REFERENCIA, video: ref, orientacion: dRef.vista, desfase: 0, sincronia: { metodo: 'ninguna' } },
+          { id: 'v2', video: otra, orientacion: dVista.vista, desfase: 0, sincronia: { metodo: 'ninguna' }, propuesta },
+        ],
+      })
+    } catch (e) {
+      for (const v of abiertos) void v.cerrar()
+      if (aperturas.current !== apertura) return
+      setEstado({ fase: 'inicio', error: e instanceof Error ? e.message : String(e) })
+    }
+  }, [])
+
+  /** Archivos elegidos para una grabación doble: con los dos, se abre; con uno, se pide el otro. */
+  const elegidosDoble = (archivos: File[]) => {
+    const primero = estado.fase === 'doble' ? estado.primero : null
+    const todos = primero ? [primero, ...archivos] : archivos
+    if (todos.length >= 2) void abrirDoble([todos[0]!, todos[1]!])
+    else if (todos.length === 1) setEstado({ fase: 'doble', primero: todos[0]! })
+  }
+
   // Segunda vista de la sesión abierta: el vídeo ya está leído y se sabe cómo se ve a la persona. Las dos se reparten
   // la memoria de la caché de frames.
   const anadirVista = (video: VideoAbierto, orientacion: OrientacionVista) => {
@@ -253,6 +332,19 @@ function Aplicacion() {
       setEstado({ fase: 'faltan', apertura, cabecera, datos, abiertos, error: e instanceof Error ? e.message : String(e) })
     }
   }
+
+  const botonDoble = (
+    <button
+      type="button"
+      onClick={() => selectorDoble.current?.click()}
+      disabled={estado.fase === 'cargando'}
+      data-testid="abrir-doble"
+      className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3 text-texto disabled:opacity-40"
+    >
+      <Square2StackIcon className="size-5" />
+      Abrir la grabación doble
+    </button>
+  )
 
   // Botón de la portada (sin vídeo abierto). Con un vídeo abierto, el de cambiarlo va en la cabecera.
   const botonCargar = (
@@ -342,6 +434,20 @@ function Aplicacion() {
           paraFaltante.current = false
         }}
       />
+      {/* Después del de siempre: las pruebas usan el primer input de archivo. */}
+      <input
+        ref={selectorDoble}
+        type="file"
+        multiple
+        accept="video/mp4,.mp4"
+        className="hidden"
+        data-testid="selector-doble"
+        onChange={(e) => {
+          const archivos = [...(e.target.files ?? [])]
+          e.target.value = ''
+          if (archivos.length) elegidosDoble(archivos)
+        }}
+      />
 
       {(estado.fase === 'inicio' || estado.fase === 'cargando') && (
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
@@ -350,6 +456,7 @@ function Aplicacion() {
             vídeos nunca salen de él.
           </p>
           {botonCargar}
+          {botonDoble}
           {PUEDE_GRABAR && (
             <button
               type="button"
@@ -391,13 +498,33 @@ function Aplicacion() {
 
       {estado.fase === 'grabar' && (
         <Suspense fallback={<p className="text-texto-2">Cargando la cámara…</p>}>
-          <Grabar alAbrir={(archivo) => void cargar(archivo, null)} alSalir={() => setEstado({ fase: 'inicio' })} />
+          <Grabar
+            alAbrir={(archivo) => void cargar(archivo, null)}
+            alAbrirDoble={(archivo) => setEstado({ fase: 'doble', primero: archivo })}
+            alSalir={() => setEstado({ fase: 'inicio' })}
+          />
         </Suspense>
+      )}
+
+      {estado.fase === 'doble' && (
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-3 rounded-2xl border border-borde bg-panel p-4" data-testid="falta-doble">
+          <h2 className="font-serif text-2xl">Abrir la grabación doble</h2>
+          <p className="text-sm">
+            Tienes «<span className="font-mono">{estado.primero.name}</span>». Elige el vídeo del otro móvil (el que te pasó por Quick Share, en Descargas).
+          </p>
+          <button type="button" onClick={() => selectorDoble.current?.click()} data-testid="elegir-otro-doble" className="flex items-center justify-center gap-2 rounded-md bg-acento px-4 py-3 font-medium text-fondo">
+            <FilmIcon className="size-5" />
+            Elegir el otro vídeo
+          </button>
+          <button type="button" onClick={() => setEstado({ fase: 'inicio' })} className="rounded-md border border-borde px-4 py-3 text-texto">
+            Cancelar
+          </button>
+        </div>
       )}
 
       {estado.fase === 'emparejar' && (
         <Suspense fallback={<p className="text-texto-2">Cargando…</p>}>
-          <Emparejar codigoInicial={estado.codigo} alSalir={() => setEstado({ fase: 'inicio' })} />
+          <Emparejar codigoInicial={estado.codigo} alSalir={() => setEstado({ fase: 'inicio' })} alAbrirDoble={(archivo) => setEstado({ fase: 'doble', primero: archivo })} />
         </Suspense>
       )}
 
@@ -455,6 +582,7 @@ function Aplicacion() {
             filtro={estado.filtro}
             avisoInicial={estado.aviso}
             onAnadirVista={anadirVista}
+            pestanaInicial={estado.pestana}
           />
         </Suspense>
       )}

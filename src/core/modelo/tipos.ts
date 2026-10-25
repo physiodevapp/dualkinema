@@ -60,13 +60,19 @@ export interface ArchivoVista {
  * - audio: por la correlación del audio; `audio` guarda la calidad del pico (pico / segundo pico) y el desfase que dio,
  *   antes del ajuste fino (la diferencia con `desfase` es lo que se movió a mano).
  * - manual: puesto o ajustado a mano sin evento ni audio.
+ * - pitido (fase 4): el pitido de ida y vuelta de una grabación doble; `pitido` guarda el desfase que dio, la peor
+ *   calidad de sus cuatro detecciones y la distancia entre los móviles.
+ * - reloj (fase 4): el reloj común de una grabación doble (cuándo empezó cada una); `reloj` guarda el desfase y su
+ *   cota (s).
  */
-export type MetodoSincronia = 'ninguna' | 'evento' | 'audio' | 'manual'
+export type MetodoSincronia = 'ninguna' | 'evento' | 'audio' | 'manual' | 'pitido' | 'reloj'
 
 export interface Sincronia {
   readonly metodo: MetodoSincronia
   readonly evento?: { readonly referencia: number; readonly vista: number }
   readonly audio?: { readonly calidad: number; readonly desfase: number }
+  readonly pitido?: { readonly desfase: number; readonly calidad: number; readonly distancia: number }
+  readonly reloj?: { readonly desfase: number; readonly cota: number }
 }
 
 export interface Vista {

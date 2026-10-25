@@ -44,5 +44,7 @@ export const sincroniaTrasAjuste = (s: Sincronia): Sincronia => (s.metodo === 'n
 export function ajusteManual(desfase: number, s: Sincronia): number | null {
   if (s.metodo === 'evento' && s.evento) return desfase - desfaseDeEvento(s.evento)
   if (s.metodo === 'audio' && s.audio) return desfase - s.audio.desfase
+  if (s.metodo === 'pitido' && s.pitido) return desfase - s.pitido.desfase
+  if (s.metodo === 'reloj' && s.reloj) return desfase - s.reloj.desfase
   return null
 }

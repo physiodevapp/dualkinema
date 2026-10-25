@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDownTrayIcon, ArrowLeftIcon, FilmIcon, ShareIcon, StopIcon, TrashIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, ArrowLeftIcon, FilmIcon, ShareIcon, Square2StackIcon, StopIcon, TrashIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { nombreGrabacion, revisarFps } from '../core/grabacion/revision'
 import { pedirPersistencia } from '../persistencia/almacen'
 import {
@@ -65,7 +65,17 @@ function guardar(archivo: File) {
 
 const boton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-borde px-3 text-sm text-texto disabled:opacity-40'
 
-export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) => void; alSalir: () => void }) {
+/** Nombre de una grabación doble (`…-perfil.mp4`, `…-frente.mp4`, `…-espalda.mp4`): se ofrece abrirla con la otra. */
+const esDeGrabacionDoble = (nombre: string) => /-(perfil|frente|espalda)\.mp4$/.test(nombre)
+
+interface Props {
+  readonly alAbrir: (archivo: File) => void
+  /** Abrir como grabación doble: este vídeo y, después, el del otro móvil. */
+  readonly alAbrirDoble: (archivo: File) => void
+  readonly alSalir: () => void
+}
+
+export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
   usePantallaEncendida()
   const [calidad, setCalidad] = useState<Calidad>(CALIDAD_POR_DEFECTO)
   const [grabadora, setGrabadora] = useState<Grabadora | null>(null)
@@ -338,6 +348,12 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
                     <FilmIcon className="size-5" />
                     Abrir
                   </button>
+                  {esDeGrabacionDoble(g.nombre) && (
+                    <button type="button" onClick={() => void conGuardada(g.nombre, alAbrirDoble)} disabled={grabando} data-testid="grabacion-abrir-doble" className={boton}>
+                      <Square2StackIcon className="size-5" />
+                      Abrir con el otro vídeo
+                    </button>
+                  )}
                   {puedeCompartir && (
                     <button type="button" onClick={() => void conGuardada(g.nombre, (f) => compartir(f, setError))} className={boton}>
                       <ShareIcon className="size-5" />

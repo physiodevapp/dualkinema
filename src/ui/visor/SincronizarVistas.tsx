@@ -1,6 +1,7 @@
 import { CheckIcon, ExclamationTriangleIcon, SpeakerWaveIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { Sincronia } from '../../core/modelo/tipos'
-import { CALIDAD_AUDIO_MINIMA, compararConEvento, conComprobacion, sincroniaDeAudio } from '../../core/sincronia/audio'
+import { CALIDAD_AUDIO_MINIMA, compararConEvento, conComprobacion, precisionDelMetodo, seComprueba, sincroniaDeAudio } from '../../core/sincronia/audio'
+import { sincroniaDePropuesta, type PropuestaDoble } from '../../core/sincronia/doble'
 import { TASA_ENVOLVENTE } from '../../core/sincronia/envolvente'
 import { ajustarDesfase, ajusteManual, desfaseDeEvento, incertidumbreEvento, pasoTipico, sincroniaTrasAjuste, type EventoVisual } from '../../core/sincronia/evento'
 import type { FaltaAudio } from '../../workers/protocolo'
@@ -31,7 +32,14 @@ const segundos = (s: number) => `${s < 0 ? '−' : '+'}${fmt(Math.abs(s), 3)} s`
 /** Milisegundos con signo, sin decimales («+40 ms»). */
 const milis = (s: number) => `${s < 0 ? '−' : '+'}${fmt(Math.abs(s) * 1000, 0)} ms`
 
-const TEXTO_METODO = { ninguna: 'Sin sincronizar', evento: 'Por evento visual', audio: 'Por audio', manual: 'Puesta a mano' } as const
+const TEXTO_METODO = {
+  ninguna: 'Sin sincronizar',
+  evento: 'Por evento visual',
+  audio: 'Por audio',
+  manual: 'Puesta a mano',
+  pitido: 'Por el pitido de ida y vuelta',
+  reloj: 'Por el reloj común',
+} as const
 
 /** Precisión del audio (s): una muestra de la envolvente. No incluye el retardo entre audio e imagen de cada móvil. */
 const INCERTIDUMBRE_AUDIO = 1 / TASA_ENVOLVENTE
@@ -62,8 +70,9 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
   const incEvento = incertidumbreEvento(pasoRef, pasoVista)
   const evento: EventoVisual | null = marca.referencia !== undefined && marca.vista !== undefined ? { referencia: marca.referencia, vista: marca.vista } : null
   const s = vista.sincronia
-  // Con el audio aplicado, marcar el evento lo comprueba (no cambia el desfase).
-  const comprobando = s.metodo === 'audio'
+  // Con el audio, el pitido o el reloj aplicados, marcar el evento los comprueba (no cambia el desfase).
+  const comprobando = seComprueba(s)
+  const precision = precisionDelMetodo(s)
 
   const aplicar = () => {
     if (!evento) return
@@ -80,8 +89,8 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
 
   const sinSincronia = s.metodo === 'ninguna' && vista.desfaseS === 0
   const ajuste = ajusteManual(vista.desfaseS, s)
-  // Los dos desfases, si se tienen (el audio comprobado con un evento, o el evento elegido tras comprobar el audio).
-  const comparacion = s.audio && s.evento ? compararConEvento({ desfase: s.audio.desfase, incertidumbre: INCERTIDUMBRE_AUDIO }, s.evento, incEvento) : null
+  // El desfase aplicado (con su ajuste fino) frente al del evento que lo comprueba.
+  const comparacion = comprobando && s.evento ? compararConEvento({ desfase: vista.desfaseS, incertidumbre: precision ?? 0 }, s.evento, incEvento) : null
   const filas = [
     { letra: 'A', v: referencia, clave: 'referencia' as const },
     { letra: 'B', v: vista, clave: 'vista' as const },
@@ -99,6 +108,12 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
         <dd data-testid="metodo-sincronia">
           {TEXTO_METODO[s.metodo]}
           {s.metodo === 'audio' && s.audio && <> (calidad {fmt(s.audio.calidad, 1)})</>}
+          {s.metodo === 'pitido' && s.pitido && (
+            <>
+              {' '}
+              (calidad {fmt(s.pitido.calidad, 1)}, móviles a {fmt(s.pitido.distancia, 2)} m)
+            </>
+          )}
           {ajuste !== null && Math.abs(ajuste) > 1e-9 && <span className="text-acento"> · ajustada {milis(ajuste)}</span>}
         </dd>
         {s.metodo === 'evento' && (
@@ -117,8 +132,18 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
             <dd data-testid="incertidumbre-sincronia">± {fmt(INCERTIDUMBRE_AUDIO * 1000, 1)} ms del audio</dd>
           </>
         )}
+        {(s.metodo === 'pitido' || s.metodo === 'reloj') && precision !== null && (
+          <>
+            <dt className="text-texto-2">
+              Precisión <InfoGlosario id={s.metodo === 'pitido' ? 'pitido' : 'reloj-comun'} tema={s.metodo === 'pitido' ? 'el pitido de ida y vuelta' : 'el reloj común'} className="-my-1.5 align-middle" />
+            </dt>
+            <dd data-testid="incertidumbre-sincronia">
+              ± {fmt(precision * 1000, s.metodo === 'pitido' ? 1 : 0)} ms{s.metodo === 'pitido' && ' del audio'}
+            </dd>
+          </>
+        )}
       </dl>
-      {s.metodo === 'audio' && (
+      {(s.metodo === 'audio' || s.metodo === 'pitido') && (
         <p className="text-xs text-texto-2">
           La precisión es la del audio: no incluye el retardo entre el sonido y la imagen de cada móvil. {!s.evento && 'Compruébalo con un evento visual.'}
         </p>
@@ -127,19 +152,20 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
       {comparacion && (
         <div className="flex flex-col gap-2 rounded-md border border-borde p-3" data-testid="comprobacion-audio">
           <p className="font-mono text-sm" data-testid="comparacion-audio-evento">
-            Audio {segundos(comparacion.audio)} · evento visual {segundos(comparacion.evento)} (± {fmt(incEvento * 1000, 0)} ms) · diferencia{' '}
+            {s.metodo === 'audio' ? 'Audio' : s.metodo === 'pitido' ? 'Pitido' : 'Reloj'} {segundos(comparacion.audio)} · evento visual {segundos(comparacion.evento)} (± {fmt(incEvento * 1000, 0)} ms) · diferencia{' '}
             {milis(comparacion.diferencia)}
           </p>
           {comparacion.discrepan ? (
             <>
               <p className="flex gap-2 text-sm text-acento" data-testid="aviso-discrepan">
                 <ExclamationTriangleIcon className="size-5 shrink-0" />
-                Discrepan más de lo que explica la precisión del evento: puede ser el distinto retardo entre sonido e imagen de cada móvil o un frame mal marcado. La imagen es la que manda.
+                Discrepan más de lo que explican las dos precisiones: puede ser el distinto retardo entre sonido e imagen de cada móvil o un frame mal marcado. La imagen es la que manda.
               </p>
-              {s.metodo === 'audio' && s.evento && (
+              {s.evento && (
                 <button
                   type="button"
-                  onClick={() => onSincronia(vista.id, desfaseDeEvento(s.evento!), { metodo: 'evento', evento: s.evento!, audio: s.audio })}
+                  // Pasa a ser por evento, conservando lo que dio el método comprobado.
+                  onClick={() => onSincronia(vista.id, desfaseDeEvento(s.evento!), { ...s, metodo: 'evento', evento: s.evento! })}
                   className="rounded-md border border-acento px-3 py-2 text-acento"
                 >
                   Usar el desfase del evento visual
@@ -148,10 +174,14 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
             </>
           ) : (
             <p className="text-xs text-texto-2" data-testid="aviso-coinciden">
-              Coinciden dentro de la precisión del evento.
+              Coinciden dentro de las dos precisiones.
             </p>
           )}
         </div>
+      )}
+
+      {vista.propuesta && !marcando && (
+        <PropuestaGrabacionDoble propuesta={vista.propuesta} aplicada={aplicada(vista.propuesta, vista.desfaseS, s)} onAplicar={(p) => p.metodo !== 'ninguna' && onSincronia(vista.id, p.desfase, sincroniaDePropuesta(p))} />
       )}
 
       {!marcando && <PorAudio estado={audio.estado} onEmpezar={() => audio.empezar(referencia.archivo, vista.archivo)} onAplicar={aplicarAudio} onDescartar={audio.descartar} onEvento={onEmpezar} />}
@@ -160,7 +190,7 @@ export default function SincronizarVistas({ referencia, vista, onSincronia, marc
         <>
           <p className="text-xs text-texto-2">
             {comprobando
-              ? 'Comprueba el desfase del audio con un evento que se vea en las dos vistas: no lo cambia, solo muestra la diferencia.'
+              ? 'Comprueba el desfase con un evento que se vea en las dos vistas: no lo cambia, solo muestra la diferencia.'
               : 'O halla el desfase con un evento que se vea en las dos vistas (una palmada, el pie que toca el suelo). Cada vídeo sitúa el evento con un error de hasta medio frame: eso es la precisión.'}
           </p>
           <button type="button" onClick={onEmpezar} className="flex items-center justify-center gap-2 rounded-md border border-acento px-4 py-3 text-acento">
@@ -322,6 +352,45 @@ function PorAudio({ estado, onEmpezar, onAplicar, onDescartar, onEvento }: Props
             </button>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+/** La propuesta ya está aplicada: el mismo método y el mismo desfase (sin ajuste fino encima). */
+const aplicada = (p: PropuestaDoble, desfase: number, s: Sincronia) => p.metodo !== 'ninguna' && s.metodo === p.metodo && Math.abs(desfase - p.desfase) < 1e-9
+
+const TEXTO_MOTIVO_RELOJ = {
+  'sin-pitido': 'No se han encontrado los pitidos en los dos vídeos.',
+  'no-fiable': 'El pitido no es fiable (poca calidad o una distancia entre los móviles que no cuadra).',
+  'fuera-del-reloj': 'El pitido cae fuera de lo que permite el reloj: algo ha ido mal con él.',
+} as const
+
+/**
+ * Lo que propone una grabación doble al abrirla (fase 4, §7 del plan): el pitido de ida y vuelta si es fiable y casa con
+ * el reloj; si no, el reloj, diciendo por qué. Se muestran las cifras que haya y no cambia nada hasta «Aplicar».
+ */
+function PropuestaGrabacionDoble({ propuesta: p, aplicada, onAplicar }: { propuesta: PropuestaDoble; aplicada: boolean; onAplicar: (p: PropuestaDoble) => void }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-acento/60 p-3" data-testid="propuesta-doble" data-metodo={p.metodo} data-desfase={p.metodo === 'ninguna' ? '' : p.desfase}>
+      <h3 className="flex items-center gap-1 text-xs tracking-wider text-texto-2 uppercase">
+        Grabación doble <InfoGlosario id="grabacion-doble" tema="abrir una grabación doble" className="-my-1.5" />
+      </h3>
+      <p className="font-mono text-sm" data-testid="cifras-doble">
+        {p.pitido ? `Pitido ${segundos(p.pitido.desfase)} (calidad ${fmt(p.pitido.calidad, 1)}, móviles a ${fmt(p.pitido.distancia, 2)} m)` : 'Pitido: no encontrado'}
+        {p.metodo !== 'ninguna' && p.reloj && ` · reloj ${segundos(p.reloj.desfase)} ± ${fmt(p.reloj.cota * 1000, 0)} ms`}
+      </p>
+      {p.metodo === 'reloj' && <p className="text-sm text-texto-2">{TEXTO_MOTIVO_RELOJ[p.motivo]} Se propone el reloj, menos preciso.</p>}
+      {p.metodo === 'ninguna' ? (
+        <p className="text-sm text-acento">Ni el pitido ni el reloj dan un desfase: usa el audio o un evento visual.</p>
+      ) : aplicada ? (
+        <p className="text-sm text-texto-2" data-testid="propuesta-aplicada">
+          Aplicada. Compruébala con un evento visual.
+        </p>
+      ) : (
+        <button type="button" onClick={() => onAplicar(p)} data-testid="aplicar-propuesta" className="flex items-center justify-center gap-2 rounded-md bg-acento px-3 py-2 font-medium text-fondo">
+          <CheckIcon className="size-5" /> Aplicar {p.metodo === 'pitido' ? 'el pitido' : 'el reloj'}: {segundos(p.desfase)}
+        </button>
       )}
     </div>
   )

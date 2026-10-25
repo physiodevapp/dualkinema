@@ -23,6 +23,8 @@ interface Props {
   avisoInicial?: string
   /** Se ha abierto otro vídeo como vista nueva de la sesión. */
   onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista) => void
+  /** La pestaña con que empezar (al abrir una grabación doble, «Vídeo», donde está la sincronía propuesta). */
+  pestanaInicial?: string
 }
 
 interface PropsAnfitriones {
@@ -59,7 +61,7 @@ function Anfitriones({ entradas, acumuladas, modelo, filtro, avisoInicial, activ
  * vista activa con el cursor común y la pestaña abierta. `CuerpoVisor` pinta la vista activa y se ocupa de lo común
  * (reparto de la pantalla y guardado).
  */
-export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, avisoInicial, onAnadirVista }: Props) {
+export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, avisoInicial, onAnadirVista, pestanaInicial }: Props) {
   // Un único modelo por sesión con todos los marcadores (D4): la rodilla con 3 gomets en la pierna que ve la cámara de la
   // vista de referencia (lateral) y, para una vista de frente, sus 3 marcadores y el FPPA de esa rodilla. Cada vista sigue
   // los suyos (`modeloDeVista`). Una sesión recuperada parte del que se guardó con ella. Se fija al abrir, ya con lo de la
@@ -87,7 +89,7 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
   }, [])
   // Pestañas de herramientas. Con un vídeo nuevo (nada marcado todavía) se empieza en «Marcar»; al recuperar un trabajo,
   // en la pestaña que se usó. Viven aquí (no en el cuerpo) para no perderse al abrir otra vista.
-  const [pestana, setPestanaAbierta] = useState<string>(() => (recuperada ? leerPestana() : PESTANA_DEFECTO))
+  const [pestana, setPestanaAbierta] = useState<string>(() => pestanaInicial ?? (recuperada ? leerPestana() : PESTANA_DEFECTO))
   const setPestana = (id: string) => {
     setPestanaAbierta(id)
     if (esPestana(id)) guardarPestana(id)

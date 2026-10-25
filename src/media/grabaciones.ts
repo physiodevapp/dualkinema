@@ -118,3 +118,15 @@ export async function analizarGrabacion(archivo: File): Promise<AnalisisGrabacio
     entrada.dispose()
   }
 }
+
+/** Los datos de dualkinema del comentario de un MP4 (null: no es de la app o no se pueden leer). Sin recorrer los frames. */
+export async function leerMetadatosArchivo(archivo: File): Promise<MetadatosGrabacion | null> {
+  const entrada = new Input({ source: new BlobSource(archivo), formats: ALL_FORMATS })
+  try {
+    return leerMetadatos((await entrada.getMetadataTags().catch(() => null))?.comment)
+  } catch {
+    return null
+  } finally {
+    entrada.dispose()
+  }
+}

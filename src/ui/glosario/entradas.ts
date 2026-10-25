@@ -179,6 +179,15 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'grabacion-doble',
+    titulo: 'Abrir una grabación doble',
+    texto: [
+      'Los dos vídeos de una grabación con dos móviles llevan dentro el mismo identificador de pareja, la vista de cada uno y su reloj. «Abrir la grabación doble» (en la portada, o desde «Grabaciones de este móvil» con el propio vídeo ya elegido) comprueba que son pareja, pone el de perfil como vista A y la orientación de cada uno sin preguntarla, y abre la pestaña «Vídeo» con el desfase que se propone.',
+      'Se propone el pitido de ida y vuelta si es fiable (calidad desde 3 y una distancia entre los móviles de 0,3 a 15 m) y cae dentro de lo que permite el reloj común (su cota más 50 ms). Si no, el reloj, que es menos preciso (± su cota, unas decenas de ms), y se dice por qué. Nada cambia hasta pulsar «Aplicar».',
+      'Las dos cifras miden el sonido o los relojes, no la imagen: cada móvil puede guardar el sonido algo desplazado de su imagen. Por eso conviene comprobarlo con un evento visual (una palmada que se vea en las dos vistas): si discrepan más de lo que explican las dos precisiones, se avisa y se puede usar el del evento.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [

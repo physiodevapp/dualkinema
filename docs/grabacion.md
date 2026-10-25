@@ -76,6 +76,7 @@ Con la app en los dos móviles (la misma dirección: producción, o la misma pre
 5. En cualquiera de los dos: cuenta atrás (10 s si estás solo y tienes que llegar a tu sitio), duración y «Grabar con los dos». Suenan tres pitidos al final de la cuenta atrás y empiezan los dos.
 6. **Ya grabando, pita cada móvil por turnos** (el de perfil al segundo y el otro a los 2,5 s): es el pitido de referencia que sincroniza los dos vídeos. Silencio durante esos 3 s; la persona puede estar ya en su sitio.
 7. Al acabar, cada móvil tiene su vídeo en «Grabaciones de este móvil» (con `-perfil` o `-frente` en el nombre) y dice si ha oído los dos pitidos. Para analizarlos juntos, pasa uno al otro con «Compartir» → Quick Share.
+8. En el móvil que lo recibe: «Abrir con el otro vídeo» (en el resultado o en «Grabaciones de este móvil») y elige el que llegó por Quick Share (en Descargas). Se abren como una sesión de dos vistas con el desfase propuesto (el pitido o, si no se oyó, el reloj): pulsa «Aplicar» y, mejor, compruébalo con un evento visual (una palmada que se vea en las dos).
 
 Recomendaciones razonadas: los dos móviles con la pantalla encendida y la app delante (se queda encendida sola mientras estás en la sala); batería suficiente; si el reloj común sale muy grande (más de 100 ms), mejor la misma Wi-Fi para los dos.
 

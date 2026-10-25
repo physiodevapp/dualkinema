@@ -221,7 +221,34 @@ describe('construirCsv con varias vistas: tiempo común', () => {
     const c = linea(x, '# sincronización: comprobación;')!
     expect(c).toContain('con un evento visual (no da el desfase): evento en 1,040 s de la referencia y en 0,520 s de esta vista')
     expect(c).toContain('desfase por el evento 0,520 s ±37 ms')
-    expect(c).toContain('diferencia con el audio +40 ms (discrepan)')
+    expect(c).toContain('diferencia con el desfase aplicado +40 ms (discrepan)')
+  })
+
+  it('la comprobación compara con el desfase aplicado, con el ajuste fino (limitación 2 de la fase 3)', () => {
+    // Audio 0,480 s ajustado +33 ms a mano (0,513 s); evento 0,520 s: la diferencia es la de lo que se usa, +7 ms.
+    const x = {
+      referencia: false,
+      desfaseS: 0.513,
+      sincronia: { metodo: 'audio', audio: { calidad: 9, desfase: 0.48 }, evento: { referencia: 1.04, vista: 0.52 } },
+      incertidumbreEventoS: 0.03667,
+    } as const
+    const c = linea(x, '# sincronización: comprobación;')!
+    expect(c).toContain('diferencia con el desfase aplicado +7 ms')
+    expect(c).not.toContain('discrepan')
+  })
+
+  it('por el pitido de ida y vuelta y por el reloj de una grabación doble (fase 4)', () => {
+    const p = linea({ referencia: false, desfaseS: 0.009, sincronia: { metodo: 'pitido', pitido: { desfase: 0.009, calidad: 5.47, distancia: 1.98 } } })!
+    expect(p).toContain('método: pitido de ida y vuelta; calidad 5,5; móviles a 1,98 m; precisión del audio ±0,1 ms')
+    expect(p).toContain('no incluye el retardo entre sonido e imagen')
+    const r = linea({ referencia: false, desfaseS: -0.0006, sincronia: { metodo: 'reloj', reloj: { desfase: -0.0006, cota: 0.0381 } } })!
+    expect(r).toContain('método: reloj común de los dos móviles; precisión ±38 ms')
+    // Un pitido comprobado con un evento visual.
+    const c = linea(
+      { referencia: false, desfaseS: 0.009, sincronia: { metodo: 'pitido', pitido: { desfase: 0.009, calidad: 5.47, distancia: 1.98 }, evento: { referencia: 2, vista: 1.991 } }, incertidumbreEventoS: 0.03667 },
+      '# sincronización: comprobación;',
+    )!
+    expect(c).toContain('diferencia con el desfase aplicado +0 ms')
   })
 
   it('por audio ajustado a mano: lo movido se cuenta sobre lo que dio el audio', () => {

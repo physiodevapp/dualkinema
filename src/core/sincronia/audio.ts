@@ -2,6 +2,7 @@ import type { Sincronia } from '../modelo/tipos'
 import type { Envolvente } from './envolvente'
 import type { EventoVisual } from './evento'
 import { desfaseDeEvento } from './evento'
+import { TASA_ENVOLVENTE } from './envolvente'
 import { correlacionGccPhat, type OpcionesCorrelacion } from './gccPhat'
 
 /*
@@ -37,11 +38,28 @@ export function desfaseDeAudio(ref: Envolvente, vista: Envolvente, opciones?: Op
 /** Cómo queda anotada la sincronía al aplicar el audio. */
 export const sincroniaDeAudio = (r: ResultadoAudio): Sincronia => ({ metodo: 'audio', audio: { calidad: r.calidad, desfase: r.desfase } })
 
+/** Precisión del pitido de ida y vuelta (s): unas pocas muestras a 48 kHz. Como el audio, sin el retardo audio–imagen. */
+export const PRECISION_PITIDO_S = 0.0001
+
+/**
+ * La precisión del desfase que da el método (s), sin el ajuste fino: el audio, una muestra de la envolvente; el pitido,
+ * PRECISION_PITIDO_S; el reloj, su cota. null para el evento (depende de los fps: `incertidumbreEvento`) y sin método.
+ */
+export function precisionDelMetodo(s: Sincronia): number | null {
+  if (s.metodo === 'audio') return 1 / TASA_ENVOLVENTE
+  if (s.metodo === 'pitido') return PRECISION_PITIDO_S
+  if (s.metodo === 'reloj' && s.reloj) return s.reloj.cota
+  return null
+}
+
+/** Métodos que un evento visual comprueba (sin cambiar el desfase): los que no salen de la imagen. */
+export const seComprueba = (s: Sincronia): boolean => s.metodo === 'audio' || s.metodo === 'pitido' || s.metodo === 'reloj'
+
 /** La sincronía por audio con el evento visual que la comprueba (no cambia el desfase ni el método). */
 export const conComprobacion = (s: Sincronia, evento: EventoVisual): Sincronia => ({ ...s, evento })
 
 export interface Comprobacion {
-  /** Desfase por audio (s). */
+  /** El desfase aplicado (s): el del método, con el ajuste fino si lo hay. */
   readonly audio: number
   /** Desfase por el evento visual (s). */
   readonly evento: number
@@ -52,8 +70,9 @@ export interface Comprobacion {
 }
 
 /**
- * Compara el desfase del audio con el del evento visual. Solo informa: no corrige nada. Discrepan si la diferencia
- * supera la suma de las dos incertidumbres (el evento, medio frame de cada vista; el audio, una muestra).
+ * Compara el desfase aplicado (por audio, pitido o reloj, con el ajuste fino si lo hay: así lo que se compara es lo que
+ * se usa) con el del evento visual. Solo informa: no corrige nada. Discrepan si la diferencia supera la suma de las dos
+ * incertidumbres (el evento, medio frame de cada vista; el método, la suya).
  */
 export function compararConEvento(
   audio: { readonly desfase: number; readonly incertidumbre: number },
