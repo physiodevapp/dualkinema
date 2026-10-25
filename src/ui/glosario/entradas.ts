@@ -151,10 +151,28 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'emparejar',
+    titulo: 'Grabar con dos móviles',
+    texto: [
+      'Un móvil crea una sala y el otro se une escaneando su QR con la cámara (abre la app ya en la sala) o escribiendo su código de 6 caracteres (sin 0, O, 1, I ni L, que se confunden). Una sala admite dos móviles y se cierra sola a las 3 horas; si se corta la conexión, cada móvil vuelve a entrar solo.',
+      'Cada móvil dice cómo ve a la persona: uno de perfil (es la vista de referencia: de ella sale la pierna que se analiza) y el otro de frente o de espaldas. Los dos ven el estado del otro (su cámara, el espacio libre y la batería) y la pantalla se queda encendida.',
+      'Para hablarse, los dos móviles usan un relé en internet (un servicio de Cloudflare de dualkinema) que reenvía mensajes cortos de uno a otro sin leerlos ni guardarlos. Por ahí solo viajan la vista elegida, el estado de la cámara y marcas de tiempo: nunca vídeo, sonido ni nada del paciente. Cloudflare ve la dirección de internet de cada móvil al conectarse. Los vídeos se quedan en cada móvil y se pasan de uno a otro con «Compartir» (Quick Share).',
+    ],
+  },
+  {
+    id: 'reloj-comun',
+    titulo: 'Reloj común entre los dos móviles',
+    texto: [
+      'Cada móvil cuenta el tiempo con su propio reloj, que empieza en otro momento. Para arrancar los dos a la vez hay que saber cuánto va por delante el del otro. Se mide como en NTP: un móvil manda la hora de su reloj, el otro anota cuándo la recibe y cuándo contesta, y el primero cuándo le llega la respuesta. Con esas cuatro marcas, el desfase real está a la fuerza en un intervalo, sin suponer nada de la red.',
+      '«± N ms» es la mitad de ese intervalo, juntando todos los intercambios recientes: el desfase de verdad está dentro, seguro (salvo que un reloj salte). Con la red de casa suele ser de unos pocos ms a unas decenas. Para arrancar a la vez basta de sobra; la sincronía fina de los vídeos la dará el pitido (con precisión de menos de 1 ms) y se comprueba con un evento visual.',
+      'La deriva es cuánto se separan los dos relojes con el tiempo (sus cristales no van exactamente igual): suele ser de 10 a 100 partes por millón, como mucho 3 ms en 30 s. Se mide (sale tras unos 20 s) y se muestra con su margen, pero no se corrige.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [
-      'Todo se procesa en este dispositivo, en el navegador: los vídeos y los datos nunca salen de él. Un vídeo que se abre no se guarda nunca (los grabados con la app quedan en su almacenamiento hasta que los borres: ver «Grabar con este móvil»); lo que se guarda (marcado, seguimiento, ajustes, escala, desfase) queda en este navegador y se actualiza solo.',
+      'Todo se procesa en este dispositivo, en el navegador: los vídeos y los datos nunca salen de él. Un vídeo que se abre no se guarda nunca (los grabados con la app quedan en su almacenamiento hasta que los borres: ver «Grabar con este móvil»); lo que se guarda (marcado, seguimiento, ajustes, escala, desfase) queda en este navegador y se actualiza solo. Al grabar con dos móviles, por internet solo viajan mensajes de control y marcas de tiempo (ver «Grabar con dos móviles»).',
       'Para continuar una sesión hay que volver a abrir el mismo vídeo (el navegador no puede reabrirlo solo); con dos vistas, los dos. Se reconocen por su tamaño, duración y número de frames, no por el nombre.',
     ],
   },

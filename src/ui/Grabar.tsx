@@ -14,6 +14,7 @@ import {
 } from '../media/grabaciones'
 import { CALIDAD_POR_DEFECTO, CALIDADES, Grabadora, abrirCamara, datosCamara, type Calidad } from '../media/grabadora'
 import { InfoGlosario } from './glosario/Glosario'
+import { usePantallaEncendida } from './usePantallaEncendida'
 
 /*
  * «Grabar con este móvil» (fase 4, paso 2; §1–2 de docs/plan-fase-4.md): vista previa de la cámara trasera, grabar y
@@ -35,31 +36,6 @@ interface Resultado {
   readonly enAlmacen: boolean
   readonly analisis: AnalisisGrabacion | null
   readonly fpsPedidos: number
-}
-
-/** Mantiene la pantalla encendida mientras la pantalla de grabar está abierta (al volver a ella, lo vuelve a pedir). */
-function usePantallaEncendida() {
-  useEffect(() => {
-    type Cerrojo = { release(): Promise<void> }
-    const wl = (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<Cerrojo> } }).wakeLock
-    if (!wl) return
-    let cerrojo: Cerrojo | null = null
-    let vivo = true
-    const pedir = () => {
-      if (document.visibilityState !== 'visible') return
-      wl.request('screen').then(
-        (c) => (vivo ? (cerrojo = c) : void c.release()),
-        () => {},
-      )
-    }
-    pedir()
-    document.addEventListener('visibilitychange', pedir)
-    return () => {
-      vivo = false
-      document.removeEventListener('visibilitychange', pedir)
-      void cerrojo?.release()
-    }
-  }, [])
 }
 
 async function compartir(archivo: File, alError: (m: string) => void) {
