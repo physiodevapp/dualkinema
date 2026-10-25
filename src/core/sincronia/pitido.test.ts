@@ -12,7 +12,7 @@ import {
   secuencia,
   type AudioMono,
 } from './pitido'
-import { grabarPitidos, type MicrofonoPitidos } from './sintetico'
+import { aleatorio, grabarPitidos, type MicrofonoPitidos } from './sintetico'
 
 const TASA = 48000
 const grabar = (m: Omit<MicrofonoPitidos, 'tasa'> & { tasa?: number }, inicio = 0): AudioMono => ({
@@ -52,6 +52,26 @@ describe('localizarSecuencia', () => {
       1.0,
     )
     expect(Math.abs(d!.t - 1.05)).toBeLessThan(0.00005)
+    expect(d!.calidad).toBeGreaterThan(CALIDAD_PITIDO_MINIMA)
+  })
+
+  it('suena 340 ms tarde (latencia del altavoz de una tablet antigua): se encuentra igual', () => {
+    const d = localizarSecuencia(grabar({ duracion: 4, secuencias: [{ t: 2.84, amplitud: 0.2 }], ruido: 0.01 }), 2.5)
+    expect(Math.abs(d!.t - 2.84)).toBeLessThan(0.00005)
+  })
+
+  it('en una sala con reverberación y un reflejo más fuerte que el sonido directo, da la llegada del directo', () => {
+    // Un reflejo 2,5 ms después del directo y 1,6 veces más fuerte, y una cola de reflejos que decae en ~150 ms.
+    const azar = aleatorio(21)
+    const cola = Array.from({ length: 60 }, (_, i) => {
+      const retardo = 0.004 + i * 0.0025 + azar() * 0.002
+      return { retardo, amplitud: (azar() - 0.5) * 1.2 * Math.exp(-retardo / 0.05) }
+    })
+    const d = localizarSecuencia(
+      grabar({ duracion: 3, secuencias: [{ t: 1.2, amplitud: 0.3 }], ecos: [{ retardo: 0.0025, amplitud: 1.6 }, ...cola], ruido: 0.005, semilla: 8 }),
+      1.0,
+    )
+    expect(Math.abs(d!.t - 1.2)).toBeLessThan(0.0001)
     expect(d!.calidad).toBeGreaterThan(CALIDAD_PITIDO_MINIMA)
   })
 
@@ -140,7 +160,7 @@ describe('combinarIdaVuelta', () => {
       [-0.0425, 5],
       [0.0012, 1.2],
     ] as const) {
-      const r = grabacionDoble(delta, d, 0.06, 0.12)
+      const r = grabacionDoble(delta, d, 0.19, 0.34)
       // desfase = t_ref − t_vista de un mismo instante = inicio de B − inicio de A = Δ.
       expect(Math.abs(r.desfase - delta)).toBeLessThan(0.00005)
       expect(Math.abs(r.distancia - d)).toBeLessThan(0.03)

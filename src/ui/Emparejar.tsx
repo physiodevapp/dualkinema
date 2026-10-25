@@ -6,7 +6,7 @@ import { revisarFps } from '../core/grabacion/revision'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
 import { CUENTAS_ATRAS_S, DURACIONES_S, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil } from '../core/sala/protocolo'
-import { CALIDAD_PITIDO_MINIMA, DURACION_SECUENCIA_S, PITIDO_OTRA_S, VENTANA_PITIDO_S, type Deteccion } from '../core/sincronia/pitido'
+import { CALIDAD_PITIDO_MINIMA, DURACION_SECUENCIA_S, PITIDO_OTRA_S, VENTANA_DESPUES_S, type Deteccion } from '../core/sincronia/pitido'
 import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { espacio } from '../media/grabaciones'
 import { CALIDAD_POR_DEFECTO, datosCamara, type Calidad } from '../media/grabadora'
@@ -223,7 +223,7 @@ const textoPitido = (d: Deteccion | null | undefined) =>
 /** Si este vídeo ha oído los dos pitidos de ida y vuelta, y qué hacer si no. */
 function PitidosDoble({ fase }: { fase: Extract<GrabacionDoble['fase'], { f: 'hecha' }> }) {
   const p = fase.pitidos
-  const corta = (fase.analisis?.duracion ?? Infinity) < PITIDO_OTRA_S + DURACION_SECUENCIA_S + VENTANA_PITIDO_S
+  const corta = (fase.analisis?.duracion ?? Infinity) < PITIDO_OTRA_S + DURACION_SECUENCIA_S + VENTANA_DESPUES_S
   const consejo = corta
     ? 'La grabación ha sido demasiado corta para los pitidos: suenan en los 3 primeros segundos.'
     : !fase.pito

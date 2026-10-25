@@ -22,11 +22,18 @@ import { fft, siguientePotencia2 } from './fft'
  * los pasos o una palmada se parecen poco (otras frecuencias, otra forma) aunque suenen mucho más. La secuencia se
  * puntúa con la media geométrica del parecido en los tres instantes que marca su plantilla: si solo un barrido coincide (un sonido suelto, o la secuencia corrida lo que separa dos barridos),
  * los otros dos factores son ruido y la puntuación se hunde. La calidad es el pico entre el segundo pico de esa
- * puntuación dentro de la ventana (fuera de ±EXCLUSION_PITIDO_S: los ecos de la sala caen ahí, y son la misma secuencia más débil). El instante fino es la
- * media de los tres picos de m, cada uno afinado con una parábola.
+ * puntuación, buscado antes del pico (fuera de EXCLUSION_PITIDO_S: los ecos cercanos) o después de la secuencia y su
+ * cola (COLA_PITIDO_S): una alineación más tardía pone la plantilla sobre la reverberación de la misma secuencia, que en
+ * una sala se parece al barrido y no es otra candidata (en la primera prueba real, contarla dejaba la calidad en 1,4).
  *
- * Solo se busca alrededor de donde debe estar (±VENTANA_PITIDO_S): el reloj común lo sitúa con ±50 ms y la latencia
- * del altavoz se descuenta al emitir (lo que queda, unas decenas de ms).
+ * **Primera llegada.** El sonido directo llega antes que sus reflejos, pero no siempre es el más fuerte (un altavoz
+ * tapado, un obstáculo): en la primera prueba real, el pico de m del pitido del otro móvil quedaba unos 40 ms después
+ * de donde empezaba. Por eso el instante de cada barrido es el primer máximo de m que llega a FRACCION_LLEGADA del pico
+ * dentro de los LLEGADA_PREVIA_S anteriores, afinado con una parábola, y el de la secuencia la mediana de los tres.
+ *
+ * Solo se busca alrededor de donde debe estar: VENTANA_ANTES_S antes y VENTANA_DESPUES_S después. Es asimétrica porque
+ * la latencia del altavoz solo retrasa: en la primera prueba real el pitido sonó 190 ms tarde en el Pixel 8 y 340 ms en
+ * una tablet antigua (el navegador no declara toda su latencia de salida); el reloj común añade ±50 ms.
  */
 
 /** Velocidad del sonido en el aire a unos 20 °C (m/s). */
@@ -43,8 +50,14 @@ export const DURACION_SECUENCIA_S = DESPLAZAMIENTOS_S[DESPLAZAMIENTOS_S.length -
 export const PITIDO_REFERENCIA_S = 1.0
 export const PITIDO_OTRA_S = 2.5
 
-/** Cuánto antes o después de lo esperado se busca una secuencia (s). */
-export const VENTANA_PITIDO_S = 0.3
+/** Cuánto antes y después de lo esperado se busca una secuencia (s). */
+export const VENTANA_ANTES_S = 0.15
+export const VENTANA_DESPUES_S = 0.6
+/** Reverberación de la secuencia que no cuenta como segunda candidata (s, tras el último barrido). */
+export const COLA_PITIDO_S = 0.2
+/** Primera llegada: cuánto antes del pico de cada barrido se busca y qué fracción del pico tiene que alcanzar. */
+export const LLEGADA_PREVIA_S = 0.05
+export const FRACCION_LLEGADA = 0.5
 /** Zona alrededor del pico donde no se busca el segundo (s): los ecos de la sala (un eco es la secuencia entera corrida y
  * más débil; 50 ms son 17 m de camino de más). Una secuencia corrida lo que separa dos barridos (≥ 130 ms) sí cuenta. */
 export const EXCLUSION_PITIDO_S = 0.05
@@ -97,29 +110,33 @@ export interface Deteccion {
 }
 
 export interface OpcionesPitido {
-  readonly ventana?: number
+  readonly antes?: number
+  readonly despues?: number
   readonly exclusion?: number
 }
 
 /**
- * Busca la secuencia que debería empezar hacia `esperado` (s de vídeo), dentro de ±ventana. null si el audio no cubre
- * la búsqueda o no hay señal.
+ * Busca la secuencia que debería empezar hacia `esperado` (s de vídeo), entre `antes` s antes y `despues` s después.
+ * null si el audio no cubre la búsqueda o no hay señal.
  */
 export function localizarSecuencia(audio: AudioMono, esperado: number, opciones: OpcionesPitido = {}): Deteccion | null {
   const { tasa, inicio, muestras } = audio
-  const ventana = opciones.ventana ?? VENTANA_PITIDO_S
+  const antes = opciones.antes ?? VENTANA_ANTES_S
+  const despues = opciones.despues ?? VENTANA_DESPUES_S
   const exclusion = Math.max(1, Math.round((opciones.exclusion ?? EXCLUSION_PITIDO_S) * tasa))
+  const cola = Math.round((DURACION_SECUENCIA_S + COLA_PITIDO_S) * tasa)
+  const previa = Math.round(LLEGADA_PREVIA_S * tasa)
   const m = Math.round(BARRIDO_S * tasa) + 1
   const desp = DESPLAZAMIENTOS_S.map((o) => Math.round(o * tasa))
   const ultimo = desp[desp.length - 1]!
 
-  // Trozo que cubre todos los comienzos posibles más la secuencia entera.
-  const i0 = Math.max(0, Math.floor((esperado - ventana - inicio) * tasa))
-  const i1 = Math.min(muestras.length, Math.ceil((esperado + ventana + DURACION_SECUENCIA_S - inicio) * tasa) + 2)
+  // Trozo que cubre todos los comienzos posibles (y lo anterior, para la primera llegada) más la secuencia entera.
+  const i0 = Math.max(0, Math.floor((esperado - antes - LLEGADA_PREVIA_S - inicio) * tasa))
+  const i1 = Math.min(muestras.length, Math.ceil((esperado + despues + DURACION_SECUENCIA_S - inicio) * tasa) + 2)
   const largo = i1 - i0
   // Comienzos j (relativos al trozo) con la secuencia entera dentro y dentro de la ventana.
-  const jMin = Math.max(0, Math.ceil((esperado - ventana - inicio) * tasa) - i0)
-  const jMax = Math.min(largo - m - ultimo, Math.floor((esperado + ventana - inicio) * tasa) - i0)
+  const jMin = Math.max(0, Math.ceil((esperado - antes - inicio) * tasa) - i0)
+  const jMax = Math.min(largo - m - ultimo, Math.floor((esperado + despues - inicio) * tasa) - i0)
   if (jMax - jMin < 2) return null
 
   // Envolvente del filtro adaptado: |Σ x[j + n] · (h_c[n] − i·h_s[n])|, por FFT.
@@ -173,16 +190,24 @@ export function localizarSecuencia(audio: AudioMono, esperado: number, opciones:
   }
   if (!(pico > 0)) return null
   let segundo = 0
-  for (let j = jMin; j <= jMax; j++) if (Math.abs(j - jPico) > exclusion) segundo = Math.max(segundo, puntuacion(j))
+  for (let j = jMin; j <= jMax; j++) if (j < jPico - exclusion || j > jPico + cola) segundo = Math.max(segundo, puntuacion(j))
   const calidad = segundo > 0 ? Math.min(CALIDAD_PITIDO_MAX, pico / segundo) : CALIDAD_PITIDO_MAX
 
-  // Instante fino: el pico de la envolvente de cada barrido (±2 muestras de donde lo dejó la puntuación), con su
-  // parábola (sobre la envolvente y no sobre el parecido: la energía de la ventana también cambia y movería el pico).
-  let suma = 0
+  // Instante fino de cada barrido: su primera llegada (el primer máximo de la envolvente que alcanza FRACCION_LLEGADA
+  // del pico, en los LLEGADA_PREVIA_S anteriores), con su parábola (sobre la envolvente y no sobre el parecido: la
+  // energía de la ventana también cambia y movería el pico). La secuencia, la mediana de los tres.
+  const llegadas: number[] = []
   for (const d of desp) {
     const c = jPico + d
-    let k = c
-    for (let q = Math.max(1, c - 2); q <= Math.min(largo - 2, c + 2); q++) if (env[q]! > env[k]!) k = q
+    let p = c
+    for (let q = Math.max(1, c - 2); q <= Math.min(largo - 2, c + 2); q++) if (env[q]! > env[p]!) p = q
+    let k = p
+    for (let q = Math.max(1, p - previa); q < p; q++) {
+      if (env[q]! >= FRACCION_LLEGADA * env[p]! && env[q]! >= env[q - 1]! && env[q]! >= env[q + 1]!) {
+        k = q
+        break
+      }
+    }
     let fino = 0
     if (k > 0 && k < largo - 1) {
       const izq = env[k - 1]!
@@ -190,9 +215,10 @@ export function localizarSecuencia(audio: AudioMono, esperado: number, opciones:
       const curv = izq - 2 * env[k]! + der
       if (curv < 0) fino = Math.max(-0.5, Math.min(0.5, (izq - der) / (2 * curv)))
     }
-    suma += k + fino - d
+    llegadas.push(k + fino - d)
   }
-  const j = suma / desp.length
+  llegadas.sort((a, b) => a - b)
+  const j = llegadas[1]!
   return { t: inicio + (i0 + j) / tasa, calidad, incertidumbre: 1 / tasa }
 }
 

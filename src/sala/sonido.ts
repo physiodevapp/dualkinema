@@ -8,7 +8,8 @@ import { muestrasSecuencia } from '../core/sincronia/pitido'
  * (`performance.now()`): se pasa al reloj del contexto con la diferencia de ahora y se adelanta la latencia de salida
  * que dice el navegador (`baseLatency` + `outputLatency`), para que suene cuando toca y no decenas de ms después. Lo
  * que quede de error da igual para el desfase (los dos micrófonos graban el mismo sonido); solo tiene que caer dentro
- * de la ventana de búsqueda (±VENTANA_PITIDO_S).
+ * de la ventana de búsqueda (VENTANA_ANTES_S antes y VENTANA_DESPUES_S después). La latencia declarada no es toda: en
+ * la primera prueba real sonó 190 ms tarde en el Pixel 8 y 340 ms en una tablet antigua.
  */
 
 /** Volumen de la secuencia (0–1): alto, sin llegar a saturar la salida. */
