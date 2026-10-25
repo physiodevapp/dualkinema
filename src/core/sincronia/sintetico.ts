@@ -76,3 +76,38 @@ export function grabar(m: Microfono): Float64Array {
   }
   return x
 }
+
+export interface MicrofonoPitidos {
+  readonly tasa: number
+  readonly duracion: number
+  /** Cada secuencia de pitidos que oye: cuándo empieza (s desde la primera muestra) y con qué amplitud. */
+  readonly secuencias: readonly { readonly t: number; readonly amplitud: number }[]
+  /** Palmadas que también oye (para que la búsqueda no las confunda con un pitido). */
+  readonly golpes?: readonly number[]
+  readonly ecos?: readonly { readonly retardo: number; readonly amplitud: number }[]
+  readonly ruido?: number
+  /** Recorta la señal a ±saturacion (un micrófono saturado por su propio pitido). */
+  readonly saturacion?: number
+  readonly semilla?: number
+}
+
+/** Lo que graba un micrófono que oye secuencias de pitidos (`pitido.ts`), con eco, ruido y palmadas. */
+export function grabarPitidos(m: MicrofonoPitidos, secuencia: (t: number) => number, duracionSecuencia: number): Float64Array {
+  const n = Math.round(m.tasa * m.duracion)
+  const x = new Float64Array(n)
+  const camino = [{ retardo: 0, amplitud: 1 }, ...(m.ecos ?? [])]
+  const ruido = gaussiano(aleatorio(m.semilla ?? 1))
+  const cola = Math.max(0, ...camino.map((c) => c.retardo))
+  for (let i = 0; i < n; i++) {
+    const t = i / m.tasa
+    let s = 0
+    for (const q of m.secuencias) {
+      if (t < q.t || t > q.t + duracionSecuencia + cola) continue
+      for (const c of camino) s += q.amplitud * c.amplitud * secuencia(t - q.t - c.retardo)
+    }
+    for (const g of m.golpes ?? []) if (t >= g && t < g + DURACION_GOLPE_S) s += golpe(t - g)
+    s += (m.ruido ?? 0) * ruido()
+    x[i] = m.saturacion === undefined ? s : Math.max(-m.saturacion, Math.min(m.saturacion, s))
+  }
+  return x
+}

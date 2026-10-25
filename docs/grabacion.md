@@ -58,6 +58,8 @@ Sirve cualquier objeto rígido de longitud conocida: un palo de 1 m, una cinta m
 En la portada, «Grabar con este móvil» graba con la cámara trasera dentro de la app (sin la app de cámara del móvil):
 
 - **1080p a 30 fps** por defecto. 60 fps no se ofrece: en el Pixel 8 Chrome los concede pero la cámara entrega unos 40.
+- **Aparatos sin codificador de vídeo por hardware** (móviles o tablets antiguos): la app lo dice y empieza en 720p. Aun así pueden no llegar a 30 fps (una tablet Huawei de hace unos años grabó a 15 fps a 720p y a 10 a 1080p, con la cámara dando 30): para analizar, mejor un móvil más reciente.
+- **Sin auriculares conectados:** con unos auriculares con micrófono (con cable o Bluetooth), Android graba el sonido por ellos. La app avisa si los ve.
 - **Luz:** al parar, la app cuenta los frames que de verdad hay y avisa si la cámara dio menos del 90 % de los fps (por ejemplo, 25 de 30). Con una bombilla de techo normal el Pixel 8 dio 30 fps (exposición automática de 1/120 s); en una toma anterior con la misma luz dio unos 25, sin explicación clara. Si sale el aviso, más luz delante de la persona (una lámpara, una ventana de día) y volver a grabar. Recomendación razonada: con más luz la cámara acorta la exposición, lo que además reduce el desenfoque de movimiento de los gomets.
 - **Sin estabilización ni recorte**, a diferencia de la app de cámara (mejor para medir).
 - Las grabaciones quedan en el almacenamiento de la app, en ese móvil. Para pasarlas a otro dispositivo, «Compartir» (Quick Share) o «Guardar» (Descargas); así además quedan a salvo si Android limpia el almacenamiento de la app.
@@ -72,9 +74,14 @@ Con la app en los dos móviles (la misma dirección: producción, o la misma pre
 3. En cada uno, «¿Cómo ve este móvil a la persona?»: el de perfil, hacia dónde mira la persona; el otro, «De frente» (o «De espaldas»). Encuadra con la vista previa. Los dos en trípode, fijos.
 4. Espera a que salga «Reloj común ± N ms» (unos segundos).
 5. En cualquiera de los dos: cuenta atrás (10 s si estás solo y tienes que llegar a tu sitio), duración y «Grabar con los dos». Suenan tres pitidos al final de la cuenta atrás y empiezan los dos.
-6. Al acabar, cada móvil tiene su vídeo en «Grabaciones de este móvil» (con `-perfil` o `-frente` en el nombre). Para analizarlos juntos, pasa uno al otro con «Compartir» → Quick Share.
+6. **Ya grabando, pita cada móvil por turnos** (el de perfil al segundo y el otro a los 2,5 s): es el pitido de referencia que sincroniza los dos vídeos. Silencio durante esos 3 s; la persona puede estar ya en su sitio.
+7. Al acabar, cada móvil tiene su vídeo en «Grabaciones de este móvil» (con `-perfil` o `-frente` en el nombre) y dice si ha oído los dos pitidos. Para analizarlos juntos, pasa uno al otro con «Compartir» → Quick Share.
 
 Recomendaciones razonadas: los dos móviles con la pantalla encendida y la app delante (se queda encendida sola mientras estás en la sala); batería suficiente; si el reloj común sale muy grande (más de 100 ms), mejor la misma Wi-Fi para los dos.
+
+**Para que se oigan los pitidos:** volumen multimedia alto en los dos móviles (el de los vídeos, no el del timbre), sin auriculares ni altavoces Bluetooth conectados (el pitido saldría por ellos; la app avisa si los ve, también los del otro móvil) y toca la pantalla de cada móvil al menos una vez antes de grabar (el navegador no deja sonar nada sin un toque; elegir la vista ya cuenta). Si un móvil dice que no oye bien el del otro, sube el volumen o acércalos.
+
+**Claqueta con la cámara del móvil:** si grabas con la app de cámara de cada móvil (arrancadas a mano), pon las dos a grabar y pulsa «Pitido de claqueta» en la portada de la app con un tercer móvil (o uno de los dos), a la misma distancia de las dos cámaras. Suena a los 3 s. Al abrir los dos vídeos, «Sincronizar por el audio» lo encuentra.
 
 ## Segunda vista: de frente (FPPA de la rodilla)
 

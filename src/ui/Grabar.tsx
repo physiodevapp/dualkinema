@@ -14,7 +14,11 @@ import {
 } from '../media/grabaciones'
 import { CALIDAD_POR_DEFECTO, CALIDADES, Grabadora, datosCamara, type Calidad } from '../media/grabadora'
 import { InfoGlosario } from './glosario/Glosario'
+import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
+import { AVISO_MICRO_EXTERNO } from '../media/microfono'
 import { useCamara } from './useCamara'
+import { useCodificador } from './useCodificador'
+import { useMicroExterno } from './useMicroExterno'
 import { usePantallaEncendida } from './usePantallaEncendida'
 
 /*
@@ -92,6 +96,15 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
   // La cámara se abre al entrar, al cambiar de calidad (no mientras se graba: el selector está desactivado) y al volver
   // a la app si Android la apagó.
   const { flujo, error: errorCamara } = useCamara(calidad)
+  const codificador = useCodificador(calidad)
+  const microExterno = useMicroExterno(flujo)
+
+  // Sin codificador por hardware se empieza en 720p (a 1080p no llega ni a la mitad de los fps), salvo que ya se haya
+  // elegido otra.
+  const elegida = useRef(false)
+  useEffect(() => {
+    void calidadInicial().then((c) => !elegida.current && setCalidad(c))
+  }, [])
 
   useEffect(() => {
     if (vista.current) vista.current.srcObject = flujo
@@ -208,6 +221,7 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
             value={calidad.id}
             onChange={(e) => {
               setError(null)
+              elegida.current = true
               setCalidad(CALIDADES.find((c) => c.id === e.target.value) ?? CALIDAD_POR_DEFECTO)
             }}
             disabled={grabando || ocupado}
@@ -221,6 +235,16 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
             ))}
           </select>
         </label>
+        {codificador === 'software' && (
+          <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="grabar-aviso-codificador">
+            {AVISO_SOFTWARE}
+          </p>
+        )}
+        {microExterno && (
+          <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="grabar-aviso-micro">
+            {AVISO_MICRO_EXTERNO}
+          </p>
+        )}
         {poco && (
           <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="grabar-poco-espacio">
             Queda poco espacio para la app ({formatoMB(disco!.libre!)}): un minuto a 1080p ocupa unos 55 MB.

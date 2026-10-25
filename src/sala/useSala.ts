@@ -100,7 +100,14 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
         const m = e.mensaje
         if (m.tipo === 'hola') setOtro((o) => ({ vista: m.vista, version: m.version, estado: o?.estado ?? null }))
         else if (m.tipo === 'estado') {
-          const recibido: EstadoMovil = { camara: m.camara, libreMB: m.libreMB, bateria: m.bateria, grabando: m.grabando }
+          const recibido: EstadoMovil = {
+            camara: m.camara,
+            libreMB: m.libreMB,
+            bateria: m.bateria,
+            grabando: m.grabando,
+            codificador: m.codificador,
+            microExterno: m.microExterno,
+          }
           setOtro((o) => ({ vista: o?.vista ?? null, version: o?.version ?? VERSION_PROTOCOLO, estado: recibido }))
         } else if (m.tipo === 'ping' || m.tipo === 'pong') relojSala.recibir(m)
         else if (m.tipo === 'adios') setOtro(null)
