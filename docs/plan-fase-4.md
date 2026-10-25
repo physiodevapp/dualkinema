@@ -246,6 +246,10 @@ Pruebas: `RelojSala` con dos relojes en una red simulada (B 1500 ms por delante,
 
 Pruebas: núcleo (vistas compatibles, el inicio del otro en mi reloj con desfase positivo y negativo, cada motivo de no estar preparado; metadatos con `doble`: ida y vuelta, sin reloj, partes rotas). e2e con dos navegadores (cámara falsa, relé local, reloj de B desplazado 1500 ms): **B programa y A para; el mismo id en los dos MP4, y el inicio escrito en cada MP4 es el mismo instante de verdad en los dos** (con el `performance.timeOrigin` de cada página: dentro de la cota del reloj), los dos arrancan a menos de 250 ms de ese instante, la vista en el nombre; con 10 s de duración los dos paran solos (unos 200 frames a 20 fps); «Cancelar» en la cuenta atrás de uno cancela los dos; sin vistas compatibles no se ofrece grabar.
 
+**Corrección: la cámara que Android apaga** (`src/ui/useCamara.ts`, `Grabar.tsx`, `Emparejar.tsx`). Probando la grabación doble, tras un rato con la app en segundo plano, el móvil dijo «Este móvil no ha podido grabar: Failed to construct 'MediaStreamTrackProcessor': Input track cannot be ended». Android apaga la cámara y el micrófono de una app que pasa a segundo plano: sus pistas quedan terminadas y no vuelven solas, y la app seguía usándolas (la vista previa congelada en la última imagen, el otro móvil leyendo «Cámara 1080×1920 a 30 fps»). Ahora la cámara la lleva `useCamara`, común a las dos pantallas: cuando una pista termina, `flujo` pasa a null (nadie graba ni anuncia una cámara muerta: el otro móvil ve «Cámara sin abrir» y, si alguien programa, se contesta `sin-camara`) y se vuelve a abrir en cuanto la app está a la vista. e2e: se terminan las pistas como lo hace Android (se paran y avisan con `ended`), la vista previa recibe un flujo nuevo con las pistas vivas y se graba sin error.
+
+Otra lección de la misma prueba: con unos **auriculares con micrófono** conectados, Android graba el sonido por ellos (en ese caso, en otra habitación) y la palmada apenas se oyó. El paso 6 avisará de qué micrófono se usa y de que el pitido también saldría por los auriculares.
+
 ## Orden de trabajo (un PR por paso)
 
 | Paso | Contenido | Modelo |

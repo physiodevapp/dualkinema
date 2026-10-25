@@ -3968,6 +3968,33 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     await p.getByTestId('grabaciones-vacia').waitFor()
     assert.equal(await item.count(), 0)
   })
+
+  it('si Android apaga la cámara (la app pasó a segundo plano), se vuelve a abrir y se puede grabar', async () => {
+    // Lo que hace Android: las pistas terminan solas (se paran y avisan con «ended»).
+    const anterior = await p.evaluate(() => {
+      const flujo = document.querySelector('[data-testid=grabar-vista]').srcObject
+      for (const t of flujo.getTracks()) {
+        t.stop()
+        t.dispatchEvent(new Event('ended'))
+      }
+      return flujo.id
+    })
+    await p.waitForFunction(
+      (id) => {
+        const f = document.querySelector('[data-testid=grabar-vista]')?.srcObject
+        return f && f.id !== id && f.getTracks().every((t) => t.readyState === 'live')
+      },
+      anterior,
+      { timeout: 20000 },
+    )
+    await p.getByTestId('grabar-empezar').click()
+    await p.getByTestId('grabar-parar').waitFor({ timeout: 20000 })
+    await p.waitForTimeout(1500)
+    await p.getByTestId('grabar-parar').click()
+    await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
+    assert.equal(await p.getByTestId('grabar-error').count(), 0)
+    assert.ok(Number(await p.getByTestId('grabar-frames').innerText()) > 15)
+  })
 })
 
 describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {

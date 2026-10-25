@@ -7,11 +7,12 @@ import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../co
 import { CUENTAS_ATRAS_S, DURACIONES_S, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil } from '../core/sala/protocolo'
 import { espacio } from '../media/grabaciones'
-import { abrirCamara, CALIDAD_POR_DEFECTO, datosCamara } from '../media/grabadora'
+import { CALIDAD_POR_DEFECTO, datosCamara } from '../media/grabadora'
 import { ahora } from '../sala/config'
 import { useGrabacionDoble, type GrabacionDoble } from '../sala/useGrabacionDoble'
 import { useSala, type Conexion, type Sala } from '../sala/useSala'
 import { InfoGlosario } from './glosario/Glosario'
+import { useCamara } from './useCamara'
 import { usePantallaEncendida } from './usePantallaEncendida'
 
 /*
@@ -258,8 +259,8 @@ function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'
 function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
   usePantallaEncendida()
   const [vista, setVista] = useState<OrientacionVista | null>(null)
-  const [flujo, setFlujo] = useState<MediaStream | null>(null)
-  const [errorCamara, setErrorCamara] = useState<string | null>(null)
+  // Vista previa para encuadrar (y para decirle al otro qué da la cámara); se reabre si Android la apaga.
+  const { flujo, error: errorCamara } = useCamara(CALIDAD_POR_DEFECTO)
   const video = useRef<HTMLVideoElement>(null)
   // Los pitidos de la cuenta atrás necesitan un contexto de audio creado tras un toque (norma de los navegadores).
   const [audio, setAudio] = useState<AudioContext | null>(null)
@@ -270,23 +271,6 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
   const ocupado = doble.fase.f === 'esperando' || doble.fase.f === 'programada' || doble.fase.f === 'grabando' || doble.fase.f === 'parando'
   if (grabando !== (doble.fase.f === 'grabando')) setGrabando(doble.fase.f === 'grabando')
 
-  // Vista previa para encuadrar (y para decirle al otro qué da la cámara).
-  useEffect(() => {
-    let vivo = true
-    let abierto: MediaStream | null = null
-    abrirCamara(CALIDAD_POR_DEFECTO).then(
-      (f) => {
-        if (!vivo) return f.getTracks().forEach((t) => t.stop())
-        abierto = f
-        setFlujo(f)
-      },
-      (e) => vivo && setErrorCamara(e instanceof Error ? e.message : String(e)),
-    )
-    return () => {
-      vivo = false
-      abierto?.getTracks().forEach((t) => t.stop())
-    }
-  }, [])
   useEffect(() => {
     if (video.current) video.current.srcObject = flujo
   }, [flujo])
