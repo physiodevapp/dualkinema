@@ -63,6 +63,19 @@ En la portada, «Grabar con este móvil» graba con la cámara trasera dentro de
 - Las grabaciones quedan en el almacenamiento de la app, en ese móvil. Para pasarlas a otro dispositivo, «Compartir» (Quick Share) o «Guardar» (Descargas); así además quedan a salvo si Android limpia el almacenamiento de la app.
 - No cerrar la app ni bloquear el móvil mientras graba (la pantalla se queda encendida sola): una grabación interrumpida se pierde. Como mucho 5 minutos seguidos.
 
+## Grabar con dos móviles
+
+Con la app en los dos móviles (la misma dirección: producción, o la misma previsualización):
+
+1. **Móvil de perfil:** portada → «Grabar con dos móviles» → «Crear una sala». Sale un código y un QR.
+2. **Móvil de frente:** escanea el QR con la cámara de Android (o abre la app y escribe el código en «Grabar con dos móviles»).
+3. En cada uno, «¿Cómo ve este móvil a la persona?»: el de perfil, hacia dónde mira la persona; el otro, «De frente» (o «De espaldas»). Encuadra con la vista previa. Los dos en trípode, fijos.
+4. Espera a que salga «Reloj común ± N ms» (unos segundos).
+5. En cualquiera de los dos: cuenta atrás (10 s si estás solo y tienes que llegar a tu sitio), duración y «Grabar con los dos». Suenan tres pitidos al final de la cuenta atrás y empiezan los dos.
+6. Al acabar, cada móvil tiene su vídeo en «Grabaciones de este móvil» (con `-perfil` o `-frente` en el nombre). Para analizarlos juntos, pasa uno al otro con «Compartir» → Quick Share.
+
+Recomendaciones razonadas: los dos móviles con la pantalla encendida y la app delante (se queda encendida sola mientras estás en la sala); batería suficiente; si el reloj común sale muy grande (más de 100 ms), mejor la misma Wi-Fi para los dos.
+
 ## Segunda vista: de frente (FPPA de la rodilla)
 
 Con un segundo móvil, la misma pierna de frente da el valgo dinámico (FPPA). Recomendaciones (sin vídeos reales todavía):

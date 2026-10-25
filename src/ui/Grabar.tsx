@@ -12,8 +12,9 @@ import {
   type Espacio,
   type GrabacionGuardada,
 } from '../media/grabaciones'
-import { CALIDAD_POR_DEFECTO, CALIDADES, Grabadora, abrirCamara, datosCamara, type Calidad } from '../media/grabadora'
+import { CALIDAD_POR_DEFECTO, CALIDADES, Grabadora, datosCamara, type Calidad } from '../media/grabadora'
 import { InfoGlosario } from './glosario/Glosario'
+import { useCamara } from './useCamara'
 import { usePantallaEncendida } from './usePantallaEncendida'
 
 /*
@@ -63,7 +64,6 @@ const boton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-md
 export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) => void; alSalir: () => void }) {
   usePantallaEncendida()
   const [calidad, setCalidad] = useState<Calidad>(CALIDAD_POR_DEFECTO)
-  const [flujo, setFlujo] = useState<MediaStream | null>(null)
   const [grabadora, setGrabadora] = useState<Grabadora | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const [segundos, setSegundos] = useState(0)
@@ -89,24 +89,9 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
     void pedirPersistencia().then(() => refrescar())
   }, [refrescar])
 
-  // La cámara se abre al entrar y al cambiar de calidad (no mientras se graba: el selector está desactivado).
-  useEffect(() => {
-    let vivo = true
-    let abierto: MediaStream | null = null
-    abrirCamara(calidad).then(
-      (f) => {
-        if (!vivo) return f.getTracks().forEach((t) => t.stop())
-        abierto = f
-        setFlujo(f)
-      },
-      (e) => vivo && setError(`No se puede abrir la cámara: ${mensajeDe(e)}`),
-    )
-    return () => {
-      vivo = false
-      abierto?.getTracks().forEach((t) => t.stop())
-      setFlujo(null)
-    }
-  }, [calidad])
+  // La cámara se abre al entrar, al cambiar de calidad (no mientras se graba: el selector está desactivado) y al volver
+  // a la app si Android la apagó.
+  const { flujo, error: errorCamara } = useCamara(calidad)
 
   useEffect(() => {
     if (vista.current) vista.current.srcObject = flujo
@@ -216,6 +201,7 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
         <p className="font-mono text-xs text-texto-2" data-testid="grabar-camara">
           {camara ? `${camara.ancho}×${camara.alto} a ${Math.round(camara.fps)} fps · ${camara.nombre}` : 'Abriendo la cámara…'}
         </p>
+        {errorCamara && <p className="text-sm text-red-300">No se puede abrir la cámara: {errorCamara}</p>}
         <label className="flex flex-col gap-1 text-sm text-texto-2">
           Resolución (a 30 fps)
           <select

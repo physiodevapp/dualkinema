@@ -1,8 +1,12 @@
+import type { OrientacionVista } from '../geometria/canonico'
+
 /*
  * Datos que la app escribe dentro de cada vídeo que graba (fase 4, D8 de docs/plan-fase-4.md): viajan con el archivo
  * aunque Android le cambie el nombre al compartirlo. Van como JSON en el comentario del MP4. Nada del paciente: un id
- * aleatorio, cuándo se grabó y qué se pidió a la cámara. La grabación doble (pasos 5–7) añadirá el rol, la vista y el
- * reloj común con la versión del formato.
+ * aleatorio, cuándo se grabó y qué se pidió a la cámara; en una grabación doble (paso 5), además, `doble`: el id común
+ * de la pareja de vídeos, la vista de este móvil y su reloj (cuándo empezó en su reloj y cuánto va por delante el del
+ * otro móvil, con su cota). Con eso, al abrir los dos vídeos se sabe que son pareja y, a falta del pitido, cuánto se
+ * desfasan (paso 7). `doble` es opcional: no cambia la versión del formato (un archivo sin él se lee igual).
  */
 
 export const APP_METADATOS = 'dualkinema'
@@ -18,6 +22,22 @@ export interface MetadatosGrabacion {
   readonly creada: string
   /** Lo que se pidió a la cámara (lo que dio de verdad está en el propio vídeo). */
   readonly pedido: { readonly ancho: number; readonly alto: number; readonly fps: number }
+  /** Solo en una grabación doble. */
+  readonly doble?: DatosDoble
+}
+
+/** Lo que añade una grabación doble. Los instantes, en ms del reloj de la sala de ese móvil (`performance.now()`). */
+export interface DatosDoble {
+  /** Común a los dos vídeos de la pareja (aleatorio). */
+  readonly id: string
+  /** Cómo ve este móvil a la persona. */
+  readonly vista: OrientacionVista
+  /** Cuándo empezó a grabar (ms, reloj propio): el instante programado, al que arranca la grabadora. */
+  readonly inicio: number
+  /** reloj del otro − reloj propio (ms) con su cota, en el momento de programar; null si no había estimación. */
+  readonly relojOtro: { readonly desfase: number; readonly cota: number } | null
+  /** Deriva medida entre los dos relojes (ppm) con su error típico; null si no había bastante. */
+  readonly deriva: { readonly ppm: number; readonly errorPpm: number } | null
 }
 
 export const textoMetadatos = (m: MetadatosGrabacion): string => JSON.stringify(m)
@@ -39,5 +59,36 @@ export function leerMetadatos(texto: string | null | undefined): MetadatosGrabac
   if (o.app !== APP_METADATOS || !Number.isInteger(o.formato) || (o.formato as number) < 1) return null
   if (typeof o.id !== 'string' || o.id === '' || typeof o.creada !== 'string' || Number.isNaN(Date.parse(o.creada))) return null
   if (typeof p !== 'object' || p === null || !esPositivo(p.ancho) || !esPositivo(p.alto) || !esPositivo(p.fps)) return null
-  return { app: APP_METADATOS, formato: o.formato as number, id: o.id, creada: o.creada, pedido: { ancho: p.ancho, alto: p.alto, fps: p.fps } }
+  const doble = leerDoble(o.doble)
+  return {
+    app: APP_METADATOS,
+    formato: o.formato as number,
+    id: o.id,
+    creada: o.creada,
+    pedido: { ancho: p.ancho, alto: p.alto, fps: p.fps },
+    ...(doble ? { doble } : {}),
+  }
+}
+
+const finito = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
+
+function leerVista(v: unknown): OrientacionVista | null {
+  if (typeof v !== 'object' || v === null) return null
+  const o = v as Record<string, unknown>
+  if (o.plano === 'sagital' && (o.mira === 'izquierda' || o.mira === 'derecha')) return { plano: 'sagital', mira: o.mira }
+  if (o.plano === 'frontal' && (o.ve === 'delante' || o.ve === 'detras')) return { plano: 'frontal', ve: o.ve }
+  return null
+}
+
+/** La parte de la grabación doble; null si no hay o no se entiende (el resto de los datos se lee igual). */
+function leerDoble(v: unknown): DatosDoble | null {
+  if (typeof v !== 'object' || v === null) return null
+  const o = v as Record<string, unknown>
+  const vista = leerVista(o.vista)
+  if (typeof o.id !== 'string' || o.id === '' || !vista || !finito(o.inicio)) return null
+  const r = o.relojOtro as Record<string, unknown> | null | undefined
+  const d = o.deriva as Record<string, unknown> | null | undefined
+  const relojOtro = r && finito(r.desfase) && finito(r.cota) && r.cota >= 0 ? { desfase: r.desfase, cota: r.cota } : null
+  const deriva = d && finito(d.ppm) && finito(d.errorPpm) ? { ppm: d.ppm, errorPpm: d.errorPpm } : null
+  return { id: o.id, vista, inicio: o.inicio, relojOtro, deriva }
 }

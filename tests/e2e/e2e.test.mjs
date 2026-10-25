@@ -3968,6 +3968,33 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     await p.getByTestId('grabaciones-vacia').waitFor()
     assert.equal(await item.count(), 0)
   })
+
+  it('si Android apaga la cámara (la app pasó a segundo plano), se vuelve a abrir y se puede grabar', async () => {
+    // Lo que hace Android: las pistas terminan solas (se paran y avisan con «ended»).
+    const anterior = await p.evaluate(() => {
+      const flujo = document.querySelector('[data-testid=grabar-vista]').srcObject
+      for (const t of flujo.getTracks()) {
+        t.stop()
+        t.dispatchEvent(new Event('ended'))
+      }
+      return flujo.id
+    })
+    await p.waitForFunction(
+      (id) => {
+        const f = document.querySelector('[data-testid=grabar-vista]')?.srcObject
+        return f && f.id !== id && f.getTracks().every((t) => t.readyState === 'live')
+      },
+      anterior,
+      { timeout: 20000 },
+    )
+    await p.getByTestId('grabar-empezar').click()
+    await p.getByTestId('grabar-parar').waitFor({ timeout: 20000 })
+    await p.waitForTimeout(1500)
+    await p.getByTestId('grabar-parar').click()
+    await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
+    assert.equal(await p.getByTestId('grabar-error').count(), 0)
+    assert.ok(Number(await p.getByTestId('grabar-frames').innerText()) > 15)
+  })
 })
 
 describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
@@ -4087,6 +4114,126 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     } finally {
       await p.close()
     }
+  })
+})
+
+describe('grabar con dos móviles: grabación doble (fase 4, paso 5)', () => {
+  // Como en el emparejamiento: el reloj de la app de B lleva 1500 ms más, y la hora de verdad de un instante del reloj
+  // de una página es su `performance.timeOrigin` + el instante (− 1500 en B).
+  const DESFASE_B = 1500
+  let navA
+  let navB
+  let pararRele
+  let a
+  let b
+
+  before(async () => {
+    pararRele = await servirRele()
+    navA = await lanzarNavegadorConCamaraFalsa()
+    navB = await lanzarNavegadorConCamaraFalsa()
+    a = await abrirApp(navA, { consulta: `?senal=${URL_RELE}` })
+    await a.getByTestId('ir-emparejar').click()
+    await a.getByTestId('crear-sala').click()
+    const codigo = (await a.getByTestId('codigo-sala').innerText()).replace('-', '')
+    b = await abrirApp(navB, { consulta: `?sala=${codigo}&senal=${URL_RELE}&reloj=${DESFASE_B}` })
+    for (const p of [a, b]) {
+      await p.waitForFunction(() => document.querySelector('[data-testid=conexion]')?.dataset.conexion === 'emparejado', null, { timeout: 20000 })
+    }
+    await a.getByTestId('vista-perfil-derecha').click()
+    await b.getByTestId('vista-frente').click()
+    for (const p of [a, b]) {
+      await p.waitForFunction(() => document.querySelector('[data-testid=reloj-comun]')?.dataset.desfase, null, { timeout: 20000 })
+      await p.waitForFunction(() => !document.querySelector('[data-testid=grabar-los-dos]')?.disabled, null, { timeout: 20000 })
+    }
+  })
+  after(async () => {
+    await navA?.close()
+    await navB?.close()
+    pararRele?.()
+  })
+
+  const fase = (p, f, timeout = 20000) =>
+    p.waitForFunction((v) => document.querySelector('[data-testid=grabar-doble]')?.dataset.fase === v, f, { timeout })
+  /** Hora de verdad (ms del reloj del sistema) de un instante del reloj de la app de una página. */
+  const horaReal = async (p, instante, desplazado) => (await p.evaluate(() => performance.timeOrigin)) + instante - (desplazado ? DESFASE_B : 0)
+  const resultado = async (p) => {
+    const r = p.getByTestId('resultado-doble')
+    return {
+      id: await r.getAttribute('data-doble-id'),
+      inicio: Number(await r.getAttribute('data-inicio')),
+      arranque: Number(await r.getAttribute('data-arranque')),
+      frames: Number(await r.getAttribute('data-frames')),
+    }
+  }
+
+  it('B programa (5 s, hasta parar) y A para: los dos graban a la vez la misma grabación doble', async () => {
+    await b.getByTestId('cuenta-atras-s').selectOption('5')
+    await b.getByTestId('duracion-s').selectOption('parar')
+    await b.getByTestId('grabar-los-dos').click()
+    await fase(a, 'programada')
+    await fase(b, 'programada')
+    assert.match(await a.getByTestId('cuenta-atras').innerText(), /^[1-5]$/)
+    // Mientras tanto no se puede cambiar de vista ni salir.
+    assert.ok(await a.getByTestId('vista-frente').isDisabled())
+    assert.ok(await a.getByTestId('salir-sala').isDisabled())
+    await fase(a, 'grabando', 10000)
+    await fase(b, 'grabando', 10000)
+    await a.waitForTimeout(2500)
+    await a.getByTestId('parar-doble').click()
+    await fase(a, 'hecha', 30000)
+    await fase(b, 'hecha', 30000)
+    const ra = await resultado(a)
+    const rb = await resultado(b)
+    assert.ok(ra.id && ra.id === rb.id, `mismo id de grabación doble en los dos MP4: ${ra.id} / ${rb.id}`)
+    assert.ok(ra.frames > 30 && rb.frames > 30, `frames ${ra.frames} y ${rb.frames}`)
+    // El inicio programado (escrito en cada MP4 en su reloj) es el mismo instante de verdad en los dos móviles: A lo
+    // pasó a su reloj con su estimación del desfase, así que el error cabe en su cota.
+    const cota = Number(await a.getByTestId('reloj-comun').getAttribute('data-cota'))
+    const ia = await horaReal(a, ra.inicio, false)
+    const ib = await horaReal(b, rb.inicio, true)
+    assert.ok(Math.abs(ia - ib) <= cota + 0.5, `inicios a ${(ia - ib).toFixed(2)} ms (cota ${cota})`)
+    // Y los dos arrancaron de verdad cerca de ese instante (temporizador y arranque del codificador).
+    assert.ok(Math.abs((await horaReal(a, ra.arranque, false)) - ia) < 250, 'A arrancó a tiempo')
+    assert.ok(Math.abs((await horaReal(b, rb.arranque, true)) - ib) < 250, 'B arrancó a tiempo')
+    // Cada móvil tiene su vídeo en su lista, con la vista en el nombre.
+    assert.match(await a.getByTestId('resultado-doble').innerText(), /-perfil\.mp4/)
+    assert.match(await b.getByTestId('resultado-doble').innerText(), /-frente\.mp4/)
+  })
+
+  it('con la duración fijada (10 s), los dos paran solos', async () => {
+    await a.getByTestId('grabar-otra-vez').click()
+    await b.getByTestId('grabar-otra-vez').click()
+    await a.getByTestId('cuenta-atras-s').selectOption('5')
+    await a.getByTestId('duracion-s').selectOption('10')
+    await a.getByTestId('grabar-los-dos').click()
+    await fase(a, 'grabando', 15000)
+    await fase(b, 'grabando', 15000)
+    await fase(a, 'hecha', 30000)
+    await fase(b, 'hecha', 30000)
+    for (const p of [a, b]) {
+      const r = await resultado(p)
+      // La cámara falsa da 20 fps: 10 s son unos 200 frames.
+      assert.ok(r.frames > 170 && r.frames < 230, `frames ${r.frames}`)
+    }
+  })
+
+  it('«Cancelar» en la cuenta atrás de uno cancela los dos y no graba nada', async () => {
+    await a.getByTestId('grabar-otra-vez').click()
+    await b.getByTestId('grabar-otra-vez').click()
+    await a.getByTestId('cuenta-atras-s').selectOption('15')
+    await a.getByTestId('grabar-los-dos').click()
+    await fase(b, 'programada')
+    await b.getByTestId('parar-doble').click()
+    await fase(a, 'libre')
+    await fase(b, 'libre')
+    assert.match(await a.getByTestId('aviso-grabacion').innerText(), /cancel/i)
+  })
+
+  it('sin una vista de perfil y otra de frente no se ofrece grabar', async () => {
+    await b.getByTestId('vista-perfil-izquierda').click()
+    await a.getByTestId('grabar-doble').waitFor({ state: 'detached' })
+    await b.getByTestId('vista-frente').click()
+    await a.getByTestId('grabar-doble').waitFor()
   })
 })
 

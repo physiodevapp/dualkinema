@@ -18,7 +18,8 @@ export const TAMANO_MAXIMO_MENSAJE = 2048
 /** Duración máxima de una grabación programada (s), la misma que al grabar con un móvil. */
 export const DURACION_MAXIMA_PROGRAMADA_S = 300
 
-export type MotivoCancelar = 'usuario' | 'sin-camara' | 'sin-espacio' | 'tarde' | 'version'
+/** Por qué no se graba: lo pidió la persona, o el móvil que contesta no puede (ver `doble.ts`), o falló al grabar. */
+export type MotivoCancelar = 'usuario' | 'sin-camara' | 'sin-vista' | 'sin-reloj' | 'sin-espacio' | 'tarde' | 'ocupado' | 'version' | 'fallo'
 
 export interface EstadoMovil {
   /** Lo que da su cámara; null si no está abierta. */
@@ -44,7 +45,7 @@ export type Mensaje =
   | { readonly tipo: 'cancelar'; readonly grabacion: string; readonly motivo: MotivoCancelar }
   | { readonly tipo: 'adios' }
 
-const MOTIVOS: readonly MotivoCancelar[] = ['usuario', 'sin-camara', 'sin-espacio', 'tarde', 'version']
+const MOTIVOS: readonly MotivoCancelar[] = ['usuario', 'sin-camara', 'sin-vista', 'sin-reloj', 'sin-espacio', 'tarde', 'ocupado', 'version', 'fallo']
 
 const finito = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
 const entero = (x: unknown): x is number => Number.isSafeInteger(x)
