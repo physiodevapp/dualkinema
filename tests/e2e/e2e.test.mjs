@@ -4026,8 +4026,6 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
   let pararRele
   let a
   let b
-  // Los dos MP4 de la grabación de 10 s (descargados con «Guardar»), la verdad de su desfase y la cota del reloj (paso 7).
-  const pareja = {}
   let codigo
 
   before(async () => {
@@ -4138,7 +4136,7 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
   })
 })
 
-describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 y 6)', () => {
+describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () => {
   // Como en el emparejamiento: el reloj de la app de B lleva 1500 ms más, y la hora de verdad de un instante del reloj
   // de una página es su `performance.timeOrigin` + el instante (− 1500 en B).
   const DESFASE_B = 1500
@@ -4147,6 +4145,8 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 y 6)', () =
   let pararRele
   let a
   let b
+  // Los dos MP4 de la grabación de 10 s (descargados con «Guardar»), la verdad de su desfase y la cota del reloj (paso 7).
+  const pareja = {}
 
   before(async () => {
     pararRele = await servirRele()
