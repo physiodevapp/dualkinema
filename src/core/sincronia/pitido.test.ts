@@ -5,6 +5,7 @@ import {
   PITIDO_OTRA_S,
   PITIDO_REFERENCIA_S,
   VELOCIDAD_SONIDO,
+  barrido,
   combinarIdaVuelta,
   instantePitido,
   localizarSecuencia,
@@ -81,6 +82,14 @@ describe('localizarSecuencia', () => {
       1.0,
     )
     expect(Math.abs(d!.t - 1.2)).toBeLessThan(0.0001)
+  })
+
+  it('con el tercer barrido 2,2 ms tarde (un tropiezo de la grabación, la cuarta prueba real) se encuentra igual', () => {
+    const tropiezo = (t: number) => barrido(t) + barrido(t - 0.13) + barrido(t - 0.3222)
+    const muestras = grabarPitidos({ tasa: TASA, duracion: 2, secuencias: [{ t: 1.07, amplitud: 0.9 }], ruido: 0.005, semilla: 2 }, tropiezo, DURACION_SECUENCIA_S + 0.003)
+    const d = localizarSecuencia({ inicio: 0, tasa: TASA, muestras }, 1.0)!
+    expect(Math.abs(d.t - 1.07)).toBeLessThan(0.00005)
+    expect(d.calidad).toBeGreaterThan(CALIDAD_PITIDO_MINIMA)
   })
 
   it('el propio pitido saturado en el micrófono se encuentra igual', () => {

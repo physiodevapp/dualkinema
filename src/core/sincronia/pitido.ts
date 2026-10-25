@@ -20,7 +20,8 @@ import { fft, siguientePotencia2 } from './fft'
  * m(t) con un pico de ~1/(F1 − F0) = 0,3 ms de ancho donde empieza un barrido. Dividida por la energía de lo que cubre
  * el barrido queda el parecido (correlación normalizada, de 0 a ~1), que no depende de lo fuerte que suene: la voz,
  * los pasos o una palmada se parecen poco (otras frecuencias, otra forma) aunque suenen mucho más. La secuencia se
- * puntúa con la media geométrica del parecido en los tres instantes que marca su plantilla: si solo un barrido coincide (un sonido suelto, o la secuencia corrida lo que separa dos barridos),
+ * puntúa con la media geométrica del parecido en los tres instantes que marca su plantilla (rígida, y también con una
+ * holgura de HOLGURA_BARRIDO_S por barrido: se queda la de más calidad): si solo un barrido coincide (un sonido suelto, o la secuencia corrida lo que separa dos barridos),
  * los otros dos factores son ruido y la puntuación se hunde. La calidad es el pico entre el segundo pico de esa
  * puntuación, buscado antes del pico (fuera de EXCLUSION_PITIDO_S: los ecos cercanos) o después de la secuencia y su
  * cola (COLA_PITIDO_S): una alineación más tardía pone la plantilla sobre la reverberación de la misma secuencia, que en
@@ -69,6 +70,14 @@ export const RUIDO_PREVIO_S = 0.02
 /** Zona alrededor del pico donde no se busca el segundo (s): los ecos de la sala (un eco es la secuencia entera corrida y
  * más débil; 50 ms son 17 m de camino de más). Una secuencia corrida lo que separa dos barridos (≥ 130 ms) sí cuenta. */
 export const EXCLUSION_PITIDO_S = 0.05
+/**
+ * Holgura de cada barrido respecto a su sitio en la plantilla (s). En la cuarta prueba real, la grabación del Pixel
+ * metió 2,2 ms entre el segundo y el tercer barrido de su propio pitido (la tablet los oyó a su distancia exacta): con
+ * la plantilla rígida, el pico de un barrido, de 0,3 ms de ancho, no casaba y la calidad caía a 1,2. Con holgura, el
+ * ruido también sale mejor parado y la calidad de las secuencias buenas baja un poco: se busca de las dos maneras y
+ * se queda la de más calidad.
+ */
+export const HOLGURA_BARRIDO_S = 0.001
 /** Suelo de la energía al calcular el parecido, como fracción de la energía media del trozo. */
 export const SUELO_ENERGIA = 1e-3
 /** Por debajo, la secuencia no se distingue bien de otra cosa: no se usa. */
@@ -121,6 +130,7 @@ export interface OpcionesPitido {
   readonly antes?: number
   readonly despues?: number
   readonly exclusion?: number
+  readonly holgura?: number
 }
 
 /**
@@ -128,6 +138,14 @@ export interface OpcionesPitido {
  * null si el audio no cubre la búsqueda o no hay señal.
  */
 export function localizarSecuencia(audio: AudioMono, esperado: number, opciones: OpcionesPitido = {}): Deteccion | null {
+  if (opciones.holgura !== undefined) return localizarCon(audio, esperado, opciones, opciones.holgura)
+  const rigida = localizarCon(audio, esperado, opciones, 0)
+  const holgada = localizarCon(audio, esperado, opciones, HOLGURA_BARRIDO_S)
+  if (!rigida || !holgada) return rigida ?? holgada
+  return holgada.calidad > rigida.calidad ? holgada : rigida
+}
+
+function localizarCon(audio: AudioMono, esperado: number, opciones: OpcionesPitido, holguraS: number): Deteccion | null {
   const { tasa, inicio, muestras } = audio
   const antes = opciones.antes ?? VENTANA_ANTES_S
   const despues = opciones.despues ?? VENTANA_DESPUES_S
@@ -186,8 +204,11 @@ export function localizarSecuencia(audio: AudioMono, esperado: number, opciones:
   const parecido = new Float64Array(largo)
   for (let j = 0; j + m <= largo; j++) parecido[j] = env[j]! / Math.sqrt((acumulada[j + m]! - acumulada[j]! + suelo) * energiaH)
 
-  // Puntuación de la secuencia: media geométrica del parecido en sus tres barridos.
-  const puntuacion = (j: number) => Math.cbrt(desp.reduce((p, d) => p * parecido[j + d]!, 1))
+  // Puntuación de la secuencia: media geométrica del parecido en sus tres barridos, cada uno el mejor dentro de
+  // ±HOLGURA_BARRIDO_S de su sitio (máximo deslizante del parecido).
+  const holgura = Math.round(holguraS * tasa)
+  const maximo = holgura > 0 ? maximoDeslizante(parecido, holgura) : parecido
+  const puntuacion = (j: number) => Math.cbrt(desp.reduce((p, d) => p * maximo[j + d]!, 1))
   let jPico = jMin
   let pico = -1
   for (let j = jMin; j <= jMax; j++) {
@@ -209,7 +230,8 @@ export function localizarSecuencia(audio: AudioMono, esperado: number, opciones:
   for (const d of desp) {
     const c = jPico + d
     let p = c
-    for (let q = Math.max(1, c - 2); q <= Math.min(largo - 2, c + 2); q++) if (env[q]! > env[p]!) p = q
+    const radio = Math.max(2, holgura)
+    for (let q = Math.max(1, c - radio); q <= Math.min(largo - 2, c + radio); q++) if (env[q]! > env[p]!) p = q
     const desde = Math.max(1, p - previa)
     const fondo = mediana(env.subarray(Math.max(0, desde - ruidoPrevio), desde))
     const umbral = Math.max(FRACCION_LLEGADA * env[p]!, RUIDO_LLEGADA * fondo)
@@ -232,6 +254,25 @@ export function localizarSecuencia(audio: AudioMono, esperado: number, opciones:
   llegadas.sort((a, b) => a - b)
   const j = llegadas[1]!
   return { t: inicio + (i0 + j) / tasa, calidad, incertidumbre: 1 / tasa }
+}
+
+/** m[i] = máximo de v en [i − r, i + r] (con los bordes recortados), en O(n) con una cola de índices. */
+function maximoDeslizante(v: Float64Array, r: number): Float64Array {
+  const n = v.length
+  const m = new Float64Array(n)
+  const cola = new Int32Array(n)
+  let ini = 0
+  let fin = 0
+  let siguiente = 0
+  for (let i = 0; i < n; i++) {
+    while (siguiente < n && siguiente <= i + r) {
+      while (fin > ini && v[cola[fin - 1]!]! <= v[siguiente]!) fin--
+      cola[fin++] = siguiente++
+    }
+    while (cola[ini]! < i - r) ini++
+    m[i] = v[cola[ini]!]!
+  }
+  return m
 }
 
 /** Mediana (0 si no hay valores). */
