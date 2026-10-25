@@ -17,6 +17,7 @@ import { crearTablaFrames, estadisticas } from '../core/tiempo/tablaFrames'
 import { bitrateDe } from './grabadora'
 import type { ValorInforme } from './informe'
 import { microExterno } from './microfono'
+import { pasoDeReloj } from '../core/tiempo/relojes'
 
 /*
  * Laboratorio (fase 4, paso 1; §1–3 de docs/plan-fase-4.md): mide qué da cada móvil en Chrome antes de construir la
@@ -625,10 +626,46 @@ export async function informeMarcas(): Promise<Dato> {
         }
         return marcas
       }
+      // El aviso de cada frame pintado da su captura en el reloj de la página (si el navegador la da).
+      const visor = document.createElement('video')
+      visor.muted = true
+      visor.playsInline = true
+      visor.srcObject = new MediaStream([flujo.getVideoTracks()[0]!.clone()])
+      const capturas: number[] = []
+      const conAviso = 'requestVideoFrameCallback' in visor
+      if (conAviso) {
+        const aviso = (_: number, m: VideoFrameCallbackMetadata) => {
+          if (typeof m.captureTime === 'number') capturas.push(m.captureTime)
+          if (performance.now() < hasta) visor.requestVideoFrameCallback(aviso)
+        }
+        visor.requestVideoFrameCallback(aviso)
+        await visor.play().catch(() => {})
+      }
       const [v, a] = await Promise.all([leer(flujo.getVideoTracks()[0]!, 'video'), leer(flujo.getAudioTracks()[0]!, 'audio')])
+      visor.pause()
+      ;(visor.srcObject as MediaStream).getTracks().forEach((t) => t.stop())
+      const paso = pasoDeReloj(
+        v.map(([ts]) => ts / 1000),
+        capturas,
+      )
+      // Con el paso, cuánto antes de llegar se capturó cada frame; el audio, si va en el reloj del vídeo (como en la tablet).
+      const retraso = (marcas: readonly (readonly [number, number])[]) => {
+        if (!paso) return '—'
+        const r = marcas.map(([ts, llegada]) => llegada / 1000 - (ts / 1000 - paso.diferenciaMs)).sort((x, y) => x - y)
+        return Math.round(r[Math.floor(r.length / 2)]! * 10) / 10
+      }
+      const audioEnPagina = resumenMarcas(a, null).mismoRelojQuePerformanceNow
       return {
         video: resumenMarcas(v, metadatos),
         audio: resumenMarcas(a, null),
+        avisoDeFrame: {
+          disponible: conAviso,
+          capturas: capturas.length,
+          pasoAlRelojDeLaPaginaMs: paso ? Math.round(paso.diferenciaMs * 10) / 10 : '—',
+          votos: paso?.votos ?? 0,
+          retrasoVideoMs: retraso(v),
+          retrasoAudioMs: audioEnPagina ? resumenMarcas(a, null).retrasoMedianoMs : retraso(a),
+        },
         primerAudioMenosPrimerVideoAlLlegarMs:
           primeraLlegada.audio !== null && primeraLlegada.video !== null ? Math.round((primeraLlegada.audio - primeraLlegada.video) * 10) / 10 : '—',
       }
