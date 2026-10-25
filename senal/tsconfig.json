@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "outDir": "../node_modules/.tmp/senal",
+    "tsBuildInfoFile": "../node_modules/.tmp/senal.tsbuildinfo",
+    "lib": ["ES2023", "WebWorker"],
+    "types": []
+  },
+  "include": ["src"],
+  "references": [{ "path": "../tsconfig.core.json" }]
+}
