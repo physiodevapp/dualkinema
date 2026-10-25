@@ -568,3 +568,72 @@ async function analizarArchivo(archivo: File): Promise<Dato> {
     entrada.dispose()
   }
 }
+
+// ── Marcas de tiempo de captura ───────────────────────────────────────────────────────────────────────────────────
+
+/** Resumen de las marcas de una pista: en qué reloj están y cuánto antes de llegar se capturó cada trozo. */
+function resumenMarcas(marcas: readonly (readonly [number, number])[], metadatos: Record<string, number> | null) {
+  const retrasos = marcas.map(([ts, llegada]) => (llegada - ts) / 1000).sort((a, b) => a - b)
+  const mediana = retrasos[Math.floor(retrasos.length / 2)] ?? NaN
+  return {
+    trozos: marcas.length,
+    // Con el reloj de la página, la marca va unos ms por detrás de la llegada; con otro reloj, miles de segundos.
+    mismoRelojQuePerformanceNow: Math.abs(mediana) < 1000,
+    retrasoMedianoMs: Math.round(mediana * 10) / 10,
+    retrasoMinMs: Math.round(retrasos[0]! * 10) / 10,
+    retrasoMaxMs: Math.round(retrasos[retrasos.length - 1]! * 10) / 10,
+    ...(metadatos ? { metadatosDelFrame: metadatos } : {}),
+  }
+}
+
+/**
+ * En qué reloj pone Chrome las marcas de captura del vídeo y del audio (fase 4, paso 8). Mediabunny coloca cada pista
+ * por cuándo le llega su primer trozo, no por cuándo se capturó: si el primer trozo de audio llega 80 ms tarde, todo el
+ * audio queda 80 ms desplazado de la imagen. Para usar las marcas de captura, las dos tienen que poder pasarse a un
+ * mismo reloj: aquí se ve, durante 2 s, cada marca frente a `performance.now()` al llegar.
+ */
+export async function informeMarcas(): Promise<Dato> {
+  return intentar(async () => {
+    const flujo = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: { ideal: 1 } },
+    })
+    try {
+      const hasta = performance.now() + 2000
+      let primeraLlegada: { video: number | null; audio: number | null } = { video: null, audio: null }
+      let metadatos: Record<string, number> | null = null
+      const leer = async (pista: MediaStreamTrack, clase: 'video' | 'audio') => {
+        const lector = new MediaStreamTrackProcessor({ track: pista }).readable.getReader()
+        const marcas: [number, number][] = []
+        try {
+          while (performance.now() < hasta) {
+            const { value, done } = await lector.read()
+            if (done || !value) break
+            const llegada = performance.now() * 1000
+            primeraLlegada = { ...primeraLlegada, [clase]: primeraLlegada[clase] ?? llegada / 1000 }
+            marcas.push([value.timestamp, llegada])
+            if (clase === 'video' && !metadatos) {
+              const m = (value as VideoFrame & { metadata?: () => Record<string, unknown> }).metadata?.()
+              if (m) metadatos = Object.fromEntries(Object.entries(m).filter(([, v]) => typeof v === 'number').map(([k, v]) => [k, Math.round((v as number) * 1000) / 1000]))
+              metadatos ??= {}
+              metadatos.llegadaMs = Math.round(llegada / 10) / 100
+            }
+            value.close()
+          }
+        } finally {
+          await lector.cancel().catch(() => {})
+        }
+        return marcas
+      }
+      const [v, a] = await Promise.all([leer(flujo.getVideoTracks()[0]!, 'video'), leer(flujo.getAudioTracks()[0]!, 'audio')])
+      return {
+        video: resumenMarcas(v, metadatos),
+        audio: resumenMarcas(a, null),
+        primerAudioMenosPrimerVideoAlLlegarMs:
+          primeraLlegada.audio !== null && primeraLlegada.video !== null ? Math.round((primeraLlegada.audio - primeraLlegada.video) * 10) / 10 : '—',
+      }
+    } finally {
+      flujo.getTracks().forEach((t) => t.stop())
+    }
+  })
+}

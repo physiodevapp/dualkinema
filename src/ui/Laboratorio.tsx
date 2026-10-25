@@ -12,6 +12,7 @@ import { formatearInforme, type ValorInforme } from '../media/informe'
 import {
   informeAlmacenamiento,
   informeAudio,
+  informeMarcas,
   informeCamaras,
   informeCodecs,
   informeEntorno,
@@ -92,6 +93,8 @@ export default function Laboratorio({ alAbrir }: { alAbrir: (archivo: File) => v
       poner('Códecs que codifica', await informeCodecs())
       setHaciendo('Micrófono…')
       poner('Micrófono sin procesar', await informeAudio())
+      setHaciendo('Marcas de tiempo de captura…')
+      poner('Marcas de tiempo de captura', await informeMarcas())
       setHaciendo('Cámaras (da permiso si lo pide)…')
       poner('Cámaras', await informeCamaras(setHaciendo))
     } catch (e) {

@@ -3852,9 +3852,12 @@ describe('laboratorio de grabación (fase 4, paso 1)', () => {
       // El último apartado es el de las cámaras: cuando está, están todos.
       await p.waitForFunction(() => document.querySelector('[data-testid=lab-informe]')?.value.includes('## Cámaras'), null, { timeout: 120000 })
       const informe = await p.getByTestId('lab-informe').inputValue()
-      for (const titulo of ['## Entorno', '## Almacenamiento y pantalla', '## Códecs que codifica', '## Micrófono sin procesar', '## Cámaras']) {
+      for (const titulo of ['## Entorno', '## Almacenamiento y pantalla', '## Códecs que codifica', '## Micrófono sin procesar', '## Marcas de tiempo de captura', '## Cámaras']) {
         assert.ok(informe.includes(titulo), `falta ${titulo}`)
       }
+      // En Chromium, el audio marca su captura en el reloj de la página y el vídeo en otro (paso 8).
+      const marcas = informe.slice(informe.indexOf('## Marcas de tiempo de captura'), informe.indexOf('## Cámaras'))
+      assert.match(marcas, /audio:\n\s+trozos: \d+\n\s+mismoRelojQuePerformanceNow: sí/)
       assert.match(informe, /VideoEncoder: sí/)
       assert.match(informe, /MediaStreamTrackProcessor: sí/)
       assert.match(informe, /echoCancellation: no/, 'el micrófono se abre sin cancelación de eco')
