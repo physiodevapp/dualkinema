@@ -10,7 +10,7 @@ import {
   type StreamTargetChunk,
   type Target,
 } from 'mediabunny'
-import { FORMATO_METADATOS, textoMetadatos, type MetadatosGrabacion } from '../core/grabacion/metadatos'
+import { FORMATO_METADATOS, textoMetadatos, type DatosDoble, type MetadatosGrabacion } from '../core/grabacion/metadatos'
 import { abrirGrabacion, crearArchivoGrabacion } from './grabaciones'
 
 /*
@@ -85,6 +85,21 @@ export class Grabadora {
 
   /** Empieza a grabar el flujo de la cámara en un archivo `nombre`. */
   static async empezar(flujo: MediaStream, calidad: Calidad, nombre: string, id: string): Promise<Grabadora> {
+    return (await Grabadora.preparar(flujo, calidad, nombre, id)).arrancar()
+  }
+
+  /**
+   * Lo que tarda (códec, archivo, metadatos), sin empezar a grabar: la grabación doble lo hace antes del instante
+   * programado y arranca justo entonces (`arrancar`). Los metadatos van ya escritos (Mediabunny no deja cambiarlos
+   * después de empezar), así que `doble.inicio` es el instante programado. Si no se llega a arrancar, `descartar`.
+   */
+  static async preparar(
+    flujo: MediaStream,
+    calidad: Calidad,
+    nombre: string,
+    id: string,
+    doble?: DatosDoble,
+  ): Promise<{ arrancar: () => Promise<Grabadora>; descartar: () => Promise<void> }> {
     const pistaVideo = flujo.getVideoTracks()[0]
     if (!pistaVideo) throw new Error('La cámara no da imagen.')
     const pistaAudio = flujo.getAudioTracks()[0]
@@ -108,6 +123,7 @@ export class Grabadora {
       id,
       creada: new Date().toISOString(),
       pedido: { ancho: calidad.ancho, alto: calidad.alto, fps: calidad.fps },
+      ...(doble ? { doble } : {}),
     }
     salida.setMetadataTags({ comment: textoMetadatos(metadatos) })
 
@@ -122,13 +138,22 @@ export class Grabadora {
     const error = Promise.race(errores) as Promise<never>
     // Que un error no quede sin capturar si nadie lo está esperando en ese momento.
     error.catch(() => {})
-    try {
-      await salida.start()
-    } catch (e) {
+    const descartar = async () => {
+      if (salida.state !== 'finalized' && salida.state !== 'canceled') await salida.cancel().catch(() => {})
       await almacen?.quitar()
-      throw e
     }
-    return new Grabadora(salida, nombre, almacen, destino, almacen ? DURACION_MAXIMA_S : DURACION_MAXIMA_MEMORIA_S, error)
+    return {
+      arrancar: async () => {
+        try {
+          await salida.start()
+        } catch (e) {
+          await descartar()
+          throw e
+        }
+        return new Grabadora(salida, nombre, almacen, destino, almacen ? DURACION_MAXIMA_S : DURACION_MAXIMA_MEMORIA_S, error)
+      },
+      descartar,
+    }
   }
 
   /** Termina el archivo y lo devuelve. */

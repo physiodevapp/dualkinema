@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftIcon, ArrowRightOnRectangleIcon, LinkIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowRightOnRectangleIcon, LinkIcon, PlusIcon, ShareIcon, StopIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { encode } from 'uqr'
 import type { OrientacionVista } from '../core/geometria/canonico'
+import { revisarFps } from '../core/grabacion/revision'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
+import { CUENTAS_ATRAS_S, DURACIONES_S, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil } from '../core/sala/protocolo'
 import { espacio } from '../media/grabaciones'
 import { abrirCamara, CALIDAD_POR_DEFECTO, datosCamara } from '../media/grabadora'
+import { ahora } from '../sala/config'
+import { useGrabacionDoble, type GrabacionDoble } from '../sala/useGrabacionDoble'
 import { useSala, type Conexion, type Sala } from '../sala/useSala'
 import { InfoGlosario } from './glosario/Glosario'
 import { usePantallaEncendida } from './usePantallaEncendida'
 
 /*
- * «Grabar con dos móviles» (fase 4, paso 4b; §4 de docs/plan-fase-4.md, D6): crear una sala (código y QR) o unirse con
- * el código, elegir cómo ve cada móvil a la persona, ver el estado del otro y el reloj común con su precisión. La
- * grabación a la vez llega en el paso 5. Por el relé solo viajan los mensajes de `core/sala/protocolo.ts`.
+ * «Grabar con dos móviles» (fase 4, pasos 4b y 5; §4–5 de docs/plan-fase-4.md, D6 y D8): crear una sala (código y QR)
+ * o unirse con el código, elegir cómo ve cada móvil a la persona, ver el estado del otro y el reloj común con su
+ * precisión, y grabar con los dos a la vez (cuenta atrás, duración, parada sola; `useGrabacionDoble`). Por el relé
+ * solo viajan los mensajes de `core/sala/protocolo.ts`.
  */
 
 const VISTAS: readonly { readonly id: string; readonly vista: OrientacionVista; readonly etiqueta: string }[] = [
@@ -56,7 +61,7 @@ function QrSala({ url }: { url: string }) {
 }
 
 /** Lo que este móvil cuenta al otro: su cámara (la vista previa), espacio libre y batería. */
-function useMiEstado(flujo: MediaStream | null): EstadoMovil {
+function useMiEstado(flujo: MediaStream | null, grabando: boolean): EstadoMovil {
   const [libreMB, setLibreMB] = useState<number | null>(null)
   const [bateria, setBateria] = useState<number | null>(null)
   useEffect(() => {
@@ -77,9 +82,9 @@ function useMiEstado(flujo: MediaStream | null): EstadoMovil {
       camara: c && c.ancho > 0 ? { ancho: c.ancho, alto: c.alto, fps: Math.round(c.fps) || 30 } : null,
       libreMB,
       bateria,
-      grabando: false,
+      grabando,
     }
-  }, [flujo, libreMB, bateria])
+  }, [flujo, libreMB, bateria, grabando])
 }
 
 function Aviso({ children, testid }: { children: React.ReactNode; testid: string }) {
@@ -90,6 +95,165 @@ function Aviso({ children, testid }: { children: React.ReactNode; testid: string
   )
 }
 
+const formatoReloj = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+async function compartir(archivo: File) {
+  try {
+    if (navigator.canShare?.({ files: [archivo] })) await navigator.share({ files: [archivo], title: archivo.name })
+  } catch {
+    // Cerrar la hoja de compartir no es un error.
+  }
+}
+
+function guardar(archivo: File) {
+  const url = URL.createObjectURL(archivo)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = archivo.name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/** Programar, la cuenta atrás, grabando y el resultado de la grabación doble. */
+function TarjetaGrabar({ doble, puede }: { doble: GrabacionDoble; puede: boolean }) {
+  const [cuenta, setCuenta] = useState<number>(10)
+  const [duracion, setDuracion] = useState<number | null>(30)
+  const [, setTic] = useState(0)
+  const { fase } = doble
+  const enMarcha = fase.f === 'programada' || fase.f === 'grabando' || fase.f === 'esperando'
+  // Refresca la cuenta atrás y el reloj de la grabación.
+  useEffect(() => {
+    if (!enMarcha) return
+    const t = setInterval(() => setTic((n) => n + 1), 200)
+    return () => clearInterval(t)
+  }, [enMarcha])
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4" data-testid="grabar-doble" data-fase={fase.f}>
+      <h3 className="font-medium">Grabar con los dos</h3>
+      {fase.f === 'libre' && (
+        <>
+          {fase.aviso && (
+            <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="aviso-grabacion">
+              {fase.aviso}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 text-sm text-texto-2">
+              Cuenta atrás
+              <select value={cuenta} onChange={(e) => setCuenta(Number(e.target.value))} data-testid="cuenta-atras-s" className="rounded-md border border-borde bg-fondo px-3 py-3 text-texto">
+                {CUENTAS_ATRAS_S.map((c) => (
+                  <option key={c} value={c}>
+                    {c} s
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-texto-2">
+              Duración
+              <select
+                value={duracion ?? 'parar'}
+                onChange={(e) => setDuracion(e.target.value === 'parar' ? null : Number(e.target.value))}
+                data-testid="duracion-s"
+                className="rounded-md border border-borde bg-fondo px-3 py-3 text-texto"
+              >
+                {DURACIONES_S.map((d) => (
+                  <option key={d ?? 'parar'} value={d ?? 'parar'}>
+                    {d === null ? 'Hasta parar' : `${d} s`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={() => doble.programar(cuenta, duracion)}
+            disabled={!puede}
+            data-testid="grabar-los-dos"
+            className={`${boton} min-h-14 border-acento bg-acento font-medium text-fondo`}
+          >
+            <VideoCameraIcon className="size-6" />
+            Grabar con los dos
+          </button>
+          {!puede && <p className="text-sm text-texto-2">Hace falta el reloj común medido y una vista de perfil y otra de frente o de espaldas.</p>}
+        </>
+      )}
+      {fase.f === 'esperando' && <p data-testid="esperando-confirmacion">Esperando a que el otro móvil confirme…</p>}
+      {fase.f === 'programada' && (
+        <>
+          <p className="text-center font-mono text-6xl" data-testid="cuenta-atras">
+            {Math.max(0, Math.ceil((fase.inicio - ahora()) / 1000))}
+          </p>
+          <p className="text-center text-sm text-texto-2">Empiezan a grabar los dos a la vez. Ponte en tu sitio.</p>
+        </>
+      )}
+      {fase.f === 'grabando' && (
+        <p className="flex items-center justify-center gap-2 font-mono text-2xl" data-testid="grabando-doble">
+          <span className="size-3 rounded-full bg-red-500" />
+          {formatoReloj(ahora() - fase.inicio)} / {formatoReloj(fase.fin - fase.inicio)}
+        </p>
+      )}
+      {(fase.f === 'programada' || fase.f === 'grabando' || fase.f === 'esperando') && (
+        <button type="button" onClick={doble.parar} data-testid="parar-doble" className={`${boton} min-h-14 border-red-400 text-red-300`}>
+          <StopIcon className="size-6" />
+          {fase.f === 'grabando' ? 'Parar los dos' : 'Cancelar'}
+        </button>
+      )}
+      {fase.f === 'parando' && <p>Terminando el vídeo…</p>}
+      {fase.f === 'hecha' && <ResultadoDoble fase={fase} otraVez={doble.otraVez} />}
+    </div>
+  )
+}
+
+function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'], { f: 'hecha' }>; otraVez: () => void }) {
+  const a = fase.analisis
+  const revision = a ? revisarFps(30, a.fpsMediano) : null
+  return (
+    <div
+      className="flex flex-col gap-2"
+      data-testid="resultado-doble"
+      data-doble-id={a?.metadatos?.doble?.id ?? ''}
+      data-inicio={a?.metadatos?.doble?.inicio ?? ''}
+      data-arranque={fase.arranque}
+      data-frames={a?.frames ?? ''}
+    >
+      <p className="font-mono text-xs break-all">{fase.archivo.name}</p>
+      {a && (
+        <p className="font-mono text-sm text-texto-2">
+          {a.frames} frames · {a.duracion.toLocaleString('es-ES', { maximumFractionDigits: 1 })} s ·{' '}
+          {a.fpsMediano.toLocaleString('es-ES', { maximumFractionDigits: 1 })} fps{a.conAudio ? ' · con sonido' : ' · sin sonido'}
+        </p>
+      )}
+      {revision?.bajos && (
+        <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="aviso-fps-doble">
+          La cámara ha dado {a!.fpsMediano.toLocaleString('es-ES', { maximumFractionDigits: 1 })} fps de los 30 pedidos. Puede ser poca luz.
+        </p>
+      )}
+      <p className="text-sm text-texto-2">
+        Está en «Grabaciones de este móvil». Para analizar los dos vídeos juntos, pasa el de un móvil al otro con «Compartir» (Quick Share).
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {typeof navigator.share === 'function' && (
+          <button type="button" onClick={() => void compartir(fase.archivo)} className={boton}>
+            <ShareIcon className="size-5" />
+            Compartir
+          </button>
+        )}
+        <button type="button" onClick={() => guardar(fase.archivo)} className={boton}>
+          <ArrowDownTrayIcon className="size-5" />
+          Guardar
+        </button>
+        <button type="button" onClick={otraVez} data-testid="grabar-otra-vez" className={boton}>
+          Grabar otra vez
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** La sala ya abierta (con su código). */
 function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
   usePantallaEncendida()
@@ -97,8 +261,14 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
   const [flujo, setFlujo] = useState<MediaStream | null>(null)
   const [errorCamara, setErrorCamara] = useState<string | null>(null)
   const video = useRef<HTMLVideoElement>(null)
-  const miEstado = useMiEstado(flujo)
+  // Los pitidos de la cuenta atrás necesitan un contexto de audio creado tras un toque (norma de los navegadores).
+  const [audio, setAudio] = useState<AudioContext | null>(null)
+  const [grabando, setGrabando] = useState(false)
+  const miEstado = useMiEstado(flujo, grabando)
   const sala: Sala = useSala(codigo, vista, miEstado)
+  const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio)
+  const ocupado = doble.fase.f === 'esperando' || doble.fase.f === 'programada' || doble.fase.f === 'grabando' || doble.fase.f === 'parando'
+  if (grabando !== (doble.fase.f === 'grabando')) setGrabando(doble.fase.f === 'grabando')
 
   // Vista previa para encuadrar (y para decirle al otro qué da la cámara).
   useEffect(() => {
@@ -128,7 +298,14 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
   const camaraOtro = otro?.estado?.camara
 
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      className="flex flex-col gap-4"
+      onPointerDown={() => {
+        if (audio) return void (audio.state === 'suspended' && audio.resume())
+        const Ctx = window.AudioContext
+        if (Ctx) setAudio(new Ctx())
+      }}
+    >
       <div className="flex flex-col items-center gap-3 rounded-2xl border border-borde bg-panel p-4">
         <p className="text-sm text-texto-2">Código de la sala</p>
         <p className="font-mono text-4xl tracking-widest" data-testid="codigo-sala">
@@ -164,6 +341,7 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
               role="radio"
               aria-checked={idDeVista(vista) === v.id}
               onClick={() => setVista(v.vista)}
+              disabled={ocupado}
               data-testid={`vista-${v.id}`}
               className={`${boton} text-sm ${idDeVista(vista) === v.id ? 'border-acento bg-acento/15' : ''}`}
             >
@@ -200,7 +378,9 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
         </Aviso>
       )}
 
-      <p className="text-sm text-texto-2">La grabación a la vez de los dos móviles llega en el siguiente paso.</p>
+      {((emparejado && vistasCompatibles(vista, otro?.vista ?? null)) || doble.fase.f !== 'libre') && (
+        <TarjetaGrabar doble={doble} puede={emparejado && reloj !== null && vistasCompatibles(vista, otro?.vista ?? null) && flujo !== null} />
+      )}
 
       <button
         type="button"
@@ -208,6 +388,7 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
           sala.salir()
           alSalir()
         }}
+        disabled={ocupado}
         data-testid="salir-sala"
         className={boton}
       >

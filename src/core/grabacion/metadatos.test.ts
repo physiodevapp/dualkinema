@@ -19,6 +19,20 @@ describe('metadatos de la grabación', () => {
     expect(leerMetadatos(nuevo)).toEqual({ ...m, formato: 2 })
   })
 
+  it('con la grabación doble: ida y vuelta, y si esa parte está rota se lee el resto sin ella', () => {
+    const doble = {
+      ...m,
+      doble: { id: 'a1b2c3d4-0000-4000-8000-000000000000', vista: { plano: 'frontal', ve: 'delante' } as const, inicio: 12345.6, relojOtro: { desfase: -1500.25, cota: 51 }, deriva: { ppm: 96, errorPpm: 58 } },
+    }
+    expect(leerMetadatos(textoMetadatos(doble))).toEqual(doble)
+    const sinReloj = { ...m, doble: { ...doble.doble, relojOtro: null, deriva: null } }
+    expect(leerMetadatos(textoMetadatos(sinReloj))).toEqual(sinReloj)
+    expect(leerMetadatos(JSON.stringify({ ...m, doble: { ...doble.doble, vista: { plano: 'sagital', mira: 'arriba' } } }))).toEqual(m)
+    expect(leerMetadatos(JSON.stringify({ ...m, doble: { ...doble.doble, inicio: 'ayer' } }))).toEqual(m)
+    // Un reloj del otro roto no tira la grabación doble: queda sin reloj.
+    expect(leerMetadatos(JSON.stringify({ ...m, doble: { ...doble.doble, relojOtro: { desfase: 1, cota: -1 } } }))?.doble?.relojOtro).toBeNull()
+  })
+
   it('lo que no es de dualkinema o está roto no se lee', () => {
     expect(leerMetadatos(null)).toBeNull()
     expect(leerMetadatos('')).toBeNull()

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import type { Deriva } from '../core/reloj/deriva'
 import type { EstimacionReloj } from '../core/reloj/desfase'
@@ -33,7 +33,16 @@ export interface Sala {
   /** El otro móvil habla otra versión del protocolo: hay que recargar la app en los dos. */
   readonly versionDistinta: boolean
   readonly salir: () => void
+  /** Manda un mensaje al otro móvil; false si ahora no hay conexión. */
+  readonly enviar: (m: Mensaje) => boolean
+  /** La estimación del reloj del otro en este instante (no la que se muestra, que se refresca cada segundo). */
+  readonly relojAhora: () => EstimacionReloj | null
+  readonly derivaAhora: () => Deriva | null
+  /** Oye los mensajes de la grabación (programar, confirmar, parar, cancelar). Devuelve cómo dejar de oír. */
+  readonly escuchar: (oyente: (m: Mensaje) => void) => () => void
 }
+
+const DE_GRABACION = new Set<Mensaje['tipo']>(['programar', 'confirmar', 'parar', 'cancelar'])
 
 const ESTADO_CADA_MS = 2000
 const RELOJ_CADA_MS = 1000
@@ -47,6 +56,8 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
   const [reloj, setReloj] = useState<EstimacionReloj | null>(null)
   const [deriva, setDeriva] = useState<Deriva | null>(null)
   const canal = useRef<CanalSala | null>(null)
+  const relojRef = useRef<RelojSala | null>(null)
+  const oyentes = useRef(new Set<(m: Mensaje) => void>())
   // Lo último que hay que mandar, para los temporizadores y los avisos (que no se vuelven a crear al cambiar).
   const vistaRef = useRef(vista)
   const estadoRef = useRef(miEstado)
@@ -58,6 +69,7 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
     const hola = () => canal.current?.enviar({ tipo: 'hola', version: VERSION_PROTOCOLO, vista: vistaRef.current })
     const estado = () => canal.current?.enviar({ tipo: 'estado', ...estadoRef.current })
     const relojSala = new RelojSala((m: Mensaje) => canal.current?.enviar(m) ?? false, ahora)
+    relojRef.current = relojSala
 
     const c = new CanalSala(`${urlRele()}/sala/${codigo}`, (e) => {
       if (e.tipo === 'estado') {
@@ -92,6 +104,7 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
           setOtro((o) => ({ vista: o?.vista ?? null, version: o?.version ?? VERSION_PROTOCOLO, estado: recibido }))
         } else if (m.tipo === 'ping' || m.tipo === 'pong') relojSala.recibir(m)
         else if (m.tipo === 'adios') setOtro(null)
+        else if (DE_GRABACION.has(m.tipo)) for (const o of oyentes.current) o(m)
       }
     })
     canal.current = c
@@ -107,6 +120,7 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
       relojSala.parar()
       c.cerrar()
       canal.current = null
+      relojRef.current = null
     }
   }, [codigo])
 
@@ -116,12 +130,20 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
     canal.current?.enviar({ tipo: 'hola', version: VERSION_PROTOCOLO, vista })
   }, [vista])
 
-  return {
-    conexion,
-    otro,
-    reloj,
-    deriva,
-    versionDistinta: otro !== null && otro.version !== VERSION_PROTOCOLO,
-    salir: () => canal.current?.cerrar(),
-  }
+  // Solo leen refs: las mismas en cada render (quien se suscribe con `escuchar` no se rehace).
+  const acciones = useMemo(
+    () => ({
+      salir: () => canal.current?.cerrar(),
+      enviar: (m: Mensaje) => canal.current?.enviar(m) ?? false,
+      relojAhora: () => relojRef.current?.estimacion() ?? null,
+      derivaAhora: () => relojRef.current?.deriva() ?? null,
+      escuchar: (oyente: (m: Mensaje) => void) => {
+        oyentes.current.add(oyente)
+        return () => void oyentes.current.delete(oyente)
+      },
+    }),
+    [],
+  )
+
+  return { conexion, otro, reloj, deriva, versionDistinta: otro !== null && otro.version !== VERSION_PROTOCOLO, ...acciones }
 }
