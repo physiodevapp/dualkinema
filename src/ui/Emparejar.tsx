@@ -285,6 +285,11 @@ function ResultadoDoble({
       data-plan-pitidos={a?.metadatos?.doble?.pitidos ? JSON.stringify(a.metadatos.doble.pitidos) : ''}
     >
       <p className="font-mono text-xs break-all">{fase.archivo.name}</p>
+      {fase.aviso && (
+        <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="aviso-interrumpida">
+          {fase.aviso}
+        </p>
+      )}
       {a && (
         <p className="font-mono text-sm text-texto-2">
           {a.frames} frames · {a.duracion.toLocaleString('es-ES', { maximumFractionDigits: 1 })} s ·{' '}

@@ -6,7 +6,8 @@ import { aMiReloj, ESPERA_CONFIRMACION_MS, MARGEN_PREPARAR_MS, motivoNoPreparado
 import type { Mensaje, MotivoCancelar } from '../core/sala/protocolo'
 import { instantePitido } from '../core/sincronia/pitido'
 import { analizarGrabacion, type AnalisisGrabacion } from '../media/grabaciones'
-import { DURACION_MAXIMA_S, Grabadora, type Calidad } from '../media/grabadora'
+import { Grabadora, type Calidad } from '../media/grabadora'
+import { desfaseEn } from '../core/reloj/desfase'
 import type { Tiempos } from '../media/captura'
 import { buscarPitidos, type PitidosGrabados } from '../media/pitido'
 import { ahora } from './config'
@@ -99,6 +100,7 @@ export function useGrabacionDoble(
   const temporizadores = useRef<ReturnType<typeof setTimeout>[]>([])
   const preparada = useRef<Promise<Awaited<ReturnType<typeof Grabadora.preparar>> | null> | null>(null)
   const grabadora = useRef<Grabadora | null>(null)
+  const montado = useRef(true)
   // Cuándo pita cada uno (s desde el inicio) en la grabación en curso, y si este llegó a pitar.
   const pitidos = useRef<{ propio: number; otro: number; pito: boolean } | null>(null)
   // Lo que cambia y leen los temporizadores y los mensajes.
@@ -123,7 +125,8 @@ export function useGrabacionDoble(
   }, [])
 
   const terminar = useCallback(
-    async (id: string, arranque: number) => {
+    /** `aviso`: por qué se ha parado antes de tiempo (se guarda lo grabado hasta ahí). */
+    async (id: string, arranque: number, aviso?: string) => {
       limpiar()
       const g = grabadora.current
       grabadora.current = null
@@ -135,7 +138,7 @@ export function useGrabacionDoble(
         const t = await g.parar()
         const analisis = await analizarGrabacion(t.archivo).catch(() => null)
         const oidos = plan ? await buscarPitidos(t.archivo, plan.propio, plan.otro).catch(() => null) : null
-        setFase({ f: 'hecha', id, archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, arranque, pitidos: oidos, pito: plan?.pito ?? false, tiempos: g.tiempos })
+        setFase({ f: 'hecha', id, archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, arranque, pitidos: oidos, pito: plan?.pito ?? false, tiempos: g.tiempos, ...(aviso ? { aviso } : {}) })
       } catch (e) {
         setFase({ f: 'libre', aviso: `No se ha podido terminar la grabación: ${e instanceof Error ? e.message : String(e)}` })
       }
@@ -163,12 +166,16 @@ export function useGrabacionDoble(
           id,
           vista: v,
           inicio,
-          relojOtro: reloj ? { desfase: reloj.desfase, cota: reloj.cota } : null,
+          // El reloj del otro en el inicio programado (no en el instante de la medida: se separan unos 140 ppm).
+          relojOtro: reloj ? desfaseEn(reloj, inicio, deriva) : null,
           deriva: deriva ? { ppm: deriva.ppm, errorPpm: deriva.errorPpm } : null,
           pitidos: { propio: plan.propio, otro: plan.otro },
         }
         const nombre = nombreGrabacion(new Date(Date.now() + (inicio - ahora()))).replace('.mp4', `-${SUFIJO(v)}.mp4`)
-        preparada.current = Grabadora.preparar(f, calidad, nombre, crypto.randomUUID(), doble).catch(() => null)
+        // La cámara de ahora (Android la cierra y `useCamara` la reabre: el flujo de cuando se programó puede estar muerto).
+        const camara = vivo.current.flujo
+        const viva = !!camara && camara.getVideoTracks().length > 0 && camara.getVideoTracks().every((t) => t.readyState === 'live')
+        preparada.current = camara && viva ? Grabadora.preparar(camara, calidad, nombre, crypto.randomUUID(), doble).catch(() => null) : Promise.resolve(null)
       })
       for (const s3 of [3, 2, 1]) en(inicio - s3 * 1000, () => pitar(a))
       // El pitido de ida y vuelta, ya grabando: se programa en Web Audio un poco antes para que suene a su hora exacta.
@@ -185,15 +192,18 @@ export function useGrabacionDoble(
           if (!p) throw new Error('no se ha podido preparar la grabación')
           // El tiempo 0 del vídeo es el instante programado (en el reloj de la página: `ahora` puede llevar un desfase de prueba).
           const g = await p.arrancar(inicio - (ahora() - performance.now()))
+          // Mientras arrancaba se ha podido cancelar (este o el otro móvil) o salir de la pantalla: no se graba.
+          if (!montado.current || faseRef.current.f !== 'programada' || faseRef.current.id !== id) return void g.cancelar()
           grabadora.current = g
           const arranque = ahora()
-          const finReal = Math.min(fin ?? Infinity, inicio + DURACION_MAXIMA_S * 1000)
+          // En memoria (si OPFS falla) se graba menos tiempo: `duracionMaxima` es la de esta grabación.
+          const finReal = Math.min(fin ?? Infinity, inicio + g.duracionMaxima * 1000)
           setFase({ f: 'grabando', id, inicio, fin: finReal, arranque })
           en(finReal, () => void terminar(id, arranque))
-          g.error.catch(() => {
+          g.error.catch((e: unknown) => {
             if (grabadora.current !== g) return
             vivo.current.sala.enviar({ tipo: 'cancelar', grabacion: id, motivo: 'fallo' })
-            void terminar(id, arranque)
+            void terminar(id, arranque, `La grabación se ha interrumpido (${e instanceof Error ? e.message : String(e)}): se guarda lo grabado hasta ahí.`)
           })
         } catch (e) {
           vivo.current.sala.enviar({ tipo: 'cancelar', grabacion: id, motivo: 'fallo' })
@@ -252,14 +262,15 @@ export function useGrabacionDoble(
   )
 
   // Al salir de la pantalla, nada se queda grabando ni preparado.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    montado.current = true
+    return () => {
+      montado.current = false
       limpiar()
       void descartarPreparada()
       void grabadora.current?.cancelar()
-    },
-    [limpiar, descartarPreparada],
-  )
+    }
+  }, [limpiar, descartarPreparada])
 
   const programar = useCallback(
     (cuentaAtrasS: number, duracionS: number | null) => {

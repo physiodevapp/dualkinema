@@ -107,3 +107,26 @@ export function estimarDesfase(lista: readonly Intercambio[]): EstimacionReloj |
 /** Un instante del reloj local en el remoto, y al revés. */
 export const aRemoto = (e: Pick<EstimacionReloj, 'desfase'>, tLocal: number): number => tLocal + e.desfase
 export const aLocal = (e: Pick<EstimacionReloj, 'desfase'>, tRemoto: number): number => tRemoto - e.desfase
+
+/**
+ * Deriva que se supone como mucho entre dos móviles cuando no se ha medido (ppm). La pareja del usuario se separa unos
+ * 140 ppm (tablet y Pixel 8): se deja margen.
+ */
+export const DERIVA_MAXIMA_PPM = 300
+
+/**
+ * La estimación llevada a otro instante local (ms), p. ej. el inicio programado de una grabación, que llega 5–15 s
+ * después de la última medida y unos 15 s más tarde que el instante al que se refiere (la media de la ventana). Los
+ * relojes se separan entretanto: la cota deja de ser rigurosa si no crece. Con la deriva medida, el desfase se lleva
+ * por ella y la cota crece con 3 errores típicos; sin medir, con DERIVA_MAXIMA_PPM.
+ */
+export function desfaseEn(
+  e: EstimacionReloj,
+  instante: number,
+  deriva: { readonly ppm: number; readonly errorPpm: number } | null,
+): { readonly desfase: number; readonly cota: number } {
+  const dt = instante - e.instante
+  if (deriva && Number.isFinite(deriva.ppm) && Number.isFinite(deriva.errorPpm))
+    return { desfase: e.desfase + deriva.ppm * 1e-6 * dt, cota: e.cota + 3 * deriva.errorPpm * 1e-6 * Math.abs(dt) }
+  return { desfase: e.desfase, cota: e.cota + DERIVA_MAXIMA_PPM * 1e-6 * Math.abs(dt) }
+}
