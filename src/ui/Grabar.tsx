@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDownTrayIcon, ArrowLeftIcon, FilmIcon, ShareIcon, StopIcon, TrashIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, ArrowLeftIcon, FilmIcon, ShareIcon, Square2StackIcon, StopIcon, TrashIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { nombreGrabacion, revisarFps } from '../core/grabacion/revision'
 import { pedirPersistencia } from '../persistencia/almacen'
 import {
@@ -14,8 +14,10 @@ import {
 } from '../media/grabaciones'
 import { CALIDAD_POR_DEFECTO, CALIDADES, Grabadora, datosCamara, type Calidad } from '../media/grabadora'
 import { InfoGlosario } from './glosario/Glosario'
+import type { Tiempos } from '../media/captura'
 import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { AVISO_MICRO_EXTERNO } from '../media/microfono'
+import CalibrarCamara from './CalibrarCamara'
 import { useCamara } from './useCamara'
 import { useCodificador } from './useCodificador'
 import { useMicroExterno } from './useMicroExterno'
@@ -41,6 +43,8 @@ interface Resultado {
   readonly enAlmacen: boolean
   readonly analisis: AnalisisGrabacion | null
   readonly fpsPedidos: number
+  /** Cómo quedaron colocados los frames y el audio (`media/captura.ts`). */
+  readonly tiempos: Tiempos
 }
 
 async function compartir(archivo: File, alError: (m: string) => void) {
@@ -65,7 +69,17 @@ function guardar(archivo: File) {
 
 const boton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-borde px-3 text-sm text-texto disabled:opacity-40'
 
-export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) => void; alSalir: () => void }) {
+/** Nombre de una grabación doble (`…-perfil.mp4`, `…-frente.mp4`, `…-espalda.mp4`): se ofrece abrirla con la otra. */
+const esDeGrabacionDoble = (nombre: string) => /-(perfil|frente|espalda)\.mp4$/.test(nombre)
+
+interface Props {
+  readonly alAbrir: (archivo: File) => void
+  /** Abrir como grabación doble: este vídeo y, después, el del otro móvil. */
+  readonly alAbrirDoble: (archivo: File) => void
+  readonly alSalir: () => void
+}
+
+export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
   usePantallaEncendida()
   const [calidad, setCalidad] = useState<Calidad>(CALIDAD_POR_DEFECTO)
   const [grabadora, setGrabadora] = useState<Grabadora | null>(null)
@@ -127,7 +141,7 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
       } catch (e) {
         setError(`Grabado, pero no se ha podido revisar: ${mensajeDe(e)}`)
       }
-      setResultado({ archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, fpsPedidos: calidad.fps })
+      setResultado({ archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, fpsPedidos: calidad.fps, tiempos: g.tiempos })
       await refrescar()
     } catch (e) {
       setGrabadora(null)
@@ -264,6 +278,8 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
         )}
       </div>
 
+      <CalibrarCamara flujo={flujo} calidad={calidad} ocupado={grabando || ocupado} />
+
       {error && (
         <p role="alert" data-testid="grabar-error" className="rounded-md border border-red-400/50 p-3 text-sm text-red-300">
           {error}
@@ -271,7 +287,7 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
       )}
 
       {resultado && (
-        <div className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="grabar-resultado" data-metadatos={resultado.analisis?.metadatos ? 'sí' : 'no'}>
+        <div className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="grabar-resultado" data-metadatos={resultado.analisis?.metadatos ? 'sí' : 'no'} data-tiempos={resultado.tiempos} data-retraso-camara={resultado.analisis?.metadatos?.camara?.retrasoMs ?? ''}>
           <h3 className="font-medium">Grabado</h3>
           {resultado.analisis && (
             <p className="font-mono text-sm text-texto-2" data-testid="grabar-revision">
@@ -338,6 +354,12 @@ export default function Grabar({ alAbrir, alSalir }: { alAbrir: (archivo: File) 
                     <FilmIcon className="size-5" />
                     Abrir
                   </button>
+                  {esDeGrabacionDoble(g.nombre) && (
+                    <button type="button" onClick={() => void conGuardada(g.nombre, alAbrirDoble)} disabled={grabando} data-testid="grabacion-abrir-doble" className={boton}>
+                      <Square2StackIcon className="size-5" />
+                      Abrir con el otro vídeo
+                    </button>
+                  )}
                   {puedeCompartir && (
                     <button type="button" onClick={() => void conGuardada(g.nombre, (f) => compartir(f, setError))} className={boton}>
                       <ShareIcon className="size-5" />

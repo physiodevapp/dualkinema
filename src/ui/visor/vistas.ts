@@ -2,6 +2,7 @@ import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { IdMarcador, Muestra2D, Sincronia } from '../../core/modelo/tipos'
+import type { PropuestaDoble } from '../../core/sincronia/doble'
 import type { VideoAbierto } from '../../media/video'
 import type { useVista } from './useVista'
 
@@ -24,10 +25,12 @@ export interface EntradaVista {
    * (`marcadoresParaVista`).
    */
   readonly marcadores?: readonly IdMarcador[]
+  /** Al abrir una grabación doble (fase 4): el desfase que se propone para esta vista, sin aplicar. */
+  readonly propuesta?: PropuestaDoble
 }
 
 /** Una vista con todo su estado (lo que devuelve `useVista`) y los datos de su entrada que necesita la sesión. */
-export type VistaViva = ReturnType<typeof useVista> & Pick<EntradaVista, 'id' | 'orientacion' | 'sincronia'> & {
+export type VistaViva = ReturnType<typeof useVista> & Pick<EntradaVista, 'id' | 'orientacion' | 'sincronia' | 'propuesta'> & {
   /** Su desfase respecto a la referencia, en s (`desfase` a secas es el de la escala). */
   readonly desfaseS: number
   /** Los marcadores que sigue (los de la entrada o, en una vista nueva, los de su plano). */

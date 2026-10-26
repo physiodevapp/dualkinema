@@ -179,6 +179,24 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'grabacion-doble',
+    titulo: 'Abrir una grabación doble',
+    texto: [
+      'Los dos vídeos de una grabación con dos móviles llevan dentro el mismo identificador de pareja, la vista de cada uno y su reloj. «Abrir la grabación doble» (en la portada, o desde «Grabaciones de este móvil» con el propio vídeo ya elegido) comprueba que son pareja, pone el de perfil como vista A y la orientación de cada uno sin preguntarla, y abre la pestaña «Vídeo» con el desfase que se propone.',
+      'Se propone el pitido de ida y vuelta si es fiable (calidad desde 3 y una distancia entre los móviles de 0,3 a 15 m) y cae dentro de lo que permite el reloj común (su cota más 50 ms). Si no, el reloj, que es menos preciso (± su cota, unas decenas de ms), y se dice por qué. Nada cambia hasta pulsar «Aplicar».',
+      'Las dos cifras miden el sonido o los relojes, no la imagen: cada móvil puede guardar el sonido algo desplazado de su imagen. Por eso conviene comprobarlo con un evento visual (una palmada que se vea en las dos vistas): si discrepan más de lo que explican las dos precisiones, se avisa y se puede usar el del evento.',
+    ],
+  },
+  {
+    id: 'retraso-camara',
+    titulo: 'Retraso de la cámara',
+    texto: [
+      'Al grabar con la app, cada frame y cada trozo de sonido se colocan en el instante en que se capturaron. Pero el instante que da el navegador a cada frame no cuenta lo que tarda la propia cámara en entregarlo (exponer, procesar), así que la imagen queda unas decenas de ms tarde respecto al sonido. Ese retraso es fijo en cada móvil.',
+      'Para medirlo, «Calibrar la cámara» (en «Grabar con este móvil»): se graban unas palmadas, la app encuentra cada una en el sonido y enseña los frames de alrededor, y se toca el primero con las manos juntas. El contacto está entre ese frame y el anterior: cada palmada da un intervalo para el retraso y, con varias, se toma lo que tienen en común, con su margen («± N ms»). Más palmadas, menos margen.',
+      'Se guarda en el móvil (no en una sesión) y desde entonces se descuenta a cada frame al grabar, también en la grabación doble; el vídeo lleva anotado lo que se descontó. Si se cambia de móvil o de cámara, hay que volver a calibrar.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [

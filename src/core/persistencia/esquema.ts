@@ -35,9 +35,15 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  * borraría la segunda: con el 3, no la abre. Las trayectorias no cambian (cada
  * vista ya guarda las de todos los marcadores del modelo; las que no sigue van
  * vacías).
+ *
+ * Esquema 4 (fase 4, grabación doble): la sincronía gana los métodos `pitido`
+ * (con el desfase que dio, su calidad y la distancia entre los móviles) y
+ * `reloj` (con el desfase y su cota). Lo guardado antes vale tal cual (la
+ * migración 3 → 4 no cambia nada), pero una app de esquema 3 rechazaría el
+ * método nuevo como inválido en vez de decir que es de una versión más nueva.
  */
 
-export const ESQUEMA_ACTUAL = 3
+export const ESQUEMA_ACTUAL = 4
 
 export interface VistaCabecera {
   readonly id: string
@@ -182,6 +188,8 @@ export const MIGRACIONES_CABECERA: Migraciones = {
     const primera = r.vistas[0] as unknown
     return { ...r, vistas, referencia: esObjeto(primera) ? primera.id : undefined }
   },
+  // 3 → 4 (fase 4): solo se añaden métodos de sincronía; lo guardado vale tal cual.
+  3: (r) => r,
 }
 export const MIGRACIONES_DATOS: Migraciones = {
   1: (r) => {
@@ -202,6 +210,8 @@ export const MIGRACIONES_DATOS: Migraciones = {
   },
   // 2 → 3: las trayectorias no cambian.
   2: (r) => r,
+  // 3 → 4: tampoco.
+  3: (r) => r,
 }
 
 /**
@@ -262,7 +272,7 @@ function errorModelo(v: unknown): string | null {
   return null
 }
 
-const METODOS: readonly MetodoSincronia[] = ['ninguna', 'evento', 'audio', 'manual']
+const METODOS: readonly MetodoSincronia[] = ['ninguna', 'evento', 'audio', 'manual', 'pitido', 'reloj']
 const esNumero = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
 function errorSincronia(v: unknown): string | null {
@@ -271,6 +281,12 @@ function errorSincronia(v: unknown): string | null {
   if (v.audio !== undefined && !(esObjeto(v.audio) && esNumero(v.audio.calidad) && v.audio.calidad >= 0 && esNumero(v.audio.desfase))) {
     return 'sincronía por audio no válida'
   }
+  const p = v.pitido
+  if ((v.metodo === 'pitido' || p !== undefined) && !(esObjeto(p) && esNumero(p.desfase) && esNumero(p.calidad) && p.calidad >= 0 && esNumero(p.distancia))) {
+    return 'sincronía por pitido no válida'
+  }
+  const r = v.reloj
+  if ((v.metodo === 'reloj' || r !== undefined) && !(esObjeto(r) && esNumero(r.desfase) && esNumero(r.cota) && r.cota >= 0)) return 'sincronía por reloj no válida'
   return null
 }
 

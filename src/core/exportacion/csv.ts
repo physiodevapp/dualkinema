@@ -5,8 +5,7 @@ import type { VelocidadMarcador } from '../filtros/derivadas'
 import type { TrayectoriaFiltrada } from '../filtros/tramos'
 import type { OrientacionVista } from '../geometria/canonico'
 import type { IdMarcador, Muestra2D, Sincronia } from '../modelo/tipos'
-import { compararConEvento } from '../sincronia/audio'
-import { TASA_ENVOLVENTE } from '../sincronia/envolvente'
+import { compararConEvento, precisionDelMetodo, seComprueba } from '../sincronia/audio'
 import { ajusteManual, desfaseDeEvento } from '../sincronia/evento'
 
 /*
@@ -107,8 +106,9 @@ export interface DatosExportacion {
 function filasSincronia(x: SincronizacionExportada, n: (v: number, d: number) => string): [string, string][] {
   if (x.referencia) return [['sincronización', 'vista de referencia: su tiempo es el tiempo común (desfase 0)']]
   const s = x.sincronia
-  const metodo = { ninguna: 'sin sincronizar', evento: 'evento visual', audio: 'audio', manual: 'puesta a mano' }[s.metodo]
-  const ms = (v: number) => `${v < 0 ? '−' : '+'}${n(Math.abs(v) * 1000, 0)} ms`
+  const metodo = { ninguna: 'sin sincronizar', evento: 'evento visual', audio: 'audio', manual: 'puesta a mano', pitido: 'pitido de ida y vuelta', reloj: 'reloj común de los dos móviles' }[s.metodo]
+  // El signo, el del valor ya redondeado (sin «−0 ms»).
+  const ms = (v: number) => `${Math.round(v * 1000) < 0 ? '−' : '+'}${n(Math.abs(v) * 1000, 0)} ms`
   const inc = x.incertidumbreEventoS
   const instantes = (e: NonNullable<Sincronia['evento']>) => `evento en ${n(e.referencia, 3)} s de la referencia y en ${n(e.vista, 3)} s de esta vista`
   let texto = `desfase ${n(x.desfaseS, 3)} s respecto a la vista de referencia; método: ${metodo}`
@@ -116,15 +116,21 @@ function filasSincronia(x: SincronizacionExportada, n: (v: number, d: number) =>
   if (s.metodo === 'evento') {
     if (inc !== undefined) texto += `; precisión ±${n(inc * 1000, 0)} ms`
     if (s.evento) texto += `; ${instantes(s.evento)}`
-  } else if (s.metodo === 'audio' && s.audio) {
-    texto += `; calidad del pico ${n(s.audio.calidad, 1)}; precisión del audio ±${n(1000 / TASA_ENVOLVENTE, 1)} ms (no incluye el retardo entre sonido e imagen de cada móvil)`
+  } else if (seComprueba(s)) {
+    const precision = precisionDelMetodo(s) ?? 0
+    const sinRetardo = ' (no incluye el retardo entre sonido e imagen de cada móvil)'
+    if (s.metodo === 'audio' && s.audio) texto += `; calidad del pico ${n(s.audio.calidad, 1)}; precisión del audio ±${n(precision * 1000, 1)} ms${sinRetardo}`
+    if (s.metodo === 'pitido' && s.pitido) {
+      texto += `; calidad ${n(s.pitido.calidad, 1)}; móviles a ${n(s.pitido.distancia, 2)} m; precisión del audio ±${n(precision * 1000, 1)} ms${sinRetardo}`
+    }
+    if (s.metodo === 'reloj') texto += `; precisión ±${n(precision * 1000, 0)} ms`
     if (s.evento) {
-      const c = compararConEvento({ desfase: s.audio.desfase, incertidumbre: 1 / TASA_ENVOLVENTE }, s.evento, inc ?? 0)
+      const c = compararConEvento({ desfase: x.desfaseS, incertidumbre: precision }, s.evento, inc ?? 0)
       filas.push([
         'sincronización: comprobación',
         `con un evento visual (no da el desfase): ${instantes(s.evento)}; desfase por el evento ${n(desfaseDeEvento(s.evento), 3)} s` +
           (inc !== undefined ? ` ±${n(inc * 1000, 0)} ms` : '') +
-          `; diferencia con el audio ${ms(c.diferencia)}${c.discrepan ? ' (discrepan)' : ''}`,
+          `; diferencia con el desfase aplicado ${ms(c.diferencia)}${c.discrepan ? ' (discrepan)' : ''}`,
       ])
     }
   }

@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowRightOnRectangleIcon, LinkIcon, PlusIcon, ShareIcon, StopIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
+import {
+  ArrowDownTrayIcon,
+  ArrowLeftIcon,
+  ArrowRightOnRectangleIcon,
+  LinkIcon,
+  PlusIcon,
+  ShareIcon,
+  Square2StackIcon,
+  StopIcon,
+  VideoCameraIcon,
+} from '@heroicons/react/24/outline'
 import { encode } from 'uqr'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { revisarFps } from '../core/grabacion/revision'
@@ -126,7 +136,7 @@ function guardar(archivo: File) {
 }
 
 /** Programar, la cuenta atrás, grabando y el resultado de la grabación doble. */
-function TarjetaGrabar({ doble, puede }: { doble: GrabacionDoble; puede: boolean }) {
+function TarjetaGrabar({ doble, puede, alAbrirDoble }: { doble: GrabacionDoble; puede: boolean; alAbrirDoble: (archivo: File) => void }) {
   const [cuenta, setCuenta] = useState<number>(10)
   const [duracion, setDuracion] = useState<number | null>(30)
   const [, setTic] = useState(0)
@@ -211,7 +221,7 @@ function TarjetaGrabar({ doble, puede }: { doble: GrabacionDoble; puede: boolean
         </button>
       )}
       {fase.f === 'parando' && <p>Terminando el vídeo…</p>}
-      {fase.f === 'hecha' && <ResultadoDoble fase={fase} otraVez={doble.otraVez} />}
+      {fase.f === 'hecha' && <ResultadoDoble fase={fase} otraVez={doble.otraVez} alAbrirDoble={alAbrirDoble} />}
     </div>
   )
 }
@@ -244,7 +254,15 @@ function PitidosDoble({ fase }: { fase: Extract<GrabacionDoble['fase'], { f: 'he
   )
 }
 
-function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'], { f: 'hecha' }>; otraVez: () => void }) {
+function ResultadoDoble({
+  fase,
+  otraVez,
+  alAbrirDoble,
+}: {
+  fase: Extract<GrabacionDoble['fase'], { f: 'hecha' }>
+  otraVez: () => void
+  alAbrirDoble: (archivo: File) => void
+}) {
   const a = fase.analisis
   const revision = a ? revisarFps(30, a.fpsMediano) : null
   return (
@@ -255,6 +273,7 @@ function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'
       data-inicio={a?.metadatos?.doble?.inicio ?? ''}
       data-arranque={fase.arranque}
       data-frames={a?.frames ?? ''}
+      data-tiempos={fase.tiempos}
       data-plan-pitidos={a?.metadatos?.doble?.pitidos ? JSON.stringify(a.metadatos.doble.pitidos) : ''}
     >
       <p className="font-mono text-xs break-all">{fase.archivo.name}</p>
@@ -271,7 +290,8 @@ function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'
       )}
       <PitidosDoble fase={fase} />
       <p className="text-sm text-texto-2">
-        Está en «Grabaciones de este móvil». Para analizar los dos vídeos juntos, pasa el de un móvil al otro con «Compartir» (Quick Share).
+        Está en «Grabaciones de este móvil». Para analizar los dos vídeos juntos, pasa el de un móvil al otro con «Compartir» (Quick Share) y, en el que lo
+        recibe, «Abrir con el otro vídeo».
       </p>
       <div className="flex flex-wrap gap-2">
         {typeof navigator.share === 'function' && (
@@ -280,9 +300,13 @@ function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'
             Compartir
           </button>
         )}
-        <button type="button" onClick={() => guardar(fase.archivo)} className={boton}>
+        <button type="button" onClick={() => guardar(fase.archivo)} data-testid="guardar-doble" className={boton}>
           <ArrowDownTrayIcon className="size-5" />
           Guardar
+        </button>
+        <button type="button" onClick={() => alAbrirDoble(fase.archivo)} data-testid="abrir-con-otro" className={boton}>
+          <Square2StackIcon className="size-5" />
+          Abrir con el otro vídeo
         </button>
         <button type="button" onClick={otraVez} data-testid="grabar-otra-vez" className={boton}>
           Grabar otra vez
@@ -293,7 +317,7 @@ function ResultadoDoble({ fase, otraVez }: { fase: Extract<GrabacionDoble['fase'
 }
 
 /** La sala ya abierta (con su código). */
-function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
+function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: () => void; alAbrirDoble: (archivo: File) => void }) {
   usePantallaEncendida()
   const [vista, setVista] = useState<OrientacionVista | null>(null)
   // 1080p, o 720p si este móvil codifica por software (no llega a 30 fps: algo ayuda).
@@ -416,7 +440,7 @@ function EnSala({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
       )}
 
       {((emparejado && vistasCompatibles(vista, otro?.vista ?? null)) || doble.fase.f !== 'libre') && (
-        <TarjetaGrabar doble={doble} puede={emparejado && reloj !== null && vistasCompatibles(vista, otro?.vista ?? null) && flujo !== null} />
+        <TarjetaGrabar doble={doble} alAbrirDoble={alAbrirDoble} puede={emparejado && reloj !== null && vistasCompatibles(vista, otro?.vista ?? null) && flujo !== null} />
       )}
 
       <button
@@ -445,7 +469,14 @@ function dejarEnLaDireccion(codigo: string | null) {
   history.replaceState(null, '', `${location.pathname}${q ? `?${q}` : ''}`)
 }
 
-export default function Emparejar({ codigoInicial, alSalir }: { codigoInicial: string | null; alSalir: () => void }) {
+interface Props {
+  readonly codigoInicial: string | null
+  readonly alSalir: () => void
+  /** Abrir como grabación doble lo que acaba de grabar este móvil (después se elige el vídeo del otro). */
+  readonly alAbrirDoble: (archivo: File) => void
+}
+
+export default function Emparejar({ codigoInicial, alSalir, alAbrirDoble }: Props) {
   const [codigo, setCodigo] = useState<string | null>(codigoInicial)
   const [escrito, setEscrito] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -469,7 +500,15 @@ export default function Emparejar({ codigoInicial, alSalir }: { codigoInicial: s
       </div>
 
       {codigo ? (
-        <EnSala key={codigo} codigo={codigo} alSalir={salir} />
+        <EnSala
+          key={codigo}
+          codigo={codigo}
+          alSalir={salir}
+          alAbrirDoble={(archivo) => {
+            dejarEnLaDireccion(null)
+            alAbrirDoble(archivo)
+          }}
+        />
       ) : (
         <div className="flex flex-col gap-4 rounded-2xl border border-borde bg-panel p-4">
           <p className="text-sm text-texto-2">

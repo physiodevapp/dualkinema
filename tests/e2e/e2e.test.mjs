@@ -3371,7 +3371,7 @@ describe('dos vistas: sincronizar por el audio y comprobar con el evento visual'
     assert.doesNotMatch(sinc, /evento en/)
     const comprobacion = cabecera.find((l) => l.startsWith('# sincronización: comprobación;'))
     assert.match(comprobacion, /con un evento visual \(no da el desfase\)/)
-    assert.match(comprobacion, /diferencia con el audio \+40 ms \(discrepan\)/)
+    assert.match(comprobacion, /diferencia con el desfase aplicado \+40 ms \(discrepan\)/)
     await p.getByTestId('vista-A').click()
     await esperarQuieto(p)
     await abrirPestana(p, 'video')
@@ -3852,9 +3852,15 @@ describe('laboratorio de grabación (fase 4, paso 1)', () => {
       // El último apartado es el de las cámaras: cuando está, están todos.
       await p.waitForFunction(() => document.querySelector('[data-testid=lab-informe]')?.value.includes('## Cámaras'), null, { timeout: 120000 })
       const informe = await p.getByTestId('lab-informe').inputValue()
-      for (const titulo of ['## Entorno', '## Almacenamiento y pantalla', '## Códecs que codifica', '## Micrófono sin procesar', '## Cámaras']) {
+      for (const titulo of ['## Entorno', '## Almacenamiento y pantalla', '## Códecs que codifica', '## Micrófono sin procesar', '## Marcas de tiempo de captura', '## Cámaras']) {
         assert.ok(informe.includes(titulo), `falta ${titulo}`)
       }
+      // El audio marca su captura en el reloj de la página (el Chromium de la nube, como el Pixel 8) o en el del vídeo
+      // (el de la CI, como la tablet): en los dos casos, pasado al reloj de la página, llega al momento (paso 8).
+      const marcas = informe.slice(informe.indexOf('## Marcas de tiempo de captura'), informe.indexOf('## Cámaras'))
+      assert.match(marcas, /audio:\n\s+trozos: \d+\n\s+mismoRelojQuePerformanceNow: (sí|no)/)
+      const retrasoAudio = Number(/retrasoAudioMs: (-?[\d.]+)/.exec(marcas)?.[1])
+      assert.ok(Math.abs(retrasoAudio) < 50, `el audio, pasado al reloj de la página, llega ${retrasoAudio} ms después de capturarse`)
       assert.match(informe, /VideoEncoder: sí/)
       assert.match(informe, /MediaStreamTrackProcessor: sí/)
       assert.match(informe, /echoCancellation: no/, 'el micrófono se abre sin cancelación de eco')
@@ -3951,6 +3957,8 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
     assert.equal(await p.getByTestId('grabar-error').count(), 0)
     assert.equal(await p.getByTestId('grabar-resultado').getAttribute('data-metadatos'), 'sí', 'el MP4 lleva los datos de dualkinema y se leen')
+    // Cada frame y cada trozo de audio, en su instante de captura (con el aviso de cada frame pintado: paso 8).
+    assert.equal(await p.getByTestId('grabar-resultado').getAttribute('data-tiempos'), 'captura')
     frames = Number(await p.getByTestId('grabar-frames').innerText())
     const fps = Number((await p.getByTestId('grabar-fps').innerText()).replace(',', '.'))
     // Los fps contados en el archivo son los que da la cámara (la falsa: 20), no los pedidos (30).
@@ -4013,6 +4021,43 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
     assert.equal(await p.getByTestId('grabar-error').count(), 0)
     assert.ok(Number(await p.getByTestId('grabar-frames').innerText()) > 15)
+  })
+
+  it('calibrar la cámara (paso 8): palmadas en el sonido, se marca el frame, se guarda y la grabadora lo descuenta', async () => {
+    const enLista = await p.getByTestId('grabacion').count()
+    await p.getByTestId('calibrar-empezar').click()
+    await p.getByTestId('calibrar-parar').waitFor({ timeout: 20000 })
+    await p.waitForTimeout(2500)
+    await p.getByTestId('calibrar-parar').click()
+    // El micrófono falso pita cada medio segundo: son las «palmadas».
+    await p.waitForFunction(() => document.querySelector('[data-testid=calibrar-camara]')?.dataset.fase === 'marcar', null, { timeout: 30000 })
+    const palmadas = p.getByTestId('palmada')
+    assert.ok((await palmadas.count()) >= 2)
+    // En las dos primeras, el primer frame a partir del sonido: la imagen, entre −1 frame y 0 respecto al sonido.
+    for (const i of [0, 1]) {
+      const frames = palmadas.nth(i).getByTestId('frame-palmada')
+      const sonido = Number(/empieza a ([\d,]+) s/.exec(await palmadas.nth(i).innerText())[1].replace(',', '.'))
+      const ts = await frames.evaluateAll((els) => els.map((e) => Number(e.dataset.t)))
+      await frames.nth(ts.findIndex((t) => t >= sonido)).click()
+    }
+    const r = p.getByTestId('calibracion-resultado')
+    const ms = Number(await r.getAttribute('data-ms'))
+    const cota = Number(await r.getAttribute('data-cota'))
+    assert.ok(cota < 60 && Math.abs(ms) < 60, `retraso ${ms} ± ${cota} ms`)
+    await p.getByTestId('calibrar-guardar').click()
+    assert.match(await p.getByTestId('calibracion-guardada').innerText(), /^Calibrada: -?\d+ ms ± \d+ ms \(2 palmadas/)
+    // La grabación de la calibración no queda en la lista.
+    assert.equal(await p.getByTestId('grabacion').count(), enLista)
+    // Una grabación después lleva en el MP4 el retraso que se le ha descontado.
+    await p.getByTestId('grabar-empezar').click()
+    await p.getByTestId('grabar-parar').waitFor({ timeout: 20000 })
+    await p.waitForTimeout(1500)
+    await p.getByTestId('grabar-parar').click()
+    await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
+    const descontado = Number(await p.getByTestId('grabar-resultado').getAttribute('data-retraso-camara'))
+    assert.ok(Math.abs(descontado - ms) < 1e-6, `descontado ${descontado}, calibrado ${ms}`)
+    await p.getByRole('button', { name: 'Quitar la calibración' }).click()
+    assert.match(await p.getByTestId('calibracion-guardada').innerText(), /^Sin calibrar/)
   })
 })
 
@@ -4136,7 +4181,7 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
   })
 })
 
-describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 y 6)', () => {
+describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () => {
   // Como en el emparejamiento: el reloj de la app de B lleva 1500 ms más, y la hora de verdad de un instante del reloj
   // de una página es su `performance.timeOrigin` + el instante (− 1500 en B).
   const DESFASE_B = 1500
@@ -4145,6 +4190,8 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 y 6)', () =
   let pararRele
   let a
   let b
+  // Los dos MP4 de la grabación de 10 s (descargados con «Guardar»), la verdad de su desfase y la cota del reloj (paso 7).
+  const pareja = {}
 
   before(async () => {
     pararRele = await servirRele()
@@ -4254,6 +4301,7 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 y 6)', () =
       const pitidos = await p.evaluate(() => window.__pitidos)
       assert.equal(pitidos.length, 1, 'una secuencia por móvil')
       assert.equal(await p.getByTestId('pitidos-doble').getAttribute('data-pito'), 'true')
+      assert.equal(await p.getByTestId('resultado-doble').getAttribute('data-tiempos'), 'captura')
       // Cuándo sonará, en el reloj de la app de la página: el instante pedido (inicio + su turno), con la latencia de
       // salida ya descontada al programarlo.
       const x = pitidos[0]
@@ -4262,6 +4310,22 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 y 6)', () =
       // El micrófono falso no oye los altavoces: se dice que no se oyen bien y qué hacer.
       await p.getByTestId('aviso-pitidos').waitFor()
     }
+    // Para abrir la pareja (paso 7): los dos archivos y la verdad del desfase. Cada vídeo empieza (su tiempo 0) cuando
+    // arrancó su grabadora: desfase = t_A − t_B de un mismo instante = arranque de B − arranque de A (hora de verdad).
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    for (const [p, vista] of [
+      [a, 'perfil'],
+      [b, 'frente'],
+    ]) {
+      const [d] = await Promise.all([p.waitForEvent('download'), p.getByTestId('guardar-doble').click()])
+      pareja[vista] = join(tmpdir(), `dualkinema-e2e-doble-${vista}.mp4`)
+      await d.saveAs(pareja[vista])
+    }
+    const ra = await resultado(a)
+    const rb = await resultado(b)
+    pareja.verdad = ((await horaReal(b, rb.arranque, true)) - (await horaReal(a, ra.arranque, false))) / 1000
+    pareja.cota = Number(await a.getByTestId('reloj-comun').getAttribute('data-cota')) / 1000
   })
 
   it('«Cancelar» en la cuenta atrás de uno cancela los dos y no graba nada', async () => {
@@ -4281,6 +4345,58 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 y 6)', () =
     await a.getByTestId('grabar-doble').waitFor({ state: 'detached' })
     await b.getByTestId('vista-frente').click()
     await a.getByTestId('grabar-doble').waitFor()
+  })
+
+  /** Espera la propuesta de la grabación doble y comprueba lo que se abre. Devuelve la propuesta. */
+  async function comprobarPareja(p) {
+    const caja = p.getByTestId('propuesta-doble')
+    await caja.waitFor({ timeout: 30000 })
+    // Abre en «Vídeo», con las dos vistas.
+    assert.equal(await p.getByTestId('pestana-video').getAttribute('aria-selected'), 'true')
+    await p.getByTestId('conmutador-vista').waitFor()
+    return { metodo: await caja.getAttribute('data-metodo'), desfase: Number(await caja.getAttribute('data-desfase')) }
+  }
+
+  it('«Abrir la grabación doble» (paso 7): pareja por sus metadatos, el de perfil como A y el desfase del reloj frente a la verdad', async () => {
+    const q = await abrirApp(navB)
+    try {
+      // En orden inverso: el de perfil tiene que quedar como referencia igualmente.
+      await q.setInputFiles('[data-testid=selector-doble]', [pareja.frente, pareja.perfil])
+      const propuesta = await comprobarPareja(q)
+      // El micrófono falso no oye los pitidos: se propone el reloj, y cae en su cota respecto a la verdad (más lo que
+      // tarda en arrancar cada grabadora, el margen).
+      assert.equal(propuesta.metodo, 'reloj')
+      assert.ok(Math.abs(propuesta.desfase - pareja.verdad) <= pareja.cota + 0.05, `reloj ${propuesta.desfase} s, verdad ${pareja.verdad} s (cota ${pareja.cota})`)
+      assert.match(await q.getByTestId('cifras-doble').innerText(), /reloj [+−]0,\d{3} s ± \d+ ms/)
+      // Nada cambia hasta aplicar; aplicado, la sincronía dice el método y el desfase.
+      assert.match(await q.getByTestId('metodo-sincronia').innerText(), /Sin sincronizar/)
+      await q.getByTestId('aplicar-propuesta').click()
+      await q.getByTestId('propuesta-aplicada').waitFor()
+      assert.match(await q.getByTestId('metodo-sincronia').innerText(), /Por el reloj común/)
+      assert.ok(Math.abs(parseFloat((await q.getByTestId('desfase-sincronia').innerText()).replace('−', '-').replace(',', '.')) - propuesta.desfase) < 0.0006)
+      // El de perfil es la vista A y la orientación de cada una sale de sus metadatos (A mira a la derecha; B, de frente).
+      assert.match(await q.getByTestId('vista-A').getAttribute('title'), /mira a la derecha/)
+      assert.match(await q.getByTestId('vista-B').getAttribute('title'), /desde delante/)
+    } finally {
+      await q.close()
+    }
+  })
+
+  it('un vídeo que no es de la pareja se rechaza con el motivo; desde «Grabaciones de este móvil», «Abrir con el otro vídeo»', async () => {
+    const q = await abrirApp(navB)
+    try {
+      await q.setInputFiles('[data-testid=selector-doble]', [videos.verde.ruta, pareja.perfil])
+      await q.getByText(/no está grabado con dualkinema/).waitFor({ timeout: 20000 })
+    } finally {
+      await q.close()
+    }
+    // En A (su almacenamiento tiene su vídeo): sale de la sala, abre su lista y elige el otro vídeo.
+    await a.getByTestId('salir-sala').click()
+    await a.getByTestId('ir-grabar').click()
+    await a.getByTestId('grabacion-abrir-doble').first().click()
+    await a.getByTestId('falta-doble').waitFor()
+    await a.setInputFiles('[data-testid=selector-doble]', pareja.frente)
+    assert.equal((await comprobarPareja(a)).metodo, 'reloj')
   })
 })
 

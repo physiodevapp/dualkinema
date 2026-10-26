@@ -108,7 +108,7 @@ describe('esquema de la sesión', () => {
   it('cabecera de la versión actual con los huecos de los pasos siguientes vacíos', () => {
     const { cabecera } = prepararGuardado(entrada())
     expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL)
-    expect(ESQUEMA_ACTUAL).toBe(3)
+    expect(ESQUEMA_ACTUAL).toBe(4)
     expect(cabecera.filtro).toBeNull()
     // Sin decir nada: la vista sigue todos los marcadores del modelo, sin sincronizar, y es la referencia.
     expect(cabecera.vistas[0]).toMatchObject({ desfase: 0, calibracion: null, ceros: {}, marcadores: [cadera, rodilla, tobillo], sincronia: { metodo: 'ninguna' } })
@@ -350,6 +350,27 @@ describe('varias vistas (esquema 3)', () => {
     expect(d).toEqual({ ok: true, valor: comoIDB(datos) })
   })
 
+  it('una sesión guardada con el esquema 3 se lee igual (la migración 3 → 4 no cambia nada)', () => {
+    const { cabecera, datos } = prepararGuardado(entradaDos())
+    const c = leerCabecera(comoIDB({ ...cabecera, esquema: 3 }))
+    expect(c).toEqual({ ok: true, valor: cabecera })
+    if (!c.ok) return
+    expect(leerDatos(comoIDB({ ...datos, esquema: 3 }), c.valor)).toEqual({ ok: true, valor: comoIDB(datos) })
+  })
+
+  it('guarda y lee la sincronía por pitido y por reloj de una grabación doble (esquema 4)', () => {
+    const e = entradaDos()
+    for (const sincronia of [
+      { metodo: 'pitido', pitido: { desfase: 0.009, calidad: 5.47, distancia: 1.98 } },
+      { metodo: 'reloj', reloj: { desfase: -0.0006, cota: 0.0381 } },
+      { metodo: 'pitido', pitido: { desfase: 0.009, calidad: 5.47, distancia: 1.98 }, evento: { referencia: 2.5, vista: 2.49 } },
+    ] as const) {
+      const vistas = [e.vistas[0]!, { ...e.vistas[1]!, desfase: 0.009, sincronia }]
+      const { cabecera } = prepararGuardado({ ...e, vistas })
+      expect(leerCabecera(comoIDB(cabecera))).toEqual({ ok: true, valor: cabecera })
+    }
+  })
+
   it('rechaza marcadores, sincronía o referencia que no cuadran', () => {
     const { cabecera } = prepararGuardado(entradaDos())
     const [v1, v2] = cabecera.vistas as readonly VistaCabecera[]
@@ -358,7 +379,10 @@ describe('varias vistas (esquema 3)', () => {
       [conV2({ marcadores: [] }), /marcadores no válidos/],
       [conV2({ marcadores: [frontal[0], frontal[0]] }), /marcadores repetidos/],
       [conV2({ marcadores: ['pie'] }), /marcador que no está en el modelo: pie/],
-      [conV2({ sincronia: { metodo: 'reloj' } }), /sincronía no válida/],
+      [conV2({ sincronia: { metodo: 'gps' } }), /sincronía no válida/],
+      [conV2({ sincronia: { metodo: 'reloj' } }), /reloj no válida/],
+      [conV2({ sincronia: { metodo: 'reloj', reloj: { desfase: 0.01, cota: -1 } } }), /reloj no válida/],
+      [conV2({ sincronia: { metodo: 'pitido', pitido: { desfase: 0.009, calidad: 5 } } }), /pitido no válida/],
       [conV2({ sincronia: undefined }), /sincronía no válida/],
       [conV2({ sincronia: { metodo: 'audio', audio: { calidad: Number.NaN, desfase: 0 } } }), /audio no válida/],
       [conV2({ sincronia: { metodo: 'evento', evento: { referencia: 1 } } }), /evento de sincronía/],

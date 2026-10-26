@@ -28,7 +28,8 @@ export async function listarGrabaciones(): Promise<GrabacionGuardada[]> {
   const dir = await carpeta()
   const lista: GrabacionGuardada[] = []
   for await (const [nombre, h] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
-    if (h.kind !== 'file' || !nombre.endsWith('.mp4')) continue
+    // Las de la calibración de la cámara son temporales: no son grabaciones de la persona.
+    if (h.kind !== 'file' || !nombre.endsWith('.mp4') || nombre.startsWith('calibracion-')) continue
     const f = await (h as FileSystemFileHandle).getFile()
     if (f.size > 0) lista.push({ nombre, tamano: f.size, modificada: f.lastModified })
   }
@@ -114,6 +115,18 @@ export async function analizarGrabacion(archivo: File): Promise<AnalisisGrabacio
       conAudio: (await entrada.getPrimaryAudioTrack()) !== null,
       metadatos: leerMetadatos(etiquetas?.comment),
     }
+  } finally {
+    entrada.dispose()
+  }
+}
+
+/** Los datos de dualkinema del comentario de un MP4 (null: no es de la app o no se pueden leer). Sin recorrer los frames. */
+export async function leerMetadatosArchivo(archivo: File): Promise<MetadatosGrabacion | null> {
+  const entrada = new Input({ source: new BlobSource(archivo), formats: ALL_FORMATS })
+  try {
+    return leerMetadatos((await entrada.getMetadataTags().catch(() => null))?.comment)
+  } catch {
+    return null
   } finally {
     entrada.dispose()
   }

@@ -29,7 +29,8 @@ jobs:
     # Pruebas en un navegador real con vídeos sintéticos generados con ffmpeg
     # (tests/e2e/). Corren en paralelo a «comprobar».
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # La batería pasó de 15 min en el runner con las pruebas de grabar de la fase 4 (en local, 7 min).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

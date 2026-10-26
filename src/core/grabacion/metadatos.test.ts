@@ -19,6 +19,12 @@ describe('metadatos de la grabación', () => {
     expect(leerMetadatos(nuevo)).toEqual({ ...m, formato: 2 })
   })
 
+  it('con el retraso de la cámara calibrado: ida y vuelta; roto, se lee el resto sin él', () => {
+    const conCamara = { ...m, camara: { retrasoMs: 52, cotaMs: 8.5 } }
+    expect(leerMetadatos(textoMetadatos(conCamara))).toEqual(conCamara)
+    expect(leerMetadatos(JSON.stringify({ ...m, camara: { retrasoMs: 'x', cotaMs: 1 } }))).toEqual(m)
+  })
+
   it('con la grabación doble: ida y vuelta, y si esa parte está rota se lee el resto sin ella', () => {
     const doble = {
       ...m,
