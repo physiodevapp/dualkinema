@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SpeakerWaveIcon } from '@heroicons/react/24/outline'
 import { emitirSecuencia, pitar } from '../sala/sonido'
 import { InfoGlosario } from './glosario/Glosario'
@@ -15,25 +15,37 @@ const CUENTA_S = 3
 export default function Claqueta() {
   const ctx = useRef<AudioContext | null>(null)
   const [estado, setEstado] = useState<'libre' | number | 'hecho' | 'sin-sonido'>('libre')
+  // En marcha desde el toque (el botón se desactiva un poco después: dos toques seguidos programaban dos secuencias).
+  const enMarcha = useRef(false)
+  const temporizadores = useRef<ReturnType<typeof setTimeout>[]>([])
+  useEffect(() => () => temporizadores.current.forEach(clearTimeout), [])
 
   const empezar = async () => {
+    if (enMarcha.current) return
+    enMarcha.current = true
     ctx.current ??= new AudioContext()
     if (ctx.current.state === 'suspended') await ctx.current.resume().catch(() => {})
     const c = ctx.current
-    if (c.state !== 'running') return setEstado('sin-sonido')
+    if (c.state !== 'running') {
+      enMarcha.current = false
+      return setEstado('sin-sonido')
+    }
+    const en = (f: () => void, ms: number) => void temporizadores.current.push(setTimeout(f, Math.max(0, ms)))
     const t0 = performance.now()
     for (let s = CUENTA_S; s > 0; s--) {
       const espera = t0 + (CUENTA_S - s) * 1000 - performance.now()
-      setTimeout(() => {
+      en(() => {
         setEstado(s)
         pitar(c)
-      }, Math.max(0, espera))
+      }, espera)
     }
     const instante = t0 + CUENTA_S * 1000
-    setTimeout(() => {
-      emitirSecuencia(c, instante, performance.now())
+    // Se programa un poco antes para que suene a su hora exacta; «Ha sonado», cuando ya ha sonado.
+    en(() => emitirSecuencia(c, instante, performance.now()), instante - 300 - performance.now())
+    en(() => {
       setEstado('hecho')
-    }, CUENTA_S * 1000 - 300)
+      enMarcha.current = false
+    }, instante + 600 - performance.now())
   }
 
   return (

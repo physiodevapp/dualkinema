@@ -19,6 +19,7 @@ import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { AVISO_MICRO_EXTERNO } from '../media/microfono'
 import CalibrarCamara from './CalibrarCamara'
 import { useCamara } from './useCamara'
+import { textoPrevision, usePrevisionFps } from './usePrevisionFps'
 import { useCodificador } from './useCodificador'
 import { useMicroExterno } from './useMicroExterno'
 import { usePantallaEncendida } from './usePantallaEncendida'
@@ -84,6 +85,9 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
   const [calidad, setCalidad] = useState<Calidad>(CALIDAD_POR_DEFECTO)
   const [grabadora, setGrabadora] = useState<Grabadora | null>(null)
   const [ocupado, setOcupado] = useState(false)
+  // Calibrando la cámara (`CalibrarCamara`): hay otra grabación en marcha, así que no se graba, no se cambia la
+  // calidad (cerraría la cámara) ni se mide.
+  const [calibrando, setCalibrando] = useState(false)
   const [segundos, setSegundos] = useState(0)
   const [resultado, setResultado] = useState<Resultado | null>(null)
   const [lista, setLista] = useState<GrabacionGuardada[]>([])
@@ -117,7 +121,8 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
   // elegido otra.
   const elegida = useRef(false)
   useEffect(() => {
-    void calidadInicial().then((c) => !elegida.current && setCalidad(c))
+    // No mientras se graba: cambiar la calidad vuelve a abrir la cámara (en la tablet, la respuesta llega tarde).
+    void calidadInicial().then((c) => !elegida.current && !grabadoraRef.current && setCalidad(c))
   }, [])
 
   useEffect(() => {
@@ -160,12 +165,11 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
       setSegundos(s)
       if (s >= grabadora.duracionMaxima) void parar()
     }, 250)
+    // Si se corta (la cámara se cierra, el codificador falla), se guarda lo grabado hasta ahí y se dice.
     grabadora.error.catch((e) => {
       if (grabadoraRef.current !== grabadora) return
-      grabadoraRef.current = null
-      setGrabadora(null)
-      void grabadora.cancelar()
-      setError(`La grabación se ha interrumpido: ${mensajeDe(e)}`)
+      setError(`La grabación se ha interrumpido (${mensajeDe(e)}): se guarda lo grabado hasta ahí.`)
+      void parar()
     })
     return () => clearInterval(reloj)
   }, [grabadora, parar])
@@ -207,6 +211,8 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
   }
 
   const grabando = grabadora !== null
+  // A cuántos fps grabaría (paso 9), medido sin nada en marcha.
+  const prevision = usePrevisionFps(flujo, calidad, !grabando && !ocupado && !calibrando)
   const camara = flujo ? datosCamara(flujo) : null
   const puedeCompartir = typeof navigator.share === 'function'
   const poco = disco?.libre != null && disco.libre < ESPACIO_MINIMO
@@ -216,7 +222,7 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
   return (
     <section className="mx-auto flex w-full max-w-xl flex-col gap-4" data-testid="grabar">
       <div className="flex items-center gap-2">
-        <button type="button" onClick={alSalir} disabled={grabando || ocupado} aria-label="Volver" title="Volver" className="flex size-11 items-center justify-center rounded-md border border-borde disabled:opacity-40">
+        <button type="button" onClick={alSalir} disabled={grabando || ocupado || calibrando} aria-label="Volver" title="Volver" className="flex size-11 items-center justify-center rounded-md border border-borde disabled:opacity-40">
           <ArrowLeftIcon className="size-5" />
         </button>
         <h2 className="font-serif text-2xl">Grabar con este móvil</h2>
@@ -238,7 +244,7 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
               elegida.current = true
               setCalidad(CALIDADES.find((c) => c.id === e.target.value) ?? CALIDAD_POR_DEFECTO)
             }}
-            disabled={grabando || ocupado}
+            disabled={grabando || ocupado || calibrando}
             data-testid="grabar-calidad"
             className="rounded-md border border-borde bg-fondo px-3 py-3 text-texto"
           >
@@ -249,7 +255,17 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
             ))}
           </select>
         </label>
-        {codificador === 'software' && (
+        {prevision && (
+          <p className="font-mono text-xs text-texto-2" data-testid="grabar-prevision-fps" data-fps={prevision.fps} data-causa={prevision.causa ?? ''}>
+            Grabaría a unos {Math.round(prevision.fps)} fps <InfoGlosario id="fps-grabacion" tema="a cuántos fps grabaría" className="-my-1.5" />
+          </p>
+        )}
+        {textoPrevision(prevision, calidad) && (
+          <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="grabar-aviso-fps-previsto">
+            {textoPrevision(prevision, calidad)}
+          </p>
+        )}
+        {!prevision && codificador === 'software' && (
           <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="grabar-aviso-codificador">
             {AVISO_SOFTWARE}
           </p>
@@ -271,14 +287,14 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
             <span className="font-mono text-xs text-texto-2">/ {formatoReloj(grabadora.duracionMaxima)}</span>
           </button>
         ) : (
-          <button type="button" onClick={() => void grabar()} disabled={!flujo || ocupado} data-testid="grabar-empezar" className="flex min-h-14 items-center justify-center gap-2 rounded-md bg-acento font-medium text-fondo disabled:opacity-40">
+          <button type="button" onClick={() => void grabar()} disabled={!flujo || ocupado || calibrando} data-testid="grabar-empezar" className="flex min-h-14 items-center justify-center gap-2 rounded-md bg-acento font-medium text-fondo disabled:opacity-40">
             <VideoCameraIcon className="size-6" />
             {ocupado ? 'Un momento…' : 'Grabar'}
           </button>
         )}
       </div>
 
-      <CalibrarCamara flujo={flujo} calidad={calidad} ocupado={grabando || ocupado} />
+      <CalibrarCamara flujo={flujo} calidad={calidad} ocupado={grabando || ocupado} alCambiar={setCalibrando} />
 
       {error && (
         <p role="alert" data-testid="grabar-error" className="rounded-md border border-red-400/50 p-3 text-sm text-red-300">

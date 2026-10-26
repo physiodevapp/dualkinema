@@ -116,6 +116,12 @@ function filasSincronia(x: SincronizacionExportada, n: (v: number, d: number) =>
   if (s.metodo === 'evento') {
     if (inc !== undefined) texto += `; precisión ±${n(inc * 1000, 0)} ms`
     if (s.evento) texto += `; ${instantes(s.evento)}`
+    // Se eligió el evento frente a lo que dio otro método («Usar el desfase del evento visual»): también se exporta.
+    const antes: string[] = []
+    if (s.audio) antes.push(`audio ${n(s.audio.desfase, 3)} s (calidad del pico ${n(s.audio.calidad, 1)})`)
+    if (s.pitido) antes.push(`pitido de ida y vuelta ${n(s.pitido.desfase, 3)} s (calidad ${n(s.pitido.calidad, 1)}; móviles a ${n(s.pitido.distancia, 2)} m)`)
+    if (s.reloj) antes.push(`reloj común ${n(s.reloj.desfase, 3)} s ±${n(s.reloj.cota * 1000, 0)} ms`)
+    if (antes.length) filas.push(['sincronización: no usada', `antes de elegir el evento visual: ${antes.join('; ')}`])
   } else if (seComprueba(s)) {
     const precision = precisionDelMetodo(s) ?? 0
     const sinRetardo = ' (no incluye el retardo entre sonido e imagen de cada móvil)'

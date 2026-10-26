@@ -29,6 +29,7 @@ import { useCamara } from './useCamara'
 import { useCodificador } from './useCodificador'
 import { useMicroExterno } from './useMicroExterno'
 import { usePantallaEncendida } from './usePantallaEncendida'
+import { textoPrevision, textoPrevisionOtro, usePrevisionFps } from './usePrevisionFps'
 
 /*
  * «Grabar con dos móviles» (fase 4, pasos 4b y 5; §4–5 de docs/plan-fase-4.md, D6 y D8): crear una sala (código y QR)
@@ -76,8 +77,14 @@ function QrSala({ url }: { url: string }) {
   )
 }
 
-/** Lo que este móvil cuenta al otro: su cámara (la vista previa), espacio libre, batería, codificador y micrófono. */
-function useMiEstado(flujo: MediaStream | null, grabando: boolean, codificador: EstadoMovil['codificador'], microExterno: boolean): EstadoMovil {
+/** Lo que este móvil cuenta al otro: su cámara (la vista previa), espacio libre, batería, codificador, micrófono y fps. */
+function useMiEstado(
+  flujo: MediaStream | null,
+  grabando: boolean,
+  codificador: EstadoMovil['codificador'],
+  microExterno: boolean,
+  fpsGrabacion: number | null,
+): EstadoMovil {
   const [libreMB, setLibreMB] = useState<number | null>(null)
   const [bateria, setBateria] = useState<number | null>(null)
   useEffect(() => {
@@ -101,8 +108,9 @@ function useMiEstado(flujo: MediaStream | null, grabando: boolean, codificador: 
       grabando,
       codificador,
       microExterno,
+      fpsGrabacion: fpsGrabacion === null ? null : Math.round(fpsGrabacion * 10) / 10,
     }
-  }, [flujo, libreMB, bateria, grabando, codificador, microExterno])
+  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion])
 }
 
 function Aviso({ children, testid }: { children: React.ReactNode; testid: string }) {
@@ -277,6 +285,11 @@ function ResultadoDoble({
       data-plan-pitidos={a?.metadatos?.doble?.pitidos ? JSON.stringify(a.metadatos.doble.pitidos) : ''}
     >
       <p className="font-mono text-xs break-all">{fase.archivo.name}</p>
+      {fase.aviso && (
+        <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="aviso-interrumpida">
+          {fase.aviso}
+        </p>
+      )}
       {a && (
         <p className="font-mono text-sm text-texto-2">
           {a.frames} frames · {a.duracion.toLocaleString('es-ES', { maximumFractionDigits: 1 })} s ·{' '}
@@ -333,11 +346,15 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   // Los pitidos de la cuenta atrás necesitan un contexto de audio creado tras un toque (norma de los navegadores).
   const [audio, setAudio] = useState<AudioContext | null>(null)
   const [grabando, setGrabando] = useState(false)
-  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null)
+  // A cuántos fps grabaría (paso 9): se mide sin nada en marcha y se le cuenta al otro.
+  const [enMarcha, setEnMarcha] = useState(false)
+  const prevision = usePrevisionFps(flujo, calidad, !enMarcha)
+  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null)
   const sala: Sala = useSala(codigo, vista, miEstado)
   const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio, calidad)
   const ocupado = doble.fase.f === 'esperando' || doble.fase.f === 'programada' || doble.fase.f === 'grabando' || doble.fase.f === 'parando'
   if (grabando !== (doble.fase.f === 'grabando')) setGrabando(doble.fase.f === 'grabando')
+  if (enMarcha !== ocupado) setEnMarcha(ocupado)
 
   useEffect(() => {
     if (video.current) video.current.srcObject = flujo
@@ -403,7 +420,13 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
         </div>
         <video ref={video} autoPlay muted playsInline className={`max-h-[40dvh] w-full rounded-md bg-black object-contain ${flujo ? '' : 'hidden'}`} />
         {errorCamara && <p className="text-sm text-red-300">No se puede abrir la cámara: {errorCamara}</p>}
-        {codificador === 'software' && <Aviso testid="aviso-codificador">{AVISO_SOFTWARE}</Aviso>}
+        {prevision && (
+          <p className="font-mono text-xs text-texto-2" data-testid="prevision-fps" data-fps={prevision.fps} data-causa={prevision.causa ?? ''}>
+            Grabaría a unos {Math.round(prevision.fps)} fps <InfoGlosario id="fps-grabacion" tema="a cuántos fps grabaría" className="-my-1.5" />
+          </p>
+        )}
+        {textoPrevision(prevision, calidad) && <Aviso testid="aviso-fps-previsto">{textoPrevision(prevision, calidad)}</Aviso>}
+        {!prevision && codificador === 'software' && <Aviso testid="aviso-codificador">{AVISO_SOFTWARE}</Aviso>}
         {microExterno && <Aviso testid="aviso-micro">{AVISO_MICRO_EXTERNO}</Aviso>}
       </div>
 
@@ -418,8 +441,12 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
             {otro?.estado?.libreMB != null && ` · ${otro.estado.libreMB.toLocaleString('es-ES')} MB libres`}
             {otro?.estado?.bateria != null && ` · batería ${Math.round(otro.estado.bateria * 100)} %`}
             {otro?.estado?.codificador === 'software' && ' · vídeo por software'}
+            {otro?.estado?.fpsGrabacion != null && ` · grabaría a ${Math.round(otro.estado.fpsGrabacion)} fps`}
           </p>
-          {otro?.estado?.codificador === 'software' && (
+          {textoPrevisionOtro(otro?.estado?.fpsGrabacion ?? null, 30) && (
+            <Aviso testid="aviso-fps-otro">{textoPrevisionOtro(otro?.estado?.fpsGrabacion ?? null, 30)}</Aviso>
+          )}
+          {otro?.estado?.fpsGrabacion == null && otro?.estado?.codificador === 'software' && (
             <Aviso testid="aviso-codificador-otro">El otro móvil codifica el vídeo por software: puede grabar a menos de 30 fps.</Aviso>
           )}
           {otro?.estado?.microExterno && (

@@ -27,9 +27,24 @@ type Fase =
 
 const ms = (v: number) => `${Math.round(v)} ms`
 
-export default function CalibrarCamara({ flujo, calidad, ocupado }: { flujo: MediaStream | null; calidad: Calidad; ocupado: boolean }) {
+export default function CalibrarCamara({
+  flujo,
+  calidad,
+  ocupado,
+  alCambiar,
+}: {
+  flujo: MediaStream | null
+  calidad: Calidad
+  ocupado: boolean
+  /** Avisa de si se está calibrando (grabando, analizando o marcando): la pantalla de grabar no debe hacer nada a la vez. */
+  alCambiar: (calibrando: boolean) => void
+}) {
   const [guardada, setGuardada] = useState<CalibracionGuardada | null>(() => leerCalibracion())
   const [fase, setFase] = useState<Fase>({ f: 'libre' })
+  const enMarcha = fase.f !== 'libre'
+  useEffect(() => alCambiar(enMarcha), [alCambiar, enMarcha])
+  // La grabación en curso, para cancelarla si se sale a mitad.
+  const grabando = useRef<Grabadora | null>(null)
   const [marcas, setMarcas] = useState<Readonly<Record<number, MarcaPalmada>>>({})
   const nombre = useRef<string | null>(null)
   const parada = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -38,7 +53,10 @@ export default function CalibrarCamara({ flujo, calidad, ocupado }: { flujo: Med
   useEffect(
     () => () => {
       if (parada.current) clearTimeout(parada.current)
-      if (nombre.current) void borrarGrabacion(nombre.current).catch(() => {})
+      const g = grabando.current
+      const n = nombre.current
+      // Primero se cancela (cierra el archivo) y después se borra: con el archivo abierto, borrarlo puede fallar.
+      void (g ? g.cancelar() : Promise.resolve()).finally(() => n && borrarGrabacion(n).catch(() => {}))
     },
     [],
   )
@@ -54,6 +72,7 @@ export default function CalibrarCamara({ flujo, calidad, ocupado }: { flujo: Med
     nombre.current = `calibracion-${crypto.randomUUID().slice(0, 8)}.mp4`
     try {
       const g = await Grabadora.empezar(flujo, calidad, nombre.current, crypto.randomUUID(), { calibrando: true })
+      grabando.current = g
       setFase({ f: 'grabando', g })
       parada.current = setTimeout(() => void parar(g), DURACION_MAXIMA_S * 1000)
     } catch (e) {
@@ -65,6 +84,7 @@ export default function CalibrarCamara({ flujo, calidad, ocupado }: { flujo: Med
   const parar = async (g: Grabadora) => {
     if (parada.current) clearTimeout(parada.current)
     parada.current = null
+    grabando.current = null
     setFase({ f: 'analizando' })
     try {
       const { archivo } = await g.parar()

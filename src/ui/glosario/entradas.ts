@@ -197,6 +197,15 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'fps-grabacion',
+    titulo: 'A cuántos fps grabaría',
+    texto: [
+      'Antes de grabar, la app prueba unos segundos: primero cuenta los frames que da la cámara y después los codifica igual que al grabar (mismo formato, misma calidad), sin guardar nada, y cuenta los frames por segundo que salen. Se repite al cambiar de calidad y cada minuto, porque la luz cambia (cada 10 s mientras hay aviso, así que se quita poco después de poner más luz).',
+      'Si salen menos del 90 % de los pedidos (27 de 30), avisa y dice por qué: si la propia cámara da pocos, suele ser poca luz (la exposición automática alarga cada frame); si la cámara da 30 y salen menos, el móvil no codifica tan deprisa (pasa con los que lo hacen por software: menos resolución ayuda). Con dos móviles, cada uno le cuenta al otro su cifra.',
+      'Con pocos fps se pierde detalle del movimiento: entre un frame y el siguiente pasa más tiempo, y los instantes (un contacto, el pico de una velocidad) se sitúan peor. Al parar, la app vuelve a contar los fps de lo grabado.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [

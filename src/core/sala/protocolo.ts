@@ -33,6 +33,8 @@ export interface EstadoMovil {
   readonly codificador: 'hardware' | 'software' | null
   /** Tiene unos auriculares o un micrófono externo conectados (paso 6). null si no se sabe. */
   readonly microExterno: boolean | null
+  /** A cuántos fps grabaría, medido con una prueba antes de grabar (paso 9; `media/pruebaFps.ts`). null si no se sabe. */
+  readonly fpsGrabacion: number | null
 }
 
 export type Mensaje =
@@ -78,7 +80,9 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
   // Añadidos en el paso 6: si faltan o no se entienden, no se sabe (el resto del estado vale igual).
   const codificador = o.codificador === 'hardware' || o.codificador === 'software' ? o.codificador : null
   const microExterno = typeof o.microExterno === 'boolean' ? o.microExterno : null
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno }
+  // Añadido en el paso 9, igual de opcional.
+  const fpsGrabacion = finito(o.fpsGrabacion) && o.fpsGrabacion > 0 && o.fpsGrabacion <= 240 ? o.fpsGrabacion : null
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */

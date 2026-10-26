@@ -8,6 +8,7 @@ import {
   getFirstEncodableVideoCodec,
   type StreamTargetChunk,
   type Target,
+  type VideoCodec,
   VideoSampleSource,
 } from 'mediabunny'
 import { leerCalibracion } from './calibracionCamara'
@@ -54,6 +55,15 @@ export const DURACION_MAXIMA_MEMORIA_S = 60
 /** Bitrate de partida: unos 0,12 bits por píxel y frame (1080p30: 7,5 Mb/s), entre 4 y 40 Mb/s. */
 export const bitrateDe = (ancho: number, alto: number, fps: number): number =>
   Math.min(40_000_000, Math.max(4_000_000, Math.round(ancho * alto * fps * 0.12)))
+
+/** El códec y el bitrate con que se graba lo que da la cámara (también los usa la prueba de fps); null si no se puede. */
+export async function codificacionVideo(flujo: MediaStream, calidad: Calidad): Promise<{ codec: VideoCodec; bitrate: number } | null> {
+  const { ancho, alto, fps } = datosCamara(flujo)
+  const fpsCodif = Math.round(fps || calidad.fps)
+  const bitrate = bitrateDe(ancho || calidad.ancho, alto || calidad.alto, fpsCodif)
+  const codec = await getFirstEncodableVideoCodec(['avc', 'vp9', 'av1', 'hevc'], { width: ancho, height: alto, frameRate: fpsCodif, bitrate })
+  return codec ? { codec, bitrate } : null
+}
 
 /** Abre la cámara trasera y el micrófono sin procesar. */
 export async function abrirCamara(calidad: Calidad): Promise<MediaStream> {
@@ -123,12 +133,9 @@ export class Grabadora {
     const pistaVideo = flujo.getVideoTracks()[0]
     if (!pistaVideo) throw new Error('La cámara no da imagen.')
     const pistaAudio = flujo.getAudioTracks()[0]
-    const { ancho, alto, fps } = datosCamara(flujo)
-    const fpsCodif = Math.round(fps || calidad.fps)
-    const bitrate = bitrateDe(ancho || calidad.ancho, alto || calidad.alto, fpsCodif)
-
-    const codec = await getFirstEncodableVideoCodec(['avc', 'vp9', 'av1', 'hevc'], { width: ancho, height: alto, frameRate: fpsCodif, bitrate })
-    if (!codec) throw new Error('Este móvil no puede codificar vídeo a esa resolución. Prueba con una menor.')
+    const eleccion = await codificacionVideo(flujo, calidad)
+    if (!eleccion) throw new Error('Este móvil no puede codificar vídeo a esa resolución. Prueba con una menor.')
+    const { codec, bitrate } = eleccion
     const codecAudio = pistaAudio ? await getFirstEncodableAudioCodec(['aac', 'opus'], { numberOfChannels: 1, sampleRate: 48000 }) : null
 
     // OPFS si se puede; si no, en memoria (con menos duración).
@@ -148,7 +155,9 @@ export class Grabadora {
     }
     salida.setMetadataTags({ comment: textoMetadatos(metadatos) })
 
-    const fuenteVideo = new VideoSampleSource({ codec, bitrate, keyFrameInterval: 1, latencyMode: 'realtime' })
+    // Al girar el móvil, Android da los frames con el ancho y el alto cambiados: se encajan en el tamaño del principio
+    // (con bandas) en vez de parar la grabación, que con «deny» perdía el archivo entero.
+    const fuenteVideo = new VideoSampleSource({ codec, bitrate, keyFrameInterval: 1, latencyMode: 'realtime', sizeChangeBehavior: 'contain' })
     salida.addVideoTrack(fuenteVideo)
     const fuenteAudio = pistaAudio && codecAudio ? new AudioSampleSource({ codec: codecAudio, bitrate: 128_000 }) : null
     if (fuenteAudio) salida.addAudioTrack(fuenteAudio)

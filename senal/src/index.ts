@@ -79,12 +79,21 @@ export class Sala extends DurableObject<Env> {
   }
 }
 
+/** El código de `/sala/<código>`; null si no se entiende (también con un `%` mal escrito: daba un 500). */
+function codigoDeRuta(trozo: string): string | null {
+  try {
+    return normalizarCodigo(decodeURIComponent(trozo))
+  } catch {
+    return null
+  }
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url)
     if (url.pathname === '/salud') return new Response('ok', { headers: { 'content-type': 'text/plain; charset=utf-8' } })
     const m = /^\/sala\/([^/]+)$/.exec(url.pathname)
-    const codigo = m ? normalizarCodigo(decodeURIComponent(m[1]!)) : null
+    const codigo = m ? codigoDeRuta(m[1]!) : null
     if (!codigo) return new Response('sala no válida', { status: 400 })
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('hace falta un WebSocket', { status: 426 })
     if (!origenPermitido(req.headers.get('Origin'))) return new Response('origen no permitido', { status: 403 })
