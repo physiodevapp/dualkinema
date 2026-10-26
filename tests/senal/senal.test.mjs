@@ -131,6 +131,8 @@ describe('relé de salas', () => {
   it('código no válido (400), sin WebSocket (426) y otra web (403)', async () => {
     assert.equal((await fetch(`${BASE}/sala/ABC1EF`)).status, 400)
     assert.equal((await fetch(`${BASE}/otra`)).status, 400)
+    // Un `%` mal escrito tampoco tumba al relé (antes, 500).
+    assert.equal((await fetch(`${BASE}/sala/%E0%A4`)).status, 400)
     assert.equal((await fetch(`${BASE}/sala/${codigoNuevo()}`, { headers: { Origin: ORIGEN } })).status, 426)
     const c = conectar(codigoNuevo(), 'https://otra-web.example')
     await assert.rejects(c.abierto)

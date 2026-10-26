@@ -188,6 +188,18 @@ describe('construirCsv con varias vistas: tiempo común', () => {
   const lineas = (x: NonNullable<DatosExportacion['sincronia']>) => filas(construirCsv(conSincronia(x)))
   const linea = (x: NonNullable<DatosExportacion['sincronia']>, clave = '# sincronización;') => lineas(x).find((l) => l.startsWith(clave))
 
+  it('el evento elegido frente al pitido: el pitido que se dejó también se exporta', () => {
+    const x = {
+      referencia: false,
+      desfaseS: 0.04,
+      sincronia: { metodo: 'evento', evento: { referencia: 1.04, vista: 1 }, pitido: { desfase: 0.004, calidad: 4, distancia: 2.13 } },
+      incertidumbreEventoS: 0.0333,
+    } as const
+    const l = linea(x, '# sincronización: no usada;')!
+    expect(l).toContain('pitido de ida y vuelta 0,004 s (calidad 4,0; móviles a 2,13 m)')
+    expect(linea({ ...x, sincronia: { metodo: 'evento', evento: x.sincronia.evento } }, '# sincronización: no usada;')).toBeUndefined()
+  })
+
   it('un evento ajustado a mano lo dice: el desfase ya no es la diferencia de los instantes', () => {
     const l = linea({ referencia: false, desfaseS: 0.52, sincronia: { metodo: 'evento', evento: { referencia: 1, vista: 0.52 } }, incertidumbreEventoS: 0.03667 })!
     expect(l).toContain('desfase 0,520 s')
