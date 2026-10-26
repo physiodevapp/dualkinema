@@ -3950,6 +3950,14 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
 
   it('graba, para y revisa lo grabado: frames y fps de verdad, datos de la app dentro y aviso si faltan fps', async () => {
     const concedidos = await entrarAGrabar()
+    // Antes de grabar (paso 9): una prueba de unos segundos dice a cuántos fps grabaría y por qué. La cámara falsa da 20
+    // de los 30 pedidos: aviso, y la causa es la cámara (el codificador da abasto a esa resolución).
+    const prevision = p.getByTestId('grabar-prevision-fps')
+    await prevision.waitFor({ timeout: 20000 })
+    const previstos = Number(await prevision.getAttribute('data-fps'))
+    assert.ok(Math.abs(previstos - concedidos) < 0.1 * concedidos, `previstos ${previstos}, la cámara da ${concedidos}`)
+    assert.equal(await prevision.getAttribute('data-causa'), 'camara')
+    assert.match(await p.getByTestId('grabar-aviso-fps-previsto').innerText(), /poca luz/)
     await p.getByTestId('grabar-empezar').click()
     await p.getByTestId('grabar-parar').waitFor({ timeout: 20000 })
     await p.waitForTimeout(3000)
@@ -4132,6 +4140,13 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     await b.getByTestId('otro-vista').filter({ hasText: 'de perfil, mira a la derecha' }).waitFor()
     assert.equal(await a.getByTestId('aviso-vistas').count(), 0)
     await a.getByTestId('otro-estado').filter({ hasText: /Cámara \d+×\d+ a \d+ fps/ }).waitFor({ timeout: 10000 })
+    // A cuántos fps grabaría cada uno (paso 9): lo mide cada móvil y se lo cuenta al otro. Las cámaras falsas dan 20.
+    await b.getByTestId('prevision-fps').waitFor({ timeout: 20000 })
+    const previstosB = Number(await b.getByTestId('prevision-fps').getAttribute('data-fps'))
+    assert.ok(Math.abs(previstosB - 20) < 2, `B grabaría a ${previstosB} fps`)
+    await a.getByTestId('otro-estado').filter({ hasText: /grabaría a \d+ fps/ }).waitFor({ timeout: 10000 })
+    assert.match(await a.getByTestId('aviso-fps-otro').innerText(), /El otro móvil grabaría a unos 20 fps de los 30/)
+    assert.ok(await b.getByTestId('aviso-fps-previsto').isVisible())
     await b.getByTestId('vista-perfil-izquierda').click()
     await a.getByTestId('aviso-vistas').waitFor()
     await b.getByTestId('aviso-vistas').waitFor()

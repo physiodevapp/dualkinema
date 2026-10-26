@@ -107,6 +107,7 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
             grabando: m.grabando,
             codificador: m.codificador,
             microExterno: m.microExterno,
+            fpsGrabacion: m.fpsGrabacion,
           }
           setOtro((o) => ({ vista: o?.vista ?? null, version: o?.version ?? VERSION_PROTOCOLO, estado: recibido }))
         } else if (m.tipo === 'ping' || m.tipo === 'pong') relojSala.recibir(m)

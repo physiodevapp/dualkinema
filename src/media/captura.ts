@@ -21,7 +21,7 @@ import { pasoDeReloj, type PasoDeReloj } from '../core/tiempo/relojes'
  */
 
 /** Frames y trozos de audio pendientes de codificar a partir de los cuales se descartan (el codificador no da abasto). */
-const PENDIENTES_MAXIMOS = 8
+export const PENDIENTES_MAXIMOS = 8
 /** Marcas recientes con que se calcula el paso entre relojes. */
 const MARCAS = 120
 /** Una marca a menos de esto de su llegada está en el reloj de la página (ms); en otro reloj, la diferencia es enorme. */

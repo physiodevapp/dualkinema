@@ -19,6 +19,7 @@ import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { AVISO_MICRO_EXTERNO } from '../media/microfono'
 import CalibrarCamara from './CalibrarCamara'
 import { useCamara } from './useCamara'
+import { textoPrevision, usePrevisionFps } from './usePrevisionFps'
 import { useCodificador } from './useCodificador'
 import { useMicroExterno } from './useMicroExterno'
 import { usePantallaEncendida } from './usePantallaEncendida'
@@ -207,6 +208,8 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
   }
 
   const grabando = grabadora !== null
+  // A cuántos fps grabaría (paso 9), medido sin nada en marcha.
+  const prevision = usePrevisionFps(flujo, calidad, !grabando && !ocupado)
   const camara = flujo ? datosCamara(flujo) : null
   const puedeCompartir = typeof navigator.share === 'function'
   const poco = disco?.libre != null && disco.libre < ESPACIO_MINIMO
@@ -249,7 +252,17 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
             ))}
           </select>
         </label>
-        {codificador === 'software' && (
+        {prevision && (
+          <p className="font-mono text-xs text-texto-2" data-testid="grabar-prevision-fps" data-fps={prevision.fps} data-causa={prevision.causa ?? ''}>
+            Grabaría a unos {Math.round(prevision.fps)} fps
+          </p>
+        )}
+        {textoPrevision(prevision, calidad) && (
+          <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="grabar-aviso-fps-previsto">
+            {textoPrevision(prevision, calidad)}
+          </p>
+        )}
+        {!prevision && codificador === 'software' && (
           <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid="grabar-aviso-codificador">
             {AVISO_SOFTWARE}
           </p>
