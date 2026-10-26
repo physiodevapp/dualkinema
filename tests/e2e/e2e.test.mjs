@@ -3855,9 +3855,12 @@ describe('laboratorio de grabación (fase 4, paso 1)', () => {
       for (const titulo of ['## Entorno', '## Almacenamiento y pantalla', '## Códecs que codifica', '## Micrófono sin procesar', '## Marcas de tiempo de captura', '## Cámaras']) {
         assert.ok(informe.includes(titulo), `falta ${titulo}`)
       }
-      // En Chromium, el audio marca su captura en el reloj de la página y el vídeo en otro (paso 8).
+      // El audio marca su captura en el reloj de la página (el Chromium de la nube, como el Pixel 8) o en el del vídeo
+      // (el de la CI, como la tablet): en los dos casos, pasado al reloj de la página, llega al momento (paso 8).
       const marcas = informe.slice(informe.indexOf('## Marcas de tiempo de captura'), informe.indexOf('## Cámaras'))
-      assert.match(marcas, /audio:\n\s+trozos: \d+\n\s+mismoRelojQuePerformanceNow: sí/)
+      assert.match(marcas, /audio:\n\s+trozos: \d+\n\s+mismoRelojQuePerformanceNow: (sí|no)/)
+      const retrasoAudio = Number(/retrasoAudioMs: (-?[\d.]+)/.exec(marcas)?.[1])
+      assert.ok(Math.abs(retrasoAudio) < 50, `el audio, pasado al reloj de la página, llega ${retrasoAudio} ms después de capturarse`)
       assert.match(informe, /VideoEncoder: sí/)
       assert.match(informe, /MediaStreamTrackProcessor: sí/)
       assert.match(informe, /echoCancellation: no/, 'el micrófono se abre sin cancelación de eco')
