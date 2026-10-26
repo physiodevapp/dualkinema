@@ -218,6 +218,12 @@ function Aplicacion() {
     setEstado({ fase: 'cargando', nombre: 'la grabación doble' })
     const apertura = ++aperturas.current
     const abiertos: VideoAbierto[] = []
+    // Otra apertura ha empezado después: esta se abandona y cierra lo que abrió.
+    const sustituida = () => {
+      if (aperturas.current === apertura) return false
+      for (const v of abiertos) void v.cerrar()
+      return true
+    }
     try {
       const [{ VideoAbierto }, { leerMetadatosArchivo }, { idaVueltaDePareja }, { parejaDoble, TEXTO_MOTIVO_PAREJA }, { desfaseDeReloj, proponerDesfase }] = await Promise.all([
         import('../media/video'),
@@ -229,6 +235,7 @@ function Aplicacion() {
       const metas = await Promise.all(archivos.map(leerMetadatosArchivo))
       const pareja = parejaDoble(metas[0]!, metas[1]!)
       if (!pareja.ok) {
+        if (sustituida()) return
         const quien = pareja.cual === undefined ? 'Estos dos vídeos no son una grabación doble' : `«${archivos[pareja.cual].name}» no sirve`
         setEstado({ fase: 'inicio', error: `${quien}: ${TEXTO_MOTIVO_PAREJA[pareja.motivo]}. Ábrelos con «Cargar vídeo» y añade el otro como segunda vista.` })
         return
@@ -238,7 +245,7 @@ function Aplicacion() {
       const [dRef, dVista] = [pareja.doble[iRef], pareja.doble[iVista]]
       for (const i of [iRef, iVista]) abiertos.push(await VideoAbierto.abrir(archivos[i]))
       const [ref, otra] = abiertos as [VideoAbierto, VideoAbierto]
-      if (aperturas.current !== apertura) return
+      if (sustituida()) return
       // ¿Ya se trabajó con esta pareja? Entonces se continúa donde se dejó.
       const candidatas = await buscarPorHuella(huellaDe(ref)).catch(() => [])
       for (const { cabecera } of candidatas) {
@@ -246,7 +253,7 @@ function Aplicacion() {
         const vOtra = vRef && vistaDeHuella(cabecera, huellaDe(otra), { [vRef.id]: ref })
         if (vRef && vOtra && cabecera.vistas.length === 2) {
           const { cabecera: c, datos } = await leerSesion(cabecera.id)
-          if (aperturas.current !== apertura) return
+          if (sustituida()) return
           setEstado(estadoDeSesion(c, datos, { [vRef.id]: ref, [vOtra.id]: otra }, apertura))
           return
         }
@@ -256,7 +263,7 @@ function Aplicacion() {
           ? await idaVueltaDePareja({ archivo: archivos[iRef], pitidos: dRef.pitidos }, { archivo: archivos[iVista], pitidos: dVista.pitidos }).catch(() => null)
           : null
       const propuesta = proponerDesfase(pitido, desfaseDeReloj(dRef, dVista))
-      if (aperturas.current !== apertura) return
+      if (sustituida()) return
       for (const v of abiertos) v.repartirMemoria(2)
       setEstado({
         fase: 'visor',
