@@ -422,7 +422,7 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
         {errorCamara && <p className="text-sm text-red-300">No se puede abrir la cámara: {errorCamara}</p>}
         {prevision && (
           <p className="font-mono text-xs text-texto-2" data-testid="prevision-fps" data-fps={prevision.fps} data-causa={prevision.causa ?? ''}>
-            Grabaría a unos {Math.round(prevision.fps)} fps
+            Grabaría a unos {Math.round(prevision.fps)} fps <InfoGlosario id="fps-grabacion" tema="a cuántos fps grabaría" className="-my-1.5" />
           </p>
         )}
         {textoPrevision(prevision, calidad) && <Aviso testid="aviso-fps-previsto">{textoPrevision(prevision, calidad)}</Aviso>}

@@ -299,6 +299,68 @@ Pruebas: núcleo (el desfase del reloj con la segunda prueba real y con un inici
 
 **El paso entre relojes con frames regulares.** La e2e de la grabación doble salió una vez «por llegada»: la cámara falsa da un frame cada 50,0 ms exactos, y un frame emparejado con el siguiente da tantas coincidencias como consigo mismo. Ahora `pasoDeReloj` recibe también la llegada de cada frame y, entre las diferencias candidatas, toma la que deja cada frame capturado antes de llegar y por menos tiempo (la tablet del usuario, de 70 ± 3 ms entre frames, también es muy regular).
 
+**Séptima prueba, con los dos móviles calibrados (Pixel 8 de perfil, 73 ± 6 ms con 4 palmadas; tablet de frente, 32 ± 20 ms con 5; a ~2 m, palmada; 26-10-2026).** Pitido **+4 ms** (calidad 4,0, **móviles a 2,13 m**), reloj −9 ± 50 ms: la app propone el pitido. Con él aplicado, el sonido de la palmada cae a 9,2255 s en los dos vídeos (**0,1 ms de diferencia**). La imagen: en el Pixel las manos se juntan entre 9,195 y 9,229 s (el sonido, a 9,2255: lo que queda de desfase entre imagen y sonido está entre −30 y +3 ms, compatible con 0; antes de calibrar, el sonido iba 19–85 ms por delante); en la tablet (10 fps), entre 9,202 y 9,303 s en el tiempo común. Las dos ventanas se solapan entre 9,202 y 9,229 s y el sonido cae dentro. **Con esto la sincronía de la grabación doble queda medida con los aparatos reales.** La tablet grabó a 10 fps (720p, VP9 por software): sirve para sincronizar, no para medir.
+
+## Cierre de la fase 4 (paso 9)
+
+### Avisar antes de grabar si un móvil grabaría a pocos fps
+
+Pedido por el usuario al cerrar: la tablet grabó una prueba entera a 10 fps y solo se supo al parar. Ahora, antes de grabar, **una prueba de 2,5 s** (`src/media/pruebaFps.ts`) codifica lo que da la cámara con el mismo códec, bitrate y regla de descartar frames que la grabación de verdad (`codificacionVideo`, compartida con `Grabadora.preparar`; `PENDIENTES_MAXIMOS` de `Captura`), en memoria y sin guardar nada, y cuenta los fps de la cámara y los que salen del codificador (`fpsDeMarcas`, que cuenta los descartados). `preverFps` (núcleo) decide con el mismo umbral que la revisión al parar (90 %) y la causa: **la cámara** (poca luz) o **el codificador** (no da abasto: menos resolución o un móvil más reciente). `usePrevisionFps` mide al abrir la cámara (1,5 s después, con la exposición asentada), al cambiar de calidad y cada minuto, **solo sin nada en marcha** (al programar una grabación o calibrar, la prueba se cancela para no quitarle potencia a la de verdad). Se ve en «Grabar con este móvil» y en la sala («Grabaría a unos N fps», con aviso y su causa), y en la sala cada móvil se lo dice al otro (`estado.fpsGrabacion`, opcional al leer: el protocolo sigue en la versión 1) y el otro avisa («El otro móvil grabaría a unos N fps»). Cuando hay medida, sustituye al aviso de «codifica por software» (que es lo que dice el navegador, no una medida). Glosario: «A cuántos fps grabaría». Pruebas: núcleo (`fpsDeMarcas`: 30 exactos, uno de cada dos descartado, huecos sueltos; `preverFps`: cada causa) y e2e (la cámara falsa da 20 de 30: la prueba lo dice con causa «cámara» en un móvil, y en la sala el otro lo recibe y avisa).
+
+### Revisión de código
+
+Revisado todo lo que añade la fase 4, en dos partes independientes: el núcleo (`core/reloj/`, `core/sala/`, `senal/`, `core/sincronia/pitido.ts` y `doble.ts`, `core/grabacion/`, `core/tiempo/relojes.ts`, el esquema 4 y el CSV) y lo del navegador (`media/captura.ts`, `grabadora.ts`, `pruebaFps.ts`, `grabaciones.ts`, `calibracionCamara.ts`, `pitido.ts`, `src/sala/`, `Grabar.tsx`, `Emparejar.tsx`, `CalibrarCamara.tsx`, `Claqueta.tsx`, `useCamara`, `abrirDoble` en `App.tsx` y la propuesta en `SincronizarVistas`). Se ha buscado lo que puede perder una grabación o dar un resultado equivocado sin avisar; cada hallazgo se ha comprobado en el código (y en la librería, cuando dependía de ella) antes de arreglarlo.
+
+**Corregido:**
+
+1. **Girar el móvil a mitad de una grabación la perdía entera.** Android da los frames con el ancho y el alto cambiados al girar, Mediabunny paraba la grabación (`sizeChangeBehavior` por defecto, `'deny'`) y «Grabar con este móvil» la cancelaba y **borraba el archivo**. Ahora los frames se encajan en el tamaño del principio (`'contain'`, con bandas) y, si una grabación se corta por cualquier otro motivo, se cierra el archivo con lo grabado hasta ahí y se dice («La grabación se ha interrumpido …: se guarda lo grabado hasta ahí»); en la doble, igual, con el aviso en el resultado.
+2. **Una cámara que se cierra a mitad (Android la apaga al pasar la app a segundo plano) no se notaba:** la pantalla seguía diciendo «grabando» hasta 5 min sin escribir nada. Ahora el final de una pista corta la grabación con ese aviso (y se guarda lo grabado). En la doble, la grabadora se prepara con la cámara del momento (la de cuando se programó podía estar ya cerrada y reabierta) y, si no está viva, no se graba y se dice.
+3. **El reloj del otro se anotaba en el instante de la medida, no en el del inicio.** La estimación se refiere a la media de los últimos 30 intercambios (unos 15 s antes) y la grabación empieza 5–15 s después; con relojes que se separan (la pareja del usuario, unos 140 ppm), el desfase real quedaba hasta 1–3 ms fuera de la cota «rigurosa» (simulado a 100 ppm: fuera en 162 de 200 redes). Ahora `desfaseEn` lo lleva al inicio programado: con la deriva medida, por ella y con la cota ampliada en 3 errores típicos; sin medir, con la cota ampliada a 300 ppm. Tests con 200 redes a 100 ppm y con ±140 ppm.
+4. **Cancelar mientras arrancaba la grabación doble** (este móvil, el otro o salir de la pantalla) no la paraba: se quedaba grabando. Ahora se comprueba después de arrancar.
+5. **En memoria (si OPFS falla), la grabación doble no paraba a los 60 s** sino a los 5 min. Ahora usa el máximo de esa grabación.
+6. **Calibrar la cámara no bloqueaba la pantalla de grabar:** se podía empezar otra grabación o cambiar de calidad (cerraba la cámara de la calibración) y la prueba de fps competía con ella. Ahora todo eso espera. Salir a mitad de una calibración cancela su grabación antes de borrarla.
+7. **El MP4 anotaba el retraso de la cámara aunque no se hubiera descontado** (con los frames colocados por su llegada, si el navegador no da su captura). Ahora se descuenta también así (la llegada es aún más tarde que la captura, así que nunca sobra) y lo anotado es lo aplicado.
+8. **El paso entre relojes dejaba de actualizarse** a los 4 s (la clave de su caché no crecía con las listas llenas). Sin efecto hoy (se fija al arrancar, antes de eso).
+9. **Abrir una grabación doble y, mientras, otra cosa** dejaba abiertos los dos vídeos de la primera. Ahora se cierran.
+10. **La claqueta** podía programar dos secuencias con dos toques seguidos, no limpiaba sus temporizadores al salir y decía «Ha sonado» 0,3 s antes de sonar.
+11. **El relé respondía 500 a un código con un `%` mal escrito** (ahora 400, con su prueba). Sin efecto en el uso normal.
+12. **El CSV, con el evento visual elegido frente a otro método** («Usar el desfase del evento visual»), no decía lo que había dado el audio, el pitido o el reloj. Ahora va en una fila «sincronización: no usada».
+
+**Revisado sin fallos:** el signo del desfase del reloj de punta a punta (`estimarDesfase` → `RelojSala` → `relojOtro` → `aMiReloj` → `desfaseDeReloj`: t_ref − t_vista) y sus unidades (ms en los metadatos, s en la sincronía); las marcas de `RelojSala` (tardías o adelantadas solo amplían el intervalo); la recta de la deriva; el pitido (d₁ = Δ − D/c y d₂ = Δ + D/c, índices del filtro, primera llegada, calidad y distancia); el retraso de la cámara (intervalo, unidades y signo); el protocolo y el relé (lectura campo a campo, ritmo con la ráfaga del reloj, tamaño, caducidad); el esquema 4 y su migración; la pareja y los metadatos; el tiempo 0 de cada archivo (un primer frame tardío no lo mueve: Mediabunny escribe una lista de edición); cancelar y borrar en OPFS; los temporizadores de la grabación doble; la reconexión del canal; la cámara que se reabre; la propuesta, que no cambia nada hasta «Aplicar».
+
+**Revisado y que se queda como está:** la lectura del audio (`leerAudioMono`) junta los trozos uno tras otro sin mirar su instante. Con la grabadora de la app no importa: Mediabunny rellena con silencio cualquier hueco de más de 64 muestras (1,3 ms) al escribir, y en las grabaciones reales no hay saltos entre paquetes de audio (comprobado en seis vídeos). Con vídeos de otras apps puede haber hasta ese 1,3 ms (limitación 7).
+
+**Pruebas:** siguen siendo 207 e2e (las comprobaciones nuevas van dentro de las de grabar y de la sala) y tests de núcleo nuevos (`revision.test.ts`, `desfaseEn.test.ts`, protocolo, CSV); `test:senal` de 6 a 7 comprobaciones en la misma prueba. Sin e2e propios: girar el móvil y que Android cierre la cámara (la cámara falsa no lo hace); se prueban en el móvil.
+
+### Limitaciones conocidas
+
+**Grabar:**
+
+1. **La tablet del usuario (VP9 por software) graba a 10–15 fps:** sirve para sincronizar (el pitido no depende de los frames), no para medir. Ahora se avisa antes de grabar.
+2. **El retraso de la cámara se calibra a mano** (tocando el frame de cada palmada) y vale para ese móvil, esa cámara y, en principio, esa resolución; con menos fps el margen es más ancho (tablet ±20 ms). No se ha comprobado si cambia con la luz (la exposición alarga cada frame).
+3. **Girar el móvil a mitad deja bandas** en lo que queda de vídeo (el tamaño es el del principio). Se guarda, pero ese tramo no sirve para medir.
+4. **Si la app se cierra a mitad de una grabación, se pierde** (el navegador solo hace visible el archivo de OPFS al cerrarlo).
+5. **60 fps no se ofrecen:** el Pixel 8 entrega 40–44 aunque Chrome los conceda.
+
+**Sincronía:**
+
+6. **El pitido se ha comprobado con una pareja de aparatos y una sala** (siete pruebas; distancia medida de 1,98 a 2,28 m, con la real ~2 m). Con mucho eco o ruido puede no ser fiable: entonces la app propone el reloj (± 40–50 ms en la Wi-Fi del usuario).
+7. **El audio de vídeos de otras apps** puede tener huecos de hasta 1,3 ms que la lectura no ve (con la app no hay).
+8. **El reloj común depende de la Wi-Fi:** su cota es la mitad del intercambio más rápido. El relé está en Cloudflare: sin internet no hay sala (los móviles no se hablan directamente).
+9. **No se guarda en cada vista el instante real del primer frame** (D12): el tiempo 0 de cada vídeo es el inicio programado, y arrancar tarda unos ms.
+
+**Código:**
+
+10. **`useCursorComun`, la sala y la grabación doble no tienen tests de unidad propios** (se prueban por las e2e con dos navegadores y el relé local); girar el móvil y que Android cierre la cámara solo se prueban en el móvil.
+
+Las de la fase 3 siguen valiendo salvo la 2 (arreglada en el paso 7).
+
+### Pendientes y propuestas
+
+- **Un segundo móvil que grabe a 30 fps** para la toma frontal (el usuario lo usará de forma habitual): calibrarlo y hacer una prueba doble con palmada como la séptima.
+- **Fase 5 (3D):** calibración DLT con un objeto de puntos conocidos y reconstrucción con las dos vistas ya sincronizadas.
+- Ideas sin fase (protocolos tipo BTS, miembro superior, marcha): en «Ideas apuntadas» de `CLAUDE.md`.
+
 ## Orden de trabajo (un PR por paso)
 
 | Paso | Contenido | Modelo |

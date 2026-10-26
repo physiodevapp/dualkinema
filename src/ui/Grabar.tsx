@@ -257,7 +257,7 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
         </label>
         {prevision && (
           <p className="font-mono text-xs text-texto-2" data-testid="grabar-prevision-fps" data-fps={prevision.fps} data-causa={prevision.causa ?? ''}>
-            Grabaría a unos {Math.round(prevision.fps)} fps
+            Grabaría a unos {Math.round(prevision.fps)} fps <InfoGlosario id="fps-grabacion" tema="a cuántos fps grabaría" className="-my-1.5" />
           </p>
         )}
         {textoPrevision(prevision, calidad) && (
