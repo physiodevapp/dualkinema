@@ -4031,6 +4031,19 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     assert.ok(Number(await p.getByTestId('grabar-frames').innerText()) > 15)
   })
 
+  it('si Android pausa la cámara a mitad de una grabación, se corta, se dice y lo grabado se guarda', async () => {
+    const enLista = await p.getByTestId('grabacion').count()
+    await p.getByTestId('grabar-empezar').click()
+    await p.getByTestId('grabar-parar').waitFor({ timeout: 20000 })
+    await p.waitForTimeout(1500)
+    // Lo que hace Android al pasar la app a segundo plano un rato: pausa la pista (aviso «mute») sin terminarla.
+    await p.evaluate(() => document.querySelector('[data-testid=grabar-vista]').srcObject.getVideoTracks()[0].dispatchEvent(new Event('mute')))
+    await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
+    assert.match(await p.getByTestId('grabar-error').innerText(), /interrumpido.*se guarda lo grabado/)
+    assert.ok(Number(await p.getByTestId('grabar-frames').innerText()) > 15)
+    assert.equal(await p.getByTestId('grabacion').count(), enLista + 1)
+  })
+
   it('calibrar la cámara (paso 8): palmadas en el sonido, se marca el frame, se guarda y la grabadora lo descuenta', async () => {
     const enLista = await p.getByTestId('grabacion').count()
     await p.getByTestId('calibrar-empezar').click()

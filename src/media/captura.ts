@@ -24,6 +24,11 @@ import { pasoDeReloj, type PasoDeReloj } from '../core/tiempo/relojes'
 export const PENDIENTES_MAXIMOS = 8
 /** Marcas recientes con que se calcula el paso entre relojes. */
 const MARCAS = 120
+/**
+ * Sin frames de la cámara durante esto (ms) mientras se graba, la grabación se corta (y se guarda): Android pausa la
+ * cámara de una app que pasa a segundo plano sin terminar la pista, y al volver seguía como si nada, con un hueco.
+ */
+const SIN_FRAMES_MS = 2000
 /** Una marca a menos de esto de su llegada está en el reloj de la página (ms); en otro reloj, la diferencia es enorme. */
 const MISMO_RELOJ_MS = 1000
 
@@ -101,6 +106,10 @@ export class Captura {
   private readonly pendientes = new Set<Promise<unknown>>()
   private origen: number | null = null
   private detenida = false
+  /** Llegada del último frame de vídeo (ms del reloj de la página) y el vigilante que la mira. */
+  private ultimoFrame = 0
+  private vigilante: ReturnType<typeof setInterval> | null = null
+  private readonly pistaVideo: MediaStreamTrack
   /** Fijados al empezar: el paso del reloj del vídeo y cómo se colocan los trozos. */
   private pasoVideo = 0
   private audioEnPagina: boolean | null = null
@@ -125,6 +134,8 @@ export class Captura {
     this.error = new Promise<never>((_, rechazar) => (this.rechazar = rechazar))
     this.error.catch(() => {})
     this.estimador = new EstimadorPaso(pistaVideo)
+    this.pistaVideo = pistaVideo
+    pistaVideo.addEventListener('mute', this.alPausar)
     void this.leer(pistaVideo, 'video')
     if (pistaAudio && fuenteAudio) void this.leer(pistaAudio, 'audio')
   }
@@ -147,6 +158,10 @@ export class Captura {
     this.modo = paso ? 'captura' : 'llegada'
     this.pasoVideo = paso?.diferenciaMs ?? porLlegada ?? 0
     this.origen = origen
+    this.ultimoFrame = performance.now()
+    this.vigilante = setInterval(() => {
+      if (performance.now() - this.ultimoFrame > SIN_FRAMES_MS) this.interrumpir('la cámara ha dejado de dar imagen (¿la app pasó a segundo plano?)')
+    }, 500)
     // El paso es fijo durante la grabación: el `<video>` del aviso ya no hace falta, y en un aparato lento le quitaba
     // potencia al codificador (la tablet bajó a 6 fps con él abierto).
     this.estimador.cerrar()
@@ -155,10 +170,23 @@ export class Captura {
   /** Para de leer y espera a que se codifique lo pendiente. */
   async detener(): Promise<void> {
     this.detenida = true
+    this.pistaVideo.removeEventListener('mute', this.alPausar)
+    if (this.vigilante) clearInterval(this.vigilante)
     this.origen = null
     for (const l of this.lectores) await l.cancel().catch(() => {})
     await Promise.allSettled([...this.pendientes])
     this.estimador.cerrar()
+  }
+
+  /** Android pausa la cámara (sin terminarla) al pasar la app a segundo plano. */
+  private readonly alPausar = () => this.interrumpir('Android ha pausado la cámara (la app pasó a segundo plano)')
+
+  /** Corta la grabación en marcha (quien graba guarda lo grabado hasta aquí y lo dice); antes de empezar, nada. */
+  private interrumpir(motivo: string) {
+    if (this.origen === null || this.detenida) return
+    if (this.vigilante) clearInterval(this.vigilante)
+    this.vigilante = null
+    this.rechazar(new Error(motivo))
   }
 
   /** La marca de un trozo en el reloj de la página (ms). */
@@ -176,10 +204,11 @@ export class Captura {
         if (done || !value) {
           // La pista ha terminado sin que se pidiera parar (Android apaga la cámara de una app que deja de verse, o se
           // ha vuelto a abrir): lo grabado hasta aquí se guarda y se dice.
-          if (this.origen !== null && !this.detenida) this.rechazar(new Error(clase === 'video' ? 'la cámara se ha cerrado' : 'el micrófono se ha cerrado'))
+          this.interrumpir(clase === 'video' ? 'la cámara se ha cerrado' : 'el micrófono se ha cerrado')
           break
         }
         const llegada = performance.now()
+        if (clase === 'video') this.ultimoFrame = llegada
         const marca = value.timestamp / 1000
         if (clase === 'video') this.estimador.anotar(marca, llegada)
         else this.audioEnPagina ??= Math.abs(llegada - marca) < MISMO_RELOJ_MS
