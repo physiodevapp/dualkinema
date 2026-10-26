@@ -155,7 +155,9 @@ export class Grabadora {
     }
     salida.setMetadataTags({ comment: textoMetadatos(metadatos) })
 
-    const fuenteVideo = new VideoSampleSource({ codec, bitrate, keyFrameInterval: 1, latencyMode: 'realtime' })
+    // Al girar el móvil, Android da los frames con el ancho y el alto cambiados: se encajan en el tamaño del principio
+    // (con bandas) en vez de parar la grabación, que con «deny» perdía el archivo entero.
+    const fuenteVideo = new VideoSampleSource({ codec, bitrate, keyFrameInterval: 1, latencyMode: 'realtime', sizeChangeBehavior: 'contain' })
     salida.addVideoTrack(fuenteVideo)
     const fuenteAudio = pistaAudio && codecAudio ? new AudioSampleSource({ codec: codecAudio, bitrate: 128_000 }) : null
     if (fuenteAudio) salida.addAudioTrack(fuenteAudio)

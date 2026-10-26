@@ -36,6 +36,8 @@ class EstimadorPaso {
   private readonly llegadas: number[] = []
   private readonly visor: HTMLVideoElement | null
   private vivo = true
+  /** Marcas anotadas desde el principio (no baja al recortar las listas): la clave de la caché del paso. */
+  private anotadas = 0
   private cache: { n: number; paso: PasoDeReloj | null } = { n: -1, paso: null }
 
   constructor(pista: MediaStreamTrack) {
@@ -49,7 +51,10 @@ class EstimadorPaso {
     visor.srcObject = new MediaStream([pista.clone()])
     const aviso = (_: number, m: VideoFrameCallbackMetadata) => {
       if (!this.vivo) return
-      if (typeof m.captureTime === 'number') recortar(this.capturas, m.captureTime)
+      if (typeof m.captureTime === 'number') {
+        recortar(this.capturas, m.captureTime)
+        this.anotadas++
+      }
       visor.requestVideoFrameCallback(aviso)
     }
     visor.requestVideoFrameCallback(aviso)
@@ -60,10 +65,11 @@ class EstimadorPaso {
   anotar(marcaMs: number, llegadaMs: number) {
     recortar(this.marcas, marcaMs)
     recortar(this.llegadas, llegadaMs)
+    this.anotadas++
   }
 
   paso(): PasoDeReloj | null {
-    const n = this.capturas.length + this.marcas.length
+    const n = this.anotadas
     if (n !== this.cache.n) this.cache = { n, paso: pasoDeReloj(this.marcas, this.capturas, this.llegadas) }
     return this.cache.paso
   }
@@ -94,6 +100,7 @@ export class Captura {
   private readonly lectores: ReadableStreamDefaultReader<VideoFrame | AudioData>[] = []
   private readonly pendientes = new Set<Promise<unknown>>()
   private origen: number | null = null
+  private detenida = false
   /** Fijados al empezar: el paso del reloj del vídeo y cómo se colocan los trozos. */
   private pasoVideo = 0
   private audioEnPagina: boolean | null = null
@@ -110,7 +117,8 @@ export class Captura {
     private readonly fuenteAudio: AudioSampleSource | null,
     /**
      * Retraso de la cámara de este móvil (ms; `core/grabacion/calibracion.ts`): la «captura» que da Chrome no incluye
-     * lo que tarda la cámara, así que se adelanta cada frame esto. Solo cuando los frames van por su captura.
+     * lo que tarda la cámara, así que se adelanta cada frame esto. También con los frames por su llegada (que es aún
+     * más tarde): así lo anotado en el MP4 es siempre lo aplicado.
      */
     private readonly retrasoCamaraMs = 0,
   ) {
@@ -146,6 +154,7 @@ export class Captura {
 
   /** Para de leer y espera a que se codifique lo pendiente. */
   async detener(): Promise<void> {
+    this.detenida = true
     this.origen = null
     for (const l of this.lectores) await l.cancel().catch(() => {})
     await Promise.allSettled([...this.pendientes])
@@ -155,12 +164,7 @@ export class Captura {
   /** La marca de un trozo en el reloj de la página (ms). */
   private aPagina(marcaMs: number, clase: 'video' | 'audio'): number {
     if (clase === 'audio') return this.audioEnPagina ? marcaMs : marcaMs - this.pasoVideo
-    return marcaMs - this.pasoVideo - (this.modo === 'captura' ? this.retrasoCamaraMs : 0)
-  }
-
-  /** El retraso de la cámara descontado (ms): 0 sin calibrar o si los frames van por su llegada. */
-  get retrasoAplicadoMs(): number {
-    return this.modo === 'captura' ? this.retrasoCamaraMs : 0
+    return marcaMs - this.pasoVideo - this.retrasoCamaraMs
   }
 
   private async leer(pista: MediaStreamTrack, clase: 'video' | 'audio') {
@@ -169,7 +173,12 @@ export class Captura {
     try {
       for (;;) {
         const { value, done } = await lector.read()
-        if (done || !value) break
+        if (done || !value) {
+          // La pista ha terminado sin que se pidiera parar (Android apaga la cámara de una app que deja de verse, o se
+          // ha vuelto a abrir): lo grabado hasta aquí se guarda y se dice.
+          if (this.origen !== null && !this.detenida) this.rechazar(new Error(clase === 'video' ? 'la cámara se ha cerrado' : 'el micrófono se ha cerrado'))
+          break
+        }
         const llegada = performance.now()
         const marca = value.timestamp / 1000
         if (clase === 'video') this.estimador.anotar(marca, llegada)

@@ -32,7 +32,7 @@ export async function probarFps(flujo: MediaStream, calidad: Calidad, senal?: Ab
   const pista = original.clone()
   const lector = new MediaStreamTrackProcessor({ track: pista }).readable.getReader()
   const salida = new Output({ format: new Mp4OutputFormat(), target: new BufferTarget() })
-  const fuente = new VideoSampleSource({ codec: eleccion.codec, bitrate: eleccion.bitrate, keyFrameInterval: 1, latencyMode: 'realtime' })
+  const fuente = new VideoSampleSource({ codec: eleccion.codec, bitrate: eleccion.bitrate, keyFrameInterval: 1, latencyMode: 'realtime', sizeChangeBehavior: 'contain' })
   salida.addVideoTrack(fuente)
   const pendientes = new Set<Promise<unknown>>()
   const camara: number[] = []
