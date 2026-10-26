@@ -8,11 +8,17 @@ import { codificacionVideo, type Calidad } from './grabadora'
  * grabó a 10 fps una prueba doble entera. Aquí se codifica lo que da la cámara durante unos segundos, con el mismo
  * códec, el mismo bitrate y la misma regla de descartar frames que al grabar (`Captura`), en memoria y sin guardar
  * nada. Da los fps de la cámara (con poca luz bajan) y los que salen del codificador (por software no da abasto).
+ *
+ * En dos tiempos: primero la cámara sola, sin codificar, y después el codificador. Contando la cámara mientras se
+ * codifica, en la tablet del usuario (VP9 por software, el procesador al máximo) la app no leía cada frame a tiempo,
+ * Chrome descartaba los no leídos y parecía que la cámara daba 10 fps: el aviso culpaba a la luz y no al codificador.
  */
 
-/** Lo que se deja pasar antes de contar (el codificador arranca) y lo que dura la prueba (s). */
-const CALENTAR_S = 0.5
-const DURACION_S = 2.5
+/** Tramos de la prueba (s desde el primer frame): arranque, la cámara sola, el codificador arrancando y contando. */
+const CAMARA_DESDE_S = 0.5
+const CODIFICAR_DESDE_S = 1.5
+const CONTAR_CODIFICADOS_DESDE_S = 2
+const DURACION_S = 4
 /** Sin un frame en este tiempo, la prueba se abandona (ms). */
 const SIN_FRAMES_MS = 3000
 
@@ -54,12 +60,14 @@ export async function probarFps(flujo: MediaStream, calidad: Calidad, senal?: Ab
       }
       const t = value.timestamp / 1e6
       t0 ??= t
-      const contar = t - t0 >= CALENTAR_S
-      if (contar) camara.push(t)
-      if (pendientes.size >= PENDIENTES_MAXIMOS) {
+      const desde = t - t0
+      if (desde < CODIFICAR_DESDE_S) {
+        if (desde >= CAMARA_DESDE_S) camara.push(t)
+        value.close()
+      } else if (pendientes.size >= PENDIENTES_MAXIMOS) {
         value.close()
       } else {
-        if (contar) codificados.push(t)
+        if (desde >= CONTAR_CODIFICADOS_DESDE_S) codificados.push(t)
         const muestra = new VideoSample(value, { timestamp: t - t0 })
         const p = fuente
           .add(muestra)
