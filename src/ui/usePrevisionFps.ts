@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react'
 import { preverFps, revisarFps, type PrevisionFps } from '../core/grabacion/revision'
 import type { Calidad } from '../media/grabadora'
 
-/** Espera tras abrir la cámara antes de medir (la exposición automática se asienta) y cada cuánto se repite (ms). */
+/**
+ * Espera tras abrir la cámara antes de medir (la exposición automática se asienta) y cada cuánto se repite (ms): con
+ * aviso, a menudo, para que desaparezca poco después de poner más luz; sin aviso, cada minuto, para no cargar el móvil.
+ */
 const ESPERA_MS = 1500
 const REPETIR_MS = 60_000
+const REPETIR_CON_AVISO_MS = 10_000
 
 /**
  * A cuántos fps grabaría este móvil (`media/pruebaFps.ts`), medido al abrir la cámara, al cambiar de calidad y cada
- * minuto (la luz cambia). Solo con `activo`: al dejar de estarlo (se va a grabar) la prueba en marcha se cancela, para
+ * minuto (la luz cambia), o cada 10 s mientras hay aviso. Solo con `activo`: al dejar de estarlo (se va a grabar) la prueba en marcha se cancela, para
  * no quitarle potencia al codificador de verdad. null mientras no hay medida de esta cámara.
  */
 export function usePrevisionFps(flujo: MediaStream | null, calidad: Calidad, activo: boolean): PrevisionFps | null {
@@ -21,8 +25,9 @@ export function usePrevisionFps(flujo: MediaStream | null, calidad: Calidad, act
       const { probarFps } = await import('../media/pruebaFps')
       const m = await probarFps(flujo, calidad, control.signal)
       if (control.signal.aborted) return
-      if (m) setR({ flujo, p: preverFps(calidad.fps, m.camara, m.codificados) })
-      reloj = setTimeout(() => void medir(), REPETIR_MS)
+      const p = m ? preverFps(calidad.fps, m.camara, m.codificados) : null
+      if (p) setR({ flujo, p })
+      reloj = setTimeout(() => void medir(), p?.bajos ? REPETIR_CON_AVISO_MS : REPETIR_MS)
     }
     reloj = setTimeout(() => void medir(), ESPERA_MS)
     return () => {
