@@ -96,6 +96,16 @@ export interface FramePoseWorker {
 /** Mensajes del worker sin marcadores al hilo principal. */
 export type DelWorkerPose =
   | { readonly tipo: 'listo'; readonly delegado: 'GPU' | 'CPU'; readonly avisoDelegado?: string; readonly msCarga: number }
-  | { readonly tipo: 'frames'; readonly lote: readonly FramePoseWorker[]; readonly progreso: number }
-  | { readonly tipo: 'fin'; readonly motivo: 'final' | 'cancelado'; readonly procesados: number; readonly msProceso: number }
+  /** `atras`: los frames son de la segunda pasada (hacia atrás); `progreso` es entonces el de esa pasada. */
+  | { readonly tipo: 'frames'; readonly lote: readonly FramePoseWorker[]; readonly progreso: number; readonly atras?: boolean }
+  | {
+      readonly tipo: 'fin'
+      readonly motivo: 'final' | 'cancelado'
+      /** Frames recorridos hacia delante y lo que tardó (ms). */
+      readonly procesados: number
+      readonly msProceso: number
+      /** Frames sin persona que la segunda pasada, hacia atrás, recuperó, y lo que tardó (ms). */
+      readonly recuperados: number
+      readonly msAtras: number
+    }
   | { readonly tipo: 'error'; readonly mensaje: string }

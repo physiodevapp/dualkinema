@@ -36,7 +36,7 @@ interface Props {
 type Estado =
   | { fase: 'parado' }
   | { fase: 'cargando' }
-  | { fase: 'detectando'; progreso: number }
+  | { fase: 'detectando'; progreso: number; atras?: boolean }
   | { fase: 'hecho'; motivo: 'final' | 'cancelado' }
   | { fase: 'error'; mensaje: string }
 
@@ -47,6 +47,8 @@ interface Medida {
   msCarga: number
   msProceso: number
   procesados: number
+  recuperados: number
+  msAtras: number
 }
 
 const MODELOS: readonly { id: TamanoModeloPose; nombre: string }[] = [
@@ -89,7 +91,7 @@ export default function ExperimentoPose({ archivo, tabla, ancho, alto, orientaci
     setMedida(null)
     setCopiado(false)
     setEstado({ fase: 'cargando' })
-    let parcial: Medida = { modelo, delegado: delegadoPedido, msCarga: 0, msProceso: 0, procesados: 0 }
+    let parcial: Medida = { modelo, delegado: delegadoPedido, msCarga: 0, msProceso: 0, procesados: 0, recuperados: 0, msAtras: 0 }
     w.onmessage = (e: MessageEvent<DelWorkerPose>) => {
       if (worker.current !== w) return
       const m = e.data
@@ -99,9 +101,9 @@ export default function ExperimentoPose({ archivo, tabla, ancho, alto, orientaci
       } else if (m.tipo === 'frames') {
         for (const f of m.lote) acumulado.set(f.indice, f.puntos)
         setFrames(new Map(acumulado))
-        setEstado({ fase: 'detectando', progreso: m.progreso })
+        setEstado({ fase: 'detectando', progreso: m.progreso, atras: m.atras })
       } else if (m.tipo === 'fin') {
-        setMedida({ ...parcial, msProceso: m.msProceso, procesados: m.procesados })
+        setMedida({ ...parcial, msProceso: m.msProceso, procesados: m.procesados, recuperados: m.recuperados, msAtras: m.msAtras })
         setEstado({ fase: 'hecho', motivo: m.motivo })
         w.terminate()
         worker.current = null
@@ -137,6 +139,8 @@ export default function ExperimentoPose({ archivo, tabla, ancho, alto, orientaci
       msCarga: medida.msCarga,
       msProceso: medida.msProceso,
       procesados: medida.procesados,
+      recuperados: medida.recuperados,
+      msAtras: medida.msAtras,
       total,
       ancho,
       alto,
@@ -204,7 +208,7 @@ export default function ExperimentoPose({ archivo, tabla, ancho, alto, orientaci
         <button type="button" onClick={parar} className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3">
           <StopIcon className="size-5" /> Parar
           <span className="inline-block w-[12ch] text-right font-mono text-sm text-texto-2" data-testid="progreso-pose">
-            {estado.fase === 'cargando' ? 'cargando…' : `${Math.round(estado.progreso * 100)} %`}
+            {estado.fase === 'cargando' ? 'cargando…' : `${estado.atras ? 'atrás ' : ''}${Math.round(estado.progreso * 100)} %`}
           </span>
         </button>
       ) : (

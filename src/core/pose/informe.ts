@@ -17,6 +17,9 @@ export interface DatosInforme {
   /** Lo que tardó en cargar el modelo y en recorrer el vídeo, ms. */
   readonly msCarga: number
   readonly msProceso: number
+  /** La segunda pasada, hacia atrás: frames sin persona que recuperó y lo que tardó, ms. */
+  readonly recuperados: number
+  readonly msAtras: number
   /** Frames procesados y frames del vídeo. */
   readonly procesados: number
   readonly total: number
@@ -55,11 +58,11 @@ export function textoInforme(d: DatosInforme): string {
   l.push(`Vídeo: ${d.ancho}×${d.alto}, ${n1(d.duracion)} s, ${d.total} frames, ${n1(d.fps)} fps medianos`)
   const segProceso = d.msProceso / 1000
   l.push(
-    `Tiempo: carga ${n1(d.msCarga / 1000)} s; proceso ${n1(segProceso)} s para ${d.procesados} frames (${n1(d.procesados / Math.max(segProceso, 1e-9))} frames/s, ${n2(segProceso / Math.max(d.duracion, 1e-9))} × la duración)`,
+    `Tiempo: carga ${n1(d.msCarga / 1000)} s; proceso ${n1(segProceso)} s para ${d.procesados} frames (${n1(d.procesados / Math.max(segProceso, 1e-9))} frames/s, ${n2(segProceso / Math.max(d.duracion, 1e-9))} × la duración); hacia atrás ${n1(d.msAtras / 1000)} s`,
   )
   const serieDe = (p: ParteCuerpo, lado: Lado) => d.trayectorias.get(idPose(p, lado)) ?? []
   const detectados = serieDe('cadera', d.lado).filter((m) => m && Number.isFinite(m.x)).length
-  l.push(`Persona detectada: ${detectados} de ${d.procesados} frames (${pc(detectados, d.procesados)})`)
+  l.push(`Persona detectada: ${detectados} de ${d.procesados} frames (${pc(detectados, d.procesados)}), ${d.recuperados} de ellos recuperados hacia atrás`)
   const lado = d.lado === 'der' ? 'derecha' : 'izquierda'
   for (const [nombre, l2] of [[`pierna ${lado} (la de la cámara)`, d.lado], [`pierna ${d.lado === 'der' ? 'izquierda' : 'derecha'} (la lejana)`, d.lado === 'der' ? 'izq' : 'der']] as const) {
     const partes = (['cadera', 'rodilla', 'tobillo'] as const).map((p) => {

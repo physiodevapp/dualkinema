@@ -10,6 +10,8 @@ const base: DatosInforme = {
   delegado: 'GPU',
   msCarga: 1500,
   msProceso: 20000,
+  recuperados: 20,
+  msAtras: 1500,
   procesados: 300,
   total: 300,
   ancho: 1080,
@@ -41,8 +43,8 @@ describe('textoInforme', () => {
     const t = textoInforme(base)
     expect(t).toContain('MediaPipe Pose Landmarker full · GPU')
     expect(t).toContain('1080×1920, 10,0 s, 300 frames, 30,0 fps')
-    expect(t).toContain('proceso 20,0 s para 300 frames (15,0 frames/s, 2,00 × la duración)')
-    expect(t).toContain('Persona detectada: 270 de 300 frames (90 %)')
+    expect(t).toContain('proceso 20,0 s para 300 frames (15,0 frames/s, 2,00 × la duración); hacia atrás 1,5 s')
+    expect(t).toContain('Persona detectada: 270 de 300 frames (90 %), 20 de ellos recuperados hacia atrás')
     expect(t).toContain('cadera 0,90 (90 % ≥ 0,5)')
     expect(t).toContain('rodilla 0,40 (0 % ≥ 0,5)')
     expect(t).toContain('Cambios de lado (izquierda ↔ derecha) detectados: 2')
