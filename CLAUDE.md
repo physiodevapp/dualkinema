@@ -205,7 +205,8 @@ Si durante el trabajo detectas otras mejoras de arquitectura o de análisis (en 
 3. **Dos vistas**: carga de dos vídeos, sincronización por evento visual o por audio, línea de tiempo y cursor comunes, gráficas superpuestas.
 4. **Grabación con dos móviles**: emparejamiento por código/QR, sincronización de relojes, inicio programado, pitido de referencia y ajuste fino por audio.
 5. **3D**: calibración DLT con objeto de puntos conocidos, reconstrucción 3D y ángulos articulares reales.
-6. **Corrección de lente, modo sin marcadores comparativo y validación**.
+6. **Corrección de lente, modo sin marcadores comparativo y validación**: calibración con damero (lente de cada móvil y posición de las cámaras), validada frente a la de la fase 5, y MediaPipe sin marcadores comparado con los gomets, triangulado con la misma base 3D.
+7. **Todas las articulaciones en los tres planos**: esqueleto con articulaciones restringidas (cadera esférica, rodilla casi bisagra…) ajustado frame a frame a los puntos 3D, con marcadores o sin ellos (como OpenCap, pero todo en el navegador: allí se procesa en la nube). Es lo que permite la pelvis y la cadera en tres ejes con dos cámaras: no se ven, se infieren.
 
 Trabaja **una fase cada vez**. No adelantes funcionalidad de fases futuras salvo lo necesario para no bloquearlas.
 

@@ -147,6 +147,12 @@ Las convenciones de signo y cero de los ángulos 3D quedan **fijadas por tests n
 
 ---
 
+## Después de la fase 5
+
+Pedido por el usuario (27-10), a la vista de OpenCap (Stanford: dos o más móviles, un damero y análisis sin marcadores, procesado en la nube): llegar a **todas las articulaciones en los tres planos para cualquier movimiento**. No cambia esta fase: todo lo que hace (calibrar, sincronizar, triangular, ángulos 3D) lo reutiliza el camino sin marcadores, cuyos puntos también se triangulan. Queda así:
+- **Fase 6:** calibración con damero (lente de cada móvil una vez, y la posición de las cámaras con el damero en vertical), validada frente a la de la plomada (dos calibraciones independientes del mismo espacio deben dar los mismos puntos), y MediaPipe sin marcadores comparado con los gomets.
+- **Fase 7 (nueva):** un esqueleto con articulaciones restringidas ajustado frame a frame a los puntos 3D, con marcadores o sin ellos. Es lo que da la pelvis y la cadera en tres ejes con dos cámaras (no se ven: se infieren). Todo en el navegador, por la restricción de que los vídeos no salgan del móvil.
+
 ## Orden de trabajo (un PR por paso)
 
 | Paso | Contenido | Modelo |
