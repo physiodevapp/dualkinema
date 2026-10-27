@@ -1,208 +1,144 @@
-# Fase 5: 3D
+# Fase 5: sin marcadores en 2D (con gomets opcionales)
 
-Estado: **plan propuesto** (2026-10-26; revisado el 27-10 con las respuestas del usuario: D1 por confirmar —ver la aclaración de §1—, D3 con la varilla de cualquier largo o la plomada, D7 ampliado a los demás movimientos). No se escribe código hasta que se acepte.
+Estado: **plan propuesto** (2026-10-27), pendiente de aceptar. No se escribe código hasta entonces.
 
-Objetivo de la fase (de `CLAUDE.md`): calibración DLT con un objeto de puntos conocidos, reconstrucción 3D y ángulos articulares reales. Parte de lo que dejaron las fases anteriores:
-- **la limitación 1 de la fase 2:** en las sentadillas reales los segmentos se acortan hasta un 13 % en el fondo (la rodilla sale hacia la cámara) y la flexión real es del orden de 10° mayor que la medida en 2D;
-- **la de la fase 3:** el FPPA es una proyección, y con la cámara en diagonal o la persona girada una flexión se ve como valgo;
-- **lo que ya da la fase 4:** dos vídeos grabados a la vez y sincronizados con el pitido (0,1 ms entre los sonidos de una palmada en la séptima prueba) y el retraso de cada cámara calibrado (Pixel 8: 73 ± 6 ms). Esa sincronía es la que hace posible el 3D con dos móviles.
+## Cambio de rumbo (27-10-2026)
 
-Caso de uso que guía las decisiones, el mismo que en la fase 4: **el usuario está solo**, con dos móviles en trípode, un metro, cinta de carrocero y lo que haya en casa (un palo de escoba, un goniómetro). Nada que comprar salvo, como mucho, unas bolitas de porexpán.
+El primer plan de esta fase era el 3D con un objeto de calibración (DLT con una plomada de bolitas o una varilla en marcas del suelo, y validación con una varita y el goniómetro). El usuario lo descarta: **demasiado material y tiempo** de preparación para el uso que quiere darle. Lo que quiere es algo como las apps de análisis con un solo móvil (tipo Yogger), **sin marcadores**, que acepte gomets como opción y que, con dos móviles, dé profundidad y 3D **sin objetos de calibración**.
 
-Criterio de cierre (propuesto; las cifras se revisan con las primeras medidas, paso 6):
-- calibrar el espacio con los dos móviles en unos 10 minutos, con un objeto hecho en casa, y ver en la app el error de la calibración en mm;
-- grabar una sentadilla con los dos móviles **sin tocar los trípodes** y obtener, sin más pasos que los de hoy (marcar, seguir en cada vista, sincronizar), la flexión de rodilla en 3D, la proyección en los planos sagital y frontal de la persona y la longitud de los segmentos en 3D;
-- validación con lo que hay en casa: puntos de la calibración que no se usaron (error ≤ 5 mm), una varita de longitud conocida movida por todo el volumen (error medio ≤ 3 mm, dispersión ≤ 5 mm) y un goniómetro inclinado hacia la cámara (3D a ≤ 3° del ángulo puesto donde el 2D se equivoca más de 10°);
-- en la sentadilla, la longitud 3D de muslo y pierna varía ≤ 3 % (en 2D, hasta un 13 %).
+El nuevo orden de fases (también en `CLAUDE.md`):
 
-Lo que **no** entra: corrección de lente y calibración de intrínsecos con tablero (fase 6), modo sin marcadores (fase 6), más de dos cámaras, ángulos en tres ejes con rotación (ver D7), una vista 3D girable, protocolos tipo BTS (idea apuntada, sin fase).
+| Fase | Qué | Material nuevo |
+|---|---|---|
+| **5** | **Sin marcadores en 2D:** el cuerpo detectado en el navegador (MediaPipe) en una vista, con los ángulos de siempre; los gomets, opcionales y comparables | Ninguno |
+| **6** | **3D con dos móviles calibrado con la propia persona:** posición de una cámara respecto a la otra a partir de los puntos del cuerpo (y de los gomets, si los hay), la vertical del acelerómetro de cada móvil, la escala de la altura de la persona; asistente de colocación | Ninguno |
+| **7** | **Esqueleto completo:** articulaciones restringidas ajustadas frame a frame a los puntos 3D; todas las articulaciones en los tres planos y las dos piernas a la vez | Ninguno |
+
+El objeto de calibración (plomada, damero) queda como **modo preciso opcional** para más adelante, si hace falta para investigación o para validar el 3D calibrado con la persona; no es necesario para usar la app.
+
+**¿Hacen falta gomets en el producto final?** No para el uso normal. Quedan para:
+- **validar** (comparar lo que da el modelo con puntos colocados sobre referencias óseas): en esta fase, con vídeos que el usuario ya tiene;
+- **más precisión en un punto concreto** (investigación, un caso dudoso, ropa ancha que esconde la rodilla);
+- **ayudar a la calibración 3D** (fase 6): un gomet es un punto más preciso que uno estimado por el modelo.
+
+Lo hecho en las fases 1–4 sirve tal cual: vídeo, tiempos, seguimiento de gomets, sincronía, grabación doble, filtros, ángulos (ya aceptan puntos de cualquier origen), gráficas y CSV. Sin marcadores es **otra fuente de puntos** para lo mismo.
 
 ---
 
-## 1. Dónde van las cámaras y qué marcadores ven las dos [D1, D2]
+## 1. Qué modelo y dónde corre [D1, D2]
 
-El punto de partida que obliga a decidir: **para reconstruir un marcador en 3D tienen que verlo las dos cámaras a la vez.** Hoy la vista de perfil sigue trocánter, epicóndilo y maléolo laterales, y la de frente, muslo proximal, centro de la rodilla y centro del tobillo: **no comparten ninguno.** Un gomet plano en la cara lateral, visto desde delante, queda de canto (no se reconoce), y uno sobre la rótula, visto de perfil, igual.
+**D1 — Modelo: MediaPipe Pose Landmarker** (Tasks Vision, Apache 2.0, gratuito; ya previsto en `CLAUDE.md`). Da 33 puntos por persona y frame: en imagen (normalizados), una estimación «3D» centrada en la cadera con una sola cámara (no se usa: su profundidad la supone el modelo), y por punto una **visibilidad** y una **presencia** (0–1). Tres tamaños: *lite*, *full* y *heavy* (más preciso y más lento). Cuál se usa lo decide el paso 1 con datos: precisión frente a los gomets y tiempo en el Pixel 8. Si MediaPipe no da la precisión necesaria, se evalúan otros modelos abiertos que corran en el navegador; no antes.
 
-| Alternativa | A favor | En contra |
-|---|---|---|
-| a. Perfil y frente (90°), como en la fase 4 | La mejor geometría para triangular (el error en profundidad es mínimo a 90°) | Ningún gomet plano lo ven bien las dos; habría que poner marcadores esféricos en sitios raros o duplicar marcadores |
-| **b. Perfil y anterolateral** (la segunda cámara a 45–60° de la de perfil, hacia delante, del mismo lado) | Las dos ven los tres gomets laterales de siempre; la de perfil sigue dando el 2D de hoy, así que **se puede comparar 2D y 3D en la misma toma** (útil para validar y para docencia) | Peor geometría que a 90°: a 45° el error en profundidad es ~1,4 veces el de 90°, a 60° ~1,15; un gomet plano visto a 60° se ve con la mitad de ancho |
-| c. Las dos oblicuas (anterolateral y posterolateral, 90° entre ellas) | Buena geometría y las dos ven la cara lateral a 45° | Se pierde la vista de perfil puro (el 2D de hoy) y la comparación |
-| d. Una en cada flanco anterolateral (a ±45° del frente, 90° entre ellas) | La mejor geometría; ven **las dos piernas** por delante, y el plano frontal (el valgo) de frente | Los puntos laterales de una pierna (trocánter, epicóndilo, maléolo) solo los ve la cámara de su lado: no se pueden reconstruir. Hacen falta marcadores en la cara anterior y una postura estática para situar los centros articulares; sin vista de perfil para comparar con el 2D |
+**D2 — Dónde corre:** dentro del navegador, nunca en un servidor (RGPD). En un **worker** como el del seguimiento (`workers/pose.worker.ts`), decodificando los frames con Mediabunny igual que hoy y llamando al modelo en modo vídeo con el **tiempo del vídeo** de cada frame (`tabla.tiempos`, nunca un reloj), con aceleración por GPU si el worker la admite y, si no, en CPU (a comprobar en el paso 1). Se procesa el vídeo entero una vez, con progreso y «Cancelar», como «Seguir».
 
-**Recomendación: (b)**, con 45° entre las cámaras para gomets planos y hasta 60° con marcadores esféricos (D2). El paso 6 mide las dos separaciones y la recomendación final va a `docs/grabacion.md`. La vista de perfil sigue siendo la referencia (desfase 0) y la pierna analizada, la que ve ella (regla de `CLAUDE.md`).
+**Dónde viven el código y el modelo:** la librería y el WASM, de la CDN (permitido: no envía datos) o alojados en el sitio; el archivo del modelo (unos MB), alojado en el propio sitio si cabe en el límite por archivo de Cloudflare (25 MiB), para no depender de terceros. Se carga solo al pedirlo (`import()`), como el visor: la portada no lo descarga.
 
-**Aclaración (27-10):** la propuesta (b) **no** es un móvil en cada flanco: los dos van **del mismo lado** de la persona (el de la pierna que se mide), uno de perfil puro y el otro girado 45–60° hacia delante, de modo que los dos ven la cara lateral de esa pierna. Un móvil en cada flanco es la alternativa (d): mejor geometría y las dos piernas, pero los marcadores laterales de una pierna solo los ve una cámara. **Recomendación: (b) en esta fase** (una pierna, con los marcadores de siempre y la comparación con el 2D); (d) como protocolo bilateral cuando la base 3D esté validada (ver §5: el cálculo por segmentos sirve igual para las dos).
+## 2. Los puntos del cuerpo como trayectorias [D3]
 
-**Marcadores [D2].** Mínimo para esta fase, en la cara lateral de la pierna que ve la cámara de perfil: **trocánter mayor, epicóndilo femoral lateral y maléolo lateral** (los de la fase 1). Opcionales con lo mismo: calcáneo y 5.º metatarsiano (tobillo) y acromion (cadera), si las dos cámaras los ven. Gomets planos verdes o azules valen a 45°; para 60° se proponen **bolitas** (porexpán de 2–2,5 cm pintadas, o medias bolas pegadas), que se ven redondas desde cualquier lado. El seguidor ya acepta manchas de forma algo alargada; si con 60° pierde gomets planos, se ajusta en el paso 6 con vídeos reales, no antes.
+Cada punto que interesa se guarda como la trayectoria de un **marcador virtual** del modelo de la sesión (`Muestra2D`: t, x, y en px de la imagen tal como se ve, calidad, `editadoManual`), con ids propios (p. ej. `pose_rodilla_der`) para que no se confundan con los gomets. Así **todo lo que ya existe se aplica sin cambios:** huecos (NaN, nunca inventado), `CALIDAD_MINIMA`, filtro por tramos, interpolación de huecos cortos a petición, cero de referencia, gráficas, CSV.
 
-**Vista oblicua en el modelo.** `OrientacionVista` gana una tercera forma, `{ plano: 'oblicuo', lado: 'anterior' | 'posterior' }` (anterolateral o posterolateral, del lado que ve el perfil). Una vista oblicua **no da ángulos 2D** (no hay un plano anatómico al que proyectar): solo sigue marcadores para el 3D. En una sesión 3D, la vista oblicua sigue los mismos marcadores que la de perfil (`marcadoresParaVista`). La vista de frente de la fase 3 sigue igual para el FPPA 2D.
+- **Calidad = visibilidad** del modelo; por debajo del umbral, el punto no es utilizable (el umbral se fija en el paso 1 con los vídeos del usuario; `CALIDAD_MINIMA` sigue siendo uno solo).
+- **Qué puntos:** hombros, caderas, rodillas, tobillos, talones y puntas de los pies, de los dos lados (12). El resto no se guarda.
+- **Corrección a mano:** tocar un punto lo deja a mano, como hoy con un gomet; volver a detectar no lo sobrescribe.
+- **Cambios de lado:** de perfil, el modelo a veces intercambia izquierda y derecha unos frames. Se detecta (salto brusco de los dos a la vez que se deshace intercambiándolos) y se corrige o se marca como dudoso; se ve en el paso 1 si pasa con los vídeos del usuario.
 
-## 2. Objeto de calibración [D3]
+## 3. Ángulos sin marcadores [D4]
 
-El DLT necesita al menos 6 puntos **no coplanares** de coordenadas conocidas, vistos por cada cámara; con 15–30 bien repartidos por el volumen donde se mueve la pierna el resultado es mucho más estable, y **fuera de ese volumen el DLT extrapola mal**. La calibración vale mientras ninguna cámara se mueva ni cambie de zoom, resolución o enfoque.
+Los puntos de MediaPipe son **centros articulares aproximados** (lo que aprendió de anotaciones humanas), no referencias óseas: la cadera de MediaPipe no es el trocánter. Por eso las articulaciones sin marcadores son **entradas propias del catálogo**, con su convención fijada por tests, igual que las de los gomets:
 
-| Alternativa | A favor | En contra |
-|---|---|---|
-| **a. Varilla vertical en posiciones conocidas del suelo** (un palo de escoba o un listón con 4 gomets a alturas medidas, que se coloca de pie en 6 marcas del suelo, una tras otra, con los dos móviles grabando) | Cubre el volumen de la pierna (≈ 80 × 60 × 100 cm) con un solo objeto barato; 4 × 6 = 24 puntos; las marcas del suelo se miden con cinta (o son las juntas de las baldosas) | Hay que ponerla vertical: 1° de inclinación son 17 mm en lo alto de un metro. Con el nivel de burbuja (o la app de nivel de un móvil) apoyado en la varilla, 0,3–0,5° → 5–9 mm arriba. Es el error que más pesa, y la validación lo medirá |
-| b. Caja o taburete con gomets en las esquinas | Rígida, esquinas medidas al milímetro, sin nivel | Pequeña frente a la pierna (se extrapola por arriba); el cartón se deforma; 7 esquinas visibles como mucho |
-| c. Pared y suelo (gomets en la pared y en el suelo, medidos desde la esquina) | La pared es vertical sin nivel | Limita dónde se pone todo en la habitación; la pierna queda en el borde del volumen |
-| d. Varita y escuadra (calibración dinámica, lo de los laboratorios: una «L» en el suelo y una varita con dos marcadores agitada por el volumen) | Muy precisa, sin medir puntos | Necesita los intrínsecos de cada cámara y un ajuste no lineal de todo (*bundle adjustment*): mucho más trabajo; se valora en la fase 6 junto con la lente |
+- **De perfil (sagital):** cadera (tronco = hombro → cadera; muslo), rodilla (muslo; pierna), tobillo (pierna; talón → punta del pie, con cero 90) y **inclinación del tronco respecto a la vertical** (un ángulo absoluto: segmento frente a la vertical de la imagen; es nuevo, y lo pedía la idea de los protocolos tipo BTS). **Solo la pierna que mira a la cámara:** la otra queda detrás y el modelo supone sus puntos.
+- **De frente (frontal):** **las dos rodillas a la vez** (FPPA de cada una: cadera, rodilla y tobillo de MediaPipe), aducción de cadera de cada lado respecto a la línea de las caderas, oblicuidad pélvica e inclinación lateral del tronco. Es una ganancia frente a los gomets: hoy el FPPA es de una sola pierna.
+- Un **ángulo sin marcadores no se compara a pelo con uno de gomets:** los puntos son otros y puede haber una diferencia constante de unos grados. Se comparan la forma de la curva, el rango y el valor relativo al cero de referencia.
 
-**No hace falta una varilla de una medida exacta:** lo que la app necesita son las alturas de los gomets, medidas con cinta desde el suelo, y las posiciones del suelo. Vale cualquier palo recto de 1–1,5 m. Lo que sí importa es que esté **vertical** y que su pie quede sobre la marca.
+## 4. Gomets opcionales y comparación [D5]
 
-**Un trípode regulable en altura vale como soporte, y mejor con plomada.** La columna de un trípode no es fácil de poner vertical sobre una marca (el pie de la columna no toca el suelo), pero se puede **colgar una plomada** (un hilo con un peso, que la gravedad pone vertical sin nivel) del gancho o de la cabeza del trípode, con el peso justo encima de la marca del suelo y 3–4 **bolitas** ensartadas en el hilo a alturas medidas. El trípode solo la sostiene y se lleva de una marca a otra; la altura a la que esté da igual. Hay que esperar a que deje de oscilar en cada posición (unos segundos; un peso de 100–200 g en el suelo, casi tocándolo, la calma antes). Elimina el error que más pesa con el palo (la inclinación). Las bolitas se ven redondas desde las dos cámaras; un gomet doblado sobre el hilo se vería de canto desde alguna. Si no hay un tercer trípode (los otros dos sostienen los móviles), sirve cualquier soporte que se pueda mover: un palo apoyado entre dos sillas, o el propio palo con un nivel.
+En una vista pueden convivir gomets y puntos del modelo. Cada articulación dice de qué fuente sale; si hay gomets, por defecto mandan ellos (son más precisos) y la otra fuente se muestra para comparar. Se reutiliza la comparación de la fase 3 (`PanelComparacion`, superpuestas), con «gomets» y «sin marcadores» en lugar de A y B, y un resumen: diferencia media, dispersión y rango de cada uno.
 
-**Recomendación: (a), con la plomada colgada de un trípode si lo hay, o el palo con nivel si no**, y con dos detalles:
-- **Las marcas del suelo son gomets**, que se quedan puestos: son puntos de la calibración (altura 0) y, en cada toma posterior, **testigos** de que las cámaras no se han movido (D9).
-- **Plantilla en la app:** se escribe el paso de la rejilla (p. ej. 3 × 2 posiciones a 40 y 30 cm, o el tamaño de la baldosa) y las alturas de los gomets de la varilla, y la app genera las coordenadas. Una rejilla que no sea rectangular se escribe punto a punto.
+## 5. Interfaz [D6]
 
-**Sistema de coordenadas del laboratorio:** origen en la marca del suelo elegida como primera, **X hacia donde mira la persona**, **Z hacia arriba** (la varilla), **Y hacia la izquierda de la persona** (sistema a derechas: es el mismo sentido que el `x` canónico de la vista de frente). La persona se coloca mirando a lo largo de X (una línea de cinta en el suelo). Así los planos del laboratorio son los anatómicos de una persona bien colocada (D7).
+- En «Marcar», **«Detectar el cuerpo»** junto a «Seguir»: elige el modelo la primera vez (o el que dé el paso 1), progreso, «Cancelar», y al acabar, el **esqueleto dibujado sobre el vídeo** (líneas entre los puntos, con los dudosos aparte y lo interpolado en azul, como hoy).
+- Al abrir un vídeo nuevo, la app pregunta si se analiza **con gomets o sin marcadores** (se puede añadir lo otro después).
+- La franja de calidad, la gráfica, la fila de valores y el CSV funcionan igual. El CSV dice la fuente de cada columna y el modelo usado.
+- Glosario: «Sin marcadores», «Visibilidad del punto», «Centro articular frente a referencia ósea», «Inclinación del tronco».
 
-## 3. Calibración DLT [D4]
+## 6. Persistencia [D7]
 
-| Alternativa | A favor | En contra |
-|---|---|---|
-| **a. DLT de 11 parámetros por cámara** (Abdel-Aziz y Karara) | Lineal, sin conocer nada de la cámara; se resuelve con mínimos cuadrados; es lo que nombra el plan de fases | No modela la distorsión de la lente (fase 6); sensible a extrapolar fuera del objeto |
-| b. Intrínsecos por móvil (tablero, una vez) + posición de cada cámara con PnP | Menos puntos en cada sesión; modela la lente | Necesita un tablero impreso grande o el procedimiento de Zhang y, en la práctica, OpenCV: es la fase 6 |
+**Esquema 5:** la vista guarda qué modelo detectó sus puntos (nombre, tamaño, versión, fecha) para poder repetir el análisis, y sus trayectorias van como las de los gomets (empaquetadas). Migración 4 → 5 (vacía) con su test. Rellenar los nuevos ids en el modelo no cambia lo guardado de los gomets.
 
-**Recomendación: (a), en TypeScript puro en el núcleo** (`core/tresd/dlt.ts`), sin OpenCV: son 2N ecuaciones lineales con 11 incógnitas (12 con la escala, resuelto por la descomposición en valores singulares de una matriz 12 × 12) y la **normalización de Hartley** (centrar y escalar puntos de imagen y de objeto antes de resolver; sin ella el sistema queda mal condicionado con píxeles de 0 a 1920 y metros de 0 a 1). Decisión D5 de la fase 1 revisada: OpenCV no hace falta para el DLT; se valora en la fase 6.
+## 7. Pruebas y validación [D8]
 
-La calibración da, por cámara: los 11 parámetros, el **error de reproyección** de cada punto (px) y su media, y para el conjunto, el **error de dejar uno fuera** (*leave-one-out*: calibrar sin un punto, reconstruirlo con las dos cámaras y medir en mm lo que se aparta): es la cifra que se muestra («Error de la calibración: N mm»), porque es lo que se equivocaría con un punto nuevo. Un punto con un error muy por encima de los demás se señala (un gomet mal tocado o mal medido) y se puede quitar.
-
-**Cómo se marcan los puntos:** la calibración es un vídeo doble grabado con la varilla en cada posición (unos segundos en cada una). En cada vista, se va a un frame con la varilla en la posición k y se toca cerca de ella: la app busca en esa franja vertical las manchas del color de los gomets (el detector de manchas del seguimiento) y las asigna por altura; si no encuentra las esperadas, se tocan una a una con la lupa, como en la escala. Las marcas del suelo se tocan una vez. Como el objeto está quieto, **no hace falta sincronía para calibrar**: cada vista elige sus frames.
-
-## 4. Reconstrucción [D5, D6]
-
-**Triangulación [D5]:** por cada instante, las dos posiciones en imagen y los dos DLT dan 4 ecuaciones lineales con 3 incógnitas (X, Y, Z), por mínimos cuadrados. Con cada punto, su **error de reproyección** en cada vista (px): si pasa de un umbral (propuesta: 3 veces el de la calibración, mínimo 3 px), ese punto se marca como dudoso y no se usa, igual que la calidad en 2D. Un marcador sin posición utilizable en **cualquiera** de las dos vistas no tiene posición 3D (NaN, nunca inventada).
-
-**Los frames de las dos cámaras no caen en el mismo instante [D6].** Los móviles no están sincronizados por hardware: entre el frame de A y el de B hay hasta medio frame (17 ms a 30 fps), y a 0,5 m/s eso son 8 mm. Se propone:
-- la **rejilla temporal es la de la vista de referencia** (los tiempos de sus frames, ya en el tiempo común);
-- las posiciones de B se **interpolan a esos instantes** con un spline cúbico por tramos sobre sus muestras utilizables, en el tiempo común (con el desfase aplicado), **sin extrapolar y sin cruzar un hueco ni un salto en el tiempo** (las mismas reglas que el filtro: `SALTO_MAX_PASOS`); lo que cae fuera de un tramo de B queda sin posición 3D;
-- se triangula sin filtrar y **después se filtran las coordenadas 3D** con el Butterworth de la sesión, por tramos (como en 2D: nunca a través de un hueco); ángulos, velocidades y aceleraciones salen de lo filtrado. Es el orden habitual en análisis de movimiento: el error de reproyección se calcula sobre lo medido, no sobre lo suavizado.
-
-Lo interpolado a petición en una vista (huecos cortos) hace interpolado el punto 3D, y se ve igual que hoy (azul, a trazos).
-
-**Presupuesto de error de la sincronía:** con el pitido y las cámaras calibradas, lo que queda es la cota del retraso de la cámara (Pixel ±6 ms) y el obturador de los móviles, que lee la imagen fila a fila (*rolling shutter*: arriba y abajo de la imagen se capturan con unos 10–30 ms de diferencia). A la velocidad de una sentadilla (≤ 0,5 m/s) son ≤ 3–8 mm; en la marcha, con el pie a 3 m/s, serían centímetros: la marcha queda fuera de lo que se valida aquí y se dice.
-
-## 5. Qué ángulos articulares reales [D7]
-
-| Alternativa | A favor | En contra |
-|---|---|---|
-| **a. Con los 3 marcadores laterales: flexión 3D y proyecciones en los planos de la persona** | Solo los marcadores de siempre, que ven las dos cámaras; resuelve justo lo que falla en 2D (la rodilla sale del plano de la cámara) | No da rotaciones; los planos son los del laboratorio (la persona tiene que estar colocada a lo largo de X) |
-| b. Ángulos de la rodilla en tres ejes (Grood y Suntay) con un sistema de cada segmento | Lo que da un laboratorio (flexión, varo-valgo, rotación) | Necesita 3 marcadores por segmento (una varita en el muslo y otra en la pierna, como el modelo convencional de la marcha) y medidas de la persona (anchura de la rodilla y del tobillo); la rotación, incluso en un laboratorio, tiene un error del orden de lo que se mide por el movimiento de la piel |
-
-**Valoración de añadir los demás movimientos (pedido por el usuario, 27-10).** Es posible, con condiciones:
-
-- **Qué hace falta:** un sistema de ejes por segmento, que sale de **3 puntos no alineados** de cada segmento vistos por las dos cámaras. Con los 3 laterales de hoy, muslo y pierna son solo dos líneas: dan la flexión, pero no el giro de un segmento sobre su eje ni de qué lado está el varo-valgo. Se propone lo del **modelo convencional de la marcha** (el de los laboratorios, que también pone los marcadores por fuera): un marcador más en el muslo y otro en la pierna, **en varillas cortas** (8–10 cm, hacia fuera) para que se separen de la línea del hueso y los vean bien las dos cámaras; y, medidas con cinta o pie de rey, la **anchura de la rodilla y del tobillo**, para situar los centros articulares hacia dentro desde el epicóndilo y el maléolo. Para el tobillo, talón y 2.º metatarsiano (dorso del pie). Ángulos de la rodilla y del tobillo en tres ejes con la convención de Grood y Suntay (la de la Sociedad Internacional de Biomecánica): flexo-extensión, varo-valgo (abducción-aducción) y rotación interna-externa; tobillo, flexión dorsal-plantar, inversión-eversión y rotación.
-- **Qué precisión cabe esperar (estimación, a confirmar en la validación):** con unos 3–5 mm de error por punto y marcadores separados 10–15 cm, la orientación de cada segmento tiene un ruido de unos 2°. A eso se suma lo de cualquier laboratorio: la piel se mueve sobre el hueso y, si el eje de flexión está algo mal situado, parte de la flexión aparece como varo-valgo (a 90° de flexión, unos grados). En una sentadilla, el varo-valgo de la rodilla se mueve unos 5–10° y la rotación unos 10°: **el varo-valgo se puede medir con una precisión útil; la rotación, solo de forma orientativa** (es así también en los laboratorios). La app lo dirá junto a cada valor.
-- **La cadera en tres ejes no entra con dos cámaras:** necesita la pelvis (las dos espinas ilíacas anterosuperiores y el sacro), y ninguna colocación de dos cámaras ve las tres a la vez. Queda la flexión de cadera 3D (con el acromion) y el muslo respecto al laboratorio. Se dice como limitación.
-
-**Recomendación:** en esta fase, **los dos niveles**, por pasos:
-1. **Nivel 1 (lo de arriba):** flexión 3D, proyecciones y longitudes, con los 3 marcadores de siempre. Valida la base (calibración, reconstrucción, sincronía) con lo más simple.
-2. **Nivel 2, un paso propio después de validar el nivel 1:** sistemas de ejes del muslo, la pierna y el pie, rodilla y tobillo en tres ejes con el aviso de precisión de cada eje, la anchura de rodilla y tobillo como datos de la sesión, y el cero de referencia de siempre (tramo de pie) también en los tres ejes. Los segmentos se definen de forma declarativa (3 puntos y cómo se construyen los ejes) para que sirvan después a los protocolos tipo BTS y al bilateral de (d).
-
-Si el nivel 1 no da la precisión esperada (validación del paso 6), el nivel 2 se replantea antes de hacerlo: con más error por punto, el varo-valgo ya no sería útil.
-
-Las convenciones de signo y cero de los ángulos 3D quedan **fijadas por tests nuevos** junto a `catalogo.test.ts`: un movimiento que ocurre en el plano sagital del laboratorio da en 3D lo mismo que en 2D, la rodilla extendida es 0°, y girar juntos puntos y planos no cambia el valor.
-
-## 6. Interfaz [D8]
-
-- **«Calibrar el espacio 3D»** en la portada y en la pestaña «Vídeo» de una sesión de dos vistas: abre los dos vídeos de la calibración, la plantilla de la varilla, el marcado de cada posición en cada vista, el error («N mm», por punto y en total, con los que destacan) y «Guardar».
-- En una sesión con perfil y oblicua y una calibración aplicada: una sección **«3D»** en «Análisis» con los ángulos de §5, la variación de los segmentos en 3D frente a la de 2D, y el **error de reproyección por frame** (en la franja, como hoy la calidad). En la gráfica, las series 3D se suman a las que hay (se eligen igual que las demás); la **comparación 2D / 3D** de la flexión, superpuestas, en el mismo panel que hoy compara vistas.
-- **Sin vista 3D girable en esta fase** (pesaría una librería 3D y no da una medida más): una figura pequeña con la pierna proyectada en los planos sagital, frontal y transversal del laboratorio en el instante del cursor, dibujada en un canvas. Se propone una girable después si se echa en falta.
-- **CSV:** X, Y, Z de cada marcador (m, sistema del laboratorio), el error de reproyección de cada frame y los ángulos 3D; en la cabecera, la calibración (puntos, error, fecha) y el sistema de coordenadas.
-- Glosario: DLT, calibración del espacio, error de reproyección, error de dejar uno fuera, sistema del laboratorio, flexión 3D, plano frontal 3D frente a FPPA, testigos. Cada uno con su icono ⓘ.
-
-## 7. Grabar para el 3D y reutilizar la calibración [D9]
-
-- **Sala:** `vistasCompatibles` admite perfil + oblicua (hoy pide planos distintos, perfil y frente o espaldas). La de perfil sigue siendo la referencia. Nada cambia en el protocolo salvo el valor nuevo de la vista (lectura campo a campo: un móvil con la versión anterior lo ve como «sin vista» y lo dice).
-- **Enfoque y zoom fijos:** el DLT supone que la cámara no cambia; el enfoque continuo cambia un poco la distancia focal. El Pixel 8 deja bloquear el enfoque desde Chrome (laboratorio de la fase 4). Propuesta: en la sala, con las vistas para 3D, **bloquear el enfoque** tras encuadrar (y la exposición, opcional) y mantenerlo en todas las tomas; si el segundo móvil no lo permite, se dice.
-- **Una calibración para varias tomas:** se graba la calibración y después las tomas sin tocar los trípodes. La calibración se guarda aparte en IndexedDB y, al abrir una pareja de la misma sala (el MP4 lleva un id de sala nuevo, opcional, en `doble`), la app propone la última calibración hecha con esa sala y esa resolución. Siempre se puede elegir otra.
-- **Testigos:** los gomets del suelo se ven en cada toma. Al aplicar una calibración, la app los busca cerca de donde estaban en el vídeo de la calibración; si alguno se ha movido más de 2 px en una vista, **avisa de que esa cámara se ha movido** y de que hay que recalibrar (no lo corrige).
-
-## 8. Persistencia y esquema [D10]
-
-- `Vista` gana `dlt` (opcional): los 11 parámetros, el ancho, alto y rotación con que se calibró (una vista con otros no la acepta), el error de reproyección y la huella del vídeo de calibración.
-- `Sesion` gana `espacio3d` (opcional): los puntos del objeto, el sistema de coordenadas, el error de dejar uno fuera y la fecha. Lo reconstruido no se guarda: se recalcula, como hoy el ángulo.
-- **Esquema 5** con migración 4 → 5 (vacíos) y su test: aunque los campos sean opcionales, una versión anterior de la app al guardar los perdería, y la regla de `CLAUDE.md` es que un registro de una versión más nueva no se abre ni se reescribe.
-- Almacén nuevo `calibraciones` en la misma base (subida de versión de IndexedDB con su `onupgradeneeded`).
-
-## 9. Pruebas y validación [D11]
-
-**Núcleo (Vitest), con casos de valor conocido:**
-- DLT: dos cámaras virtuales conocidas (posición, orientación, focal) proyectan puntos 3D; la calibración recupera la proyección (reproyección < 0,01 px sin ruido) y reconstruye puntos nuevos a < 0,01 mm; con ruido de 0,5 px, el error crece como predice la geometría (comparar 45°, 60° y 90° entre cámaras); 5 puntos o todos coplanares → error explícito; normalización de Hartley (sin ella el mismo caso falla a escala de píxeles reales).
-- Triangulación, error de reproyección, dejar uno fuera.
-- Interpolación de B a los tiempos de A: no cruza huecos ni saltos, no extrapola, con 30 y 25 fps.
-- Ángulos 3D: movimiento en el plano sagital del laboratorio = 2D; extensión 0°; hiperextensión negativa; rodilla que sale del plano: el 3D da el valor real y la proyección el menor; invariancia a girar todo.
-
-**e2e:** un generador nuevo de escenas sintéticas: puntos 3D de verdad conocida (la varilla en sus posiciones y una pierna en sentadilla) proyectados con dos cámaras virtuales a dos vídeos (con ffmpeg, como los de hoy), con fps distintos y un desfase. La e2e calibra en la app, sigue en las dos vistas, sincroniza y compara la flexión 3D y la longitud de los segmentos con la verdad.
-
-**Validación con los medios del usuario (paso 6), con el Pixel 8 y el segundo móvil:**
-1. **Puntos que no se usan:** de los 24 de la varilla, calibrar con la mitad y reconstruir la otra mitad, frente a lo medido con cinta. Objetivo ≤ 5 mm.
-2. **Varita de longitud conocida:** un listón con dos gomets a una distancia medida (p. ej. 50 cm, con pie de rey o cinta), movido despacio por todo el volumen y en todas las orientaciones (también hacia las cámaras). La distancia 3D debe ser constante e igual a la medida: media ≤ 3 mm de la real, dispersión ≤ 5 mm. Es la prueba más barata y más dura (prueba todo el volumen, y el movimiento prueba también la sincronía).
-3. **Goniómetro:** el goniómetro del usuario con un gomet en cada extremo y otro en el eje, fijado (cinta) a 30, 60, 90, 120 y 150°, en tres orientaciones: en el plano de la cámara de perfil, inclinado 30° y 60° hacia ella. El 3D debe dar el ángulo puesto (≤ 3°) en las tres; el 2D de perfil se irá apartando con la inclinación. Es la demostración clínica de por qué el 3D.
-4. **Sentadilla real** con los 3 gomets: variación de la longitud del muslo y la pierna en 3D (objetivo ≤ 3 %) frente a la de 2D, y la flexión 3D frente a la 2D en el fondo (la fase 2 estimó unos 10° de diferencia).
-5. Repetir 1–3 con 45° y 60° entre las cámaras, y con gomets planos y bolitas, para dejar en `docs/grabacion.md` la recomendación con datos.
+- **Núcleo:** paso de los puntos del modelo a px (con las rotaciones del vídeo), calidad, cambios de lado, ángulos del catálogo sin marcadores (casos de valor conocido: rodilla recta 0°, 90°, tronco vertical 0°), y la comparación de dos fuentes.
+- **e2e:** el modelo necesita una persona de verdad en el vídeo, y los vídeos sintéticos de las e2e son manchas de colores. Propuesta: las e2e del visor prueban el camino con los resultados del worker simulados (los mensajes de su protocolo), y una prueba aparte pasa el modelo de verdad por un vídeo corto de licencia libre (a buscar en el paso 3) si el Chromium de la nube lo ejecuta en CPU en un tiempo razonable.
+- **Validación real (con lo que ya hay, sin grabar nada nuevo):** los vídeos de sentadilla del usuario ya seguidos con gomets, de perfil y de frente. Luego, si hace falta, algún vídeo nuevo con ropa normal y con ropa ancha.
 
 ---
-
-## Después de la fase 5
-
-Pedido por el usuario (27-10), a la vista de OpenCap (Stanford: dos o más móviles, un damero y análisis sin marcadores, procesado en la nube): llegar a **todas las articulaciones en los tres planos para cualquier movimiento**. No cambia esta fase: todo lo que hace (calibrar, sincronizar, triangular, ángulos 3D) lo reutiliza el camino sin marcadores, cuyos puntos también se triangulan. Queda así:
-- **Fase 6:** calibración con damero (lente de cada móvil una vez, y la posición de las cámaras con el damero en vertical), validada frente a la de la plomada (dos calibraciones independientes del mismo espacio deben dar los mismos puntos), y MediaPipe sin marcadores comparado con los gomets.
-- **Fase 7 (nueva):** un esqueleto con articulaciones restringidas ajustado frame a frame a los puntos 3D, con marcadores o sin ellos. Es lo que da la pelvis y la cadera en tres ejes con dos cámaras (no se ven: se infieren). Todo en el navegador, por la restricción de que los vídeos no salgan del móvil.
 
 ## Orden de trabajo (un PR por paso)
 
 | Paso | Contenido | Modelo |
 |---|---|---|
-| 1 | **Núcleo del DLT** (`core/tresd/`): calibración con normalización, proyección, triangulación, error de reproyección, dejar uno fuera, plantilla de la varilla (rejilla y alturas → coordenadas), cámaras virtuales sintéticas. Solo núcleo y tests | Opus |
-| 2 | **Grabar para el 3D:** vista oblicua (`OrientacionVista`, `vistasCompatibles`, la sala y abrir la pareja), id de sala en los metadatos, enfoque bloqueado en la sala, y `docs/grabacion.md` con cómo hacer la varilla, colocar las cámaras y grabar la calibración y las pruebas de validación. Va pronto para que el usuario pueda grabar datos reales mientras se hace el resto | Opus |
-| 3 | **Calibrar el espacio en la app:** pantalla de calibración (plantilla, marcado semiautomático, error por punto y total, quitar puntos), almacén `calibraciones`, esquema 5 y migración, glosario. Con la calibración real del usuario: primer dato del error | Opus |
-| 4 | **Núcleo de la reconstrucción:** B a los tiempos de A, triangulación por frame con su error, filtrado 3D por tramos, derivadas, ángulos 3D y proyecciones con sus tests de convención, longitud de los segmentos en 3D | Opus |
-| 5 | **3D en el visor:** aplicar una calibración a una sesión (propuesta por la sala, testigos), sección «3D» en «Análisis», series en la gráfica, comparación 2D / 3D, figura de los tres planos, error por frame en la franja, CSV, glosario. Generador de escenas sintéticas y e2e | Opus (la maquetación fina puede ir a Sonnet en un PR aparte) |
-| 6 | **Validación con el usuario** (§9) y ajustes: umbral del error de reproyección, separación de las cámaras, gomets o bolitas, seguidor a 60°; `docs/grabacion.md` con los resultados | Opus |
-| 7 | **Nivel 2 de D7:** sistemas de ejes por segmento (declarativos), rodilla y tobillo en tres ejes (Grood y Suntay) con la precisión de cada eje, marcadores en varilla, anchuras de rodilla y tobillo, cero en los tres ejes; validación con el goniómetro y un objeto girado en el suelo a ángulos conocidos (las juntas de las baldosas) | Opus |
-| 8 | Cierre de fase: revisión de código, documentación y limitaciones | Opus |
+| 1 | **Experimento de MediaPipe** (detalle abajo): detrás de `?pose`, «Detectar el cuerpo (experimental)» en el visor; esqueleto sobre el vídeo y, si la sesión tiene gomets, la flexión de la rodilla de las dos fuentes superpuestas, con un informe para copiar. Sin guardar nada | Opus |
+| 2 | **Núcleo:** puntos del modelo como trayectorias, calidad, cambios de lado, catálogo sin marcadores (sagital, frontal bilateral, tronco absoluto) con sus tests, comparación de dos fuentes | Opus |
+| 3 | **Visor:** «Detectar el cuerpo» de verdad (worker, progreso, cancelar), esqueleto, elegir con gomets o sin marcadores al abrir, fuente por articulación, comparación, CSV, glosario, esquema 5. e2e | Opus (maquetación fina en un PR de Sonnet si hace falta) |
+| 4 | **Vista de frente sin marcadores:** las dos rodillas y la cadera de cada lado, oblicuidad pélvica; con dos vistas (perfil y frente sincronizadas), cada una con su fuente | Opus |
+| 5 | **Validación con el usuario** y ajustes: umbral de visibilidad, modelo por defecto, filtro, cambios de lado; `docs/grabacion.md` (cómo grabar sin marcadores: ropa, luz, fondo, distancia) | Opus |
+| 6 | Cierre: revisión de código, documentación y limitaciones | Opus |
 
-El paso 2 va antes que la calibración en la app para que los vídeos reales lleguen cuanto antes: el paso 3 ya se prueba con la varilla del usuario, y el 1 se puede comprobar contra esos mismos puntos fuera de la app.
+### Paso 1 en detalle: el experimento
+
+Objetivo: saber, con vídeos reales del usuario y antes de construir nada más, **cuánto se aparta MediaPipe de los gomets y cuánto tarda en el Pixel 8**.
+
+- Solo con `?pose` en la dirección (como `?laboratorio`): en la pestaña «Marcar», un botón «Detectar el cuerpo (experimental)» con el tamaño del modelo a elegir (*lite*, *full*, *heavy*).
+- Recorre el vídeo entero en un worker con el tiempo de cada frame, con progreso y «Cancelar».
+- Dibuja el esqueleto sobre el vídeo en cada frame.
+- Si la vista tiene gomets seguidos (una sesión recuperada), superpone en una gráfica la flexión de la rodilla con gomets y sin marcadores (filtradas igual), y un **informe en texto** para pegármelo:
+  - modelo, GPU o CPU, tiempo total y frames por segundo procesados;
+  - % de frames con la pierna detectada y visibilidad mediana de cadera, rodilla y tobillo;
+  - flexión de rodilla: diferencia media y su dispersión, error cuadrático medio tras quitar la diferencia media, rangos de cada fuente y correlación;
+  - frames con cambio de lado.
+- No se guarda nada en la sesión ni cambia el esquema; si se cierra, se pierde.
+
+Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualización **dos o tres vídeos que ya tengan sesión con gomets** (de perfil, y uno de frente si hay), probar *lite* y *full* (y *heavy* si no tarda demasiado) y pegarme los informes.
 
 ## Resumen de decisiones (propuestas)
 
 | | Decisión | Propuesta |
 |---|---|---|
-| D1 | Cámaras | Las dos del mismo lado: perfil (referencia, sigue dando el 2D) y anterolateral a 45–60°; la vista de frente queda para el FPPA 2D. Una en cada flanco (bilateral), más adelante |
-| D2 | Marcadores | Los 3 laterales de siempre (trocánter, epicóndilo, maléolo), vistos por las dos; opcionales para cadera y tobillo; bolitas si se separan más de 45° |
-| D3 | Objeto de calibración | Plomada con 3–4 bolitas a alturas medidas, colgada de un trípode y llevada a 6 marcas del suelo (o un palo de cualquier largo con nivel); las marcas, gomets que se quedan como testigos; plantilla en la app |
-| D4 | Calibración | DLT de 11 parámetros por cámara, TypeScript puro, normalización de Hartley; el error que se muestra es el de dejar uno fuera, en mm; sin OpenCV |
-| D5 | Triangulación | Mínimos cuadrados con los dos DLT; error de reproyección por punto; por encima del umbral, punto no utilizable |
-| D6 | Instantes distintos | Rejilla de la vista de referencia; B interpolada con spline por tramos sin cruzar huecos ni extrapolar; filtrar las coordenadas 3D después de triangular |
-| D7 | Ángulos | Nivel 1: flexión de rodilla 3D, proyecciones en los planos de la persona y longitud de los segmentos. Nivel 2 (paso 7, tras validar): rodilla y tobillo en tres ejes (Grood y Suntay) con marcadores en varilla y anchuras medidas; la rotación, orientativa; la cadera en tres ejes no (necesita la pelvis) |
-| D8 | Interfaz | «Calibrar el espacio 3D», sección «3D» en «Análisis», comparación 2D / 3D, figura de los tres planos (sin vista 3D girable), CSV con X, Y, Z |
-| D9 | Grabar y reutilizar | Perfil + oblicua en la sala; enfoque bloqueado; una calibración por sala para varias tomas; testigos que avisan si una cámara se movió |
-| D10 | Esquema | Esquema 5 (`Vista.dlt`, `Sesion.espacio3d`) con migración; almacén `calibraciones` |
-| D11 | Validación | Puntos fuera de la calibración, varita de longitud conocida, goniómetro inclinado y sentadilla, con objetivos en mm y grados |
+| D1 | Modelo | MediaPipe Pose Landmarker; el tamaño lo decide el paso 1; otros modelos solo si este no basta |
+| D2 | Dónde corre | En un worker del navegador, frame a frame con el tiempo del vídeo; el modelo alojado en el sitio y cargado al pedirlo |
+| D3 | Puntos | 12 puntos del cuerpo como trayectorias de marcadores virtuales; calidad = visibilidad; corrección a mano como con los gomets; cambios de lado detectados |
+| D4 | Ángulos | Entradas propias del catálogo (centros articulares): de perfil, cadera, rodilla, tobillo y tronco respecto a la vertical, de la pierna que mira a la cámara; de frente, las dos rodillas, cadera y pelvis |
+| D5 | Gomets | Opcionales; si hay, mandan, y se comparan con el modelo en la misma gráfica |
+| D6 | Interfaz | «Detectar el cuerpo», esqueleto sobre el vídeo, elegir fuente al abrir |
+| D7 | Esquema | 5, con el modelo usado en cada vista |
+| D8 | Validación | Con los vídeos con gomets que ya tiene el usuario |
 
 ## Riesgos
 
-- **El segundo móvil:** para medir en 3D **las dos** cámaras tienen que grabar a 30 fps y con resolución para seguir los gomets. La tablet (10–15 fps) no sirve. Sin un segundo móvil adecuado, la fase se puede hacer entera con vídeos sintéticos, pero no validar.
-- **La verticalidad de la varilla** es probablemente el mayor error de la calibración con un palo (§2); la plomada lo quita. La validación con la varita lo medirá; si pasa del objetivo, se prueba la pared y el suelo (alternativa c) o se mide también la posición de lo alto de la varilla.
-- **El enfoque y la estabilización:** si un móvil no deja bloquear el enfoque, o aplica algún recorte por su cuenta, la calibración no se mantiene entre tomas. Los testigos lo detectan; la solución sería calibrar en la misma toma (la varilla al principio de cada grabación).
-- **La lente:** el DLT no corrige la distorsión; la cámara principal de un móvil tiene poca, pero en los bordes de la imagen se nota. Mantener el volumen de medida en el centro de las dos imágenes; si la validación da errores mayores en los bordes, es argumento para la fase 6.
-- **Gomets vistos de lado:** a 60° un gomet plano se ve como una elipse estrecha y el seguidor puede perderlo o desplazar su centro (el centro de la mancha visible no es el del gomet). Las bolitas lo evitan; se decide con los vídeos del paso 6.
-- **Colocar a la persona:** las proyecciones usan los planos del laboratorio; si la persona está girada respecto a X, la «frontal» mezcla flexión. La flexión 3D no depende de eso. Se dice en la app y en la guía.
-- **Rolling shutter y velocidad:** sin efecto apreciable en una sentadilla; en movimientos rápidos, sí (§4).
+- **La precisión sin marcadores** puede no bastar para algún ángulo (el tobillo, con pocos píxeles en el pie; el FPPA, sensible a pocos píxeles). Se sabe en el paso 1.
+- **Ropa ancha, mala luz, otra persona en la imagen** o una pierna tapando a la otra empeoran el modelo. Se dice en la guía y la app avisa con la visibilidad.
+- **Tiempo de proceso en el móvil:** el tamaño *heavy* puede tardar varias veces lo que dura el vídeo. Para análisis diferido es aceptable si se puede cancelar y no bloquea la app.
+- **GPU en el worker:** si no funciona en Chrome para Android, va en CPU (más lento). Paso 1.
+- **El seguimiento de gomets en el mismo vídeo** sigue igual: el modelo no lo toca.
+
+---
+
+## Fase 6 (anticipo, se planificará al cerrar la 5): 3D con dos móviles sin objeto de calibración
+
+Lo hablado con el usuario el 27-10, para no perderlo:
+
+- **Colocación:** un móvil en cada flanco anterolateral (a ±45° del frente, unos 90° entre ellos), a unos 3 m, el cuerpo entero en las dos imágenes; así ninguna pierna queda tapada para una cámara y se ven las dos. Perfil + frente sigue valiendo, pero en 3D solo sale bien la pierna que mira a la cámara de perfil.
+- **Calibración con la persona:** los puntos del cuerpo (y los gomets, si los hay) vistos a la vez por las dos cámaras dan la posición de una respecto a la otra; la lente, del ángulo de visión conocido de cada modelo de móvil (o estimada a la vez); la **vertical, del acelerómetro de cada móvil**, guardado en el MP4 durante la grabación; la **escala, de la altura de la persona**. Unos 10 s al empezar con unos pasos por la zona para que el cálculo sea estable. Después de grabar, la app da el ángulo, la distancia y la altura de cada cámara.
+- **Asistente de colocación en la sala, antes de grabar:** la inclinación de cada móvil (acelerómetro, ~1°); el ángulo entre los dos por la brújula (aproximado en interiores); la **distancia entre los dos por el pitido** de ida y vuelta (ya existe; se haría también antes de grabar); si la persona sale entera y a qué distancia está, con el detector sobre la vista previa; con eso, el ángulo entre las cámaras visto desde la persona (cos θ = (d₁² + d₂² − D²) / 2·d₁·d₂) como segunda medida.
+- **Altura de cada móvil sobre el suelo** (para apoyarlos en lo que haya a mano en lugar de un trípode): antes de grabar, con la inclinación del acelerómetro y la lente se sabe dónde está el **horizonte** en la imagen; la parte del cuerpo de la persona (de pie, erguida) que cae en esa línea está a la altura de la cámara, y con la altura de la persona se pasa a metros (p. ej. el horizonte en la cadera → ~0,9 m). Después de grabar, la calibración lo da con precisión: el suelo sale de los pies apoyados y la vertical, del acelerómetro. **No hace falta que los dos estén a la misma altura**, solo en un rango razonable (de rodilla a cadera) y quietos.
+- **Un móvil que se mueve durante la toma** (apoyado en algo que resbala): el acelerómetro grabado lo detecta y la app avisa de que esa toma no sirve para 3D.
+- **Comprobación cruzada:** la distancia entre las cámaras de la calibración frente a la del pitido; si no coinciden, aviso.
+- **Planos en 3D sin marcadores** (con puntos que son centros articulares): sagital bien; frontal útil (valgo de las dos rodillas, cadera, pelvis, tronco); transversal solo pelvis, tronco y ángulo de progresión del pie; **la rotación de cadera y de rodilla, no** (un segmento de dos puntos no dice cuánto gira sobre sí mismo): llega con el esqueleto de la fase 7.
+- Lo pensado para el plan anterior que se reutiliza: interpolar la vista B a los instantes de la referencia sin cruzar huecos, triangular con el error de reproyección por punto, filtrar en 3D por tramos, la flexión 3D y las proyecciones en los planos de la persona.
+- Material: dos móviles a 30 fps y dos apoyos fijos. Nada más.
 
 ## Qué necesito del usuario
 
-1. **Aceptar o cambiar D1–D11**, sobre todo:
-   - D1: confirmar que los dos móviles van **del mismo lado** (perfil y anterolateral), no uno en cada flanco;
-   - D3: ¿tienes un tercer trípode (o algo que se pueda mover) para colgar la plomada?
-   - D7: los dos niveles, con el 2 después de validar el 1.
-2. **El segundo móvil:** modelo, versión de Android y de Chrome. Si no tienes uno que grabe a 30 fps, dímelo: cambia el orden (la validación real esperaría).
-3. Tras el paso 2: **grabar con los dos móviles** (unos 20 minutos, la guía estará en `docs/grabacion.md`):
-   - la calibración con la varilla en las 6 marcas;
-   - sin mover los trípodes: la varita de longitud conocida movida por el volumen (30 s), el goniómetro en las posiciones de §9 y una sentadilla con los 3 gomets;
-   - si puedes, lo mismo con la segunda cámara a 60° (y con bolitas, si las tienes).
-4. Medidas con cinta: la rejilla del suelo, las alturas de los gomets de la varilla y la distancia entre los gomets de la varita.
+1. **Aceptar o cambiar D1–D8.**
+2. Para el paso 1: dos o tres vídeos con sesión de gomets ya guardada en el móvil (de perfil y, si hay, de frente).
+3. Para la fase 6, más adelante: el modelo del segundo móvil (tiene que grabar a 30 fps).
