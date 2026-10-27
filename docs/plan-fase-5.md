@@ -1,6 +1,6 @@
 # Fase 5: sin marcadores en 2D (con gomets opcionales)
 
-Estado: **plan propuesto** (2026-10-27), pendiente de aceptar. No se escribe código hasta entonces.
+Estado: **plan aceptado** (2026-10-27; D1–D8 aceptadas por el usuario tal como se proponen). En curso: paso 1 hecho (ver «Hecho»).
 
 ## Cambio de rumbo (27-10-2026)
 
@@ -100,7 +100,7 @@ Objetivo: saber, con vídeos reales del usuario y antes de construir nada más, 
 
 Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualización **dos o tres vídeos que ya tengan sesión con gomets** (de perfil, y uno de frente si hay), probar *lite* y *full* (y *heavy* si no tarda demasiado) y pegarme los informes.
 
-## Resumen de decisiones (propuestas)
+## Resumen de decisiones (aceptadas)
 
 | | Decisión | Propuesta |
 |---|---|---|
@@ -112,6 +112,16 @@ Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualiza
 | D6 | Interfaz | «Detectar el cuerpo», esqueleto sobre el vídeo, elegir fuente al abrir |
 | D7 | Esquema | 5, con el modelo usado en cada vista |
 | D8 | Validación | Con los vídeos con gomets que ya tiene el usuario |
+
+## Hecho
+
+**Paso 1 — experimento de MediaPipe** (`?pose`; `core/pose/`, `workers/pose.worker.ts`, `ui/visor/ExperimentoPose.tsx`). Con `?pose` en la dirección, la pestaña «Marcar» lleva una tarjeta «Sin marcadores (experimental)»: modelo (*lite*, *full* por defecto, *heavy*) y procesador (GPU por defecto, o CPU), «Detectar el cuerpo (experimental)» con progreso y «Parar». Sin `?pose` no existe y no se descarga nada.
+
+- **Worker:** decodifica el vídeo con Mediabunny como el del seguimiento, reducido a 960 px de lado mayor (el modelo trabaja a 256 px), y pasa cada frame por Pose Landmarker en modo vídeo con el **tiempo del vídeo** de cada frame (ms desde el primero, siempre creciente). La salida (normalizada) se pasa a px del vídeo tal como se ve, el sistema de las trayectorias de los gomets. Si la GPU no se puede usar (al crear el detector o en el primer frame), sigue en CPU y lo dice.
+- **Dónde vive cada cosa:** la librería, `@mediapipe/tasks-vision` 1.1.0; su WASM (variante «module», 13 MB) se aloja en el propio sitio (Vite lo copia de `node_modules` con `?url`) y el worker de módulo lo carga con `import()` (para un segundo intento, GPU → CPU, el cargador se vuelve a poner en `self.ModuleFactory`, que MediaPipe borra tras usarlo). El modelo `.task` se descarga de Google (`storage.googleapis.com/mediapipe-models/…/float16/1/`) al empezar: solo se descarga, no se envía nada. Alojarlo es decisión del paso 3 (el *heavy*, 30 MB, no cabe en el límite por archivo de Cloudflare).
+- **Núcleo (`core/pose/`):** `puntos.ts` (los 12 puntos que se guardan —hombros, caderas, rodillas, tobillos, talones y puntas, de los dos lados— con su índice de MediaPipe, el paso a px, las trayectorias como `Muestra2D` con calidad = visibilidad y la rodilla de perfil sin marcadores con la convención de la de los gomets), `cambiosLado.ts` (las dos piernas intercambiadas de un frame al siguiente), `comparar.ts` (sesgo, dispersión, error cuadrático medio con y sin sesgo, rangos y correlación; y el ángulo filtrado por frame con el mismo camino que el visor) e `informe.ts` (el texto para copiar, sin el nombre del archivo). Todo con tests de valor conocido.
+- **En pantalla:** el esqueleto sobre el vídeo en cada frame (pierna derecha de la persona en ámbar, izquierda en gris; lo de visibilidad < 0,5, a trazos y tenue), y al acabar, de perfil, la flexión de la rodilla sin marcadores y la de los gomets (si la vista los tiene seguidos) superpuestas en una gráfica que lleva el vídeo al tocarla, y el informe con «Copiar el informe». No se guarda nada.
+- **Comprobado en el Chromium de la nube** con la imagen de prueba de MediaPipe (`pose.jpg`, una persona en la playa) convertida en un vídeo de 2 s: persona detectada en los 60 frames, visibilidad ≥ 0,99, el esqueleto cae sobre la persona y cada lado en su pierna; *full* en GPU (emulada por software: 1,3 frames/s) y *lite* en CPU (8,8 frames/s). MediaPipe avisa en la consola «Using NORM_RECT without IMAGE_DIMENSIONS…» con imágenes no cuadradas; el esqueleto sale bien igualmente. En la CI solo se prueba que la tarjeta aparece con `?pose` y no sin él (el modelo de verdad necesitaría descargarse y una persona en el vídeo).
 
 ## Riesgos
 

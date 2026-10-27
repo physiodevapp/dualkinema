@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
@@ -48,6 +48,11 @@ import { rangoSesion } from '../../core/tiempo/comun'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
 import { incertidumbreEvento, pasoTipico } from '../../core/sincronia/evento'
 import type { VistaViva } from './vistas'
+import { dibujarEsqueleto } from './capa'
+import type { EsqueletoPorFrame } from './ExperimentoPose'
+
+// Experimento sin marcadores de la fase 5 (paso 1): solo con `?pose`, y solo se descarga entonces.
+const ExperimentoPose = new URLSearchParams(location.search).has('pose') ? lazy(() => import('./ExperimentoPose')) : null
 
 /** Letra de cada vista, en el orden de la sesión. */
 const LETRAS = ['A', 'B'] as const
@@ -171,6 +176,16 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     framesAnclas,
     quitarMarcasPosteriores,
   } = activaViva
+
+  // Esqueleto del experimento sin marcadores (`?pose`), dibujado encima de lo de siempre.
+  const [esqueleto, setEsqueleto] = useState<EsqueletoPorFrame | null>(null)
+  const dibujarConEsqueleto = useCallback(
+    (ctx: CanvasRenderingContext2D, escala: number) => {
+      dibujar(ctx, escala)
+      if (esqueleto && mostrado !== null) dibujarEsqueleto(ctx, escala, esqueleto.get(mostrado))
+    },
+    [dibujar, esqueleto, mostrado],
+  )
 
   // Se guardan todas las vistas, con el filtro de la sesión.
   const guardado = useGuardado({
@@ -392,7 +407,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               ancho={info.ancho}
               alto={info.alto}
               lienzo={lienzo}
-              dibujar={dibujar}
+              dibujar={dibujarConEsqueleto}
               interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
               onToque={tocandoEscala ? tocarExtremo : colocar}
               // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
@@ -706,6 +721,25 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               angulo={angulo}
               anguloRedondeado={anguloRedondeado}
             />
+            {ExperimentoPose && (
+              <Suspense fallback={<p className="text-sm text-texto-2">Cargando el experimento sin marcadores…</p>}>
+                <ExperimentoPose
+                  key={activaViva.id}
+                  archivo={activaViva.archivo}
+                  tabla={tabla}
+                  ancho={info.ancho}
+                  alto={info.alto}
+                  orientacion={orientacion}
+                  lado={lado}
+                  ajustes={ajustes}
+                  gomets={orientacion.plano === 'sagital' && articulacion.id.startsWith('rodilla_sagital') ? filtradoPorFrame.valores : null}
+                  tiemposGrafica={tiemposGrafica}
+                  mostrado={mostrado}
+                  onBuscar={buscarEnComun}
+                  onEsqueleto={setEsqueleto}
+                />
+              </Suspense>
+            )}
           </PanelPestana>
 
           <PanelPestana id="analisis" activa={pestana === 'analisis'}>

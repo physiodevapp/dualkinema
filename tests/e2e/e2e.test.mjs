@@ -3821,6 +3821,36 @@ describe('dos vistas: gráficas en el tiempo común y CSV con tiempo común', ()
   })
 })
 
+describe('sin marcadores: experimento (fase 5, paso 1)', () => {
+  // El modelo de verdad no corre aquí (se descarga de Google y el vídeo sintético no tiene una persona): se prueba con una
+  // imagen de una persona fuera de la CI (ver docs/plan-fase-5.md, «Hecho»). Aquí, que solo aparece con `?pose`.
+  it('sin ?pose no aparece', async () => {
+    const p = await abrirApp(navegador)
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      assert.equal(await p.getByTestId('experimento-pose').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('con ?pose aparece en «Marcar», con el modelo y el procesador a elegir, y sin informe hasta detectar', async () => {
+    const p = await abrirApp(navegador, { consulta: '?pose' })
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      await abrirPestana(p, 'marcar')
+      const seccion = p.getByTestId('experimento-pose')
+      await seccion.waitFor()
+      assert.ok(await seccion.getByRole('button', { name: /Detectar el cuerpo/ }).isVisible())
+      assert.equal(await seccion.getByLabel('Modelo').inputValue(), 'full')
+      assert.equal(await seccion.getByLabel('Procesador').inputValue(), 'GPU')
+      assert.equal(await p.getByTestId('informe-pose').count(), 0)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('laboratorio de grabación (fase 4, paso 1)', () => {
   let nav
   before(async () => {
