@@ -1,4 +1,4 @@
-import { useMemo, type Ref } from 'react'
+import { useMemo } from 'react'
 import { ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { partirInterpolado, type SeriePorFrame } from '../../core/graficas/series'
 import GraficaTiempo, { type SerieGrafica, type TokenColor } from './GraficaTiempo'
@@ -28,12 +28,6 @@ interface Props {
   onModo: (modo: ModoMiniGrafica) => void
   /** Pasa a la vista de solo gráficas. */
   onAmpliar: () => void
-  /** Alto de la gráfica, px (crece con la página arriba del todo; ver `miniGrande.ts`). */
-  alto: number
-  /** Si el cambio de alto se anima. */
-  animable: boolean
-  /** La caja de la gráfica, para medir desde fuera. */
-  cajaRef: Ref<HTMLDivElement>
 }
 
 const grados = (v: number) => `${Math.round(v)}°`
@@ -59,7 +53,7 @@ const dividir = (v: ArrayLike<number>, d: number) => Float64Array.from(v, (x) =>
  * para ver si coinciden en el tiempo, no para leer valores; esos, en la gráfica completa).
  * Mismos huecos y mismo cursor que la completa; tocar o arrastrar salta de frame.
  */
-export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado, velocidad, modo, onModo, onAmpliar, alto, animable, cajaRef }: Props) {
+export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado, velocidad, modo, onModo, onAmpliar }: Props) {
   const xs = useMemo(() => Array.from(tiempos), [tiempos])
   const n = xs.length
 
@@ -107,8 +101,9 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
   }, [modo, crudo, filtrado, velocidad, n])
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-2">
+    // Llena lo que le deja el vídeo en el bloque de arriba (ver `repartoHerramientas.ts`).
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <div className="flex gap-1" role="group" aria-label="Qué muestra la gráfica pequeña">
           {MODOS.map((m) => (
             <button
@@ -141,7 +136,7 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
           <ArrowsPointingOutIcon className="size-4" />
         </button>
       </div>
-      <div ref={cajaRef} data-testid="minigrafica-caja" className={`relative ${animable ? 'transition-[height] duration-200 motion-reduce:transition-none' : ''}`} style={{ height: alto }}>
+      <div data-testid="minigrafica-caja" className="relative min-h-0 flex-1">
         <GraficaTiempo
           xs={xs}
           series={series}
@@ -162,7 +157,7 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
           testid="minigrafica"
         />
       </div>
-      {modo === 'ambas' && <p className="text-[0.65rem] leading-tight text-texto-2">Normalizadas (% del máximo de cada una): para ver si coinciden en el tiempo, no para leer valores.</p>}
+      {modo === 'ambas' && <p className="shrink-0 text-[0.65rem] leading-tight text-texto-2">Normalizadas (% del máximo de cada una): para ver si coinciden en el tiempo, no para leer valores.</p>}
     </div>
   )
 }

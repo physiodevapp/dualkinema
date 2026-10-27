@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
+import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
@@ -16,12 +16,11 @@ import PanelEscala from './PanelEscala'
 import Pestanas, { PanelPestana } from './Pestanas'
 import { useAltura } from './useAltura'
 import { useVistaMovil } from './useVistaMovil'
-import { useMiniGrande } from './useMiniGrande'
-import { EXTRA_MAXIMO_PX } from './miniGrande'
 import SeparadorVideo from './SeparadorVideo'
 import AsaVolver from './AsaVolver'
-import { ALTO_VIDEO_DVH, AMPLIAR_PX } from './reparto'
-import { useOcultarAlBajar } from './useOcultarAlBajar'
+import { altosVideo } from './reparto'
+import SeparadorHerramientas from './SeparadorHerramientas'
+import { useRepartoHerramientas } from './useRepartoHerramientas'
 import { useGuardado, type SesionAbierta } from './useGuardado'
 import SelectorMarcadores from './SelectorMarcadores'
 import BotonSeguir from './BotonSeguir'
@@ -274,40 +273,35 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     },
     { id: 'video', nombre: 'Vídeo', aviso: guardado.estado === 'error' && 'No se ha podido guardar' },
   ]
-  // Piezas fijas del móvil: la barra de abajo (la página deja su sitio debajo) y el vídeo con su
-  // gráfica de arriba (las pestañas se pegan justo debajo al desplazarse).
+  // La barra fija de abajo del móvil: el visor deja su sitio encima.
   const [barraRef, altoBarra] = useAltura<HTMLDivElement>()
-  const [fijoRef, altoFijo] = useAltura<HTMLDivElement>()
   const { anchoLg, apaisado, vista, setVista, enVideo, enGraficas, ampliada, activo, reparto, altoArrastre, setAltoArrastre, modoMini, setModoMini, elegirReparto, volverDe } =
     useVistaMovil({ altoBarra })
-  // Al bajar por las tarjetas, el vídeo y su gráfica se esconden (y vuelven al subir, al cambiar de frame o de pestaña,
-  // y mientras se calibra tocando el vídeo); las pestañas suben a ocupar su sitio.
+  // Móvil, vista mixta: la página no se desplaza. El visor ocupa el alto entre la cabecera y la barra fija y un asa reparte
+  // entre el bloque de arriba (vídeo y gráfica pequeña) y las herramientas (pestañas y tarjetas, que se desplazan por
+  // dentro); dentro del bloque, el asa de siempre reparte entre el vídeo y la gráfica (ver `repartoHerramientas.ts`).
+  const raizRef = useRef<HTMLDivElement>(null)
   const tiraRef = useRef<HTMLDivElement>(null)
-  const tarjetasRef = useRef<HTMLDivElement>(null)
   const [, altoTira] = useAltura<HTMLDivElement>(tiraRef)
-  const { oculto: videoOculto, ver: verVideo } = useOcultarAlBajar({
-    activo,
-    tarjetas: tarjetasRef,
-    tira: tiraRef,
-    altoTira,
-    forzarVisible: tocandoEscala,
-    reinicio: `${deseado}|${pestana}`,
-  })
-  // Arriba del todo la gráfica pequeña crece hasta llenar lo que queda sobre la barra fija: en la primera pantalla solo
-  // vídeo, gráfica, pestañas y barra. Al bajar vuelve a su alto de siempre.
-  const cajaMiniRef = useRef<HTMLDivElement>(null)
-  const mini = useMiniGrande({
-    activo,
-    caja: cajaMiniRef,
-    tira: tiraRef,
-    barra: barraRef,
-    fijo: fijoRef,
-    // Lo que se quita al vídeo lo puede ganar la gráfica, aunque pase de su tope de siempre.
-    extraMaximo:
-      reparto === 'grafica' || altoArrastre !== null
-        ? EXTRA_MAXIMO_PX + Math.ceil(((ALTO_VIDEO_DVH.normal - ALTO_VIDEO_DVH.grafica) / 100) * window.innerHeight) + AMPLIAR_PX
-        : EXTRA_MAXIMO_PX,
-  })
+  // Móvil girado con la vista mixta: no cabe en tres pisos (con la barra a todo el ancho quedaban unos 180 px de alto), así
+  // que va en dos columnas, como el vídeo grande girado: vídeo y gráfica a la izquierda con todo el alto, y a la derecha
+  // las pestañas y las tarjetas con la barra fija debajo (solo de esa columna), sin el asa de las herramientas.
+  const mixtaApaisada = activo && apaisado
+  const herramientas = useRepartoHerramientas({ activo, raiz: raizRef, altoBarra: mixtaApaisada ? 0 : altoBarra, altoTira })
+  // Con el vídeo plegado (solo herramientas), lo que pide tocarlo lo despliega, sin guardarlo como la posición elegida:
+  // elegir un marcador para colocarlo, calibrar la escala tocando sus extremos o marcar el evento de la sincronía.
+  // Se mira al cambiar (estado ajustado durante el render, como en `useFiltrado`): plegarlo después sigue siendo posible.
+  const pideVideo = `${seleccionado ?? ''}|${tocandoEscala}|${marcandoEvento}`
+  const [pideVideoAntes, setPideVideoAntes] = useState(pideVideo)
+  if (pideVideo !== pideVideoAntes) {
+    setPideVideoAntes(pideVideo)
+    if (herramientas.posicion === 'todo' && ((seleccionado && !siguiendo) || tocandoEscala || marcandoEvento)) herramientas.mostrar('alta')
+  }
+  const altoBloque = mixtaApaisada ? herramientas.disponible : herramientas.altoBloque
+  // Tope de alto del vídeo: su parte del bloque de arriba (o lo que diga el asa mientras se arrastra). El ancho lo limita
+  // el propio lienzo (guarda la proporción), así que aquí no hace falta el techo.
+  const altoVideoMovil = altoArrastre ?? Math.round(altosVideo(altoBloque, Infinity)[reparto])
+  const bloquePlegado = activo && altoBloque <= 0
   // Debajo del vídeo (en la vista de vídeo grande, dentro de ella: lo de fuera queda tapado).
   // En el vídeo grande, el aviso va justo debajo del vídeo (sin `order`: con `order-2` quedaba el último, tras los marcadores,
   // el botón de seguir y el deslizador, fuera de pantalla), corto, con el detalle plegado y sus botones a la vista.
@@ -367,8 +361,13 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
 
   return (
     <div
-      className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-stretch"
-      style={{ '--alto-fijo': videoOculto ? '0px' : `${altoFijo}px` } as React.CSSProperties}
+      ref={raizRef}
+      data-testid="visor"
+      className={`flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-stretch ${activo ? 'max-lg:gap-0 max-lg:overflow-hidden' : ''} ${
+        mixtaApaisada ? 'max-lg:grid max-lg:grid-cols-[minmax(0,1fr)_clamp(18rem,40vw,24rem)] max-lg:grid-rows-[auto_auto_minmax(0,1fr)] max-lg:gap-x-3' : ''
+      }`}
+      // Girado, la barra va bajo la columna de la derecha y no debajo de todo: el sitio que la página le guarda abajo sobra.
+      style={activo ? { height: herramientas.disponible, ...(mixtaApaisada ? { marginBottom: 'calc(-1 * var(--alto-barra))' } : {}) } : undefined}
     >
       {/* En el móvil el orden es vídeo, pestañas y gráfica (order-*): las herramientas quedan a un
           toque y a una pantalla del vídeo, no detrás de la gráfica. En pantalla ancha, dos columnas. */}
@@ -380,22 +379,17 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               se desplazan las pestañas y los paneles. El elemento pegado tiene que colgar de la página
               (por eso la columna de la izquierda es `contents`): un `sticky` solo dura lo que su padre. */}
           <div
-            ref={fijoRef}
             data-testid="visor-fijo"
-            data-oculto={videoOculto}
-            data-grande={mini.grande}
-            inert={videoOculto}
+            data-plegado={bloquePlegado}
+            style={activo ? { height: altoBloque } : undefined}
             className={`flex ${dosColumnas ? 'flex-row' : 'flex-col'} gap-2 max-lg:z-30 max-lg:bg-fondo max-lg:transition-[opacity,visibility] max-lg:duration-200 motion-reduce:transition-none ${
               dosColumnas
                 ? 'aparece max-lg:fixed max-lg:inset-0 max-lg:gap-0 max-lg:overflow-hidden max-lg:py-2 max-lg:pl-3'
                 : enVideo
                 ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
-                : videoOculto
-                  ? // Oculto: fuera del flujo (las tarjetas ganan su sitio), pero con su tamaño, para no desmontar ni medir 0.
-                    // Se desvanece (la visibilidad cambia al acabar el fundido) mientras las pestañas suben.
-                    'max-lg:invisible max-lg:opacity-0 max-lg:pointer-events-none max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:px-4 max-lg:pb-2'
-                  : 'max-lg:sticky max-lg:top-0 max-lg:order-1 max-lg:-mx-4 max-lg:border-b max-lg:border-borde max-lg:px-4 max-lg:pb-2'
-            } ${enGraficas ? 'max-lg:hidden' : ''}`}
+                : // Mixta: el bloque de arriba, con el alto que da el asa de las herramientas (plegado, no se ve pero sigue montado).
+                  `max-lg:order-1 max-lg:shrink-0 max-lg:overflow-hidden ${mixtaApaisada ? 'max-lg:col-start-1 max-lg:row-span-3 max-lg:row-start-1' : ''}`
+            } ${enGraficas || bloquePlegado ? 'max-lg:hidden' : ''}`}
           >
           <div className={dosColumnas ? 'relative min-w-0 flex-1' : 'relative'}>
             <LienzoVideo
@@ -403,7 +397,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               llenar={enVideo}
               apaisado={dosColumnas}
               topeLg="lg:max-h-[max(14rem,calc(100dvh-25rem))]"
-              topeMovil={!anchoLg && vista === 'mixta' ? (altoArrastre !== null ? `${altoArrastre}px` : `${ALTO_VIDEO_DVH[reparto]}dvh`) : undefined}
+              topeMovil={activo ? `${altoVideoMovil}px` : undefined}
               ancho={info.ancho}
               alto={info.alto}
               lienzo={lienzo}
@@ -497,6 +491,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               onArrastre={setAltoArrastre}
               lienzo={lienzo}
               proporcion={info.alto / info.ancho}
+              altoBloque={altoBloque}
               onAmpliar={setVista}
             />
           )}
@@ -511,10 +506,6 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               modo={modoMini}
               onModo={setModoMini}
               onAmpliar={() => setVista('graficas')}
-              alto={mini.alto}
-              // Mientras se arrastra el asa, la gráfica sigue al vídeo sin retraso (la tira de pestañas no se mueve).
-              animable={mini.animable && altoArrastre === null}
-              cajaRef={cajaMiniRef}
             />
           )}
           {enVideo && !dosColumnas && (
@@ -535,7 +526,9 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           )}
           </div>
 
-          {!enVideo && nodoError}
+          {!enVideo && nodoError && (
+            <div className={`max-lg:order-2 max-lg:shrink-0 max-lg:pb-2 ${mixtaApaisada ? 'max-lg:col-start-2 max-lg:row-start-1' : ''}`}>{nodoError}</div>
+          )}
 
           {nodoDeslizador}
 
@@ -556,7 +549,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             velocidad={filtrado.derivadas.velocidad}
             aceleracion={filtrado.derivadas.aceleracion}
             onMover={mover}
-            columna={dosColumnas}
+            columna={dosColumnas || mixtaApaisada}
           />
 
           {/* En el móvil el estado del guardado va en la pestaña «Vídeo» (aquí quitaba una línea a la primera pantalla); un punto
@@ -652,39 +645,24 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           abierto excede esa altura; los paneles de dentro pierden su caja propia y se separan con una línea. */}
       <div className="max-lg:contents lg:relative">
       <div className="max-lg:contents lg:absolute lg:inset-0 lg:flex lg:flex-col lg:gap-3" data-testid="columna-herramientas">
+        {activo && !mixtaApaisada && (
+          <SeparadorHerramientas posicion={herramientas.posicion} altos={herramientas.altos} onPosicion={herramientas.elegir} onArrastre={herramientas.setArrastre} />
+        )}
         <Pestanas
           pestanas={pestanasVisor}
           activa={pestana}
           onElegir={(id) => {
             setPestana(id)
-            // Con la gráfica grande (arriba del todo), las tarjetas están bajo la pantalla: se sube hasta ellas.
-            mini.irALasTarjetas()
+            // Con las herramientas plegadas (solo las pestañas), tocar una despliega sus tarjetas.
+            if (activo && herramientas.posicion === 'plegadas') herramientas.mostrar('media')
           }}
           contenedorRef={tiraRef}
-          className={`max-lg:order-5 ${ampliada ? 'max-lg:hidden' : ''}`}
-          accion={
-            // Con el vídeo oculto, un botón con su icono lo trae y lo deja fijo; con el vídeo a la vista, su sitio queda libre.
-            videoOculto ? (
-              <button
-                type="button"
-                onClick={verVideo}
-                data-testid="mostrar-video"
-                aria-label="Mostrar el vídeo y mantenerlo a la vista"
-                title="Mostrar el vídeo y mantenerlo a la vista"
-                className="flex size-10 items-center justify-center rounded-md border border-borde bg-fondo text-texto-2"
-              >
-                <VideoCameraIcon className="size-5" />
-              </button>
-            ) : (
-              <span aria-hidden className="block size-10" />
-            )
-          }
+          className={`max-lg:order-5 max-lg:shrink-0 ${mixtaApaisada ? 'max-lg:col-start-2 max-lg:row-start-2' : ''} ${ampliada ? 'max-lg:hidden' : ''}`}
         />
 
         <div
           data-testid="panel-herramientas"
-          ref={tarjetasRef}
-          className={`flex flex-col gap-3 max-lg:order-6 lg:relative lg:min-h-0 lg:flex-1 lg:gap-0 lg:overflow-y-auto lg:rounded-2xl lg:border lg:border-borde lg:bg-panel lg:p-4 lg:[&_section]:rounded-none lg:[&_section]:border-0 lg:[&_section]:bg-transparent lg:[&_section]:p-0 lg:[&_section+section]:mt-4 lg:[&_section+section]:border-t lg:[&_section+section]:border-borde lg:[&_section+section]:pt-4 ${ampliada ? 'max-lg:hidden' : ''}`}
+          className={`flex flex-col gap-3 max-lg:relative max-lg:order-6 max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-y-auto max-lg:pt-2 max-lg:pb-2 ${mixtaApaisada ? 'max-lg:col-start-2 max-lg:row-start-3 max-lg:mb-(--alto-barra)' : ''} lg:relative lg:min-h-0 lg:flex-1 lg:gap-0 lg:overflow-y-auto lg:rounded-2xl lg:border lg:border-borde lg:bg-panel lg:p-4 lg:[&_section]:rounded-none lg:[&_section]:border-0 lg:[&_section]:bg-transparent lg:[&_section]:p-0 lg:[&_section+section]:mt-4 lg:[&_section+section]:border-t lg:[&_section+section]:border-borde lg:[&_section+section]:pt-4 ${ampliada ? 'max-lg:hidden' : ''}`}
         >
 
           <PanelPestana id="marcar" activa={pestana === 'marcar'}>
@@ -802,6 +780,12 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               />
             )}
             <DatosVideo info={info} total={total} est={est} orientacion={orientacion} msDecodificar={msDecodificar} lectura={lectura} />
+            {/* En el móvil la página no se desplaza y el pie (rama y commit) quedaría bajo la barra: va aquí. */}
+            {!anchoLg && (
+              <p className="font-mono text-xs text-texto-2" data-testid="pie-visor">
+                {__RAMA__} · {__COMMIT__}
+              </p>
+            )}
           </PanelPestana>
         </div>
       </div>

@@ -13,6 +13,7 @@ import { asegurarVideos } from './videos.mjs'
 import {
   abrirApp,
   abrirPestana,
+  arrastrarAsa,
   cajaElemento,
   cajaVideo,
   cargarVideo,
@@ -1650,22 +1651,28 @@ describe('la barra fija del móvil no mueve los botones', () => {
     }
   })
 
-  it('la barra queda pegada abajo con scroll y no tapa el final de la página', async () => {
+  it('la barra queda pegada abajo, la página no se desplaza y nada queda bajo la barra (el pie va en «Vídeo»)', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
       const alto = p.viewportSize().height
       const antes = await p.getByTestId('barra-fija').boundingBox()
       assert.equal(Math.round(antes.y + antes.height), alto, 'la barra no está pegada abajo')
+      // La página no tiene nada que desplazar: cada zona lo hace por dentro.
+      assert.ok(await p.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'la página se puede desplazar')
       await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      assert.equal(await p.evaluate(() => window.scrollY), 0)
       const despues = await p.getByTestId('barra-fija').boundingBox()
-      assert.deepEqual(despues, antes, 'la barra se mueve con el scroll')
-      // Lo último de la página (el panel de la pestaña abierta) queda entero por encima de la barra.
-      const panel = await p.locator('[role=tabpanel]:visible').last().boundingBox()
-      assert.ok(panel.y + panel.height <= despues.y + 1, `el panel acaba en ${panel.y + panel.height}, la barra empieza en ${despues.y}`)
-      // El pie de página (rama y commit) también queda por encima de la barra, no tapado por ella.
-      const pie = await p.getByTestId('pie').boundingBox()
-      assert.ok(pie.y + pie.height <= despues.y + 1, `el pie acaba en ${pie.y + pie.height}, la barra empieza en ${despues.y}`)
-      // Los botones y los valores del frame siguen ahí aunque se haya bajado hasta el final.
+      assert.deepEqual(despues, antes, 'la barra se mueve')
+      // El visor y las tarjetas de las herramientas acaban por encima de la barra.
+      for (const id of ['visor', 'panel-herramientas']) {
+        const c = await p.getByTestId(id).boundingBox()
+        assert.ok(c.y + c.height <= despues.y + 1, `${id} acaba en ${c.y + c.height}, la barra empieza en ${despues.y}`)
+      }
+      // El pie de página (rama y commit) no se ve bajo la barra: en el móvil va en la pestaña «Vídeo».
+      assert.equal(await p.getByTestId('pie').isVisible(), false)
+      await abrirPestana(p, 'video')
+      assert.match(await p.getByTestId('pie-visor').innerText(), / · /)
+      // Los botones y los valores del frame siguen ahí.
       assert.ok(await p.getByRole('button', { name: 'Frame siguiente' }).isVisible())
       assert.ok(await p.getByTestId('rapida-angulo').isVisible())
     } finally {
@@ -1726,7 +1733,8 @@ describe('pestañas de herramientas', () => {
       const pestanas = await p.getByRole('tablist').boundingBox()
       assert.ok(video.y + video.height <= pestanas.y + 1, 'las pestañas quedan encima del vídeo')
       // El panel abierto va justo debajo de las pestañas y la página acaba ahí: no hay otra pantalla de gráfica más abajo.
-      const panel = await p.locator('[role=tabpanel]:visible').first().boundingBox()
+      // (Las tarjetas se desplazan por dentro: lo que cuenta es su caja.)
+      const panel = await p.getByTestId('panel-herramientas').boundingBox()
       assert.ok(panel.y >= pestanas.y + pestanas.height - 1, 'el panel queda debajo de las pestañas')
       assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
       assert.ok(await p.getByTestId('minigrafica').isVisible(), 'queda la gráfica pequeña')
@@ -1763,191 +1771,36 @@ describe('pestañas de herramientas', () => {
     }
   })
 
-  it('en el móvil el vídeo y la gráfica del ángulo quedan a la vista al desplazarse, y las pestañas se pegan debajo', async () => {
+  it('en el móvil la página no se desplaza: vídeo y gráfica arriba, el asa, las pestañas y las tarjetas, que se desplazan por dentro', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
-      const alto = p.viewportSize().height
+      await abrirPestana(p, 'analisis')
       const cajas = async () => ({
         video: await p.getByTestId('capa').boundingBox(),
         mini: await p.getByTestId('minigrafica').boundingBox(),
-        // La caja con su aire, no solo las pestañas: es lo que queda pegado.
-        pestanas: await p.getByRole('tablist').locator('..').boundingBox(),
         fijo: await p.getByTestId('visor-fijo').boundingBox(),
+        asa: await p.getByTestId('separador-herramientas').boundingBox(),
+        pestanas: await p.getByRole('tablist').locator('..').boundingBox(),
+        tarjetas: await p.getByTestId('panel-herramientas').boundingBox(),
+        barra: await p.getByTestId('barra-fija').boundingBox(),
       })
-      // Desplazándose hasta el final de la pestaña «Marcar» (corta), el vídeo no se oculta: no hay tarjetas que ganar sitio.
-      // En un frame sin marcas a mano (el primero lleva un botón de quitar por marcador y la haría más larga).
-      await irAFrame(p, 60)
-      await p.evaluate(() => window.scrollTo(0, 300))
       const a = await cajas()
+      // En orden y sin solaparse: vídeo, gráfica (dentro del bloque de arriba), asa, pestañas, tarjetas y la barra.
+      assert.ok(a.mini.y >= a.video.y + a.video.height - 1, 'la gráfica va debajo del vídeo')
+      assert.ok(a.mini.y + a.mini.height <= a.fijo.y + a.fijo.height + 1, 'la gráfica se sale del bloque de arriba')
+      assert.ok(a.asa.y >= a.fijo.y + a.fijo.height - 1 && a.pestanas.y >= a.asa.y + a.asa.height - 1, 'el asa va entre el bloque y las pestañas')
+      assert.ok(a.tarjetas.y >= a.pestanas.y + a.pestanas.height - 1 && a.tarjetas.y + a.tarjetas.height <= a.barra.y + 1, 'las tarjetas, entre las pestañas y la barra')
+      // «Análisis» es larga: sus tarjetas se desplazan por dentro y nada más se mueve.
+      const tarjetas = p.getByTestId('panel-herramientas')
+      assert.ok(await tarjetas.evaluate((el) => el.scrollHeight > el.clientHeight + 50), 'la pestaña «Análisis» cabe sin desplazarse')
+      await tarjetas.evaluate((el) => el.scrollTo(0, el.scrollHeight))
       await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
-      await p.waitForTimeout(300)
       const b = await cajas()
-      assert.equal(await p.getByTestId('visor-fijo').getAttribute('data-oculto'), 'false')
-      assert.deepEqual(b.video, a.video, 'el vídeo se mueve al desplazarse')
-      assert.deepEqual(b.mini, a.mini, 'la gráfica se mueve al desplazarse')
-      assert.ok(b.video.y >= 0 && b.mini.y + b.mini.height <= b.fijo.y + b.fijo.height, 'vídeo y gráfica fuera de su zona pegada')
-      // El vídeo no se come la pantalla: más de un tercio de alto se lo quitaría a las herramientas.
-      assert.ok(b.video.height <= alto * 0.36, `el vídeo mide ${b.video.height} de ${alto} px`)
-      assert.ok(b.mini.y > b.video.y + b.video.height - 1, 'la gráfica va debajo del vídeo')
-      // Las pestañas se pegan justo debajo, no detrás del vídeo, y siguen ahí hasta el final de la página.
-      for (const [donde, c] of [['a mitad', a], ['al final', b]]) {
-        assert.ok(Math.abs(c.pestanas.y - (c.fijo.y + c.fijo.height)) <= 4, `${donde}: pestañas en ${c.pestanas.y}, vídeo y gráfica acaban en ${c.fijo.y + c.fijo.height}`)
-      }
+      assert.ok(await tarjetas.evaluate((el) => el.scrollTop > 0))
+      for (const k of ['video', 'mini', 'asa', 'pestanas', 'barra']) assert.deepEqual(b[k], a[k], `${k} se ha movido al desplazar las tarjetas`)
     } finally {
       await p.close()
     }
-  })
-
-  describe('el vídeo se oculta al bajar por tarjetas largas (pestaña «Análisis»)', () => {
-    let p
-    // Posición de scroll a la que las tarjetas llegan a la tira de pestañas (y el vídeo empieza a poder ocultarse): depende de
-    // lo que haya sobre ellas (vídeo, barra, deslizador), así que se mide en vez de fijarla.
-    let U
-    before(async () => {
-      ;({ p } = await seguirVideo(videos.verde, { ancho: 390 }))
-      await abrirPestana(p, 'analisis')
-      // Se mide con la gráfica pequeña en su alto de reposo (arriba del todo crece y las tarjetas quedan más abajo).
-      await p.evaluate(() => window.scrollTo(0, 20))
-      await p.waitForFunction(() => document.querySelector('[data-testid=visor-fijo]').dataset.grande === 'false')
-      await esperarVideoAsentado(p, false)
-      U = await p.evaluate(() => {
-        const tarjetas = document.querySelector('[data-testid=panel-herramientas]').getBoundingClientRect().top + window.scrollY
-        const tira = document.querySelector('[role=tablist]').parentElement.getBoundingClientRect().height
-        return Math.round(tarjetas - tira - 4)
-      })
-    })
-    after(() => p?.close())
-
-    const oculto = async () => (await p.getByTestId('visor-fijo').getAttribute('data-oculto')) === 'true'
-    const arribaTarjetas = async () => (await p.getByTestId('panel-herramientas').boundingBox()).y
-    const bajar = async (y) => {
-      await p.evaluate((y) => window.scrollTo(0, y), y)
-      await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
-    }
-
-    it('con el vídeo a la vista, las tarjetas tienen menos de la mitad de la pantalla', async () => {
-      await bajar(300)
-      assert.equal(await oculto(), false)
-      const barra = (await p.getByTestId('barra-fija').boundingBox()).y
-      const tira = await p.getByRole('tablist').locator('..').boundingBox()
-      const libre = barra - (tira.y + tira.height)
-      assert.ok(libre < p.viewportSize().height * 0.5, `sitio para las tarjetas con el vídeo: ${libre} px`)
-    })
-
-    it('mientras las tarjetas no han subido bajo las pestañas no se oculta (dejaría un hueco vacío)', async () => {
-      await bajar(0)
-      for (const y of [100, 250, U - 60, U - 40]) {
-        await bajar(y)
-        assert.equal(await oculto(), false, `oculto a y = ${y}`)
-      }
-    })
-
-    it('al seguir bajando se oculta, las pestañas suben y las tarjetas no se mueven (solo se descubre lo que tapaba el vídeo)', async () => {
-      await bajar(U - 27)
-      assert.equal(await oculto(), false)
-      const antes = await arribaTarjetas()
-      await bajar(U + 13)
-      await esperarVideoAsentado(p, true)
-      assert.equal(await oculto(), true)
-      // Lo que se mira no salta: las tarjetas subieron los 40 px que se bajó, no los ~340 del hueco del vídeo.
-      const despues = await arribaTarjetas()
-      assert.ok(Math.abs(despues - (antes - 40)) <= 3, `las tarjetas saltaron: de ${antes} a ${despues}`)
-      // Las pestañas suben a lo más alto y las tarjetas ganan el sitio del vídeo.
-      const tira = await p.getByRole('tablist').locator('..').boundingBox()
-      assert.ok(tira.y >= -2 && tira.y <= 2, `las pestañas están en y = ${tira.y}`)
-      const barra = (await p.getByTestId('barra-fija').boundingBox()).y
-      const libre = barra - (tira.y + tira.height)
-      assert.ok(libre >= p.viewportSize().height * 0.7, `queda ${libre} px para las tarjetas`)
-      // Oculto de verdad: no recibe toques ni foco, y sigue montado (el lienzo y la gráfica conservan su estado).
-      assert.equal(await p.getByTestId('visor-fijo').evaluate((e) => e.inert), true)
-      assert.equal(await p.getByTestId('lienzo').count(), 1)
-    })
-
-    it('el cambio es suave: las pestañas se deslizan y el vídeo se desvanece, en vez de saltar', async () => {
-      await bajar(0)
-      await bajar(U - 27)
-      // Al ocultarse (y al volver), mientras dura el cambio hay animaciones en la tira de pestañas y en el vídeo.
-      const animaciones = () =>
-        p.evaluate(() => ({
-          tira: document.querySelector('[role=tablist]').parentElement.getAnimations().length,
-          video: document.querySelector('[data-testid=visor-fijo]').getAnimations().length,
-        }))
-      const ocultar = await p.evaluate(async (y) => {
-        window.scrollTo(0, y)
-        await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))
-        return {
-          tira: document.querySelector('[role=tablist]').parentElement.getAnimations().length,
-          video: document.querySelector('[data-testid=visor-fijo]').getAnimations().length,
-        }
-      }, U + 18)
-      assert.ok(ocultar.tira > 0, 'las pestañas saltan en vez de deslizarse al ocultar el vídeo')
-      assert.ok(ocultar.video > 0, 'el vídeo no se desvanece al ocultarse')
-      await esperarVideoAsentado(p, true)
-      assert.deepEqual(await animaciones(), { tira: 0, video: 0 })
-      const volver = await p.evaluate(async () => {
-        window.scrollBy(0, -60)
-        await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)))
-        return {
-          tira: document.querySelector('[role=tablist]').parentElement.getAnimations().length,
-          video: document.querySelector('[data-testid=visor-fijo]').getAnimations().length,
-        }
-      })
-      assert.ok(volver.tira > 0, 'las pestañas saltan en vez de deslizarse al volver el vídeo')
-      assert.ok(volver.video > 0, 'el vídeo no aparece con un fundido')
-      await esperarVideoAsentado(p, false)
-    })
-
-    it('al subir un poco vuelve, y tampoco salta nada', async () => {
-      const antes = await arribaTarjetas()
-      await p.evaluate(() => window.scrollBy(0, -60))
-      await esperarVideoAsentado(p, false)
-      const despues = await arribaTarjetas()
-      assert.ok(Math.abs(despues - (antes + 60)) <= 3, `las tarjetas saltaron: de ${antes} a ${despues}`)
-      const fijo = await p.getByTestId('visor-fijo').boundingBox()
-      assert.ok(fijo.y >= 0 && fijo.y < 4, 'el vídeo vuelve pegado arriba')
-    })
-
-    it('vuelve al cambiar de frame con la barra y al cambiar de pestaña', async () => {
-      await bajar(0)
-      await bajar(U - 27)
-      await bajar(U + 33)
-      await esperarVideoAsentado(p, true)
-      await p.getByRole('button', { name: 'Frame siguiente' }).click()
-      await esperarVideoAsentado(p, false)
-      await bajar(U - 27)
-      await bajar(U + 33)
-      await esperarVideoAsentado(p, true)
-      await p.getByTestId('pestana-escala').click()
-      await esperarVideoAsentado(p, false)
-      await abrirPestana(p, 'analisis')
-    })
-
-    it('con el botón «Vídeo» se ve y se queda por mucho que se baje, hasta volver al principio', async () => {
-      await bajar(0)
-      await bajar(U - 27)
-      await bajar(U + 33)
-      await esperarVideoAsentado(p, true)
-      const antes = await arribaTarjetas()
-      await p.getByTestId('mostrar-video').click()
-      await esperarVideoAsentado(p, false)
-      assert.ok(Math.abs((await arribaTarjetas()) - antes) <= 3, 'al mostrar el vídeo con el botón, las tarjetas saltan')
-      await p.evaluate(() => window.scrollBy(0, 200))
-      await p.waitForTimeout(300)
-      assert.equal(await oculto(), false, 'anclado, el vídeo no se oculta solo')
-      await bajar(0)
-      await bajar(U + 33)
-      await esperarVideoAsentado(p, true)
-    })
-
-    it('mientras se calibra tocando el vídeo, no se oculta al bajar', async () => {
-      await bajar(0)
-      await abrirPestana(p, 'escala')
-      await p.getByTestId('panel-escala').getByRole('button', { name: 'Calibrar escala' }).click()
-      await bajar(300)
-      await bajar(700)
-      await p.waitForTimeout(300)
-      assert.equal(await oculto(), false)
-    })
   })
 
   it('la gráfica pequeña salta de frame al tocarla y su cursor no la redibuja', async () => {
@@ -1978,21 +1831,20 @@ describe('pestañas de herramientas', () => {
     }
   })
 
-  it('en pantalla ancha no hay gráfica pequeña ni vídeo pegado: la gráfica completa va a su sitio', async () => {
+  it('en pantalla ancha no hay gráfica pequeña ni asa de las herramientas: la gráfica completa va a su sitio', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 1280 })
     try {
       assert.equal(await p.getByTestId('minigrafica').count(), 0)
-      assert.notEqual(await p.getByTestId('visor-fijo').evaluate((el) => getComputedStyle(el).position), 'sticky')
+      assert.equal(await p.getByTestId('separador-herramientas').count(), 0)
       assert.ok(await p.getByTestId('grafica-angulo-area').isVisible())
     } finally {
       await p.close()
     }
   })
 
-  it('la tira de pestañas pegada tiene un fondo opaco de lado a lado: no se ven las tarjetas por detrás', async () => {
+  it('la tira de pestañas tiene un fondo opaco de lado a lado: no se ven las tarjetas por detrás', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
-      await p.evaluate(() => window.scrollTo(0, 300))
       const contenedor = p.getByRole('tablist').locator('..')
       const caja = await contenedor.boundingBox()
       assert.ok(caja.x <= 0.5 && Math.abs(caja.width - 390) <= 1, `el fondo va de ${caja.x} a ${caja.x + caja.width}`)
@@ -2193,7 +2045,7 @@ describe('gráfica pequeña del móvil: ángulo, velocidad o las dos normalizada
 })
 
 describe('gráfica pequeña del móvil: conserva su modo', () => {
-  it('al cambiar de frame, de pestaña, al desplazarse, al ampliar el vídeo o las gráficas y volver, y al volver a seguir sigue en el modo elegido', async () => {
+  it('al cambiar de frame, de pestaña, al plegar el vídeo, al ampliar el vídeo o las gráficas y volver, y al volver a seguir sigue en el modo elegido', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
       const modo = (id) => p.getByTestId(`minigrafica-modo-${id}`)
@@ -2210,14 +2062,11 @@ describe('gráfica pequeña del móvil: conserva su modo', () => {
         await abrirPestana(p, id)
         await enVelocidad(`en la pestaña ${id}`)
       }
-      // Bajar (la gráfica vuelve a su alto de siempre y el vídeo se puede ocultar) y volver arriba (crece otra vez).
-      await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
-      await p.waitForFunction(() => document.querySelector('[data-testid=visor-fijo]').dataset.grande === 'false')
-      await esperarVideoAsentado(p)
-      await p.evaluate(() => window.scrollTo(0, 0))
-      await p.waitForFunction(() => document.querySelector('[data-testid=visor-fijo]').dataset.grande === 'true')
-      await esperarVideoAsentado(p, false)
-      await enVelocidad('al bajar y volver arriba')
+      // Plegar el vídeo y la gráfica (solo herramientas: la gráfica sigue montada, sin verse) y volver.
+      await arrastrarAsa(p, 'separador-herramientas', -2000)
+      assert.equal(await p.getByTestId('separador-herramientas').getAttribute('data-posicion'), 'todo')
+      await arrastrarAsa(p, 'separador-herramientas', 2000)
+      await enVelocidad('al plegar el vídeo y volver')
       // Al pasar al vídeo grande o a solo gráficas (la gráfica pequeña no está) y volver, sigue en «Velocidad».
       await p.getByTestId('ampliar-video').click()
       await p.getByTestId('reducir-video').click()
@@ -2279,7 +2128,8 @@ describe('vistas ampliadas del móvil', () => {
       await p.getByTestId('reducir-video').click()
       assert.ok(await p.getByRole('tablist').isVisible())
       assert.ok(await p.getByTestId('minigrafica').isVisible())
-      assert.equal(await p.evaluate(() => getComputedStyle(document.body).overflow), 'visible')
+      // En el móvil la página no se desplaza tampoco en la mixta (cada zona lo hace por dentro).
+      assert.equal(await p.evaluate(() => getComputedStyle(document.body).overflow), 'hidden')
       // La franja de estado, dibujada mientras estaba oculta, se rehace al volver: verde (seguido), no un solo píxel estirado.
       const franja = await colorFranja(p)
       assert.ok(franja.verde > franja.ancho * 0.9, `franja: ${JSON.stringify(franja)}`)
@@ -2357,12 +2207,12 @@ describe('vistas ampliadas del móvil', () => {
       await esperarQuieto(p)
       const trayectoria = p.getByTestId('trayectoria-compacta')
       await trayectoria.waitFor()
-      // No tapa el botón de ampliar ni se sale del vídeo.
-      const caja = await p.getByTestId('capa').boundingBox()
+      // No tapa el botón de ampliar ni se sale de la caja del vídeo (con poco alto, un vídeo horizontal no llena el ancho).
+      const caja = await p.getByTestId('lienzo').locator('../..').boundingBox()
       const b = await trayectoria.boundingBox()
       const ampliar = await p.getByTestId('ampliar-video').boundingBox()
       assert.ok(b.y >= ampliar.y + ampliar.height, 'el atajo debe ir debajo del botón de ampliar')
-      assert.ok(b.y + b.height <= caja.y + caja.height && b.x + b.width <= caja.x + caja.width, 'el atajo debe caber en el vídeo')
+      assert.ok(b.y + b.height <= caja.y + caja.height && b.x + b.width <= caja.x + caja.width, 'el atajo debe caber en la caja del vídeo')
       assert.equal(await trayectoria.getAttribute('aria-pressed'), 'false')
       await trayectoria.click()
       assert.equal(await trayectoria.getAttribute('aria-pressed'), 'true')
@@ -4462,66 +4312,76 @@ it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })
 
-describe('minigráfica grande arriba del todo (móvil)', () => {
+describe('asa entre el vídeo con su gráfica y las herramientas (móvil)', () => {
   let p
   before(async () => {
     ;({ p } = await seguirVideo(videos.verde, { ancho: 390 }))
   })
   after(() => p?.close())
 
-  const asentar = async () => {
-    await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
-    await p.waitForFunction(() => document.getAnimations().length === 0, null, { timeout: 5000 })
-  }
-  const arriba = async () => {
-    await p.evaluate(() => window.scrollTo(0, 0))
-    await asentar()
-  }
-  const altoMini = async () => (await p.getByTestId('minigrafica-caja').boundingBox()).height
-  const cajas = async () => ({
-    tira: await p.getByRole('tablist').locator('..').boundingBox(),
-    barra: await p.getByTestId('barra-fija').boundingBox(),
-    tarjetas: await p.getByTestId('panel-herramientas').boundingBox(),
-    video: await p.getByTestId('lienzo').boundingBox(),
+  const asa = () => p.getByTestId('separador-herramientas')
+  const posicion = () => asa().getAttribute('data-posicion')
+  const caja = (id) => p.getByTestId(id).boundingBox()
+  const altoBloque = async () => (await caja('visor-fijo'))?.height ?? 0
+
+  it('de partida, las herramientas en un 40 %: vídeo, gráfica, pestañas y tarjetas a la vista y nada bajo la barra', async () => {
+    assert.equal(await posicion(), 'media')
+    const visor = await caja('visor')
+    const tarjetas = await caja('panel-herramientas')
+    const tira = await p.getByRole('tablist').locator('..').boundingBox()
+    // La tira y las tarjetas ocupan lo que les toca (un 40 % de lo que hay entre la cabecera y la barra, ±asa).
+    assert.ok(Math.abs(tira.height + tarjetas.height - 0.4 * visor.height) <= 4, `herramientas ${tira.height + tarjetas.height} px de ${visor.height}`)
+    assert.ok((await caja('minigrafica-caja')).height > 60, 'la gráfica pequeña se queda sin sitio')
+    assert.ok((await caja('lienzo')).height > 120, 'el vídeo se queda sin sitio')
   })
 
-  it('arriba del todo la primera pantalla es vídeo, gráfica, pestañas y barra: no asoma ninguna tarjeta', async () => {
-    await arriba()
-    const c = await cajas()
-    assert.ok((await altoMini()) > 120, `la gráfica mide ${await altoMini()} px`)
-    // La tira acaba justo sobre la barra y las tarjetas empiezan por debajo de ella (fuera de la pantalla visible).
-    assert.ok(Math.abs(c.tira.y + c.tira.height - c.barra.y) <= 2, `tira hasta ${c.tira.y + c.tira.height}, barra desde ${c.barra.y}`)
-    assert.ok(c.tarjetas.y >= c.barra.y, `las tarjetas asoman: empiezan en ${c.tarjetas.y}, la barra en ${c.barra.y}`)
-    assert.ok(c.video.y >= 0 && c.video.y + c.video.height <= c.tira.y, 'el vídeo cabe sobre la gráfica y la tira')
-    assert.equal(await p.getByTestId('visor-fijo').getAttribute('data-grande'), 'true')
+  it('hacia arriba da más sitio a las herramientas y, al final, pliega el vídeo y la gráfica (sigue montado)', async () => {
+    const antes = await altoBloque()
+    const durante = await arrastrarAsa(p, 'separador-herramientas', -110, altoBloque)
+    assert.ok(Math.abs(durante - (antes - 110)) <= 2, `durante el arrastre el bloque mide ${durante} (antes ${antes})`)
+    assert.equal(await posicion(), 'alta')
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoHerramientas')), 'alta')
+    await arrastrarAsa(p, 'separador-herramientas', -2000)
+    assert.equal(await posicion(), 'todo')
+    assert.equal(await p.getByTestId('visor-fijo').getAttribute('data-plegado'), 'true')
+    assert.equal(await p.getByTestId('lienzo').isVisible(), false)
+    // Las tarjetas llenan desde el asa (arriba del todo) hasta la barra.
+    const visor = await caja('visor')
+    assert.ok((await caja('separador-herramientas')).y <= visor.y + 1)
   })
 
-  it('al bajar un poco vuelve a su alto de siempre y no vuelve sola arriba (sin saltos)', async () => {
-    await arriba()
-    await p.evaluate(() => window.scrollTo(0, 120))
-    await asentar()
-    assert.equal(await p.getByTestId('visor-fijo').getAttribute('data-grande'), 'false')
-    assert.equal(Math.round(await altoMini()), 76)
-    // El scroll se queda donde se dejó (el navegador no lo «corrige» al encogerse la gráfica).
-    assert.equal(await p.evaluate(() => Math.round(window.scrollY)), 120)
-    // Vuelve a crecer al llegar arriba del todo.
-    await arriba()
-    assert.ok((await altoMini()) > 120)
+  it('hacia abajo, plegadas: solo la tira de pestañas; tocar una pestaña despliega sus tarjetas (sin guardarlo)', async () => {
+    await arrastrarAsa(p, 'separador-herramientas', 2000)
+    assert.equal(await posicion(), 'plegadas')
+    const tira = await p.getByRole('tablist').locator('..').boundingBox()
+    const barra = await caja('barra-fija')
+    assert.ok(barra.y - (tira.y + tira.height) <= 24, `entre la tira y la barra quedan ${barra.y - (tira.y + tira.height)} px`)
+    assert.ok((await caja('lienzo')).height > 150)
+    await p.getByTestId('pestana-analisis').click()
+    assert.equal(await posicion(), 'media')
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoHerramientas')), 'plegadas')
   })
 
-  it('tocar una pestaña desplaza hasta sus tarjetas: la tira queda pegada bajo el vídeo y las tarjetas se ven', async () => {
-    for (const id of ['analisis', 'marcar']) {
-      await arriba()
-      await p.getByTestId(`pestana-${id}`).click()
-      await p.waitForFunction(() => window.scrollY > 40)
-      await asentar()
-      const c = await cajas()
-      assert.equal(Math.round(await altoMini()), 76)
-      assert.ok(c.tarjetas.y < c.barra.y - 100, `${id}: las tarjetas empiezan en ${c.tarjetas.y} y la barra en ${c.barra.y}`)
-      // La tira pegada bajo el vídeo con la gráfica en reposo.
-      const fijo = await p.getByTestId('visor-fijo').boundingBox()
-      assert.ok(Math.abs(c.tira.y - (fijo.y + fijo.height)) <= 4, `la tira está en ${c.tira.y} y el vídeo acaba en ${fijo.y + fijo.height}`)
-    }
+  it('dos toques vuelven a la de partida; con el teclado, a la de al lado', async () => {
+    await arrastrarAsa(p, 'separador-herramientas', -2000)
+    await asa().dblclick()
+    await esperarVideoAsentado(p)
+    assert.equal(await posicion(), 'media')
+    await asa().focus()
+    await p.keyboard.press('ArrowUp')
+    assert.equal(await posicion(), 'alta')
+    await p.keyboard.press('ArrowDown')
+    await p.keyboard.press('ArrowDown')
+    assert.equal(await posicion(), 'plegadas')
+  })
+
+  it('con el vídeo plegado, elegir un marcador lo despliega para poder tocarlo', async () => {
+    await arrastrarAsa(p, 'separador-herramientas', -2000)
+    assert.equal(await posicion(), 'todo')
+    await abrirPestana(p, 'marcar')
+    await p.getByTestId('panel-herramientas').getByRole('radio', { name: /Epicóndilo/ }).click()
+    assert.equal(await posicion(), 'alta')
+    assert.ok(await p.getByTestId('lienzo').isVisible())
   })
 
   it('el estado del guardado está en la pestaña «Vídeo» en el móvil', async () => {
@@ -4561,46 +4421,49 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await asentar()
     return durante
   }
-  /** La tira de pestañas acaba justo sobre la barra fija (la gráfica grande llena lo que deja el vídeo). */
-  const tiraSobreLaBarra = async () => {
-    const tira = await p.getByRole('tablist').locator('..').boundingBox()
-    const barra = await p.getByTestId('barra-fija').boundingBox()
-    assert.ok(Math.abs(tira.y + tira.height - barra.y) <= 2, `tira hasta ${tira.y + tira.height}, barra desde ${barra.y}`)
+  /** Tope del vídeo en una posición: su % de lo que queda en el bloque de arriba sin el asa y los botones de la gráfica (60 px). */
+  const tope = async (porcentaje) => (((await p.getByTestId('visor-fijo').boundingBox()).height - 60) * porcentaje) / 100
+  /** La tira de pestañas no se mueve: lo que gana el vídeo lo pierde la gráfica. */
+  let yTira
+  const tiraQuieta = async () => {
+    const y = (await p.getByRole('tablist').boundingBox()).y
+    yTira ??= y
+    assert.ok(Math.abs(y - yTira) <= 1, `la tira estaba en ${yTira} y está en ${y}`)
   }
 
-  it('de partida, el reparto de siempre: el vídeo, un 30 % de la ventana', async () => {
-    await p.evaluate(() => window.scrollTo(0, 0))
+  it('de partida, el reparto de siempre: el vídeo, un 60 % del bloque de arriba', async () => {
     await asentar()
     assert.equal(await asa().getAttribute('data-reparto'), 'normal')
-    assert.ok(Math.abs((await altoVideo()) - 0.3 * 844) <= 2, `el vídeo mide ${await altoVideo()} px`)
-    await tiraSobreLaBarra()
+    assert.ok(Math.abs((await altoVideo()) - (await tope(60))) <= 2, `el vídeo mide ${await altoVideo()} px`)
+    await tiraQuieta()
   })
 
   it('arrastrar hacia abajo agranda el vídeo, encaja en «vídeo grande» y la gráfica cede el sitio', async () => {
     const miniAntes = await altoMini()
-    const durante = await arrastrar(90)
-    assert.ok(Math.abs(durante - (0.3 * 844 + 90)) <= 2, `durante el arrastre el vídeo mide ${durante} px`)
+    const inicio = await altoVideo()
+    const durante = await arrastrar(60)
+    assert.ok(Math.abs(durante - (inicio + 60)) <= 2, `durante el arrastre el vídeo mide ${durante} px`)
     assert.equal(await asa().getAttribute('data-reparto'), 'video')
-    assert.ok(Math.abs((await altoVideo()) - 0.45 * 844) <= 2, `el vídeo mide ${await altoVideo()} px`)
-    assert.ok((await altoMini()) < miniAntes - 100, `la gráfica mide ${await altoMini()} px (antes ${miniAntes})`)
-    await tiraSobreLaBarra()
+    assert.ok(Math.abs((await altoVideo()) - (await tope(90))) <= 2, `el vídeo mide ${await altoVideo()} px`)
+    assert.ok((await altoMini()) < miniAntes - 60, `la gráfica mide ${await altoMini()} px (antes ${miniAntes})`)
+    await tiraQuieta()
     assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoVideo')), 'video')
   })
 
   it('arrastrar hacia arriba agranda la gráfica', async () => {
     const miniAntes = await altoMini()
-    await arrastrar(-200)
+    await arrastrar(-130)
     assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
-    assert.ok(Math.abs((await altoVideo()) - 0.2 * 844) <= 2, `el vídeo mide ${await altoVideo()} px`)
+    assert.ok(Math.abs((await altoVideo()) - (await tope(40))) <= 2, `el vídeo mide ${await altoVideo()} px`)
     assert.ok((await altoMini()) > miniAntes + 60, `la gráfica mide ${await altoMini()} px (antes ${miniAntes})`)
-    await tiraSobreLaBarra()
+    await tiraQuieta()
   })
 
   it('dos toques vuelven al reparto de siempre; con el teclado, a la posición de al lado', async () => {
     await asa().dblclick()
     await asentar()
     assert.equal(await asa().getAttribute('data-reparto'), 'normal')
-    assert.ok(Math.abs((await altoVideo()) - 0.3 * 844) <= 2)
+    assert.ok(Math.abs((await altoVideo()) - (await tope(60))) <= 2)
     await asa().focus()
     await p.keyboard.press('ArrowDown')
     assert.equal(await asa().getAttribute('data-reparto'), 'video')
@@ -4610,7 +4473,6 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
   })
 
   it('tirar más allá de un extremo y soltar pasa a la vista ampliada y al volver se aterriza en ese extremo', async () => {
-    await p.evaluate(() => window.scrollTo(0, 0))
     await asentar()
     const antes = await asa().getAttribute('data-reparto')
     // Hacia abajo, mucho más allá de «vídeo grande»: aviso mientras se tira y, al soltar, el vídeo ampliado.
@@ -4622,8 +4484,8 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await p.mouse.move(x, y + 300, { steps: 8 })
     assert.equal(await asa().getAttribute('data-desborde'), 'video')
     await p.getByTestId('aviso-ampliar').waitFor({ state: 'visible' })
-    // Con resistencia: pasado el extremo (45 %), el vídeo sigue un poco más (56 × 0,35 ≈ 20 px como mucho), no se para en seco.
-    const pasado = (await altoVideo()) - 0.45 * 844
+    // Con resistencia: pasado el extremo (90 %), el vídeo sigue un poco más (56 × 0,35 ≈ 20 px como mucho), no se para en seco.
+    const pasado = (await altoVideo()) - (await tope(90))
     assert.ok(pasado > 8 && pasado < 25, `el vídeo pasa ${pasado} px del extremo`)
     await p.mouse.up()
     await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
@@ -4641,7 +4503,6 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
   })
 
   it('en las vistas ampliadas, tirar del asa en sentido contrario al de entrar vuelve a la mixta (con poco recorrido, no)', async () => {
-    await p.evaluate(() => window.scrollTo(0, 0))
     await asentar()
     const antes = await asa().getAttribute('data-reparto')
     const tirar = async (id, dy) => {
@@ -4760,11 +4621,17 @@ describe('móvil girado (horizontal)', () => {
       await esperarQuieto(p)
       assert.equal((await leerPosicion(p)).frame, antes + 1)
 
-      // Volver a la vista mixta: la barra vuelve a ocupar todo el ancho.
+      // Volver a la vista mixta (girada, también en dos columnas): la barra va bajo las herramientas, a la derecha, y el
+      // vídeo con su gráfica tiene todo el alto a la izquierda.
       await p.getByTestId('reducir-video').click()
-      await esperarVideoAsentado(p, false)
+      await esperarVideoAsentado(p)
       assert.equal(await p.getByTestId('columna-marcado').count(), 0)
-      assert.ok(Math.abs((await caja(p, 'barra-fija')).width - 844) <= 1)
+      const barraMixta = await caja(p, 'barra-fija')
+      const tarjetas = await caja(p, 'panel-herramientas')
+      assert.ok(Math.abs(barraMixta.x + barraMixta.width - 844) <= 1 && barraMixta.width < 844 * 0.5, `barra ${JSON.stringify(barraMixta)}`)
+      assert.ok(tarjetas.x >= barraMixta.x - 20 && tarjetas.y + tarjetas.height <= barraMixta.y + 1, `tarjetas ${JSON.stringify(tarjetas)}`)
+      const fijo = await caja(p, 'visor-fijo')
+      assert.ok(fijo.x + fijo.width <= tarjetas.x && fijo.y + fijo.height <= 390 + 1, `vídeo y gráfica ${JSON.stringify(fijo)}`)
     } finally {
       await p.close()
     }

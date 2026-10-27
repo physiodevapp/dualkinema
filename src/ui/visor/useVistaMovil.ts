@@ -9,10 +9,10 @@ export type Vista = 'mixta' | 'video' | 'graficas'
  * Cómo se reparte la pantalla: ancho de escritorio o móvil, vista del móvil (la mixta de siempre, el vídeo grande para
  * marcar o solo las gráficas; en pantalla ancha no existe), reparto del alto entre el vídeo y la gráfica pequeña, el modo
  * de esa gráfica (aquí, porque se desmonta en las vistas ampliadas y no puede guardarlo ella) y lo que cuelga de ello en
- * la raíz (`--alto-barra`) y en la página (sin scroll con una vista ampliada).
+ * la raíz (`--alto-barra`) y en la página (en el móvil no se desplaza: cada zona lo hace por dentro).
  *
- * `useOcultarAlBajar` y `useMiniGrande` se llaman en el visor (dependen de refs que se crean allí) y de aquí solo
- * toman `activo`.
+ * El reparto entre el bloque de arriba y las herramientas (`useRepartoHerramientas`) se llama en el visor (depende de
+ * refs que se crean allí) y de aquí solo toma `activo`.
  */
 export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
   const anchoLg = useAnchoMinimo()
@@ -52,15 +52,16 @@ export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
       // Sin almacenamiento (modo privado): se usa solo esta vez.
     }
   }, [])
-  // Con una vista ampliada, la página de debajo no se desplaza.
+  // En el móvil la página no se desplaza: en la mixta, el visor ocupa justo el alto entre la cabecera y la barra fija y
+  // cada zona se desplaza por dentro; con una vista ampliada, la de debajo queda quieta.
   useEffect(() => {
-    if (!ampliada) return
+    if (anchoLg) return
     const antes = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = antes
     }
-  }, [ampliada])
+  }, [anchoLg])
 
   return {
     anchoLg,
@@ -70,7 +71,7 @@ export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
     enVideo,
     enGraficas,
     ampliada,
-    /** Móvil en vista mixta: cuándo trabajan `useOcultarAlBajar` y `useMiniGrande`. */
+    /** Móvil en vista mixta: cuándo se reparte el alto entre el bloque de arriba y las herramientas. */
     activo: !anchoLg && vista === 'mixta',
     reparto,
     altoArrastre,

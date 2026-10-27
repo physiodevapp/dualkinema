@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { repartoAlVolver, desplazamientoAsa, pasaParaVolver, VOLVER_PX, altoElastico, AMPLIAR_PX, altoArrastrado, ELASTICO, altosVideo, desbordeArrastre, esReparto, repartoMasCercano, repartoVecino } from './reparto'
+import { RESTO_BLOQUE_PX, repartoAlVolver, desplazamientoAsa, pasaParaVolver, VOLVER_PX, altoElastico, AMPLIAR_PX, altoArrastrado, ELASTICO, altosVideo, desbordeArrastre, esReparto, repartoMasCercano, repartoVecino } from './reparto'
 
 describe('reparto del alto entre vídeo y gráfica', () => {
-  const altos = altosVideo(1000, Infinity)
+  const altos = altosVideo(500 + RESTO_BLOQUE_PX, Infinity)
 
-  it('cada posición es su % de la ventana', () => {
+  it('cada posición es su % del bloque de arriba', () => {
     expect(altos).toEqual({ grafica: 200, normal: 300, video: 450 })
   })
 
   it('ninguna pasa de lo que permite el ancho del vídeo', () => {
-    expect(altosVideo(1000, 250)).toEqual({ grafica: 200, normal: 250, video: 250 })
+    expect(altosVideo(500 + RESTO_BLOQUE_PX, 250)).toEqual({ grafica: 200, normal: 250, video: 250 })
   })
 
   it('al arrastrar no sale de las posiciones extremas', () => {
@@ -25,7 +25,7 @@ describe('reparto del alto entre vídeo y gráfica', () => {
   })
 
   it('si el vídeo no puede crecer, «normal» gana a «vídeo»', () => {
-    expect(repartoMasCercano(250, altosVideo(1000, 250))).toBe('normal')
+    expect(repartoMasCercano(250, altosVideo(500 + RESTO_BLOQUE_PX, 250))).toBe('normal')
   })
 
   it('con el teclado pasa a la de al lado sin salirse', () => {
@@ -49,7 +49,7 @@ describe('reparto del alto entre vídeo y gráfica', () => {
   })
 
   it('con un vídeo que ya llena el ancho, el extremo de abajo es su tope', () => {
-    expect(desbordeArrastre(250, AMPLIAR_PX + 1, altosVideo(1000, 250))).toBe('video')
+    expect(desbordeArrastre(250, AMPLIAR_PX + 1, altosVideo(500 + RESTO_BLOQUE_PX, 250))).toBe('video')
   })
 
   it('con resistencia: dentro del recorrido sigue al dedo y, pasado un extremo, solo un poco más y con tope', () => {

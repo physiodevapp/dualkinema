@@ -372,7 +372,8 @@ function Aplicacion() {
       className={`mx-auto flex min-h-dvh flex-col px-4 pb-[calc(1.5rem+var(--alto-barra,0px))] lg:gap-6 lg:pt-6 lg:pb-6 ${
         hayVideo ? 'gap-3 pt-3' : 'gap-6 pt-6'
       } ${
-        estado.fase === 'visor' ? 'max-w-[90rem]' : 'max-w-6xl'
+        // En el móvil, el visor acaba justo sobre la barra fija y la página no se desplaza: debajo, solo el sitio de la barra.
+        estado.fase === 'visor' ? 'max-w-[90rem] max-lg:pb-(--alto-barra)' : 'max-w-6xl'
       }`}
     >
       {/* Flotante (fixed, sobre todo): el aviso no ocupa sitio, así que no cambia el alto de la app ni mueve lo medido
@@ -594,7 +595,8 @@ function Aplicacion() {
         </Suspense>
       )}
 
-      <footer className="mt-auto font-mono text-xs text-texto-2" data-testid="pie">
+      {/* En el visor del móvil la página no se desplaza: el pie va en la pestaña «Vídeo» (`pie-visor`). */}
+      <footer className={`mt-auto font-mono text-xs text-texto-2 ${estado.fase === 'visor' ? 'max-lg:hidden' : ''}`} data-testid="pie">
         {__RAMA__} · {__COMMIT__}
       </footer>
     </main>

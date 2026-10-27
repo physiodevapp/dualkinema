@@ -98,20 +98,10 @@ export async function esperarQuieto(p) {
 }
 
 /**
- * Espera a que el vídeo pegado del móvil esté oculto (`true`) o a la vista (`false`) tras bajar o subir por las
- * tarjetas, y a que acaben el fundido del vídeo y el deslizamiento de las pestañas (200 ms): medir cajas mientras se
- * mueven da posiciones distintas para cada elemento. En pantalla ancha no hay nada que esperar.
+ * Espera a que acaben las animaciones (el fundido de una vista ampliada, el aviso de un asa): medir cajas mientras se
+ * mueven da posiciones distintas para cada elemento.
  */
-export async function esperarVideoAsentado(p, oculto) {
-  await p.waitForFunction(
-    (esperado) => {
-      const fijo = document.querySelector('[data-testid=visor-fijo]')
-      if (!fijo || getComputedStyle(fijo).position === 'static') return true
-      return esperado === undefined || (fijo.dataset.oculto === 'true') === esperado
-    },
-    oculto,
-    { timeout: 5000 },
-  )
+export async function esperarVideoAsentado(p) {
   await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
   await p.waitForFunction(() => document.getAnimations().length === 0, null, { timeout: 5000 })
 }
@@ -155,14 +145,28 @@ export function leerFrameDibujado(p, { bits, ladoBloque }) {
  */
 export async function cajaVideo(p) {
   const capa = p.getByTestId('capa')
+  // En pantalla ancha la página puede desplazarse; en el móvil no (el vídeo está siempre en su sitio).
   await capa.evaluate((el) => el.scrollIntoView({ block: 'center' }))
-  // Desplazar la página puede haber ocultado el vídeo (en el móvil se oculta al bajar por las tarjetas): se
-  // vuelve a ver con su botón, como haría la persona, y así no se vuelve a ocultar al seguir.
-  await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
-  const mostrar = p.getByTestId('mostrar-video')
-  if (await mostrar.count()) await mostrar.click()
-  await esperarVideoAsentado(p, false)
+  await esperarVideoAsentado(p)
   return capa.boundingBox()
+}
+
+/**
+ * Arrastra un asa (`data-testid`) `dy` px en vertical y la suelta (en dos tramos, como un dedo). Devuelve lo que
+ * `durante()` mide justo antes de soltar, si se pasa.
+ */
+export async function arrastrarAsa(p, testid, dy, durante) {
+  const c = await p.getByTestId(testid).boundingBox()
+  const x = c.x + c.width / 2
+  const y = c.y + c.height / 2
+  await p.mouse.move(x, y)
+  await p.mouse.down()
+  await p.mouse.move(x, y + dy / 2, { steps: 4 })
+  await p.mouse.move(x, y + dy, { steps: 4 })
+  const medido = durante ? await durante() : undefined
+  await p.mouse.up()
+  await esperarVideoAsentado(p)
+  return medido
 }
 
 /** Toca el vídeo en (x, y) de los px del vídeo (640×360 por defecto). */
