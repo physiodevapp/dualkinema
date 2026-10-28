@@ -1,6 +1,6 @@
 # Fase 5: sin marcadores en 2D (con gomets opcionales)
 
-Estado: **plan aceptado** (2026-10-27; D1–D8 aceptadas por el usuario tal como se proponen). En curso: pasos 1, 2 y 3a hechos (ver «Hecho»).
+Estado: **plan aceptado** (2026-10-27; D1–D8 aceptadas por el usuario tal como se proponen). En curso: pasos 1, 2, 3a y 3b hechos (ver «Hecho»).
 
 ## Cambio de rumbo (27-10-2026)
 
@@ -160,6 +160,14 @@ Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualiza
 - **La navegación se pausa mientras se sigue o se detecta** (a raíz de la primera prueba en el móvil: mover el deslizador mientras trabajaba el worker hacía que la franja se rellenara mal; el visor y el worker compiten por el decodificador por hardware). Deslizador y botones de paso deshabilitados, teclado, gráfica y «ir a…» sin efecto, en todas las vistas; al acabar o parar, vuelve. e2e para el seguimiento (worker frenado) y para la detección (worker falso lento).
 - **Retirado el experimento `?pose`** (`ExperimentoPose.tsx`); `informe.ts` queda para el 3b.
 - **Comprobado en el Chromium de la nube** con la foto de prueba de MediaPipe hecha vídeo (2 s): el modelo se descarga del propio sitio, persona en los 60 frames, el esqueleto cae sobre la persona y cada lado en su pierna (35 s en GPU emulada por software). **e2e:** el worker se sustituye por uno falso que manda la verdad del vídeo sintético como si fuera una persona (pierna de la cámara en los gomets, la lejana 40 px detrás con visibilidad 0,3; cinco frames con las piernas intercambiadas y cinco sin nadie): la flexión sin marcadores coincide con la verdad (también en los intercambiados, que sin corregir no tendrían ángulo), una corrección a mano sobrevive a volver a detectar, se guarda y se recupera; con gomets, detectar no cambia lo que se marca ni lo que se mide y seguir sigue funcionando; en el móvil, el botón está en el vídeo grande.
+
+**Paso 3b — varias articulaciones, comparación con los gomets y CSV** (lo propuesto al partir el paso 3).
+
+- **La articulación que se mira** (`useVista`: `articulaciones`, las del plano de la vista; `elegirArticulacion`): en «Análisis», `SelectorArticulacion` con una fila por articulación (rodilla, cadera, tobillo, tronco) y, si la elegida está con gomets y sin marcadores, la fuente (por defecto los gomets, D5). Todo sigue a la elegida: gráfica, valores, cero (ya iba por id), segmentos, escala y los puntos que se pueden corregir. Se guarda en la vista (`articulacion`, opcional: no sube el esquema; una app anterior solo pierde lo elegido).
+- **Gomets frente a sin marcadores** (`ComparacionFuentes`; `parejaDeFuente` y `compararFuentes` del núcleo): las dos curvas filtradas superpuestas y lo que se apartan, a pelo y relativas al cero de cada una (con el tramo del cero de la que se mira, o el de la otra; sin cero lo dice). «Copiar el informe» (`informe.ts`, reescrito: detección, visibilidad de la pierna de la cámara y las dos comparaciones) es lo que necesito en el paso 5.
+- **CSV:** todas las articulaciones del plano de la vista, la que se mira primero (las demás con `anguloExportadoDe`, por el mismo camino que el visor: una sola serie por articulación), cada una con su fuente y su cero en la cabecera y la detección en «# sin marcadores». Con una sola articulación nada cambia (ni el nombre del archivo).
+- **Glosario:** «Gomets frente a sin marcadores», «Inclinación del tronco» y «Piernas intercambiadas», cada una con su icono.
+- **e2e:** con el worker falso, cadera, tobillo y tronco dan lo que deben con los puntos de la verdad, los puntos que se marcan siguen a la articulación, el CSV lleva las cuatro, y la elegida se guarda y se recupera; en una vista con gomets, la comparación (diferencia casi nula, correlación 1, relativa al cero con «Primeros 2 s») y la fuente.
 
 ## Riesgos
 

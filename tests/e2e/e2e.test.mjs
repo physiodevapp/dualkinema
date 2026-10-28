@@ -5,7 +5,7 @@
 //   npm run build && npm run test:e2e
 //
 import assert from 'node:assert/strict'
-import { copyFile, stat } from 'node:fs/promises'
+import { copyFile, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
@@ -3737,6 +3737,25 @@ async function detectarCuerpo(p) {
   await p.getByTestId('deteccion-hecha').waitFor({ timeout: 20000 })
 }
 
+/**
+ * Lo que debe dar cada articulación sin marcadores de perfil con los puntos de `deteccionFalsa` (pierna derecha, mira a la
+ * derecha), con su convención (`core/pose/catalogo.ts`): marco canónico = (x, −y) de la imagen.
+ */
+function verdadPose(v) {
+  const [cadera, rodilla, tobillo] = v.ps
+  const hombro = { x: cadera.x - 5, y: cadera.y - 40 }
+  const talon = { x: tobillo.x - 12, y: tobillo.y + 8 }
+  const punta = { x: tobillo.x + 30, y: tobillo.y + 10 }
+  const vec = (a, b) => ({ x: b.x - a.x, y: -(b.y - a.y) })
+  const entre = (u, w) => (Math.atan2(u.x * w.y - u.y * w.x, u.x * w.x + u.y * w.y) * 180) / Math.PI
+  const norm = (g) => ((((g + 180) % 360) + 360) % 360) - 180
+  return {
+    cadera: norm(entre(vec(hombro, cadera), vec(cadera, rodilla))),
+    tobillo: norm(entre(vec(rodilla, tobillo), vec(talon, punta)) - 90),
+    tronco: norm(-entre({ x: 0, y: 1 }, vec(cadera, hombro))),
+  }
+}
+
 describe('sin marcadores: detectar el cuerpo (fase 5, paso 3)', () => {
   const INTERCAMBIADOS = [30, 31, 32, 33, 34]
   const SIN_PERSONA = [100, 101, 102, 103, 104]
@@ -3797,6 +3816,43 @@ describe('sin marcadores: detectar el cuerpo (fase 5, paso 3)', () => {
     assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[11].flexion) < TOLERANCIA_GRADOS)
   })
 
+  it('se elige qué articulación se mira: cadera, tobillo y tronco dan lo que deben, y el CSV lleva las cuatro', async () => {
+    await abrirPestana(p, 'analisis')
+    const selector = p.getByRole('radiogroup', { name: 'Articulación' })
+    assert.deepEqual(await selector.getByRole('radio').allInnerTexts(), ['Rodilla derecha', 'Cadera derecha', 'Tobillo derecho', 'Tronco'])
+    assert.equal(await selector.getByRole('radio', { checked: true }).innerText(), 'Rodilla derecha')
+    // Sin gomets no hay fuente que elegir ni comparación.
+    assert.equal(await p.getByRole('radiogroup', { name: 'Fuente' }).count(), 0)
+    assert.equal(await p.getByTestId('comparacion-fuentes').count(), 0)
+    for (const [nombre, clave] of [['Cadera derecha', 'cadera'], ['Tobillo derecho', 'tobillo'], ['Tronco', 'tronco']]) {
+      await abrirPestana(p, 'analisis')
+      await selector.getByRole('radio', { name: nombre }).click()
+      // El frame 11 tiene la rodilla corregida a mano (prueba anterior): se miran otros.
+      for (const i of [20, 60, 110]) {
+        await irAFrame(p, i)
+        const esperado = verdadPose(videos.verde.verdad[i])[clave]
+        assert.ok(Math.abs((await leerAngulo(p)) - esperado) < TOLERANCIA_GRADOS, `${nombre}, frame ${i + 1}: ${await leerAngulo(p)} frente a ${esperado}`)
+      }
+    }
+    // Los puntos que se marcan son los de la articulación que se mira (con el tronco, la cadera y el hombro).
+    await abrirPestana(p, 'marcar')
+    const marcables = await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText()
+    assert.match(marcables, /Hombro derecho/)
+    assert.doesNotMatch(marcables, /Rodilla/)
+    // El CSV: las cuatro articulaciones, la que se mira primero, y la detección en la cabecera.
+    await abrirPestana(p, 'analisis')
+    const [descarga] = await Promise.all([p.waitForEvent('download'), p.getByTestId('panel-exportar').getByTestId('descargar-csv').click()])
+    assert.doesNotMatch(descarga.suggestedFilename(), /_pose_/)
+    const csv = leerCsv(await readFile(await descarga.path(), 'utf8'))
+    const angulos = csv.columnas.filter((c) => c.endsWith('_crudo_grados'))
+    assert.deepEqual(angulos, ['pose_tronco_sagital_der', 'pose_rodilla_sagital_der', 'pose_cadera_sagital_der', 'pose_tobillo_sagital_der'].map((id) => `angulo_${id}_crudo_grados`))
+    assert.ok(csv.cabecera.some((l) => l.startsWith('# sin marcadores;') && l.includes('Pose Landmarker full, GPU')))
+    const iRodilla = csv.columnas.indexOf('angulo_pose_rodilla_sagital_der_crudo_grados')
+    assert.ok(Math.abs(Number(csv.filas[60][iRodilla].replace(',', '.')) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+    await selector.getByRole('radio', { name: 'Rodilla derecha' }).click()
+    await abrirPestana(p, 'marcar')
+  })
+
   it('se guarda con la detección y se recupera tal cual', async () => {
     await esperarGuardado(p, 120)
     const antes = []
@@ -3816,6 +3872,21 @@ describe('sin marcadores: detectar el cuerpo (fase 5, paso 3)', () => {
     }
     assert.match(await p.getByTestId('deteccion-hecha').innerText(), /full · GPU · persona en 115 frames/)
     assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).count(), 0)
+  })
+
+  it('la articulación que se mira se guarda con la vista', async () => {
+    await abrirPestana(p, 'analisis')
+    await p.getByRole('radiogroup', { name: 'Articulación' }).getByRole('radio', { name: 'Tobillo derecho' }).click()
+    await p.getByTestId('guardado').filter({ hasText: 'Guardado en este dispositivo' }).waitFor({ state: 'attached', timeout: 10000 })
+    await p.reload()
+    await p.getByTestId('sesion-guardada').waitFor()
+    await p.setInputFiles('input[type=file]', videos.verde.ruta)
+    await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+    await esperarQuieto(p)
+    await abrirPestana(p, 'analisis')
+    assert.equal(await p.getByRole('radiogroup', { name: 'Articulación' }).getByRole('radio', { checked: true }).innerText(), 'Tobillo derecho')
+    await irAFrame(p, 60)
+    assert.ok(Math.abs((await leerAngulo(p)) - verdadPose(videos.verde.verdad[60]).tobillo) < TOLERANCIA_GRADOS)
   })
 })
 
@@ -3868,6 +3939,26 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
       await p.getByTestId('aviso').filter({ hasText: /Seguimiento completado/ }).waitFor({ timeout: 90000 })
       await irAFrame(p, 60)
       assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+      // Gomets frente a sin marcadores: aquí los puntos del modelo caen en los gomets, así que la diferencia es casi nula.
+      await abrirPestana(p, 'analisis')
+      const comparacion = p.getByTestId('comparacion-fuentes')
+      await comparacion.waitFor()
+      const directa = await comparacion.getByTestId('comparacion-directa').innerText()
+      const media = Number(/diferencia media (−|-)?([\d,]+)°/.exec(directa)[2].replace(',', '.'))
+      assert.ok(media < 0.5, directa)
+      assert.match(directa, /correlación 1,00/)
+      assert.match(await comparacion.getByTestId('comparacion-relativa').innerText(), /sin cero de referencia/)
+      // Con un cero de referencia, la comparación relativa al cero.
+      await p.getByRole('button', { name: /Primeros 2 s/ }).click()
+      await comparacion.getByTestId('comparacion-relativa').filter({ hasText: /diferencia media/ }).waitFor()
+      // La fuente: por defecto los gomets; «Sin marcadores» mide con los puntos del modelo (casi lo mismo aquí).
+      const fuente = p.getByRole('radiogroup', { name: 'Fuente' })
+      assert.equal(await fuente.getByRole('radio', { checked: true }).innerText(), 'Gomets')
+      await fuente.getByRole('radio', { name: 'Sin marcadores' }).click()
+      await irAFrame(p, 60)
+      assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+      await abrirPestana(p, 'marcar')
+      assert.match(await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText(), /Rodilla derecha/)
     } finally {
       await p.close()
     }
