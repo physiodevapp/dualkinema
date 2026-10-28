@@ -75,3 +75,36 @@ export function centrarVueltas(grados: readonly number[]): number[] {
   const vueltas = 360 * Math.round(centro / 360)
   return grados.map((g) => g - vueltas)
 }
+
+/**
+ * Salto entre dos valores válidos seguidos de una serie desenrollada a partir del cual no se cree que sea el mismo
+ * movimiento: 45° de un frame al siguiente son 1350°/s a 30 fps. Pasa con puntos que se cruzan o se confunden (un
+ * esqueleto mal detectado), y ahí `desenrollar` puede quedarse con una vuelta de más que arrastra todo lo que sigue.
+ * Partir de más no cambia nada salvo en un trozo cuyo centro quede fuera de ±180°, que una articulación no tiene.
+ */
+export const SALTO_DE_VUELTA = 45
+
+/**
+ * `centrarVueltas` por trozos: parte la serie (ya desenrollada) donde dos valores válidos seguidos se separan más de
+ * `salto` y centra cada trozo por su cuenta. Un trozo bueno después de unos frames mal detectados vuelve así a su
+ * vuelta (a −10° y no a 350°). Sin saltos así es lo mismo que `centrarVueltas` (un hueco no parte la serie: la curva
+ * sigue al otro lado si no salta).
+ */
+export function centrarVueltasPorTrozos(grados: readonly number[], salto = SALTO_DE_VUELTA): number[] {
+  const salida: number[] = []
+  let trozo: number[] = []
+  let anterior = NaN
+  const cerrar = () => {
+    salida.push(...centrarVueltas(trozo))
+    trozo = []
+  }
+  for (const g of grados) {
+    if (Number.isFinite(g)) {
+      if (Number.isFinite(anterior) && Math.abs(g - anterior) > salto) cerrar()
+      anterior = g
+    }
+    trozo.push(g)
+  }
+  cerrar()
+  return salida
+}
