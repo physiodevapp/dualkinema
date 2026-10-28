@@ -377,8 +377,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     alAtras.current = () => {
       if (movilVertical && abierta) setAbierta(false)
       else if (enVideo && volverEn) volverAHerramienta()
-      else if (enVideo) volverDe('video')
-      else if (enGraficas) volverDe('graficas')
+      else if (enVideo) volverDe()
+      else if (enGraficas) volverDe()
     }
   })
   // Se revisa en cada cambio: tras volver a una herramienta desde el vídeo grande, el gesto se ha llevado la entrada y hay
@@ -613,7 +613,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             {!anchoLg && (
               <button
                 type="button"
-                onClick={() => (enVideo ? volverDe('video') : setVista('video'))}
+                onClick={() => (enVideo ? volverDe() : setVista('video'))}
                 aria-label={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
                 title={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
                 data-testid={enVideo ? 'reducir-video' : 'ampliar-video'}
@@ -731,7 +731,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               <span className="font-mono text-xs tracking-wider text-texto-2 uppercase">Solo gráficas</span>
               <button
                 type="button"
-                onClick={() => volverDe('graficas')}
+                onClick={() => volverDe()}
                 aria-label="Volver a la vista con vídeo"
                 title="Volver a la vista con vídeo"
                 data-testid="reducir-graficas"
@@ -774,7 +774,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               enGraficas && apaisado ? (
                 <button
                   type="button"
-                  onClick={() => volverDe('graficas')}
+                  onClick={() => volverDe()}
                   aria-label="Volver a la vista con vídeo"
                   title="Volver a la vista con vídeo"
                   data-testid="reducir-graficas"

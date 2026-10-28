@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ModoMiniGrafica } from './MiniGrafica'
 import { useAnchoMinimo, useApaisado } from './useAltura'
-import { CLAVE_REPARTO, leerReparto, repartoAlVolver, type Reparto } from './reparto'
+import { CLAVE_REPARTO, leerReparto, type Reparto } from './reparto'
 
 export type Vista = 'mixta' | 'video' | 'graficas'
 
@@ -38,12 +38,10 @@ export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
   const [altoArrastre, setAltoArrastre] = useState<number | null>(null)
   // Modo de la gráfica pequeña (ángulo, velocidad o ambas): se conserva al ampliar el vídeo o las gráficas y volver.
   const [modoMini, setModoMini] = useState<ModoMiniGrafica>('angulo')
-  // Volver de una vista ampliada a la mixta: aterriza en el extremo del que se viene (vídeo grande o gráfica grande) para
-  // seguir viendo en grande lo que se estaba mirando. No se guarda: el reparto guardado sigue siendo el elegido a mano.
-  const volverDe = useCallback((desde: 'video' | 'graficas') => {
-    setReparto(repartoAlVolver(desde))
-    setVista('mixta')
-  }, [])
+  // Volver de una vista ampliada a la mixta (con su botón, el de la cabecera o atrás del sistema): con el reparto que había
+  // antes de ampliar, que no cambia al ampliar (antes se aterrizaba en el extremo del que se venía; el usuario prefirió
+  // volver a como lo tenía).
+  const volverDe = useCallback(() => setVista('mixta'), [])
   const elegirReparto = useCallback((r: Reparto) => {
     setReparto(r)
     try {
