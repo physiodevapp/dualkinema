@@ -1,5 +1,6 @@
 import { useCallback, useState, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
+import { esIdPose } from '../../core/pose/puntos'
 import { aprenderMarcador, ErrorMarcado, radioDe } from '../../core/seguimiento/seguidor'
 import type { TablaFrames } from '../../core/tiempo/tablaFrames'
 import { lectorDeCanvas } from './capa'
@@ -39,12 +40,15 @@ interface Opciones {
  */
 export function useMarcado({ ids, tabla, info, inicial, valida, series, muestra, poner, quitar, mostrado, ultimoFrame, setErrorToque, setAviso }: Opciones) {
   // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
-  // si están todos, ninguno, para no mover uno sin querer con el primer toque.
+  // si están todos, ninguno, para no mover uno sin querer con el primer toque. Con un vídeo nuevo, el primer gomet (sin
+  // marcadores, ninguno: los puntos se detectan, no se colocan).
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
-    inicial ? (ids.find((id) => !valida(inicial.get(id)?.[0])) ?? null) : (ids[0] ?? null),
+    inicial ? (ids.find((id) => !valida(inicial.get(id)?.[0])) ?? null) : (ids.find((id) => !esIdPose(id)) ?? null),
   )
   // «Colocar a ojo»: cada toque deja el marcador justo donde se suelta el dedo, sin buscar el gomet (gomet tapado o movido).
   const [colocarAOjo, setColocarAOjo] = useState(false)
+  // Un punto del modelo sin marcadores no tiene gomet que buscar: siempre se coloca a ojo (fase 5).
+  const aOjo = colocarAOjo || (seleccionado !== null && esIdPose(seleccionado))
 
   /** Guarda una posición marcada a mano y pasa al siguiente marcador que falte en el frame. */
   const ponerManual = (id: IdMarcador, i: number, x: number, y: number) => {
@@ -53,8 +57,9 @@ export function useMarcado({ ids, tabla, info, inicial, valida, series, muestra,
     setErrorToque(null)
     const falta = ids.find((otro) => otro !== id && !valida(muestra(otro, i)))
     setSeleccionado(falta ?? null)
-    // Una corrección con lo seguido detrás: se puede rehacer desde aquí con ella como ancla.
-    const seguidoDespues = serie.some((m, k) => k > i && m !== undefined && !m.editadoManual)
+    // Una corrección con lo seguido detrás: se puede rehacer desde aquí con ella como ancla (los puntos del modelo no se
+    // siguen: su corrección vale para ese frame).
+    const seguidoDespues = !esIdPose(id) && serie.some((m, k) => k > i && m !== undefined && !m.editadoManual)
     setAviso(
       seguidoDespues && !falta
         ? { texto: 'Corregido. Para rehacer lo que viene después a partir de aquí, pulsa «Seguir desde aquí»: respeta todo lo marcado a mano.' }
@@ -65,7 +70,7 @@ export function useMarcado({ ids, tabla, info, inicial, valida, series, muestra,
   /** Dónde quedaría el marcador si se suelta en (x, y): centro y radio del gomet, o null si no hay. */
   const previsualizar = useCallback(
     (x: number, y: number, radio: number): Previsualizacion => {
-      if (mostrado === null || !ultimoFrame.current) return null
+      if (mostrado === null || !ultimoFrame.current || (seleccionado !== null && esIdPose(seleccionado))) return null
       try {
         const r = aprenderMarcador(lectorDeCanvas(ultimoFrame.current), info.ancho, info.alto, tabla.tiempos[mostrado]!, x, y, { radioSemilla: radio })
         return { x: r.x, y: r.y, r: radioDe(r.estado.area) }
@@ -73,12 +78,12 @@ export function useMarcado({ ids, tabla, info, inicial, valida, series, muestra,
         return null
       }
     },
-    [mostrado, info, tabla, ultimoFrame],
+    [mostrado, info, tabla, ultimoFrame, seleccionado],
   )
 
   const colocar = (x: number, y: number, radio: number) => {
     if (mostrado === null || !seleccionado || !ultimoFrame.current) return
-    if (colocarAOjo) {
+    if (aOjo) {
       ponerManual(seleccionado, mostrado, x, y)
       return
     }

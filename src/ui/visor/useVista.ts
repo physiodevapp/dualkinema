@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { segmentosDeArticulacion } from '../../core/articulaciones/definicion'
+import { marcadoresDeArticulacion, segmentosDeArticulacion } from '../../core/articulaciones/definicion'
 import { CALIDAD_MINIMA } from '../../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../../core/exportacion/csv'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
@@ -7,7 +7,8 @@ import { datosCsv } from '../../core/exportacion/datos'
 import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
-import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
+import type { DeteccionPose, IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
+import { esIdPose } from '../../core/pose/puntos'
 import { framesConMarcaManual } from '../../core/seguimiento/manuales'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import { estadisticas, indiceMasCercano } from '../../core/tiempo/tablaFrames'
@@ -17,6 +18,7 @@ import { huellaDe } from '../sesion'
 import { useTrayectorias } from './useTrayectorias'
 import { useMarcado } from './useMarcado'
 import { useSeguimiento, type Aviso } from './useSeguimiento'
+import { useDeteccionPose } from './useDeteccionPose'
 import { useAnalisis } from './useAnalisis'
 import { useEscala } from './useEscala'
 import { useNavegacionFrames } from './useNavegacionFrames'
@@ -43,6 +45,10 @@ interface Opciones {
   readonly activa?: boolean
   /** Se llama en cada cambio de frame de esta vista (el cursor común mueve con ello las demás). Debe ser estable. */
   readonly alCambiarFrame?: (frame: number) => void
+  /** Al recuperar: la última detección sin marcadores de la vista. */
+  readonly deteccionGuardada?: DeteccionPose | null
+  /** La vista pasa a seguir los puntos del modelo sin marcadores (al detectar el cuerpo). Debe ser estable. */
+  readonly alUsarPose?: () => void
 }
 
 /**
@@ -51,9 +57,32 @@ interface Opciones {
  * lo común: el modelo, las pestañas, el reparto de la pantalla y el guardado. Con dos vistas, el visor llamará a este
  * hook para cada una y pintará la activa.
  */
-export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGuardados, calibracionGuardada, avisoInicial, activa = true, alCambiarFrame }: Opciones) {
+export function useVista({
+  video,
+  orientacion,
+  modelo,
+  inicial,
+  filtro,
+  cerosGuardados,
+  calibracionGuardada,
+  avisoInicial,
+  activa = true,
+  alCambiarFrame,
+  deteccionGuardada,
+  alUsarPose,
+}: Opciones) {
   const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
   const articulacion = modelo.articulaciones[0]!
+  // Fase 5: una vista puede tener gomets, los puntos del modelo sin marcadores o los dos. Los gomets se siguen; los puntos
+  // del modelo se detectan. Se marcan (y cuentan en la franja) los gomets y los puntos de la articulación que se mide: los
+  // demás puntos del modelo (la pierna lejana, casi siempre dudosa) se dibujan en el esqueleto, pero no se eligen.
+  const idsGomets = useMemo(() => ids.filter((id) => !esIdPose(id)), [ids])
+  const marcables = useMemo(() => {
+    const deLaArticulacion = new Set(marcadoresDeArticulacion(articulacion))
+    return modelo.marcadores.filter((mk) => !esIdPose(mk.id) || deLaArticulacion.has(mk.id))
+  }, [modelo, articulacion])
+  const idsMarcables = useMemo(() => marcables.map((mk) => mk.id), [marcables])
+  const conPose = useMemo(() => ids.some(esIdPose), [ids])
   const { info, tabla } = video
   const total = tabla.tiempos.length
   // Trayectorias: una posición (o nada) por frame y marcador, con sus mutadores (suben `version` por dentro), el estado
@@ -68,12 +97,14 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     borrarDespuesDe,
     devolver,
     quitarManualesDespuesDe,
+    aplicarPose,
+    fusionar,
     huecosCortos,
     hayInterpolados,
     rellenarCortos,
     quitarInterpolados: deshacerInterpolados,
     estadosFrames,
-  } = useTrayectorias({ ids, tabla, inicial, valida })
+  } = useTrayectorias({ ids, idsFranja: idsMarcables, tabla, inicial, valida })
 
   const [aviso, setAviso] = useState<Aviso | null>(avisoInicial ? { texto: avisoInicial } : null)
   // Error al tocar: se muestra encima del vídeo, que es donde se mira al marcar.
@@ -89,11 +120,11 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     },
     [alCambiarFrame],
   )
-  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr, activa)
+  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover, bloquear } = useNavegacionFrames(video, alIr, activa)
 
   // Marcado a mano: marcador elegido, «Colocar a ojo», colocar (en el gomet o a ojo), la lupa y quitar.
   const { seleccionado, setSeleccionado, colocarAOjo, setColocarAOjo, ponerManual, previsualizar, colocar, quitarManual } = useMarcado({
-    ids,
+    ids: idsMarcables,
     tabla,
     info,
     inicial,
@@ -111,7 +142,7 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
   const { siguiendo, progresoSeguimiento, listoParaSeguir, seguirDesdeAqui, pararSeguimiento } = useSeguimiento({
     video,
     modelo,
-    ids,
+    ids: idsGomets,
     series,
     muestra,
     valida,
@@ -122,6 +153,17 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     setAviso,
     setSeleccionado,
     setErrorToque,
+  })
+  // Sin marcadores: «Detectar el cuerpo» con MediaPipe en un worker; lo detectado va al almacén sin pisar lo de a mano.
+  const usarPose = useCallback(() => alUsarPose?.(), [alUsarPose])
+  const { detectando, progresoDeteccion, deteccion, revDeteccion, modeloPose, setModeloPose, detectar, pararDeteccion } = useDeteccionPose({
+    video,
+    orientacion,
+    inicial: deteccionGuardada,
+    aplicarPose,
+    fusionar,
+    alEmpezar: usarPose,
+    setAviso,
   })
 
   // Escala: la guardada, el borrador mientras se calibra, los toques en los extremos y la medida entre marcadores.
@@ -211,9 +253,25 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
   const dibujar = useCallback(
     (ctx: CanvasRenderingContext2D, escala: number) => {
       void version
-      dibujarCapa(ctx, escala, { mostrado, sentido, total, ids, muestra, valida, articulacion, trayectoriaCompleta, conTrayectoria, caminos, borrador, medicion, calibracion, frameCalibracion })
+      dibujarCapa(ctx, escala, {
+        mostrado,
+        sentido,
+        total,
+        ids: idsMarcables,
+        muestra,
+        valida,
+        articulacion,
+        trayectoriaCompleta,
+        conTrayectoria,
+        caminos,
+        borrador,
+        medicion,
+        calibracion,
+        frameCalibracion,
+        esqueleto: conPose,
+      })
     },
-    [version, mostrado, sentido, total, ids, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion, trayectoriaCompleta, conTrayectoria, caminos],
+    [version, mostrado, sentido, total, idsMarcables, muestra, articulacion, borrador, medicion, calibracion, frameCalibracion, trayectoriaCompleta, conTrayectoria, caminos, conPose],
   )
 
   // El valor del frame sale de las mismas series que la gráfica y el CSV (una sola
@@ -257,21 +315,22 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
   )
   const t = mostrado === null ? null : tabla.tiempos[mostrado]!
   // Marcadores con una marca a mano en el frame actual: se pueden quitar sin tener que elegirlos antes.
-  const marcasManualesAqui = mostrado === null ? [] : modelo.marcadores.map((mk, k) => ({ mk, k })).filter(({ mk }) => muestra(mk.id, mostrado)?.editadoManual)
-  // Estado de cada marcador en el frame mostrado, para el selector.
-  const estadosMarcadores = modelo.marcadores.map((mk) => {
+  const marcasManualesAqui = mostrado === null ? [] : marcables.map((mk, k) => ({ mk, k })).filter(({ mk }) => muestra(mk.id, mostrado)?.editadoManual)
+  // Estado de cada marcador que se marca en el frame mostrado, para el selector.
+  const estadosMarcadores = marcables.map((mk) => {
     const m = mostrado === null ? undefined : muestra(mk.id, mostrado)
-    return valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : 'seguido') : m ? 'perdido' : '—'
+    return valida(m) ? (m.editadoManual ? 'a mano' : m.interpolado ? 'interpolado' : esIdPose(mk.id) ? 'detectado' : 'seguido') : m ? 'perdido' : '—'
   })
 
-  // Marcas a mano más adelante: «Seguir desde aquí» las toma como anclas y sigue desde ellas (ver `AvisoAnclas`).
+  // Marcas a mano más adelante: «Seguir desde aquí» las toma como anclas y sigue desde ellas (ver `AvisoAnclas`). Solo
+  // las de los gomets: los puntos del modelo no se siguen.
   const framesAnclas = useMemo(() => {
     void version
-    return mostrado === null ? [] : framesConMarcaManual(series, mostrado)
-  }, [version, mostrado, series])
+    return mostrado === null ? [] : framesConMarcaManual(new Map(idsGomets.map((id) => [id, series.get(id) ?? []])), mostrado)
+  }, [version, mostrado, series, idsGomets])
   const quitarMarcasPosteriores = () => {
     if (mostrado === null) return
-    const n = quitarManualesDespuesDe(mostrado)
+    const n = quitarManualesDespuesDe(mostrado, idsGomets)
     setAviso({
       texto: `Quitadas ${n} marca${n === 1 ? '' : 's'} a mano posteriores al frame ${mostrado + 1}. Los frames quedan sin posición: pulsa «Seguir desde aquí» para volver a seguirlos.`,
     })
@@ -281,6 +340,20 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     /** El modelo de esta vista (sus marcadores y su articulación). */
     modelo,
     articulacion,
+    /** Los marcadores que se marcan (los gomets y los puntos del modelo de la articulación), en el orden del modelo. */
+    marcables,
+    /** La vista tiene los puntos del modelo sin marcadores (se dibuja el esqueleto). */
+    conPose,
+    /** La vista sigue gomets («Seguir desde aquí»). */
+    conGomets: idsGomets.length > 0,
+    detectando,
+    progresoDeteccion,
+    deteccion,
+    revDeteccion,
+    modeloPose,
+    setModeloPose,
+    detectar,
+    pararDeteccion,
     info,
     /** El archivo del vídeo, para los workers que lo abren por su cuenta (el audio de la sincronía). */
     archivo: video.archivo,
@@ -306,6 +379,7 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
     sentido,
     ir,
     mover,
+    bloquear,
     seleccionado,
     setSeleccionado,
     colocarAOjo,

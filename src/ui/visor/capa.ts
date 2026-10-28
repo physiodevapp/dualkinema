@@ -4,9 +4,9 @@ import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
 import type { LeerVentana } from '../../core/seguimiento/imagen'
 import type { TrayectoriaFiltrada } from '../../core/filtros/tramos'
 import { polilineasTrayectoria } from '../../core/graficas/trayectoria'
-import { CALIDAD_MINIMA } from '../../core/articulaciones/calculo'
-import { LINEAS_ESQUELETO, PUNTOS_POSE, VALORES_POR_PUNTO } from '../../core/pose/puntos'
+import { LINEAS_ESQUELETO, PUNTOS_POSE } from '../../core/pose/puntos'
 import { COLORES_MARCADOR } from '../marcadores'
+import { COLOR_INTERPOLADO } from './BandaFrames'
 import type { BorradorEscala } from './PanelEscala'
 
 const ESTELA = 20 // frames de trayectoria dibujados por detrás, en el sentido en que se recorre el vídeo
@@ -96,6 +96,8 @@ export interface EstadoCapa {
   readonly medicion: ReturnType<typeof medirEntreMarcadores> | null
   readonly calibracion: CalibracionVista | null
   readonly frameCalibracion: number | null
+  /** La vista tiene los puntos del modelo sin marcadores: se dibuja su esqueleto debajo de lo demás. */
+  readonly esqueleto?: boolean
 }
 
 /**
@@ -105,10 +107,11 @@ export interface EstadoCapa {
 export function dibujarCapa(
   ctx: CanvasRenderingContext2D,
   escala: number,
-  { mostrado, sentido, total, ids, muestra, valida, articulacion, trayectoriaCompleta, conTrayectoria, caminos, borrador, medicion, calibracion, frameCalibracion }: EstadoCapa,
+  { mostrado, sentido, total, ids, muestra, valida, articulacion, trayectoriaCompleta, conTrayectoria, caminos, borrador, medicion, calibracion, frameCalibracion, esqueleto }: EstadoCapa,
 ) {
     if (mostrado === null) return
     const base = 2 * escala // 2 px de pantalla
+    if (esqueleto) dibujarEsqueleto(ctx, escala, (id) => muestra(id, mostrado), valida)
     // Segmentos de la articulación.
     const p = (id: IdMarcador) => muestra(id, mostrado)
     ctx.lineCap = 'round'
@@ -194,21 +197,22 @@ export function dibujarCapa(
 }
 
 /**
- * Esqueleto del modelo sin marcadores (fase 5, paso 1) en un frame: `puntos` como `FramePose.puntos` (x, y, visibilidad
- * por punto de `PUNTOS_POSE`). Las líneas y los puntos utilizables (visibilidad ≥ `CALIDAD_MINIMA`) van enteros; los
- * dudosos, a trazos y más tenues. La pierna derecha de la persona en ámbar y la izquierda en gris claro.
+ * Esqueleto del modelo sin marcadores (fase 5) en un frame, con las muestras de sus puntos. Las líneas y los puntos
+ * utilizables (`valida`) van enteros; los dudosos, a trazos y más tenues; lo interpolado, en azul a trazos (como en la
+ * franja y la gráfica). La pierna derecha de la persona en ámbar y la izquierda en gris claro.
  */
-export function dibujarEsqueleto(ctx: CanvasRenderingContext2D, escala: number, puntos: readonly number[] | null | undefined) {
-  if (!puntos) return
+export function dibujarEsqueleto(
+  ctx: CanvasRenderingContext2D,
+  escala: number,
+  muestra: (id: IdMarcador) => Muestra2D | undefined,
+  valida: (m: Muestra2D | undefined) => m is Muestra2D,
+) {
   const base = 2 * escala
   const estilo = getComputedStyle(document.documentElement)
   const color = { der: estilo.getPropertyValue('--color-acento').trim() || '#f2a65a', izq: estilo.getPropertyValue('--color-texto-2').trim() || '#bbb' }
-  const indice = new Map(PUNTOS_POSE.map((p, k) => [p.id, k * VALORES_POR_PUNTO]))
-  const punto = (id: string) => {
-    const k = indice.get(id)!
-    const x = puntos[k]!
-    const y = puntos[k + 1]!
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y, v: puntos[k + 2]! } : null
+  const punto = (id: IdMarcador) => {
+    const m = muestra(id)
+    return m && Number.isFinite(m.x) && Number.isFinite(m.y) ? m : null
   }
   ctx.save()
   ctx.lineCap = 'round'
@@ -216,9 +220,10 @@ export function dibujarEsqueleto(ctx: CanvasRenderingContext2D, escala: number, 
     const p = punto(a)
     const q = punto(b)
     if (!p || !q) continue
-    const bueno = p.v >= CALIDAD_MINIMA && q.v >= CALIDAD_MINIMA
+    const bueno = valida(p) && valida(q)
+    const interpolado = !!(p.interpolado || q.interpolado)
     ctx.globalAlpha = bueno ? 0.9 : 0.45
-    ctx.setLineDash(bueno ? [] : [base * 2, base * 1.5])
+    ctx.setLineDash(bueno && !interpolado ? [] : [base * 2, base * 1.5])
     ctx.lineWidth = base * 1.6
     ctx.strokeStyle = '#000'
     ctx.beginPath()
@@ -226,15 +231,15 @@ export function dibujarEsqueleto(ctx: CanvasRenderingContext2D, escala: number, 
     ctx.lineTo(q.x, q.y)
     ctx.stroke()
     ctx.lineWidth = base * 0.8
-    ctx.strokeStyle = a.endsWith('_der') && b.endsWith('_der') ? color.der : a.endsWith('_izq') && b.endsWith('_izq') ? color.izq : '#fff'
+    ctx.strokeStyle = interpolado ? COLOR_INTERPOLADO : a.endsWith('_der') && b.endsWith('_der') ? color.der : a.endsWith('_izq') && b.endsWith('_izq') ? color.izq : '#fff'
     ctx.stroke()
   }
   ctx.setLineDash([])
   for (const p of PUNTOS_POSE) {
     const q = punto(p.id)
     if (!q) continue
-    ctx.globalAlpha = q.v >= CALIDAD_MINIMA ? 1 : 0.45
-    ctx.fillStyle = color[p.lado]
+    ctx.globalAlpha = valida(q) ? 1 : 0.45
+    ctx.fillStyle = q.interpolado ? COLOR_INTERPOLADO : color[p.lado]
     ctx.strokeStyle = '#000'
     ctx.lineWidth = base * 0.6
     ctx.beginPath()

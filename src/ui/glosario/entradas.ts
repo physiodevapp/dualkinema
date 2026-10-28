@@ -206,6 +206,16 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'sin-marcadores',
+    titulo: 'Sin marcadores',
+    texto: [
+      '«Detectar el cuerpo» busca a la persona en cada frame del vídeo con un modelo de visión (MediaPipe Pose, de Google, de uso libre) que corre en el propio móvil: el vídeo no sale de él. La primera vez se carga el modelo (el normal va con la app; el preciso, unos 30 MB, se descarga de Google: solo se descarga, no se envía nada).',
+      'De cada frame se guardan 12 puntos: hombros, caderas, rodillas, tobillos, talones y puntas de los pies, de los dos lados, con su visibilidad (de 0 a 1: lo seguro que está el modelo de ver el punto). Por debajo de 0,5 un punto no se usa para los ángulos, como un gomet dudoso. De perfil, la pierna lejana queda detrás de la otra y suele salir con poca visibilidad: se dibuja, tenue, pero no se mide.',
+      'Los puntos del modelo son centros articulares aproximados (lo que aprendió de miles de personas anotadas), no referencias óseas como los gomets: por eso un ángulo sin marcadores puede diferir unos grados del de los gomets, sobre todo en la posición de partida. La forma de la curva y el recorrido sí se pueden comparar, y el cero de referencia quita esa diferencia constante.',
+      'A veces el modelo confunde una pierna con la otra durante unos frames. Al acabar se corrige: de frente, cada cadera tiene su lado de la imagen; de perfil, un intercambio que se deshace en medio segundo se deshace también aquí, y si no, esas piernas quedan dudosas para que las revises. Un punto mal puesto se corrige tocándolo, y volver a detectar no borra lo corregido a mano.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [

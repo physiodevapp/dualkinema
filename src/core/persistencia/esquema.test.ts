@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { modeloRodilla3 } from '../articulaciones/catalogo'
 import type { Muestra2D } from '../modelo/tipos'
+import { modeloPose } from '../pose/catalogo'
 import { ESQUEMA_ACTUAL, leerCabecera, leerDatos, migrar, prepararGuardado, type EntradaGuardado, type VistaCabecera } from './esquema'
 import type { HuellaArchivo } from './huella'
 import { desempaquetarTrayectoria, empaquetarTrayectoria, errorTrayectoria } from './trayectorias'
@@ -108,10 +109,10 @@ describe('esquema de la sesión', () => {
   it('cabecera de la versión actual con los huecos de los pasos siguientes vacíos', () => {
     const { cabecera } = prepararGuardado(entrada())
     expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL)
-    expect(ESQUEMA_ACTUAL).toBe(4)
+    expect(ESQUEMA_ACTUAL).toBe(5)
     expect(cabecera.filtro).toBeNull()
     // Sin decir nada: la vista sigue todos los marcadores del modelo, sin sincronizar, y es la referencia.
-    expect(cabecera.vistas[0]).toMatchObject({ desfase: 0, calibracion: null, ceros: {}, marcadores: [cadera, rodilla, tobillo], sincronia: { metodo: 'ninguna' } })
+    expect(cabecera.vistas[0]).toMatchObject({ desfase: 0, calibracion: null, ceros: {}, marcadores: [cadera, rodilla, tobillo], sincronia: { metodo: 'ninguna' }, deteccion: null })
     expect(cabecera.referencia).toBe('v1')
     expect(cabecera.claves).toEqual(['1000:6:200'])
     // Frames 0, 1, 2 y 4 tienen alguna muestra; solo el 0 tiene marcas a mano.
@@ -368,6 +369,48 @@ describe('varias vistas (esquema 3)', () => {
       const vistas = [e.vistas[0]!, { ...e.vistas[1]!, desfase: 0.009, sincronia }]
       const { cabecera } = prepararGuardado({ ...e, vistas })
       expect(leerCabecera(comoIDB(cabecera))).toEqual({ ok: true, valor: cabecera })
+    }
+  })
+
+  it('una sesión guardada con el esquema 4 se lee igual, sin detección sin marcadores (migración 4 → 5)', () => {
+    const { cabecera, datos } = prepararGuardado(entradaDos())
+    const comoV4 = { ...cabecera, esquema: 4, vistas: cabecera.vistas.map((v) => Object.fromEntries(Object.entries(v).filter(([k]) => k !== 'deteccion'))) }
+    const c = leerCabecera(comoIDB(comoV4))
+    expect(c).toEqual({ ok: true, valor: cabecera })
+    if (!c.ok) return
+    expect(leerDatos(comoIDB({ ...datos, esquema: 4 }), c.valor)).toEqual({ ok: true, valor: comoIDB(datos) })
+  })
+
+  it('guarda y lee la detección sin marcadores y un modelo con ángulos absolutos (esquema 5)', () => {
+    const e = entrada()
+    const pose = modeloPose({ plano: 'sagital', mira: 'derecha' }, 'der')
+    const conPose = { marcadores: [...e.modelo.marcadores, ...pose.marcadores], articulaciones: [...e.modelo.articulaciones, ...pose.articulaciones] }
+    const deteccion = { modelo: 'full', libreria: '@mediapipe/tasks-vision 1.1.0', delegado: 'GPU', fecha: '2026-10-28T10:00:00.000Z', conPersona: 6, intercambiados: 2, dudosos: 0 } as const
+    const { cabecera, datos } = prepararGuardado({ ...e, modelo: conPose, vistas: [{ ...e.vistas[0]!, deteccion }] })
+    expect(conPose.articulaciones.some((a) => 'referencia' in a.proximal)).toBe(true)
+    const c = leerCabecera(comoIDB(cabecera))
+    expect(c).toEqual({ ok: true, valor: cabecera })
+    if (!c.ok) return
+    expect(c.valor.vistas[0]!.deteccion).toEqual(deteccion)
+    expect(leerDatos(comoIDB(datos), c.valor).ok).toBe(true)
+  })
+
+  it('rechaza una detección o una referencia que no cuadran', () => {
+    const e = entrada()
+    const { cabecera } = prepararGuardado(e)
+    const v = cabecera.vistas[0]!
+    const tronco = modeloPose({ plano: 'sagital', mira: 'derecha' }, 'der').articulaciones.find((a) => 'referencia' in a.proximal)!
+    const conArticulacion = (a: unknown) => ({ ...cabecera, modelo: { ...cabecera.modelo, articulaciones: [...cabecera.modelo.articulaciones, a] } })
+    const casos: [Record<string, unknown>, RegExp][] = [
+      [{ ...cabecera, vistas: [{ ...v, deteccion: { modelo: 'enorme' } }] }, /detección sin marcadores no válida/],
+      [{ ...cabecera, vistas: [{ ...v, deteccion: undefined }] }, /detección sin marcadores no válida/],
+      [conArticulacion({ ...tronco, proximal: { referencia: 'diagonal' } }), /articulación no válida/],
+      [conArticulacion({ ...tronco, proximal: { referencia: 'vertical', desde: cadera } }), /articulación no válida/],
+    ]
+    for (const [registro, motivo] of casos) {
+      const r = leerCabecera(registro)
+      expect(r.ok, String(motivo)).toBe(false)
+      if (!r.ok) expect(r.detalle).toMatch(motivo)
     }
   })
 

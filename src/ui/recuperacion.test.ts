@@ -10,6 +10,7 @@ const vista = (id: string, nombre: string, tamano: number): VistaCabecera => ({
   calibracion: null,
   ceros: {},
   marcadores: [],
+  deteccion: null,
   sincronia: { metodo: 'ninguna' },
 })
 

@@ -605,12 +605,12 @@ function Aplicacion() {
         <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
           {estado.aviso && <p className="rounded-md border border-red-400/50 p-3 text-sm text-red-300">{estado.aviso}</p>}
           <ElegirOrientacion
-            onElegir={(orientacion) =>
+            onElegir={(orientacion, fuente) =>
               setEstado({
                 fase: 'visor',
                 apertura: estado.apertura,
                 sesion: sesionNueva(estado.video),
-                vistas: [{ id: ID_VISTA_REFERENCIA, video: estado.video, orientacion, desfase: 0, sincronia: { metodo: 'ninguna' } }],
+                vistas: [{ id: ID_VISTA_REFERENCIA, video: estado.video, orientacion, desfase: 0, sincronia: { metodo: 'ninguna' }, fuente }],
               })
             }
           />

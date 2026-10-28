@@ -77,6 +77,15 @@ body {
   border-radius: 6px;
   background: var(--color-acento);
 }
+.deslizador-frames:disabled {
+  cursor: not-allowed;
+}
+.deslizador-frames:disabled::-webkit-slider-thumb {
+  opacity: 0.5;
+}
+.deslizador-frames:disabled::-moz-range-thumb {
+  opacity: 0.5;
+}
 .deslizador-frames:focus-visible {
   outline: none;
 }

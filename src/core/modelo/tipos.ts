@@ -75,6 +75,28 @@ export interface Sincronia {
   readonly reloj?: { readonly desfase: number; readonly cota: number }
 }
 
+/** Tamaño del modelo de MediaPipe Pose Landmarker (fase 5). */
+export type TamanoModeloPose = 'lite' | 'full' | 'heavy'
+
+/**
+ * Cómo se detectaron los puntos sin marcadores de una vista (fase 5, D7), para saber de dónde salen y poder repetir el
+ * análisis. Solo lo de la última detección; nada del paciente.
+ */
+export interface DeteccionPose {
+  readonly modelo: TamanoModeloPose
+  /** Librería y versión con que se detectó (p. ej. «@mediapipe/tasks-vision 1.1.0»). */
+  readonly libreria: string
+  /** Dónde corrió de verdad. */
+  readonly delegado: 'GPU' | 'CPU'
+  /** ISO 8601. */
+  readonly fecha: string
+  /** Frames con alguien detectado. */
+  readonly conPersona: number
+  /** Frames con las piernas intercambiadas que se corrigieron, y frames con las piernas dudosas (ver core/pose/cambiosLado.ts). */
+  readonly intercambiados: number
+  readonly dudosos: number
+}
+
 export interface Vista {
   readonly id: string
   readonly nombre: string
@@ -91,6 +113,8 @@ export interface Vista {
   /** Escala en el plano (fase 2); DLT o lente más adelante. null = sin escala. */
   readonly calibracion: CalibracionVista | null
   readonly trayectorias: Readonly<Record<IdMarcador, readonly Muestra2D[]>>
+  /** La última detección sin marcadores de la vista (fase 5); null si no se ha detectado. */
+  readonly deteccion?: DeteccionPose | null
 }
 
 export interface Sesion {

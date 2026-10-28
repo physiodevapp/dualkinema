@@ -1,6 +1,6 @@
 import type { OrientacionVista } from '../geometria/canonico'
 import type { IdMarcador, ModeloMarcadores } from '../modelo/tipos'
-import { marcadoresDeArticulacion } from './definicion'
+import { marcadoresDeArticulacion, type DefinicionArticulacion } from './definicion'
 
 /*
  * Lo que ve cada vista del modelo de la sesión (D4 de la fase 3): el modelo tiene todos los marcadores; cada vista sigue
@@ -11,11 +11,16 @@ import { marcadoresDeArticulacion } from './definicion'
 const marcadoresDe = marcadoresDeArticulacion
 
 /**
- * Los marcadores que sigue una vista nueva: los de las articulaciones del plano de la vista (sin repetir, en el orden del
- * modelo). Sin ninguna articulación de su plano, todos los del modelo.
+ * Los marcadores que sigue una vista nueva: los de las articulaciones del plano de la vista que admite `admite` (sin
+ * repetir, en el orden del modelo; fase 5: las de los gomets o las sin marcadores, según con qué se analiza). Sin ninguna,
+ * todos los del modelo.
  */
-export function marcadoresParaVista(modelo: ModeloMarcadores, orientacion: OrientacionVista): IdMarcador[] {
-  const delPlano = new Set(modelo.articulaciones.filter((a) => a.plano === orientacion.plano).flatMap(marcadoresDe))
+export function marcadoresParaVista(
+  modelo: ModeloMarcadores,
+  orientacion: OrientacionVista,
+  admite: (a: DefinicionArticulacion) => boolean = () => true,
+): IdMarcador[] {
+  const delPlano = new Set(modelo.articulaciones.filter((a) => a.plano === orientacion.plano && admite(a)).flatMap(marcadoresDe))
   const ids = modelo.marcadores.map((mk) => mk.id).filter((id) => delPlano.has(id))
   return ids.length ? ids : modelo.marcadores.map((mk) => mk.id)
 }

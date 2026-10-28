@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { idPose, PUNTOS_POSE } from '../../core/pose/puntos'
 import { AlmacenTrayectorias } from './almacenTrayectorias'
 
 const tiempos = [0, 0.1, 0.2, 0.3, 0.4]
@@ -48,7 +49,7 @@ describe('almacén de trayectorias', () => {
     const lote = [1, 2, 3, 4].map((i) => ({ indice: i, t: tiempos[i]!, marcadores: [{ id: 'a', x: i, y: i, calidad: 1 }] }))
     al.aplicarLote(lote)
     al.poner('a', 3, 30, 30)
-    const quitado = al.borrarDespuesDe(1)
+    const quitado = al.borrarDespuesDe(1, ['a', 'b'])
     const s = al.leer().series.get('a')!
     expect(s[1]).toMatchObject({ x: 1 }) // el frame de partida se queda
     expect(s[2]).toBeUndefined()
@@ -64,8 +65,41 @@ describe('almacén de trayectorias', () => {
     al.poner('a', 3, 3, 3)
     al.poner('b', 4, 4, 4)
     const v = al.leer().version
-    expect(al.quitarManualesDespuesDe(1)).toBe(2)
+    expect(al.quitarManualesDespuesDe(1, ['a', 'b'])).toBe(2)
     expect(al.leer().version).toBe(v + 1)
     expect(al.leer().series.get('a')!.map((m) => m?.x)).toEqual([undefined, 1, undefined, undefined, undefined])
+  })
+
+  it('«Seguir desde aquí» solo quita las series que se siguen (los puntos sin marcadores no)', () => {
+    const al = nuevo()
+    al.aplicarLote([2, 3].map((i) => ({ indice: i, t: tiempos[i]!, marcadores: [{ id: 'a', x: i, y: i, calidad: 1 }, { id: 'b', x: i, y: i, calidad: 1 }] })))
+    al.borrarDespuesDe(1, ['a'])
+    expect(al.leer().series.get('a')![2]).toBeUndefined()
+    expect(al.leer().series.get('b')![2]).toMatchObject({ x: 2 })
+  })
+
+  it('al detectar sin marcadores aparecen las series de los puntos; lo marcado a mano no se toca', () => {
+    const al = nuevo()
+    const id = idPose('rodilla', 'der')
+    al.asegurar([id])
+    al.poner(id, 1, 50, 50)
+    const puntos = (x: number) => PUNTOS_POSE.flatMap(() => [x, 2 * x, 0.9])
+    al.aplicarPose([
+      { indice: 0, t: 0, puntos: puntos(10) },
+      { indice: 1, t: 0.1, puntos: puntos(11) },
+      { indice: 2, t: 0.2, puntos: null },
+    ])
+    const s = al.leer().series
+    for (const p of PUNTOS_POSE) expect(s.get(p.id)).toHaveLength(tiempos.length)
+    expect(s.get(id)![0]).toEqual({ t: 0, x: 10, y: 20, calidad: 0.9, editadoManual: false })
+    expect(s.get(id)![1]).toMatchObject({ x: 50, editadoManual: true })
+    expect(s.get(id)![2]).toMatchObject({ calidad: 0 })
+    expect(s.get(id)![2]!.x).toBeNaN()
+    // La detección entera, ya corregida, sustituye lo detectado y deja lo de a mano y lo que no trae.
+    const v = al.leer().version
+    al.fusionar(new Map([[id, [{ t: 0, x: 1, y: 1, calidad: 1, editadoManual: false }, { t: 0.1, x: 2, y: 2, calidad: 1, editadoManual: false }]]]))
+    expect(al.leer().version).toBe(v + 1)
+    expect(al.leer().series.get(id)!.map((m) => m?.x)).toEqual([1, 50, NaN, undefined, undefined])
+    expect(al.leer().series.get('a')).toHaveLength(tiempos.length)
   })
 })

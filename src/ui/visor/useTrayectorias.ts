@@ -8,7 +8,13 @@ import type { EstadoFrame } from './BandaFrames'
 export type { SeriesTrayectorias } from './almacenTrayectorias'
 
 interface Opciones {
+  /** Los marcadores de la vista (gomets y, sin marcadores, los puntos del modelo). */
   readonly ids: readonly IdMarcador[]
+  /**
+   * Los que cuentan en la franja de cada frame y en los huecos cortos (los que se marcan; sin la pierna lejana del modelo,
+   * casi siempre dudosa).
+   */
+  readonly idsFranja: readonly IdMarcador[]
   readonly tabla: TablaFrames
   /** Al recuperar una sesión: las trayectorias tal como se guardaron. */
   readonly inicial?: ReadonlyMap<IdMarcador, (Muestra2D | undefined)[]>
@@ -24,17 +30,20 @@ interface Opciones {
  *
  * Quien lee `series` durante el render (useMemo) tiene que depender de `version`.
  */
-export function useTrayectorias({ ids, tabla, inicial, valida }: Opciones) {
+export function useTrayectorias({ ids, idsFranja, tabla, inicial, valida }: Opciones) {
   const total = tabla.tiempos.length
   const [almacen] = useState(() => new AlmacenTrayectorias(ids, tabla.tiempos, inicial))
+  // La vista puede empezar a seguir marcadores nuevos (al detectar sin marcadores): sus series, vacías, desde este render.
+  almacen.asegurar(ids)
   const { version, series } = useSyncExternalStore(almacen.suscribir, almacen.leer)
   const muestra = useCallback((id: IdMarcador, i: number) => series.get(id)?.[i], [series])
 
   // ---- Huecos cortos: rellenar a petición ----
+  // En los marcadores de la franja: los puntos del modelo que no se miden (la pierna lejana) no se rellenan.
   const huecosCortos = useMemo(() => {
     void version
-    return ids.flatMap((id) => huecosInterpolables(series.get(id)!, tabla.tiempos).map((h) => ({ id, h })))
-  }, [version, series, ids, tabla])
+    return idsFranja.flatMap((id) => huecosInterpolables(series.get(id)!, tabla.tiempos).map((h) => ({ id, h })))
+  }, [version, series, idsFranja, tabla])
   const hayInterpolados = useMemo(() => {
     void version
     return [...series.values()].some((s) => s.some((m) => m?.interpolado))
@@ -53,7 +62,7 @@ export function useTrayectorias({ ids, tabla, inicial, valida }: Opciones) {
       let perdido = false
       let manual = false
       let interpolado = false
-      for (const id of ids) {
+      for (const id of idsFranja) {
         const m = muestra(id, i)
         if (!m) continue
         hay = true
@@ -64,7 +73,7 @@ export function useTrayectorias({ ids, tabla, inicial, valida }: Opciones) {
       r[i] = perdido ? 'perdido' : interpolado ? 'interpolado' : manual ? 'manual' : hay ? 'seguido' : 'vacio'
     }
     return r
-  }, [version, total, ids, muestra, valida])
+  }, [version, total, idsFranja, muestra, valida])
 
   return {
     series: series as SeriesTrayectorias,
@@ -76,6 +85,8 @@ export function useTrayectorias({ ids, tabla, inicial, valida }: Opciones) {
     borrarDespuesDe: almacen.borrarDespuesDe,
     devolver: almacen.devolver,
     quitarManualesDespuesDe: almacen.quitarManualesDespuesDe,
+    aplicarPose: almacen.aplicarPose,
+    fusionar: almacen.fusionar,
     huecosCortos,
     hayInterpolados,
     rellenarCortos,

@@ -1,7 +1,8 @@
 import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
-import type { IdMarcador, Muestra2D, Sincronia } from '../../core/modelo/tipos'
+import type { DeteccionPose, IdMarcador, Muestra2D, Sincronia } from '../../core/modelo/tipos'
+import type { Fuente } from '../../core/pose/catalogo'
 import type { PropuestaDoble } from '../../core/sincronia/doble'
 import type { VideoAbierto } from '../../media/video'
 import type { useVista } from './useVista'
@@ -27,6 +28,10 @@ export interface EntradaVista {
   readonly marcadores?: readonly IdMarcador[]
   /** Al abrir una grabación doble (fase 4): el desfase que se propone para esta vista, sin aplicar. */
   readonly propuesta?: PropuestaDoble
+  /** Con qué se analiza una vista nueva (fase 5): gomets (sin decirlo) o sin marcadores. Decide qué marcadores sigue. */
+  readonly fuente?: Fuente
+  /** Al recuperar: la última detección sin marcadores de la vista. */
+  readonly deteccion?: DeteccionPose | null
 }
 
 /** Una vista con todo su estado (lo que devuelve `useVista`) y los datos de su entrada que necesita la sesión. */

@@ -1,4 +1,4 @@
-import type { IdMarcador } from '../core/modelo/tipos'
+import type { IdMarcador, TamanoModeloPose } from '../core/modelo/tipos'
 import type { Hueco } from '../core/seguimiento/huecos'
 import type { ResultadoAudio } from '../core/sincronia/audio'
 
@@ -71,10 +71,9 @@ export type DelWorkerAudio =
   | { readonly tipo: 'falta'; readonly faltas: readonly FaltaAudio[] }
   | { readonly tipo: 'error'; readonly mensaje: string }
 
-/** Tamaño del modelo de MediaPipe Pose Landmarker (fase 5, paso 1: el experimento compara los tres). */
-export type TamanoModeloPose = 'lite' | 'full' | 'heavy'
+export type { TamanoModeloPose }
 
-/** Mensajes del hilo principal al worker sin marcadores (fase 5, paso 1). Para pararlo, `cancelar` o se cierra. */
+/** Mensajes del hilo principal al worker sin marcadores (fase 5). Para pararlo, `cancelar` o se cierra. */
 export type AlWorkerPose =
   | {
       readonly tipo: 'detectar'

@@ -15,6 +15,7 @@ type Seguimiento = { estado: 'parado' } | { estado: 'siguiendo'; progreso: numbe
 interface Opciones {
   readonly video: VideoAbierto
   readonly modelo: ModeloMarcadores
+  /** Los marcadores que se siguen: los gomets (los puntos sin marcadores no se siguen: se detectan). */
   readonly ids: readonly IdMarcador[]
   readonly series: SeriesTrayectorias
   readonly muestra: (id: IdMarcador, i: number) => Muestra2D | undefined
@@ -22,7 +23,7 @@ interface Opciones {
   readonly valida: (m: Muestra2D | undefined) => m is Muestra2D
   /** Mutadores de `useTrayectorias`. */
   readonly aplicarLote: (lote: readonly MuestraFrame[]) => void
-  readonly borrarDespuesDe: (desde: number) => SeriesTrayectorias
+  readonly borrarDespuesDe: (desde: number, ids: readonly IdMarcador[]) => SeriesTrayectorias
   readonly devolver: (quitado: SeriesTrayectorias) => void
   /** Frame mostrado (null mientras se decodifica el primero). */
   readonly mostrado: number | null
@@ -117,19 +118,20 @@ export function useSeguimiento({
     (i: number) => ids.map((id) => ({ id, m: muestra(id, i) })),
     [ids, muestra],
   )
-  const listoParaSeguir = mostrado !== null && posicionesEn(mostrado).every(({ m }) => valida(m))
+  const listoParaSeguir = mostrado !== null && ids.length > 0 && posicionesEn(mostrado).every(({ m }) => valida(m))
 
   const seguirDesdeAqui = () => {
     if (mostrado === null || !listoParaSeguir) return
     // Lo seguido antes a partir de aquí se descarta; lo marcado a mano se conserva.
     // Se guarda una copia por si el seguimiento no llega a arrancar.
-    quitadoAlSeguir.current = borrarDespuesDe(mostrado)
+    quitadoAlSeguir.current = borrarDespuesDe(mostrado, ids)
     setAviso(null)
     setErrorToque(null)
     setSeguimiento({ estado: 'siguiendo', progreso: mostrado / Math.max(1, total - 1) })
     // Lo marcado a mano más adelante son anclas: el seguidor las respeta y sigue desde ellas.
     const anclas: { indice: number; id: IdMarcador; x: number; y: number }[] = []
-    for (const [id, serie] of series) {
+    for (const id of ids) {
+      const serie = series.get(id) ?? []
       for (let i = mostrado + 1; i < total; i++) {
         const m = serie[i]
         if (m?.editadoManual && Number.isFinite(m.x)) anclas.push({ indice: i, id, x: m.x, y: m.y })

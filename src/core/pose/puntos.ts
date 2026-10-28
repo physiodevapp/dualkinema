@@ -36,6 +36,9 @@ export interface PuntoPose {
 
 export const idPose = (parte: ParteCuerpo, lado: Lado): IdMarcador => `pose_${parte}_${lado}`
 
+/** ¿Es un marcador virtual del modelo sin marcadores (un punto o un punto medio), y no un gomet? */
+export const esIdPose = (id: IdMarcador): boolean => id.startsWith('pose_')
+
 const PARTES: readonly ParteCuerpo[] = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta']
 
 /** Los 12 puntos que se guardan, en este orden (el de `FramePose.puntos`). */
@@ -89,22 +92,22 @@ export function trayectoriasPose(frames: Iterable<FramePose>, total: number): Ma
   const r = new Map<IdMarcador, (Muestra2D | undefined)[]>(PUNTOS_POSE.map((p) => [p.id, new Array<Muestra2D | undefined>(total)]))
   for (const f of frames) {
     if (f.indice < 0 || f.indice >= total) continue
-    PUNTOS_POSE.forEach((p, k) => {
-      const serie = r.get(p.id)!
-      if (!f.puntos) {
-        serie[f.indice] = { t: f.t, x: NaN, y: NaN, calidad: 0, editadoManual: false }
-        return
-      }
-      const x = f.puntos[k * VALORES_POR_PUNTO]!
-      const y = f.puntos[k * VALORES_POR_PUNTO + 1]!
-      const v = f.puntos[k * VALORES_POR_PUNTO + 2]!
-      serie[f.indice] =
-        Number.isFinite(x) && Number.isFinite(y)
-          ? { t: f.t, x, y, calidad: v, editadoManual: false }
-          : { t: f.t, x: NaN, y: NaN, calidad: 0, editadoManual: false }
-    })
+    muestrasDeFrame(f).forEach((m, k) => (r.get(PUNTOS_POSE[k]!.id)![f.indice] = m))
   }
   return r
+}
+
+/**
+ * La muestra de cada punto de `PUNTOS_POSE` (en ese orden) en un frame: sin nadie detectado, o un punto sin posición,
+ * perdido (NaN, calidad 0); si no, su posición con calidad = visibilidad.
+ */
+export function muestrasDeFrame(f: FramePose): Muestra2D[] {
+  return PUNTOS_POSE.map((_, k) => {
+    const x = f.puntos?.[k * VALORES_POR_PUNTO] ?? NaN
+    const y = f.puntos?.[k * VALORES_POR_PUNTO + 1] ?? NaN
+    const v = f.puntos?.[k * VALORES_POR_PUNTO + 2] ?? 0
+    return Number.isFinite(x) && Number.isFinite(y) ? { t: f.t, x, y, calidad: v, editadoManual: false } : { t: f.t, x: NaN, y: NaN, calidad: 0, editadoManual: false }
+  })
 }
 
 /** Líneas del esqueleto que se dibujan sobre el vídeo: cada pierna y el tronco, y las que unen los dos lados. */
