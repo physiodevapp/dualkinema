@@ -3411,7 +3411,8 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
     })
     assert.deepEqual(c.vistas[0].marcadores, ['trocanter_der', 'epicondilo_femoral_der', 'maleolo_der'])
     assert.deepEqual(c.vistas[1].marcadores, ['muslo_proximal_der', 'centro_rodilla_der', 'centro_tobillo_der'])
-    // El modelo de la sesión lleva también lo sin marcadores de perfil (fase 5), aunque estas vistas solo siguen gomets.
+    // El modelo de la sesión lleva también lo sin marcadores de perfil y de frente (fase 5), aunque estas vistas solo
+    // siguen gomets.
     assert.deepEqual(c.modelo.articulaciones.map((a) => a.id), [
       'rodilla_sagital_der',
       'rodilla_frontal_der',
@@ -3419,6 +3420,12 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
       'pose_cadera_sagital_der',
       'pose_tobillo_sagital_der',
       'pose_tronco_sagital_der',
+      'pose_rodilla_frontal_der',
+      'pose_rodilla_frontal_izq',
+      'pose_cadera_frontal_der',
+      'pose_cadera_frontal_izq',
+      'pose_pelvis_frontal',
+      'pose_tronco_frontal',
     ])
     await p.reload()
     await p.setInputFiles('input[type=file]', videos.frontal.ruta)
