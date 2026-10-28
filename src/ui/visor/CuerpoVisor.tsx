@@ -838,6 +838,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               listoParaSeguir={listoParaSeguir}
               conGomets={conGomets}
               deteccion={panelDeteccion}
+              onAnadirGomets={activaViva.anadirGomets}
               marcasManualesAqui={marcasManualesAqui}
               mostrado={mostrado}
               onQuitarManual={quitarManual}

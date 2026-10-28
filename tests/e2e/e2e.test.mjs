@@ -4068,6 +4068,42 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
     }
   })
 
+  it('una vista que empezó sin marcadores puede añadir los gomets, seguirlos y compararlos', async () => {
+    const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad))
+    try {
+      await cargarSinMarcadores(p, videos.verde.ruta)
+      await abrirPestana(p, 'marcar')
+      await detectarCuerpo(p)
+      assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).count(), 0)
+      await p.getByTestId('anadir-gomets').click()
+      // Ya sigue los gomets: aparecen en el selector y «Seguir desde aquí»; el botón de añadir se va.
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).waitFor()
+      assert.equal(await p.getByTestId('anadir-gomets').count(), 0)
+      const ps = videos.verde.verdad[0].ps
+      await irAFrame(p, 0)
+      // Se elige el primero; al colocar uno se pasa al siguiente.
+      await p.getByRole('radio', { name: /Trocánter/ }).click()
+      await marcarTres(p, ps)
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      await p.getByTestId('aviso').filter({ hasText: /Seguimiento completado/ }).waitFor({ timeout: 90000 })
+      // Las dos medidas de la rodilla: la comparación sale en «Análisis» (aquí los puntos caen en los gomets).
+      await abrirPestana(p, 'analisis')
+      const directa = await p.getByTestId('comparacion-fuentes').getByTestId('comparacion-directa').innerText()
+      assert.match(directa, /correlación 1,00/)
+      // Se guarda con la vista: al recuperar, sigue con los gomets.
+      await esperarGuardado(p)
+      await p.reload()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      await abrirPestana(p, 'marcar')
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).waitFor()
+      assert.match(await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText(), /Trocánter/)
+    } finally {
+      await p.close()
+    }
+  })
+
   it('en el móvil, «Detectar el cuerpo» está en el vídeo grande («Marcar»)', async () => {
     const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad), { ancho: 390 })
     try {
