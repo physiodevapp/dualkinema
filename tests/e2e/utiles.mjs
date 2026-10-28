@@ -182,35 +182,46 @@ export async function marcarTres(p, posiciones, desvio = 2) {
   for (const [i, q] of posiciones.entries()) await tocarVideo(p, q.x + (i % 2 ? -desvio : desvio), q.y + (i === 2 ? desvio : -desvio))
 }
 
+/** Móvil en vertical (por debajo de `lg` y más alto que ancho): ahí cada herramienta es una pantalla completa. */
+export function esMovilVertical(p) {
+  const v = p.viewportSize()
+  return v.width < 1024 && v.height > v.width
+}
+
+/**
+ * Ejecuta `f` con el ancho de escritorio, donde todas las pestañas y paneles están a la vista, y deja la ventana como
+ * estaba. Lo usan los ayudantes que leen o escriben en un panel (seguir, leer un ángulo) cuando la prueba va en un móvil
+ * en vertical y lo que prueba no es el diseño del móvil.
+ */
+export async function enEscritorio(p, f) {
+  if (!esMovilVertical(p)) return f()
+  const v = p.viewportSize()
+  await p.setViewportSize({ width: 1280, height: 900 })
+  await esperarVideoAsentado(p)
+  try {
+    return await f()
+  } finally {
+    await p.setViewportSize(v)
+    await esperarVideoAsentado(p)
+  }
+}
+
 /** Pulsa «Seguir desde aquí» y espera a que termine. Devuelve el texto del aviso final. La pestaña abierta queda como estaba. */
 export async function seguirHastaElFinal(p) {
-  const antes = await pestanaAbierta(p)
-  await abrirPestana(p, 'marcar')
-  const seguir = p.getByRole('button', { name: 'Seguir desde aquí' })
-  await centrarLibre(seguir)
-  await seguir.click()
-  await p.getByTestId('aviso').waitFor({ timeout: 90000 })
-  const aviso = (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
-  await abrirPestana(p, antes)
-  return aviso
+  return enEscritorio(p, async () => {
+    const antes = await pestanaAbierta(p)
+    await abrirPestana(p, 'marcar')
+    const seguir = p.getByRole('button', { name: 'Seguir desde aquí' })
+    await centrarLibre(seguir)
+    await seguir.click()
+    await p.getByTestId('aviso').waitFor({ timeout: 90000 })
+    const aviso = (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
+    await abrirPestana(p, antes)
+    return aviso
+  })
 }
 
 /** Abre una pestaña de herramientas del visor («marcar», «analisis», «escala», «video») si no es la abierta. */
-/**
- * Móvil en vertical: elige qué dos zonas se ven con el selector de arriba (`vg` vídeo y gráfica, `vh` vídeo y
- * herramientas, `gh` gráfica y herramientas).
- */
-export async function elegirModo(p, modo) {
-  await p.getByTestId(`modo-${modo}`).click()
-  await p.waitForFunction((m) => document.querySelector(`[data-testid=modo-${m}]`)?.getAttribute('aria-pressed') === 'true', modo)
-}
-
-/** Pasa a gráfica y herramientas (con las herramientas abiertas, la gráfica pequeña solo se ve en este modo o en `vg`). */
-export async function verGrafica(p) {
-  await elegirModo(p, 'gh')
-  await p.getByTestId('minigrafica').waitFor({ state: 'visible' })
-}
-
 export async function abrirPestana(p, id) {
   const pestana = p.getByTestId(`pestana-${id}`)
   if ((await pestana.getAttribute('aria-selected')) !== 'true') await pestana.click()
@@ -231,14 +242,16 @@ async function pestanaAbierta(p) {
 
 /** Lee el texto de un elemento abriendo su pestaña y dejando abierta la que estaba (para no estorbar al resto de la prueba). */
 export async function textoDe(p, testid) {
-  const id = pestanaDe(testid)
-  const antes = id ? await pestanaAbierta(p) : null
-  if (id) await abrirPestana(p, id)
-  try {
-    return await p.getByTestId(testid).innerText()
-  } finally {
-    if (id && antes !== id) await abrirPestana(p, antes)
-  }
+  return enEscritorio(p, async () => {
+    const id = pestanaDe(testid)
+    const antes = id ? await pestanaAbierta(p) : null
+    if (id) await abrirPestana(p, id)
+    try {
+      return await p.getByTestId(testid).innerText()
+    } finally {
+      if (id && antes !== id) await abrirPestana(p, antes)
+    }
+  })
 }
 
 /**

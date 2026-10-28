@@ -14,8 +14,6 @@ import {
   abrirApp,
   abrirPestana,
   arrastrarAsa,
-  elegirModo,
-  verGrafica,
   cajaElemento,
   cajaVideo,
   cargarVideo,
@@ -67,11 +65,17 @@ after(async () => {
 })
 
 /** Marca los 3 gomets en el primer frame y sigue hasta el final. Devuelve la página y el aviso final. */
-async function seguirVideo(video, { ancho = 390 } = {}) {
-  const p = await abrirApp(navegador, { ancho })
+async function seguirVideo(video, { ancho = 1280 } = {}) {
+  const p = await abrirApp(navegador, { ancho: ancho < 800 ? 1280 : ancho })
   await cargarVideo(p, video.ruta)
   await marcarTres(p, video.verdad[0].ps)
   const aviso = await seguirHastaElFinal(p)
+  // Para probar el móvil: se marca y se sigue con el ancho de escritorio (donde las herramientas están a la vista) y después
+  // se achica la ventana; el visor sigue donde estaba.
+  if (ancho < 800) {
+    await p.setViewportSize({ width: ancho, height: 844 })
+    await esperarVideoAsentado(p)
+  }
   return { p, aviso }
 }
 
@@ -1665,11 +1669,9 @@ describe('la barra fija del móvil no mueve los botones', () => {
       assert.equal(await p.evaluate(() => window.scrollY), 0)
       const despues = await p.getByTestId('barra-fija').boundingBox()
       assert.deepEqual(despues, antes, 'la barra se mueve')
-      // El visor y las tarjetas de las herramientas acaban por encima de la barra.
-      for (const id of ['visor', 'panel-herramientas']) {
-        const c = await p.getByTestId(id).boundingBox()
-        assert.ok(c.y + c.height <= despues.y + 1, `${id} acaba en ${c.y + c.height}, la barra empieza en ${despues.y}`)
-      }
+      // El visor (con la fila de botones) acaba por encima de la barra, también con una herramienta abierta.
+      const v = await p.getByTestId('visor').boundingBox()
+      assert.ok(v.y + v.height <= despues.y + 1, `el visor acaba en ${v.y + v.height}, la barra empieza en ${despues.y}`)
       // El pie de página (rama y commit) no se ve bajo la barra: en el móvil va en la pestaña «Vídeo».
       assert.equal(await p.getByTestId('pie').isVisible(), false)
       await abrirPestana(p, 'video')
@@ -1727,19 +1729,14 @@ describe('pestañas de herramientas', () => {
     }
   })
 
-  it('en el móvil también hay pestañas, debajo del vídeo, y la gráfica completa no ocupa la página', async () => {
+  it('en el móvil, la fila de botones va debajo del vídeo y la gráfica, y la gráfica completa no ocupa la página', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
       await p.evaluate(() => window.scrollTo(0, 0))
       const video = await p.getByTestId('capa').boundingBox()
       const pestanas = await p.getByRole('tablist').boundingBox()
-      assert.ok(video.y + video.height <= pestanas.y + 1, 'las pestañas quedan encima del vídeo')
-      // El panel abierto va justo debajo de las pestañas y la página acaba ahí: no hay otra pantalla de gráfica más abajo.
-      // (Las tarjetas se desplazan por dentro: lo que cuenta es su caja.)
-      const panel = await p.getByTestId('panel-herramientas').boundingBox()
-      assert.ok(panel.y >= pestanas.y + pestanas.height - 1, 'el panel queda debajo de las pestañas')
+      assert.ok(video.y + video.height <= pestanas.y + 1, 'la fila de botones queda debajo del vídeo')
       assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
-      await verGrafica(p)
       assert.ok(await p.getByTestId('minigrafica').isVisible(), 'queda la gráfica pequeña')
       await p.getByRole('tab', { name: 'Escala' }).click()
       assert.ok(await p.getByTestId('panel-escala').isVisible())
@@ -1758,7 +1755,6 @@ describe('pestañas de herramientas', () => {
       const redibujos = Number(await p.getByTestId('grafica-angulo').getAttribute('data-redibujos'))
       assert.ok(redibujos <= 2, `la gráfica oculta se ha redibujado ${redibujos} veces`)
       // Al abrir «Solo gráficas» aparece con todos los datos: la curva (ámbar) está pintada.
-      await verGrafica(p)
       await p.getByTestId('ampliar-graficas').click()
       await p.getByTestId('grafica-angulo-area').waitFor()
       await p.waitForFunction(() => {
@@ -1775,43 +1771,9 @@ describe('pestañas de herramientas', () => {
     }
   })
 
-  it('en el móvil la página no se desplaza: vídeo y gráfica arriba, el asa, las pestañas y las tarjetas, que se desplazan por dentro', async () => {
-    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
-    try {
-      await abrirPestana(p, 'analisis')
-      // Con las herramientas abiertas arriba va el vídeo o la gráfica (la otra queda montada, sin verse): se mide cada una.
-      const cajas = async () => ({
-        video: await p.getByTestId('capa').boundingBox(),
-        mini: await p.getByTestId('minigrafica').boundingBox(),
-        fijo: await p.getByTestId('visor-fijo').boundingBox(),
-        asa: await p.getByTestId('separador-herramientas').boundingBox(),
-        pestanas: await p.getByRole('tablist').locator('..').boundingBox(),
-        tarjetas: await p.getByTestId('panel-herramientas').boundingBox(),
-        barra: await p.getByTestId('barra-fija').boundingBox(),
-      })
-      const a = await cajas()
-      // En orden y sin solaparse: el vídeo (dentro del bloque de arriba), el asa, las pestañas, las tarjetas y la barra.
-      assert.equal(a.mini, null, 'con las herramientas abiertas no se ven el vídeo y la gráfica a la vez')
-      assert.ok(a.video.y + a.video.height <= a.fijo.y + a.fijo.height + 1, 'el vídeo se sale del bloque de arriba')
-      assert.ok(a.asa.y >= a.fijo.y + a.fijo.height - 1 && a.pestanas.y >= a.asa.y + a.asa.height - 1, 'el asa va entre el bloque y las pestañas')
-      assert.ok(a.tarjetas.y >= a.pestanas.y + a.pestanas.height - 1 && a.tarjetas.y + a.tarjetas.height <= a.barra.y + 1, 'las tarjetas, entre las pestañas y la barra')
-      // «Análisis» es larga: sus tarjetas se desplazan por dentro y nada más se mueve.
-      const tarjetas = p.getByTestId('panel-herramientas')
-      assert.ok(await tarjetas.evaluate((el) => el.scrollHeight > el.clientHeight + 50), 'la pestaña «Análisis» cabe sin desplazarse')
-      await tarjetas.evaluate((el) => el.scrollTo(0, el.scrollHeight))
-      await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
-      const b = await cajas()
-      assert.ok(await tarjetas.evaluate((el) => el.scrollTop > 0))
-      for (const k of ['video', 'asa', 'pestanas', 'barra']) assert.deepEqual(b[k], a[k], `${k} se ha movido al desplazar las tarjetas`)
-    } finally {
-      await p.close()
-    }
-  })
-
   it('la gráfica pequeña salta de frame al tocarla y su cursor no la redibuja', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
-      await verGrafica(p)
       const tiempos = videos.verde.verdad.map((f) => f.t)
       const redibujos = () => p.getByTestId('minigrafica').getAttribute('data-redibujos')
       await irAFrame(p, 20)
@@ -2005,7 +1967,6 @@ describe('gráfica pequeña del móvil: ángulo, velocidad o las dos normalizada
   it('alterna entre ángulo, velocidad y ambas; el punto del cursor cae donde está el valor', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
-      await verGrafica(p)
       const posicionRelativa = async () => {
         const area = await p.getByTestId('minigrafica-area').boundingBox()
         const punto = await p.getByTestId('minigrafica-punto').boundingBox()
@@ -2055,7 +2016,6 @@ describe('gráfica pequeña del móvil: conserva su modo', () => {
   it('al cambiar de frame, de pestaña, al plegar el vídeo, al ampliar el vídeo o las gráficas y volver, y al volver a seguir sigue en el modo elegido', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
-      await verGrafica(p)
       const modo = (id) => p.getByTestId(`minigrafica-modo-${id}`)
       const enVelocidad = async (cuando) => {
         assert.equal(await modo('velocidad').getAttribute('aria-pressed'), 'true', `${cuando}: la gráfica pequeña ha dejado el modo velocidad`)
@@ -2066,19 +2026,16 @@ describe('gráfica pequeña del móvil: conserva su modo', () => {
       await enVelocidad('al elegirlo')
       await irAFrame(p, 40)
       await enVelocidad('al cambiar de frame')
-      for (const id of ['analisis', 'escala', 'video', 'marcar']) {
+      // Abrir una herramienta a pantalla completa esconde la gráfica (sigue montada) y al volver sigue en «Velocidad».
+      for (const id of ['analisis', 'escala', 'video']) {
         await abrirPestana(p, id)
         await enVelocidad(`en la pestaña ${id}`)
       }
-      // Esconder la gráfica (vídeo y herramientas: sigue montada, sin verse) y volver a verla.
-      await elegirModo(p, 'vh')
-      await verGrafica(p)
-      await enVelocidad('al esconder la gráfica y volver')
+      await p.getByTestId('cerrar-herramienta').click()
+      await enVelocidad('al volver de una herramienta')
       // Al pasar al vídeo grande o a solo gráficas (la gráfica pequeña no está) y volver, sigue en «Velocidad».
-      await elegirModo(p, 'vh')
       await p.getByTestId('ampliar-video').click()
       await p.getByTestId('reducir-video').click()
-      await verGrafica(p)
       await p.getByTestId('minigrafica-modo-velocidad').waitFor()
       await enVelocidad('al volver del vídeo grande')
       await p.getByTestId('ampliar-graficas').click()
@@ -2136,7 +2093,6 @@ describe('vistas ampliadas del móvil', () => {
       assert.ok((await colorFranja(p)).verde > (await colorFranja(p)).ancho * 0.9)
       await p.getByTestId('reducir-video').click()
       assert.ok(await p.getByRole('tablist').isVisible())
-      await verGrafica(p)
       assert.ok(await p.getByTestId('minigrafica').isVisible())
       // En el móvil la página no se desplaza tampoco en la mixta (cada zona lo hace por dentro).
       assert.equal(await p.evaluate(() => getComputedStyle(document.body).overflow), 'hidden')
@@ -2188,7 +2144,8 @@ describe('vistas ampliadas del móvil', () => {
 
       // Al volver: la franja refleja lo seguido (verde), lo perdido (rojo) y lo marcado a mano (ámbar), no un solo color.
       await p.getByTestId('reducir-video').click()
-      assert.equal(await p.getByRole('button', { name: 'Trayectoria completa', exact: true }).getAttribute('aria-pressed'), 'true')
+      // El atajo del vídeo de vídeo y gráfica es el mismo interruptor: sigue encendido.
+      assert.equal(await p.getByTestId('trayectoria-compacta').getAttribute('aria-pressed'), 'true')
       await p.waitForFunction(() => {
         const c = document.querySelector('input[aria-label="Posición en el vídeo"]')?.parentElement?.querySelector('canvas')
         return !!c && c.width > 50
@@ -2206,13 +2163,8 @@ describe('vistas ampliadas del móvil', () => {
   })
 
   it('vista mixta del móvil: el atajo de la trayectoria completa está sobre el vídeo y es el mismo interruptor que el de «Marcar»', async () => {
-    const video = videos.verde
-    const p = await abrirApp(navegador, { ancho: 390 })
+    const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
-      await cargarVideo(p, video.ruta)
-      await marcarTres(p, video.verdad[0].ps)
-      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
-      await p.getByTestId('aviso').waitFor({ timeout: 90000 })
       await p.evaluate(() => window.scrollTo(0, 0))
       await esperarQuieto(p)
       const trayectoria = p.getByTestId('trayectoria-compacta')
@@ -2226,12 +2178,13 @@ describe('vistas ampliadas del móvil', () => {
       assert.equal(await trayectoria.getAttribute('aria-pressed'), 'false')
       await trayectoria.click()
       assert.equal(await trayectoria.getAttribute('aria-pressed'), 'true')
-      // Es el interruptor de la pestaña «Marcar»: lo ve encendido; apagarlo allí lo apaga aquí.
+      // Es el mismo interruptor en el vídeo grande («Marcar»): lo ve encendido; apagarlo allí lo apaga aquí.
       await p.getByTestId('pestana-marcar').click()
-      const enPanel = p.getByRole('button', { name: 'Trayectoria completa', exact: true })
-      assert.equal(await enPanel.getAttribute('aria-pressed'), 'true')
-      await enPanel.click()
-      assert.equal(await trayectoria.getAttribute('aria-pressed'), 'false')
+      await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
+      assert.equal(await trayectoria.getAttribute('aria-pressed'), 'true')
+      await trayectoria.click()
+      await p.getByTestId('reducir-video').click()
+      assert.equal(await p.getByTestId('trayectoria-compacta').getAttribute('aria-pressed'), 'false')
     } finally {
       await p.close()
     }
@@ -2311,7 +2264,6 @@ describe('vistas ampliadas del móvil', () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
       const tiempos = videos.verde.verdad.map((f) => f.t)
-      await verGrafica(p)
       await p.getByTestId('ampliar-graficas').click()
       const vista = p.getByTestId('vista-graficas')
       const caja = await vista.boundingBox()
@@ -2333,7 +2285,6 @@ describe('vistas ampliadas del móvil', () => {
       // Volver.
       await p.getByTestId('reducir-graficas').click()
       assert.ok(await p.getByTestId('minigrafica').isVisible())
-      await elegirModo(p, 'vh')
       assert.ok(await p.getByTestId('capa').isVisible())
       assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
     } finally {
@@ -2346,7 +2297,6 @@ describe('vistas ampliadas del móvil', () => {
       const { p } = await seguirVideo(videos.verde, { ancho })
       try {
         await p.setViewportSize({ width: ancho, height: alto })
-        await verGrafica(p)
         await p.getByTestId('ampliar-graficas').click()
         const vista = p.getByTestId('vista-graficas')
         const sinScroll = () => vista.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)
@@ -4325,102 +4275,99 @@ it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })
 
-describe('móvil: selector de dos zonas y asa de las herramientas', () => {
+describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herramienta', () => {
   let p
   before(async () => {
     ;({ p } = await seguirVideo(videos.verde, { ancho: 390 }))
   })
   after(() => p?.close())
 
-  const asa = () => p.getByTestId('separador-herramientas')
-  const posicion = () => asa().getAttribute('data-posicion')
   const caja = (id) => p.getByTestId(id).boundingBox()
-  const altoBloque = async () => (await caja('visor-fijo'))?.height ?? 0
-  const modoPulsado = async () => {
-    for (const m of ['vg', 'vh', 'gh']) if ((await p.getByTestId(`modo-${m}`).getAttribute('aria-pressed')) === 'true') return m
-    return null
-  }
+  const visible = (id) => p.getByTestId(id).isVisible()
 
-  it('de partida, vídeo y herramientas: el vídeo grande, las pestañas y las tarjetas a la vista, y nada bajo la barra', async () => {
-    assert.equal(await modoPulsado(), 'vh')
-    assert.equal(await posicion(), 'media')
-    const visor = await caja('visor')
-    const selector = await caja('selector-modo')
-    const tarjetas = await caja('panel-herramientas')
-    const tira = await p.getByRole('tablist').locator('..').boundingBox()
-    // Las herramientas ocupan un 40 % de lo que queda bajo el selector (±asa).
-    assert.ok(Math.abs(tira.height + tarjetas.height - 0.4 * (visor.height - selector.height)) <= 4, `herramientas ${tira.height + tarjetas.height} px de ${visor.height - selector.height}`)
-    assert.ok((await caja('lienzo')).height > 200, 'el vídeo se queda sin sitio')
-    assert.equal(await p.getByTestId('minigrafica').isVisible(), false)
+  it('de partida, vídeo y gráfica con la fila de botones abajo, sobre la barra, y nada más', async () => {
+    assert.ok(await visible('lienzo'))
+    assert.ok(await visible('minigrafica'))
+    assert.equal(await visible('panel-herramientas'), false)
+    assert.equal(await p.locator('[role=tab][aria-selected=true]').count(), 0, 'ningún botón marcado sin herramienta abierta')
     const fijo = await caja('visor-fijo')
-    const lienzo = await caja('lienzo')
-    assert.ok(lienzo.y + lienzo.height <= fijo.y + fijo.height + 1, 'el vídeo se sale del bloque de arriba')
+    const tira = await p.getByRole('tablist').locator('..').boundingBox()
     const barra = await caja('barra-fija')
-    assert.ok(tarjetas.y + tarjetas.height <= barra.y + 1, 'las tarjetas pasan por debajo de la barra')
+    assert.ok(tira.y >= fijo.y + fijo.height - 1, 'la fila de botones va debajo del vídeo y la gráfica')
+    assert.ok(tira.y + tira.height <= barra.y + 1, 'la fila de botones va sobre la barra fija')
+    assert.equal(await p.getByTestId('selector-modo').count(), 0)
+    assert.equal(await p.getByTestId('separador-herramientas').count(), 0)
   })
 
-  it('el selector cambia las dos zonas que se ven, siempre dos, y se recuerda', async () => {
-    await elegirModo(p, 'gh')
-    assert.equal(await p.getByTestId('lienzo').isVisible(), false)
-    assert.ok((await caja('minigrafica-caja')).height > 100, 'la gráfica se queda sin sitio')
-    assert.ok(await p.getByRole('tablist').isVisible())
-    await elegirModo(p, 'vg')
-    assert.ok(await p.getByTestId('lienzo').isVisible())
-    assert.ok(await p.getByTestId('minigrafica').isVisible())
-    assert.equal(await p.getByRole('tablist').isVisible(), false, 'con vídeo y gráfica no hay herramientas')
-    assert.equal(await p.getByTestId('panel-herramientas').isVisible(), false)
-    assert.equal(await asa().count(), 0)
-    // Sin herramientas, el bloque de arriba llena el alto bajo el selector.
-    const visor = await caja('visor')
-    const selector = await caja('selector-modo')
-    assert.ok(Math.abs((await altoBloque()) - (visor.height - selector.height)) <= 2)
-    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.modoMovil')), 'vg')
-    await elegirModo(p, 'vh')
+  it('cada herramienta se abre a pantalla completa con su botón marcado, y «Volver» deja vídeo y gráfica', async () => {
+    for (const [id, panel] of [['analisis', 'panel-filtro'], ['escala', 'panel-escala'], ['video', 'pie-visor']]) {
+      await p.getByTestId(`pestana-${id}`).click()
+      assert.ok(await visible(panel), `${id}: no se ve su panel`)
+      assert.equal(await p.getByTestId(`pestana-${id}`).getAttribute('aria-selected'), 'true')
+      assert.equal(await visible('lienzo'), false, 'con una herramienta abierta no se ve el vídeo')
+      assert.equal(await visible('minigrafica'), false)
+      // Llena el alto entre la cabecera y la fila de botones, y la barra de abajo sigue.
+      const tarjetas = await caja('panel-herramientas')
+      const tira = await p.getByRole('tablist').locator('..').boundingBox()
+      assert.ok(tarjetas.y + tarjetas.height <= tira.y + 1, 'las tarjetas pasan por debajo de la fila de botones')
+      assert.ok(tarjetas.height > 300, `la herramienta mide ${tarjetas.height} px`)
+      assert.ok(await visible('barra-fija'))
+      await p.getByTestId('cerrar-herramienta').click()
+      assert.ok(await visible('lienzo'))
+      assert.ok(await visible('minigrafica'))
+      assert.equal(await visible('panel-herramientas'), false)
+    }
   })
 
-  it('elegir un marcador estando en gráfica y herramientas lleva al vídeo (sin guardarlo)', async () => {
-    await elegirModo(p, 'gh')
-    await abrirPestana(p, 'marcar')
-    await p.getByTestId('panel-herramientas').getByRole('radio', { name: /Maléolo/ }).click()
-    assert.equal(await modoPulsado(), 'vh')
-    assert.ok(await p.getByTestId('lienzo').isVisible())
-    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.modoMovil')), 'gh')
+  it('tocar el botón de la herramienta abierta también la cierra; tocar otro cambia de herramienta', async () => {
+    await p.getByTestId('pestana-analisis').click()
+    await p.getByTestId('pestana-escala').click()
+    assert.ok(await visible('panel-escala'))
+    assert.equal(await visible('panel-filtro'), false)
+    await p.getByTestId('pestana-escala').click()
+    assert.equal(await visible('panel-herramientas'), false)
+    assert.ok(await visible('lienzo'))
   })
 
-  it('el asa de las herramientas tiene dos alturas, 40 y 65 %: hacia arriba sube a la segunda y no pasa de ahí', async () => {
-    await elegirModo(p, 'vh')
-    const antes = await altoBloque()
-    const durante = await arrastrarAsa(p, 'separador-herramientas', -110, altoBloque)
-    assert.ok(Math.abs(durante - (antes - 110)) <= 2, `durante el arrastre el bloque mide ${durante} (antes ${antes})`)
-    assert.equal(await posicion(), 'alta')
-    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoHerramientas')), 'alta')
-    await arrastrarAsa(p, 'separador-herramientas', -2000)
-    assert.equal(await posicion(), 'alta')
-    assert.ok((await caja('lienzo')).height > 100, 'el vídeo se pliega: no hay tercera altura')
-    await arrastrarAsa(p, 'separador-herramientas', 2000)
-    assert.equal(await posicion(), 'media')
-    assert.ok(Math.abs((await altoBloque()) - antes) <= 2)
+  it('«Marcar» abre el vídeo grande, con el marcado y «Seguir» sobre el propio vídeo; al volver, vídeo y gráfica', async () => {
+    await p.getByTestId('pestana-marcar').click()
+    await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
+    assert.ok(await visible('marcado-compacto'))
+    assert.ok(await p.getByRole('button', { name: /Seguir desde aquí/ }).isVisible())
+    await p.getByTestId('reducir-video').click()
+    assert.ok(await visible('minigrafica'))
+    assert.equal(await visible('panel-herramientas'), false)
   })
 
-  it('dos toques vuelven a la de partida; con el teclado, a la de al lado sin pasar de las dos', async () => {
-    await arrastrarAsa(p, 'separador-herramientas', -2000)
-    await asa().dblclick()
-    await esperarVideoAsentado(p)
-    assert.equal(await posicion(), 'media')
-    await asa().focus()
-    await p.keyboard.press('ArrowUp')
-    assert.equal(await posicion(), 'alta')
-    await p.keyboard.press('ArrowUp')
-    assert.equal(await posicion(), 'alta')
-    await p.keyboard.press('ArrowDown')
-    await p.keyboard.press('ArrowDown')
-    assert.equal(await posicion(), 'media')
-  })
-
-  it('el estado del guardado está en la pestaña «Vídeo» en el móvil', async () => {
-    await abrirPestana(p, 'video')
+  it('el estado del guardado y el pie están en la pestaña «Vídeo»', async () => {
+    await p.getByTestId('pestana-video').click()
     await p.getByTestId('guardado').waitFor({ state: 'visible' })
     assert.equal(await p.getByTestId('guardado').count(), 1)
+    await p.getByTestId('cerrar-herramienta').click()
+  })
+
+  it('con las herramientas abiertas, las tarjetas se desplazan por dentro y la página no', async () => {
+    await p.getByTestId('pestana-analisis').click()
+    const cajas = async () => ({ fila: await p.getByRole('tablist').boundingBox(), barra: await caja('barra-fija'), visor: await caja('visor') })
+    const a = await cajas()
+    const tarjetas = p.getByTestId('panel-herramientas')
+    assert.ok(await tarjetas.evaluate((el) => el.scrollHeight > el.clientHeight + 50), 'la pestaña «Análisis» cabe sin desplazarse')
+    await tarjetas.evaluate((el) => el.scrollTo(0, el.scrollHeight))
+    await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    assert.ok(await tarjetas.evaluate((el) => el.scrollTop > 0))
+    assert.deepEqual(await cajas(), a, 'algo se ha movido al desplazar las tarjetas')
+    await p.getByTestId('cerrar-herramienta').click()
+  })
+
+  it('escala: «Empezar» pasa al vídeo con una tira para volver, y vuelve a la escala con el borrador', async () => {
+    await p.getByTestId('pestana-escala').click()
+    await p.getByRole('button', { name: /Medir con un objeto|Calibrar|Empezar/i }).first().click()
+    await p.getByTestId('tira-vuelta').waitFor({ state: 'visible' })
+    assert.ok(await visible('toca-escala'))
+    await p.getByTestId('volver-herramienta').click()
+    assert.ok(await visible('panel-escala'))
+    assert.equal(await p.getByTestId('pestana-escala').getAttribute('aria-selected'), 'true')
+    await p.getByTestId('cerrar-herramienta').click()
   })
 })
 
@@ -4430,8 +4377,6 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     // Vídeo vertical: es el que puede crecer en alto (uno horizontal llena antes el ancho).
     p = await abrirApp(navegador, { ancho: 390 })
     await cargarVideo(p, videos.vertical.ruta)
-    // Este asa reparte el bloque de arriba cuando se ven las dos cosas: vídeo y gráfica, sin herramientas.
-    await elegirModo(p, 'vg')
     await esperarVideoAsentado(p)
   })
   after(() => p?.close())
