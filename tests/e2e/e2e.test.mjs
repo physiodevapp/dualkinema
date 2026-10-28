@@ -3915,6 +3915,96 @@ describe('la navegación se pausa mientras se detecta el cuerpo', () => {
   })
 })
 
+/**
+ * De frente (fase 5, paso 4): la persona de frente a la cámara (su derecha a la izquierda de la imagen). La pierna derecha
+ * cae en los gomets del vídeo «frontal»; la izquierda es su espejo respecto a x = 360, con la cadera 10 px más alta (pelvis
+ * inclinada: la izquierda más alta); los hombros, 120 px sobre las caderas y 12 px hacia la izquierda de la persona
+ * (tronco inclinado a la izquierda). En `intercambiados`, el modelo da los lados al revés.
+ */
+function frenteFalso(verdad, { intercambiados = [] } = {}) {
+  const PARTES = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta']
+  return verdad.map((v, indice) => {
+    const [cadera, rodilla, tobillo] = v.ps
+    const espejo = (q, dy = 0) => ({ x: 720 - q.x, y: q.y + dy })
+    const der = { cadera, rodilla, tobillo, hombro: { x: cadera.x + 12, y: cadera.y - 120 }, talon: { x: tobillo.x, y: tobillo.y + 10 }, punta: { x: tobillo.x - 5, y: tobillo.y + 20 } }
+    const izq = {
+      cadera: espejo(cadera, -10), rodilla: espejo(rodilla), tobillo: espejo(tobillo),
+      hombro: { x: 720 - cadera.x + 12, y: cadera.y - 130 }, talon: espejo(der.talon), punta: espejo(der.punta),
+    }
+    const al = intercambiados.includes(indice)
+    const puntos = PARTES.flatMap((parte) => ['izq', 'der'].flatMap((lado) => {
+      const q = ((lado === 'izq') !== al ? izq : der)[parte]
+      return [q.x, q.y, 0.95]
+    }))
+    return { indice, t: v.t, puntos, der, izq }
+  })
+}
+
+/** Lo que debe dar cada medida de frente con los puntos de `frenteFalso` (cámara delante: marco canónico (x, −y)). */
+function verdadFrente({ der, izq }) {
+  const vec = (a, b) => ({ x: b.x - a.x, y: -(b.y - a.y) })
+  const entre = (u, w) => (Math.atan2(u.x * w.y - u.y * w.x, u.x * w.x + u.y * w.y) * 180) / Math.PI
+  const norm = (g) => ((((g + 180) % 360) + 360) % 360) - 180
+  const medio = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+  return {
+    'Rodilla derecha': norm(-entre(vec(der.cadera, der.rodilla), vec(der.rodilla, der.tobillo))),
+    'Rodilla izquierda': norm(entre(vec(izq.cadera, izq.rodilla), vec(izq.rodilla, izq.tobillo))),
+    'Cadera derecha': norm(-entre(vec(izq.cadera, der.cadera), vec(der.cadera, der.rodilla)) + 90),
+    'Cadera izquierda': norm(entre(vec(der.cadera, izq.cadera), vec(izq.cadera, izq.rodilla)) + 90),
+    Pelvis: norm(entre({ x: 1, y: 0 }, vec(der.cadera, izq.cadera))),
+    Tronco: norm(-entre({ x: 0, y: 1 }, vec(medio(der.cadera, izq.cadera), medio(der.hombro, izq.hombro)))),
+  }
+}
+
+describe('sin marcadores de frente (fase 5, paso 4)', () => {
+  const INTERCAMBIADOS = [50, 51, 52]
+  let p
+  let frames
+  before(async () => {
+    frames = frenteFalso(videos.frontal.verdad, { intercambiados: INTERCAMBIADOS })
+    p = await abrirConPoseFalsa(navegador, frames.map(({ indice, t, puntos }) => ({ indice, t, puntos })))
+    await cargarVideo(p, videos.verde.ruta)
+    await abrirPestana(p, 'video')
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.frontal.ruta)
+    await p.getByTestId('anadir-vista-orientacion').getByRole('radio', { name: /Sin marcadores/ }).click()
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'marcar')
+  })
+  after(() => p?.close())
+
+  it('la vista de frente sin marcadores detecta, pone cada cadera en su lado y mide las dos piernas, la pelvis y el tronco', async () => {
+    assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).count(), 0)
+    await detectarCuerpo(p)
+    assert.match(await p.getByTestId('aviso').innerText(), new RegExp(`piernas intercambiadas corregidas en ${INTERCAMBIADOS.length} frames`))
+    await abrirPestana(p, 'analisis')
+    const selector = p.getByRole('radiogroup', { name: 'Articulación' })
+    assert.deepEqual(await selector.getByRole('radio').allInnerTexts(), ['Rodilla derecha', 'Rodilla izquierda', 'Cadera derecha', 'Cadera izquierda', 'Pelvis', 'Tronco'])
+    for (const nombre of ['Rodilla derecha', 'Rodilla izquierda', 'Cadera derecha', 'Cadera izquierda', 'Pelvis', 'Tronco']) {
+      await abrirPestana(p, 'analisis')
+      await selector.getByRole('radio', { name: nombre }).click()
+      for (const i of [20, 51, 100]) {
+        await irAFrame(p, i)
+        const esperado = verdadFrente(frames[i])[nombre]
+        assert.ok(Math.abs((await leerAngulo(p)) - esperado) < TOLERANCIA_GRADOS, `${nombre}, frame ${i + 1}: ${await leerAngulo(p)} frente a ${esperado}`)
+      }
+    }
+    // La rodilla derecha sin marcadores es el FPPA de la verdad del vídeo (los puntos caen en los gomets).
+    await selector.getByRole('radio', { name: 'Rodilla derecha' }).click()
+    await irAFrame(p, 60)
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.frontal.verdad[60].fppa) < TOLERANCIA_GRADOS)
+    // Con el tronco se corrigen la cadera y el hombro de los dos lados (el punto medio no se marca).
+    await selector.getByRole('radio', { name: 'Tronco' }).click()
+    await abrirPestana(p, 'marcar')
+    const marcables = await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText()
+    assert.match(marcables, /Hombro izquierdo/)
+    assert.match(marcables, /Cadera derecha/)
+    assert.doesNotMatch(marcables, /Punto medio/)
+  })
+})
+
 describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
   it('detectar no cambia lo que se marca y se mide (mandan los gomets) y no toca lo seguido', async () => {
     const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad))
