@@ -30,9 +30,10 @@ function datos(conEscala: boolean): DatosExportacion {
   return {
     tiempos,
     marcadores: [{ id: 'rodilla', nombre: 'Rodilla', crudo, filtrado, velocidad: velocidad(conEscala ? 'm/s' : 'px/s') }],
-    angulo: {
+    angulos: [{
       id: 'rodilla-sagital',
       nombre: 'Rodilla (flexión)',
+      fuente: 'gomets',
       positivo: 'flexión',
       negativo: 'extensión',
       crudo: [10, 20, NaN, NaN],
@@ -41,7 +42,7 @@ function datos(conEscala: boolean): DatosExportacion {
       velocidad: NaNs(),
       aceleracion: NaNs(),
       cero: { tramo: { desde: 0, hasta: 0.1 }, media: 10, desviacion: 0.5, muestras: 2 },
-    },
+    }],
     calibracion: conEscala
       ? { tipo: 'escala-plano', objeto: 'cinta', a: { x: 0, y: 0 }, b: { x: 100, y: 0 }, longitudM: 1, t: 0 }
       : null,
@@ -120,14 +121,30 @@ describe('construirCsv', () => {
 
   it('sin cero la columna relativa queda vacía y se avisa', () => {
     const d = datos(false)
-    const sinCero: DatosExportacion = { ...d, angulo: { ...d.angulo!, relativo: null, cero: null } }
+    const sinCero: DatosExportacion = { ...d, angulos: [{ ...d.angulos[0]!, relativo: null, cero: null }] }
     const csv = construirCsv(sinCero)
     expect(csv).toContain('# cero de referencia;ninguno')
     expect(cuerpo(csv)[0]!.split(';')[12]).toBe('')
   })
 
+  it('varias articulaciones (gomets y sin marcadores): sus columnas una tras otra y su fuente y su cero en la cabecera', () => {
+    const d = datos(false)
+    const pose = { ...d.angulos[0]!, id: 'pose_rodilla', nombre: 'Rodilla sin marcadores', fuente: 'sinMarcadores' as const, crudo: [12, 22, NaN, NaN], relativo: null, cero: null }
+    const deteccion = { modelo: 'full', libreria: '@mediapipe/tasks-vision 1.1.0', delegado: 'GPU', fecha: '2026-10-28T10:00:00.000Z', conPersona: 4, intercambiados: 1, dudosos: 0 } as const
+    const csv = construirCsv({ ...d, angulos: [d.angulos[0]!, pose], meta: { ...d.meta, deteccion } })
+    const cols = filas(csv).find((l) => !l.startsWith('#'))!.split(';')
+    expect(cols.slice(-10, -5)).toEqual(['angulo_rodilla-sagital_crudo_grados', 'angulo_rodilla-sagital_filtrado_grados', 'angulo_rodilla-sagital_relativo_grados', 'angulo_rodilla-sagital_vel_grados_s', 'angulo_rodilla-sagital_acel_grados_s2'])
+    expect(cols.at(-5)).toBe('angulo_pose_rodilla_crudo_grados')
+    expect(cuerpo(csv)[0]!.split(';')[cols.indexOf('angulo_pose_rodilla_crudo_grados')]).toBe('12,000')
+    // Las celdas con «;» van entre comillas.
+    expect(csv).toContain('# articulación;"pose_rodilla: Rodilla sin marcadores (positivo: flexión; negativo: extensión); sin marcadores"')
+    expect(csv).toContain('# cero de referencia;"rodilla-sagital: tramo estático')
+    expect(csv).toContain('# cero de referencia;pose_rodilla: ninguno')
+    expect(csv).toContain('# sin marcadores;"puntos del cuerpo detectados con @mediapipe/tasks-vision 1.1.0 (Pose Landmarker full, GPU)')
+  })
+
   it('articulación de otro plano: sin columnas de ángulo', () => {
-    const csv = construirCsv({ ...datos(false), angulo: null })
+    const csv = construirCsv({ ...datos(false), angulos: [] })
     expect(csv).not.toContain('angulo_')
     expect(cuerpo(csv)[0]!.split(';')).toHaveLength(10)
   })

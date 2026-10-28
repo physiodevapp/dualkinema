@@ -70,6 +70,11 @@ export interface VistaCabecera {
   readonly sincronia: Sincronia
   /** La última detección sin marcadores (esquema 5); null si no se ha detectado. */
   readonly deteccion: DeteccionPose | null
+  /**
+   * La articulación que se mira en la vista (fase 5, paso 3b: de perfil hay varias). Opcional: sin ella, la primera de su
+   * plano. No sube la versión: una app de esquema 5 anterior la ignora (solo pierde lo elegido).
+   */
+  readonly articulacion?: string
 }
 
 export interface CabeceraSesion {
@@ -129,6 +134,8 @@ export interface EntradaGuardado {
     readonly sincronia?: Sincronia
     /** La última detección sin marcadores; sin ella (o null), ninguna. */
     readonly deteccion?: DeteccionPose | null
+    /** La articulación que se mira; sin ella, la primera de su plano. */
+    readonly articulacion?: string
   }[]
   /** Id de la vista de referencia; sin él, la primera. */
   readonly referencia?: string
@@ -167,6 +174,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
       marcadores: [...(v.marcadores ?? e.modelo.marcadores.map((mk) => mk.id))],
       sincronia: v.sincronia ?? SIN_SINCRONIA,
       deteccion: v.deteccion ?? null,
+      ...(v.articulacion ? { articulacion: v.articulacion } : {}),
     })),
     referencia: e.referencia ?? e.vistas[0]!.id,
     filtro: e.filtro ?? null,
@@ -334,6 +342,7 @@ function errorVista(v: unknown): string | null {
   const s = errorSincronia(v.sincronia)
   if (s) return `${s} en la vista ${v.id}`
   if (v.deteccion !== null && !esDeteccion(v.deteccion)) return `detección sin marcadores no válida en la vista ${v.id}`
+  if (v.articulacion !== undefined && !esTexto(v.articulacion)) return `articulación elegida no válida en la vista ${v.id}`
   return null
 }
 
@@ -360,6 +369,7 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
     if (ajena) return mal(`cero de referencia de una articulación que no está en el modelo: ${ajena}`)
     const entre = vista.calibracion?.entre
     if (entre && (!marcadores.has(entre.desde) || !marcadores.has(entre.hasta))) return mal('escala entre marcadores que no están en el modelo')
+    if (vista.articulacion !== undefined && !articulaciones.has(vista.articulacion)) return mal(`la vista ${vista.id} mira una articulación que no está en el modelo: ${vista.articulacion}`)
     const fuera = vista.marcadores.find((id) => !marcadores.has(id))
     if (fuera) return mal(`la vista ${vista.id} sigue un marcador que no está en el modelo: ${fuera}`)
   }

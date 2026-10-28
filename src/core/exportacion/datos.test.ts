@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { modeloRodilla3 } from '../articulaciones/catalogo'
+import { articulacionesPoseSagitales } from '../pose/catalogo'
+import { idPose } from '../pose/puntos'
 import type { CeroReferencia } from '../articulaciones/cero'
 import type { VelocidadMarcador } from '../filtros/derivadas'
 import type { TrayectoriaFiltrada } from '../filtros/tramos'
@@ -41,6 +43,7 @@ const entrada = (extra: Partial<EntradaDatosCsv> = {}): EntradaDatosCsv => ({
     velocidades: new Map([[cadera.id, velocidadCadera]]),
     derivadas: { velocidad: Float64Array.of(NaN, NaN, 5), aceleracion: NaNs() },
     corte: 4,
+    fs: 10,
   },
   articulacion,
   orientacion: { plano: 'sagital', mira: 'derecha' },
@@ -57,7 +60,7 @@ const entrada = (extra: Partial<EntradaDatosCsv> = {}): EntradaDatosCsv => ({
 
 describe('datosCsv', () => {
   it('relativo = filtrado − media del cero; sin valor sigue siendo NaN, nunca 0', () => {
-    const a = datosCsv(entrada()).angulo!
+    const a = datosCsv(entrada()).angulos[0]!
     expect(a.id).toBe(articulacion.id)
     expect(a.relativo![0]).toBe(1) // 11 − 10
     expect(Number.isNaN(a.relativo![1]!)).toBe(true)
@@ -70,8 +73,8 @@ describe('datosCsv', () => {
   })
 
   it('sin cero no hay relativo; en otro plano no hay ángulo', () => {
-    expect(datosCsv(entrada({ cero: null })).angulo!.relativo).toBeNull()
-    expect(datosCsv(entrada({ orientacion: { plano: 'frontal', ve: 'delante' } })).angulo).toBeNull()
+    expect(datosCsv(entrada({ cero: null })).angulos[0]!.relativo).toBeNull()
+    expect(datosCsv(entrada({ orientacion: { plano: 'frontal', ve: 'delante' } })).angulos).toEqual([])
   })
 
   it('cada marcador lleva lo suyo (o vacío si no hay) y la cabecera, corte pedido y aplicado', () => {
@@ -96,5 +99,30 @@ describe('datosCsv', () => {
     expect(angulo(filas[1]!)).toEqual(['', '', '', '', ''])
     expect(angulo(filas[2]!).slice(0, 3)).toEqual(['30.000', '31.000', '21.000'])
     expect(Number(angulo(filas[2]!)[3])).toBe(5)
+  })
+
+  it('las demás articulaciones de la vista salen detrás de la elegida, calculadas igual y con su cero', () => {
+    // Rodilla sin marcadores a 90° de flexión, quieta: muslo vertical y pierna hacia atrás (mira a la derecha: atrás = −x).
+    const pose = articulacionesPoseSagitales('der')[0]!
+    const posiciones = { [idPose('cadera', 'der')]: [0, 0], [idPose('rodilla', 'der')]: [0, 100], [idPose('tobillo', 'der')]: [-100, 100] }
+    const crudo = new Map<string, (Muestra2D | undefined)[]>([[cadera.id, crudoCadera]])
+    const porMarcador = new Map<string, TrayectoriaFiltrada>([[cadera.id, filtradoCadera]])
+    for (const [id, [x, y]] of Object.entries(posiciones)) {
+      crudo.set(id, tiempos.map((t) => ({ t, x: x!, y: y!, calidad: 0.9, editadoManual: false })))
+      porMarcador.set(id, { posiciones: tiempos.map((t) => ({ t, x: x!, y: y!, corto: false, interpolado: false, editadoManual: false })), tramos: [], rejillas: [] })
+    }
+    const e = entrada({ crudo, otras: [articulacion, pose], ceros: { [pose.id]: { desde: 0, hasta: 0.2 } } })
+    const d = datosCsv({ ...e, filtrado: { ...e.filtrado, porMarcador } })
+    expect(d.angulos.map((a) => [a.id, a.fuente])).toEqual([
+      [articulacion.id, 'gomets'],
+      [pose.id, 'sinMarcadores'],
+    ])
+    const a = d.angulos[1]!
+    expect(Array.from(a.crudo).map((v) => Math.round(v * 1e9) / 1e9)).toEqual([90, 90, 90])
+    expect(Array.from(a.filtrado).map((v) => Math.round(v * 1e9) / 1e9)).toEqual([90, 90, 90])
+    expect(a.cero!.media).toBeCloseTo(90, 9)
+    expect(a.relativo![1]).toBeCloseTo(0, 9)
+    // Tres frames: ningún tramo para derivar (sin valor, nunca 0).
+    expect(Array.from(a.velocidad).every(Number.isNaN)).toBe(true)
   })
 })
