@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
+import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, PresentationChartLineIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
@@ -293,14 +293,23 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // Se mira al cambiar (estado ajustado durante el render, como en `useFiltrado`): plegarlo después sigue siendo posible.
   const pideVideo = `${seleccionado ?? ''}|${tocandoEscala}|${marcandoEvento}`
   const [pideVideoAntes, setPideVideoAntes] = useState(pideVideo)
+  // Con las herramientas abiertas arriba solo cabe una cosa a la vez: el vídeo o la gráfica (con las dos y las herramientas
+  // no se veía bien ninguna). Se cambia con el botón de la esquina; con las herramientas plegadas se ven las dos.
+  const [arriba, setArriba] = useState<'video' | 'grafica'>('video')
   if (pideVideo !== pideVideoAntes) {
     setPideVideoAntes(pideVideo)
-    if (herramientas.posicion === 'todo' && ((seleccionado && !siguiendo) || tocandoEscala || marcandoEvento)) herramientas.mostrar('alta')
+    if ((seleccionado && !siguiendo) || tocandoEscala || marcandoEvento) {
+      if (herramientas.posicion === 'todo') herramientas.mostrar('alta')
+      if (arriba !== 'video') setArriba('video')
+    }
   }
+  const soloUno = activo && !mixtaApaisada && (herramientas.posicion === 'media' || herramientas.posicion === 'alta')
+  const soloVideo = soloUno && arriba === 'video'
+  const soloGrafica = soloUno && arriba === 'grafica'
   const altoBloque = mixtaApaisada ? herramientas.disponible : herramientas.altoBloque
   // Tope de alto del vídeo: su parte del bloque de arriba (o lo que diga el asa mientras se arrastra). El ancho lo limita
   // el propio lienzo (guarda la proporción), así que aquí no hace falta el techo.
-  const altoVideoMovil = altoArrastre ?? Math.round(altosVideo(altoBloque, Infinity)[reparto])
+  const altoVideoMovil = soloVideo ? altoBloque : (altoArrastre ?? Math.round(altosVideo(altoBloque, Infinity)[reparto]))
   const bloquePlegado = activo && altoBloque <= 0
   // Debajo del vídeo (en la vista de vídeo grande, dentro de ella: lo de fuera queda tapado).
   // En el vídeo grande, el aviso va justo debajo del vídeo (sin `order`: con `order-2` quedaba el último, tras los marcadores,
@@ -391,7 +400,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                   `max-lg:order-1 max-lg:shrink-0 max-lg:overflow-hidden ${mixtaApaisada ? 'max-lg:col-start-1 max-lg:row-span-3 max-lg:row-start-1' : ''}`
             } ${enGraficas || bloquePlegado ? 'max-lg:hidden' : ''}`}
           >
-          <div className={dosColumnas ? 'relative min-w-0 flex-1' : 'relative'}>
+          <div className={`${dosColumnas ? 'relative min-w-0 flex-1' : 'relative'} ${soloGrafica ? 'max-lg:hidden' : ''}`}>
             <LienzoVideo
               key={activaViva.id}
               llenar={enVideo}
@@ -470,6 +479,18 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                 {enVideo ? <ArrowsPointingInIcon className="size-5" /> : <ArrowsPointingOutIcon className="size-5" />}
               </button>
             )}
+            {soloVideo && (
+              <button
+                type="button"
+                onClick={() => setArriba('grafica')}
+                aria-label="Ver la gráfica en lugar del vídeo"
+                title="Ver la gráfica en lugar del vídeo"
+                data-testid="ver-grafica"
+                className="absolute top-[6.5rem] right-2 z-10 flex size-9 items-center justify-center rounded-md border border-borde bg-fondo/85 text-texto"
+              >
+                <PresentationChartLineIcon className="size-5" />
+              </button>
+            )}
             {!anchoLg && vista !== 'graficas' && (
               <button
                 type="button"
@@ -484,7 +505,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               </button>
             )}
           </div>
-          {!anchoLg && vista === 'mixta' && (
+          {!anchoLg && vista === 'mixta' && !soloUno && (
             <SeparadorVideo
               reparto={reparto}
               onReparto={elegirReparto}
@@ -496,6 +517,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             />
           )}
           {!anchoLg && vista === 'mixta' && (
+            <div className={soloVideo ? 'hidden' : 'contents'}>
             <MiniGrafica
               tiempos={tiemposGrafica}
               indice={deseado < total ? deseado : null}
@@ -506,7 +528,9 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               modo={modoMini}
               onModo={setModoMini}
               onAmpliar={() => setVista('graficas')}
+              onVideo={soloGrafica ? () => setArriba('video') : undefined}
             />
+            </div>
           )}
           {enVideo && !dosColumnas && (
             <>
