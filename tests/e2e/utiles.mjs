@@ -195,12 +195,17 @@ export async function seguirHastaElFinal(p) {
 
 /** Abre una pestaña de herramientas del visor («marcar», «analisis», «escala», «video») si no es la abierta. */
 /**
- * Móvil, vista mixta: con las herramientas abiertas arriba se ve el vídeo o la gráfica, no los dos. Pasa a la gráfica si
- * se está viendo el vídeo (si ya se ve, o las herramientas están plegadas y se ven las dos, no hace nada).
+ * Móvil en vertical: elige qué dos zonas se ven con el selector de arriba (`vg` vídeo y gráfica, `vh` vídeo y
+ * herramientas, `gh` gráfica y herramientas).
  */
+export async function elegirModo(p, modo) {
+  await p.getByTestId(`modo-${modo}`).click()
+  await p.waitForFunction((m) => document.querySelector(`[data-testid=modo-${m}]`)?.getAttribute('aria-pressed') === 'true', modo)
+}
+
+/** Pasa a gráfica y herramientas (con las herramientas abiertas, la gráfica pequeña solo se ve en este modo o en `vg`). */
 export async function verGrafica(p) {
-  const boton = p.getByTestId('ver-grafica')
-  if (await boton.isVisible()) await boton.click()
+  await elegirModo(p, 'gh')
   await p.getByTestId('minigrafica').waitFor({ state: 'visible' })
 }
 

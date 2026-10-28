@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
+import { ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { partirInterpolado, type SeriePorFrame } from '../../core/graficas/series'
 import GraficaTiempo, { type SerieGrafica, type TokenColor } from './GraficaTiempo'
 
@@ -28,8 +28,6 @@ interface Props {
   onModo: (modo: ModoMiniGrafica) => void
   /** Pasa a la vista de solo gráficas. */
   onAmpliar: () => void
-  /** Con las herramientas abiertas arriba cabe una sola cosa: vuelve al vídeo (si no se da, no hay botón). */
-  onVideo?: () => void
 }
 
 const grados = (v: number) => `${Math.round(v)}°`
@@ -55,7 +53,7 @@ const dividir = (v: ArrayLike<number>, d: number) => Float64Array.from(v, (x) =>
  * para ver si coinciden en el tiempo, no para leer valores; esos, en la gráfica completa).
  * Mismos huecos y mismo cursor que la completa; tocar o arrastrar salta de frame.
  */
-export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado, velocidad, modo, onModo, onAmpliar, onVideo }: Props) {
+export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado, velocidad, modo, onModo, onAmpliar }: Props) {
   const xs = useMemo(() => Array.from(tiempos), [tiempos])
   const n = xs.length
 
@@ -127,30 +125,16 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
             </button>
           ))}
         </div>
-        <div className="flex gap-1">
-          {onVideo && (
-            <button
-              type="button"
-              onClick={onVideo}
-              aria-label="Ver el vídeo en lugar de la gráfica"
-              title="Ver el vídeo en lugar de la gráfica"
-              data-testid="ver-video"
-              className="flex size-7 items-center justify-center rounded-md border border-borde text-texto-2"
-            >
-              <VideoCameraIcon className="size-4" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onAmpliar}
-            aria-label="Ver solo las gráficas"
-            title="Ver solo las gráficas"
-            data-testid="ampliar-graficas"
-            className="flex size-7 items-center justify-center rounded-md border border-borde text-texto-2"
-          >
-            <ArrowsPointingOutIcon className="size-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onAmpliar}
+          aria-label="Ver solo las gráficas"
+          title="Ver solo las gráficas"
+          data-testid="ampliar-graficas"
+          className="flex size-7 items-center justify-center rounded-md border border-borde text-texto-2"
+        >
+          <ArrowsPointingOutIcon className="size-4" />
+        </button>
       </div>
       <div data-testid="minigrafica-caja" className="relative min-h-0 flex-1">
         <GraficaTiempo

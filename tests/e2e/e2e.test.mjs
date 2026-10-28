@@ -14,6 +14,7 @@ import {
   abrirApp,
   abrirPestana,
   arrastrarAsa,
+  elegirModo,
   verGrafica,
   cajaElemento,
   cajaVideo,
@@ -2069,13 +2070,12 @@ describe('gráfica pequeña del móvil: conserva su modo', () => {
         await abrirPestana(p, id)
         await enVelocidad(`en la pestaña ${id}`)
       }
-      // Plegar el vídeo y la gráfica (solo herramientas: la gráfica sigue montada, sin verse) y volver.
-      await arrastrarAsa(p, 'separador-herramientas', -2000)
-      assert.equal(await p.getByTestId('separador-herramientas').getAttribute('data-posicion'), 'todo')
-      await arrastrarAsa(p, 'separador-herramientas', 2000)
-      await enVelocidad('al plegar el vídeo y volver')
+      // Esconder la gráfica (vídeo y herramientas: sigue montada, sin verse) y volver a verla.
+      await elegirModo(p, 'vh')
+      await verGrafica(p)
+      await enVelocidad('al esconder la gráfica y volver')
       // Al pasar al vídeo grande o a solo gráficas (la gráfica pequeña no está) y volver, sigue en «Velocidad».
-      if (await p.getByTestId('ver-video').isVisible()) await p.getByTestId('ver-video').click()
+      await elegirModo(p, 'vh')
       await p.getByTestId('ampliar-video').click()
       await p.getByTestId('reducir-video').click()
       await verGrafica(p)
@@ -2333,7 +2333,7 @@ describe('vistas ampliadas del móvil', () => {
       // Volver.
       await p.getByTestId('reducir-graficas').click()
       assert.ok(await p.getByTestId('minigrafica').isVisible())
-      await p.getByTestId('ver-video').click()
+      await elegirModo(p, 'vh')
       assert.ok(await p.getByTestId('capa').isVisible())
       assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
     } finally {
@@ -4325,7 +4325,7 @@ it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })
 
-describe('asa entre el vídeo con su gráfica y las herramientas (móvil)', () => {
+describe('móvil: selector de dos zonas y asa de las herramientas', () => {
   let p
   before(async () => {
     ;({ p } = await seguirVideo(videos.verde, { ancho: 390 }))
@@ -4336,65 +4336,73 @@ describe('asa entre el vídeo con su gráfica y las herramientas (móvil)', () =
   const posicion = () => asa().getAttribute('data-posicion')
   const caja = (id) => p.getByTestId(id).boundingBox()
   const altoBloque = async () => (await caja('visor-fijo'))?.height ?? 0
+  const modoPulsado = async () => {
+    for (const m of ['vg', 'vh', 'gh']) if ((await p.getByTestId(`modo-${m}`).getAttribute('aria-pressed')) === 'true') return m
+    return null
+  }
 
-  it('de partida, las herramientas en un 40 %: vídeo, gráfica, pestañas y tarjetas a la vista y nada bajo la barra', async () => {
+  it('de partida, vídeo y herramientas: el vídeo grande, las pestañas y las tarjetas a la vista, y nada bajo la barra', async () => {
+    assert.equal(await modoPulsado(), 'vh')
     assert.equal(await posicion(), 'media')
     const visor = await caja('visor')
+    const selector = await caja('selector-modo')
     const tarjetas = await caja('panel-herramientas')
     const tira = await p.getByRole('tablist').locator('..').boundingBox()
-    // La tira y las tarjetas ocupan lo que les toca (un 40 % de lo que hay entre la cabecera y la barra, ±asa).
-    assert.ok(Math.abs(tira.height + tarjetas.height - 0.4 * visor.height) <= 4, `herramientas ${tira.height + tarjetas.height} px de ${visor.height}`)
-    // Con las herramientas abiertas arriba va una sola cosa, el vídeo; la gráfica queda montada, sin verse.
+    // Las herramientas ocupan un 40 % de lo que queda bajo el selector (±asa).
+    assert.ok(Math.abs(tira.height + tarjetas.height - 0.4 * (visor.height - selector.height)) <= 4, `herramientas ${tira.height + tarjetas.height} px de ${visor.height - selector.height}`)
     assert.ok((await caja('lienzo')).height > 200, 'el vídeo se queda sin sitio')
     assert.equal(await p.getByTestId('minigrafica').isVisible(), false)
     const fijo = await caja('visor-fijo')
     const lienzo = await caja('lienzo')
     assert.ok(lienzo.y + lienzo.height <= fijo.y + fijo.height + 1, 'el vídeo se sale del bloque de arriba')
+    const barra = await caja('barra-fija')
+    assert.ok(tarjetas.y + tarjetas.height <= barra.y + 1, 'las tarjetas pasan por debajo de la barra')
   })
 
-  it('el botón de la esquina cambia el vídeo por la gráfica y al revés; marcar vuelve al vídeo', async () => {
-    await p.getByTestId('ver-grafica').click()
+  it('el selector cambia las dos zonas que se ven, siempre dos, y se recuerda', async () => {
+    await elegirModo(p, 'gh')
     assert.equal(await p.getByTestId('lienzo').isVisible(), false)
     assert.ok((await caja('minigrafica-caja')).height > 100, 'la gráfica se queda sin sitio')
-    await p.getByTestId('ver-video').click()
+    assert.ok(await p.getByRole('tablist').isVisible())
+    await elegirModo(p, 'vg')
     assert.ok(await p.getByTestId('lienzo').isVisible())
-    assert.equal(await p.getByTestId('minigrafica').isVisible(), false)
-    // Elegir un marcador para colocarlo tiene que dejar el vídeo a la vista.
-    await p.getByTestId('ver-grafica').click()
-    await abrirPestana(p, 'marcar')
-    await p.getByTestId('panel-herramientas').getByRole('radio', { name: /Epicóndilo/ }).click()
-    assert.ok(await p.getByTestId('lienzo').isVisible())
+    assert.ok(await p.getByTestId('minigrafica').isVisible())
+    assert.equal(await p.getByRole('tablist').isVisible(), false, 'con vídeo y gráfica no hay herramientas')
+    assert.equal(await p.getByTestId('panel-herramientas').isVisible(), false)
+    assert.equal(await asa().count(), 0)
+    // Sin herramientas, el bloque de arriba llena el alto bajo el selector.
+    const visor = await caja('visor')
+    const selector = await caja('selector-modo')
+    assert.ok(Math.abs((await altoBloque()) - (visor.height - selector.height)) <= 2)
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.modoMovil')), 'vg')
+    await elegirModo(p, 'vh')
   })
 
-  it('hacia arriba da más sitio a las herramientas y, al final, pliega el vídeo y la gráfica (sigue montado)', async () => {
+  it('elegir un marcador estando en gráfica y herramientas lleva al vídeo (sin guardarlo)', async () => {
+    await elegirModo(p, 'gh')
+    await abrirPestana(p, 'marcar')
+    await p.getByTestId('panel-herramientas').getByRole('radio', { name: /Maléolo/ }).click()
+    assert.equal(await modoPulsado(), 'vh')
+    assert.ok(await p.getByTestId('lienzo').isVisible())
+    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.modoMovil')), 'gh')
+  })
+
+  it('el asa de las herramientas tiene dos alturas, 40 y 65 %: hacia arriba sube a la segunda y no pasa de ahí', async () => {
+    await elegirModo(p, 'vh')
     const antes = await altoBloque()
     const durante = await arrastrarAsa(p, 'separador-herramientas', -110, altoBloque)
     assert.ok(Math.abs(durante - (antes - 110)) <= 2, `durante el arrastre el bloque mide ${durante} (antes ${antes})`)
     assert.equal(await posicion(), 'alta')
     assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoHerramientas')), 'alta')
     await arrastrarAsa(p, 'separador-herramientas', -2000)
-    assert.equal(await posicion(), 'todo')
-    assert.equal(await p.getByTestId('visor-fijo').getAttribute('data-plegado'), 'true')
-    assert.equal(await p.getByTestId('lienzo').isVisible(), false)
-    // Las tarjetas llenan desde el asa (arriba del todo) hasta la barra.
-    const visor = await caja('visor')
-    assert.ok((await caja('separador-herramientas')).y <= visor.y + 1)
-  })
-
-  it('hacia abajo, plegadas: solo la tira de pestañas; tocar una pestaña despliega sus tarjetas (sin guardarlo)', async () => {
+    assert.equal(await posicion(), 'alta')
+    assert.ok((await caja('lienzo')).height > 100, 'el vídeo se pliega: no hay tercera altura')
     await arrastrarAsa(p, 'separador-herramientas', 2000)
-    assert.equal(await posicion(), 'plegadas')
-    const tira = await p.getByRole('tablist').locator('..').boundingBox()
-    const barra = await caja('barra-fija')
-    assert.ok(barra.y - (tira.y + tira.height) <= 24, `entre la tira y la barra quedan ${barra.y - (tira.y + tira.height)} px`)
-    assert.ok((await caja('lienzo')).height > 100, 'plegadas, el vídeo se queda sin sitio')
-    assert.ok((await caja('minigrafica-caja')).height > 60, 'plegadas, la gráfica se queda sin sitio')
-    await p.getByTestId('pestana-analisis').click()
     assert.equal(await posicion(), 'media')
-    assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoHerramientas')), 'plegadas')
+    assert.ok(Math.abs((await altoBloque()) - antes) <= 2)
   })
 
-  it('dos toques vuelven a la de partida; con el teclado, a la de al lado', async () => {
+  it('dos toques vuelven a la de partida; con el teclado, a la de al lado sin pasar de las dos', async () => {
     await arrastrarAsa(p, 'separador-herramientas', -2000)
     await asa().dblclick()
     await esperarVideoAsentado(p)
@@ -4402,18 +4410,11 @@ describe('asa entre el vídeo con su gráfica y las herramientas (móvil)', () =
     await asa().focus()
     await p.keyboard.press('ArrowUp')
     assert.equal(await posicion(), 'alta')
-    await p.keyboard.press('ArrowDown')
-    await p.keyboard.press('ArrowDown')
-    assert.equal(await posicion(), 'plegadas')
-  })
-
-  it('con el vídeo plegado, elegir un marcador lo despliega para poder tocarlo', async () => {
-    await arrastrarAsa(p, 'separador-herramientas', -2000)
-    assert.equal(await posicion(), 'todo')
-    await abrirPestana(p, 'marcar')
-    await p.getByTestId('panel-herramientas').getByRole('radio', { name: /Maléolo/ }).click()
+    await p.keyboard.press('ArrowUp')
     assert.equal(await posicion(), 'alta')
-    assert.ok(await p.getByTestId('lienzo').isVisible())
+    await p.keyboard.press('ArrowDown')
+    await p.keyboard.press('ArrowDown')
+    assert.equal(await posicion(), 'media')
   })
 
   it('el estado del guardado está en la pestaña «Vídeo» en el móvil', async () => {
@@ -4429,8 +4430,8 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     // Vídeo vertical: es el que puede crecer en alto (uno horizontal llena antes el ancho).
     p = await abrirApp(navegador, { ancho: 390 })
     await cargarVideo(p, videos.vertical.ruta)
-    // Este asa reparte el bloque de arriba cuando se ven las dos cosas: con las herramientas plegadas.
-    await arrastrarAsa(p, 'separador-herramientas', 2000)
+    // Este asa reparte el bloque de arriba cuando se ven las dos cosas: vídeo y gráfica, sin herramientas.
+    await elegirModo(p, 'vg')
     await esperarVideoAsentado(p)
   })
   after(() => p?.close())

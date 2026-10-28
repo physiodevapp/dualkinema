@@ -12,6 +12,20 @@ export const PESTANA_DEFECTO: IdPestana = 'marcar'
 export const CLAVE_PESTANA = 'dualkinema.pestana'
 export const CLAVE_SERIES = 'dualkinema.seriesVisibles'
 export const CLAVE_COMPARACION = 'dualkinema.comparacion'
+export const CLAVE_MODO_MOVIL = 'dualkinema.modoMovil'
+
+/**
+ * Qué dos zonas se ven en el móvil, vista mixta (nunca las tres a la vez): vídeo y gráfica (`vg`), vídeo y herramientas
+ * (`vh`, la de partida) o gráfica y herramientas (`gh`).
+ */
+export const MODOS_MOVIL = ['vg', 'vh', 'gh'] as const
+export type ModoMovil = (typeof MODOS_MOVIL)[number]
+export const MODO_MOVIL_DEFECTO: ModoMovil = 'vh'
+
+export const esModoMovil = (v: unknown): v is ModoMovil => typeof v === 'string' && (MODOS_MOVIL as readonly string[]).includes(v)
+
+/** El modo guardado, o el de por defecto si no hay o no es uno de los tres. */
+export const modoMovilDeTexto = (v: string | null): ModoMovil => (esModoMovil(v) ? v : MODO_MOVIL_DEFECTO)
 
 /** Cómo se comparan las dos vistas: una gráfica por vista (alineadas en el tiempo común) o las dos en la misma. */
 export const MODOS_COMPARACION = ['alineadas', 'superpuestas'] as const
@@ -68,3 +82,6 @@ export const guardarSeriesVisibles = (visibles: Readonly<Record<string, boolean>
 
 export const leerModoComparacion = (): ModoComparacion => comparacionDeTexto(leer(CLAVE_COMPARACION))
 export const guardarModoComparacion = (m: ModoComparacion) => guardar(CLAVE_COMPARACION, m)
+
+export const leerModoMovil = (): ModoMovil => modoMovilDeTexto(leer(CLAVE_MODO_MOVIL))
+export const guardarModoMovil = (m: ModoMovil) => guardar(CLAVE_MODO_MOVIL, m)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { comparacionDeTexto, esPestana, PESTANA_DEFECTO, pestanaDeTexto, seriesDeTexto } from './preferencias'
+import { comparacionDeTexto, esModoMovil, MODO_MOVIL_DEFECTO, modoMovilDeTexto, esPestana, PESTANA_DEFECTO, pestanaDeTexto, seriesDeTexto } from './preferencias'
 
 describe('pestaña recordada', () => {
   it('cada una de las cuatro pestañas se reconoce', () => {
@@ -47,5 +47,17 @@ describe('modo de comparar las dos vistas recordado', () => {
 
   it('sin valor o con uno ajeno, las alineadas', () => {
     for (const v of [null, '', 'superpuesta', 'Alineadas', '{}', 'null']) expect(comparacionDeTexto(v)).toBe('alineadas')
+  })
+})
+
+describe('modo del móvil', () => {
+  it('solo acepta uno de los tres; si no, el de partida (vídeo y herramientas)', () => {
+    expect(modoMovilDeTexto('gh')).toBe('gh')
+    expect(modoMovilDeTexto('vg')).toBe('vg')
+    expect(modoMovilDeTexto(null)).toBe(MODO_MOVIL_DEFECTO)
+    expect(modoMovilDeTexto('todo')).toBe(MODO_MOVIL_DEFECTO)
+    expect(MODO_MOVIL_DEFECTO).toBe('vh')
+    expect(esModoMovil('vh')).toBe(true)
+    expect(esModoMovil(3)).toBe(false)
   })
 })
