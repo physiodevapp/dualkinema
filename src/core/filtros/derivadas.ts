@@ -1,5 +1,5 @@
 import { anguloArticular } from '../articulaciones/calculo'
-import type { DefinicionArticulacion } from '../articulaciones/definicion'
+import { marcadoresDeArticulacion, type DefinicionArticulacion } from '../articulaciones/definicion'
 import { desenrollar } from '../geometria/angulo'
 import { aCanonico, type OrientacionVista } from '../geometria/canonico'
 import type { Vec3 } from '../geometria/vector'
@@ -147,7 +147,7 @@ export function derivadasAngulares(
   orientacion: OrientacionVista,
   fs: number,
 ): Derivadas {
-  const ids = [...new Set([def.proximal.desde, def.proximal.hasta, def.distal.desde, def.distal.hasta])]
+  const ids = marcadoresDeArticulacion(def)
   const trayectorias = ids.map((id) => porMarcador.get(id))
   const n = Math.max(0, ...[...porMarcador.values()].map((f) => f.posiciones.length))
   const velocidad = new Float64Array(n).fill(NaN)

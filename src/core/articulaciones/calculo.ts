@@ -1,25 +1,35 @@
 import { anguloConSigno, centrarVueltas, desenrollar, normalizarGrados } from '../geometria/angulo'
 import { aCanonico, NORMAL_CANONICA, type OrientacionVista } from '../geometria/canonico'
-import { segmento, type Vec3 } from '../geometria/vector'
+import { segmento, vec3, type Vec3 } from '../geometria/vector'
 import type { IdMarcador, Muestra2D } from '../modelo/tipos'
-import type { DefinicionArticulacion } from './definicion'
+import { esReferencia, marcadoresDeArticulacion, type DefinicionArticulacion, type Referencia } from './definicion'
+
+/** La dirección de una referencia en el marco canónico (vertical = +y, horizontal = +x). */
+const direccionReferencia = (r: Referencia): Vec3 => (r.referencia === 'vertical' ? vec3(0, 1) : vec3(1, 0))
 
 /**
  * Valor clínico de una articulación, en grados, a partir de puntos ya en un
  * marco donde `normal` es el eje del plano (canónico en 2D, anatómico en 3D).
- * NaN si falta algún punto o un segmento tiene longitud 0.
+ * NaN si falta algún punto o un segmento tiene longitud 0. Con una referencia
+ * en `proximal` (ángulo absoluto), el segmento distal se mide respecto a ella.
  */
 export function anguloArticular(
   def: DefinicionArticulacion,
   puntos: ReadonlyMap<IdMarcador, Vec3>,
   normal: Vec3 = NORMAL_CANONICA,
 ): number {
-  const p0 = puntos.get(def.proximal.desde)
-  const p1 = puntos.get(def.proximal.hasta)
   const d0 = puntos.get(def.distal.desde)
   const d1 = puntos.get(def.distal.hasta)
-  if (!p0 || !p1 || !d0 || !d1) return NaN
-  const theta = anguloConSigno(segmento(p0, p1), segmento(d0, d1), normal)
+  if (!d0 || !d1) return NaN
+  let u: Vec3
+  if (esReferencia(def.proximal)) u = direccionReferencia(def.proximal)
+  else {
+    const p0 = puntos.get(def.proximal.desde)
+    const p1 = puntos.get(def.proximal.hasta)
+    if (!p0 || !p1) return NaN
+    u = segmento(p0, p1)
+  }
+  const theta = anguloConSigno(u, segmento(d0, d1), normal)
   if (Number.isNaN(theta)) return NaN
   return normalizarGrados(def.signo * theta - def.cero)
 }
@@ -53,7 +63,7 @@ export function serieAngular(
       `La articulación «${def.nombre}» es del plano ${def.plano} y la vista es ${orientacion.plano}.`,
     )
   }
-  const ids = [...new Set([def.proximal.desde, def.proximal.hasta, def.distal.desde, def.distal.hasta])]
+  const ids = marcadoresDeArticulacion(def)
   const porMarcador = ids.map((id) => {
     const m = new Map<number, Muestra2D>()
     for (const s of trayectorias[id] ?? []) m.set(s.t, s)

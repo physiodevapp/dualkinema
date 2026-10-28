@@ -1,4 +1,4 @@
-import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
+import { segmentosDeArticulacion, type DefinicionArticulacion } from '../../core/articulaciones/definicion'
 import type { CalibracionVista, medirEntreMarcadores, Punto2D } from '../../core/calibracion/escala'
 import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
 import type { LeerVentana } from '../../core/seguimiento/imagen'
@@ -112,7 +112,7 @@ export function dibujarCapa(
     // Segmentos de la articulación.
     const p = (id: IdMarcador) => muestra(id, mostrado)
     ctx.lineCap = 'round'
-    for (const s of [articulacion.proximal, articulacion.distal]) {
+    for (const s of segmentosDeArticulacion(articulacion)) {
       const a = p(s.desde)
       const b = p(s.hasta)
       if (!valida(a) || !valida(b)) continue

@@ -9,11 +9,9 @@
  * (NaN, calidad 0): nunca se inventa una posición.
  *
  * Los puntos del modelo son centros articulares aproximados (lo que aprendió de anotaciones humanas), no referencias
- * óseas: la cadera del modelo no es el trocánter. Por eso sus ángulos son definiciones propias (aquí, la rodilla de
- * perfil, con la misma convención que la de los gomets).
+ * óseas: la cadera del modelo no es el trocánter. Por eso sus ángulos son definiciones propias (`pose/catalogo.ts`).
  */
-import { articulacionesSagitales, type Lado } from '../articulaciones/catalogo'
-import type { DefinicionArticulacion } from '../articulaciones/definicion'
+import type { Lado } from '../articulaciones/catalogo'
 import type { IdMarcador, Muestra2D } from '../modelo/tipos'
 
 export type ParteCuerpo = 'hombro' | 'cadera' | 'rodilla' | 'tobillo' | 'talon' | 'punta'
@@ -109,21 +107,6 @@ export function trayectoriasPose(frames: Iterable<FramePose>, total: number): Ma
   return r
 }
 
-/**
- * La rodilla de perfil con los puntos del modelo: muslo (cadera → rodilla) y pierna (rodilla → tobillo), con el signo y
- * el cero de la de los gomets (`rodilla_sagital_*`): flexión +, extendida 0°.
- */
-export function rodillaSagitalPose(l: Lado): DefinicionArticulacion {
-  const gomets = articulacionesSagitales(l).find((a) => a.id === `rodilla_sagital_${l}`)!
-  return {
-    ...gomets,
-    id: `pose_rodilla_sagital_${l}`,
-    nombre: `${gomets.nombre} sin marcadores`,
-    proximal: { desde: idPose('cadera', l), hasta: idPose('rodilla', l) },
-    distal: { desde: idPose('rodilla', l), hasta: idPose('tobillo', l) },
-  }
-}
-
 /** Líneas del esqueleto que se dibujan sobre el vídeo: cada pierna y el tronco, y las que unen los dos lados. */
 export const LINEAS_ESQUELETO: readonly (readonly [IdMarcador, IdMarcador])[] = [
   ...(['izq', 'der'] as const).flatMap((l) =>
@@ -141,3 +124,69 @@ export const LINEAS_ESQUELETO: readonly (readonly [IdMarcador, IdMarcador])[] = 
   [idPose('hombro', 'izq'), idPose('hombro', 'der')],
   [idPose('cadera', 'izq'), idPose('cadera', 'der')],
 ]
+
+/** Partes con un punto medio entre los dos lados (el tronco de frente va del medio de las caderas al de los hombros). */
+export type ParteMedia = 'hombro' | 'cadera'
+
+export const idMedio = (parte: ParteMedia): IdMarcador => `pose_${parte}_medio`
+
+/** Los puntos medios: no los da el modelo ni se guardan ni se editan; salen siempre de los dos lados (`conPuntosMedios`). */
+export const PUNTOS_MEDIOS: readonly { readonly id: IdMarcador; readonly parte: ParteMedia }[] = (['hombro', 'cadera'] as const).map((parte) => ({
+  id: idMedio(parte),
+  parte,
+}))
+
+export const esPuntoMedio = (id: IdMarcador): boolean => PUNTOS_MEDIOS.some((p) => p.id === id)
+
+/**
+ * El punto medio de dos muestras del mismo frame: sin muestra si falta alguna; perdido (NaN, calidad 0) si alguna lo
+ * está; si no, la media de las posiciones con la peor de las dos calidades, e interpolado si lo es alguna.
+ */
+export function puntoMedio(a: Muestra2D | undefined, b: Muestra2D | undefined): Muestra2D | undefined {
+  if (!a || !b) return undefined
+  if (!(a.calidad > 0 && b.calidad > 0 && Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(b.x) && Number.isFinite(b.y))) {
+    return { t: a.t, x: NaN, y: NaN, calidad: 0, editadoManual: false }
+  }
+  const m: Muestra2D = { t: a.t, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, calidad: Math.min(a.calidad, b.calidad), editadoManual: false }
+  return a.interpolado || b.interpolado ? { ...m, interpolado: true } : m
+}
+
+/**
+ * Las trayectorias con los puntos medios añadidos, calculados frame a frame a partir de los dos lados. Se recalculan cada
+ * vez (no se guardan): así una corrección a mano de un lado llega al punto medio. Las demás series son las mismas.
+ */
+export function conPuntosMedios(series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>): Map<IdMarcador, (Muestra2D | undefined)[]> {
+  const r = new Map(series as ReadonlyMap<IdMarcador, (Muestra2D | undefined)[]>)
+  for (const { id, parte } of PUNTOS_MEDIOS) {
+    const izq = series.get(idPose(parte, 'izq')) ?? []
+    const der = series.get(idPose(parte, 'der')) ?? []
+    const n = Math.max(izq.length, der.length)
+    const medio = new Array<Muestra2D | undefined>(n)
+    for (let i = 0; i < n; i++) medio[i] = puntoMedio(izq[i], der[i])
+    r.set(id, medio)
+  }
+  return r
+}
+
+/**
+ * Junta una detección nueva con las trayectorias que ya había (D3: volver a detectar no sobrescribe lo marcado a mano,
+ * como «Seguir» con los gomets). Por frame: lo marcado a mano se queda; si no, manda lo detectado, y donde la detección
+ * no llegó (sin muestra: un recorrido cancelado) se queda lo de antes. Las series que la detección no trae no cambian.
+ * Devuelve copias.
+ */
+export function fusionarDeteccion(
+  previas: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>,
+  nuevas: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>,
+): Map<IdMarcador, (Muestra2D | undefined)[]> {
+  const r = new Map<IdMarcador, (Muestra2D | undefined)[]>([...previas].map(([id, s]) => [id, [...s]]))
+  for (const [id, nueva] of nuevas) {
+    const antes = previas.get(id) ?? []
+    const serie = new Array<Muestra2D | undefined>(Math.max(antes.length, nueva.length))
+    for (let i = 0; i < serie.length; i++) {
+      const a = antes[i]
+      serie[i] = a?.editadoManual ? a : (nueva[i] ?? a)
+    }
+    r.set(id, serie)
+  }
+  return r
+}

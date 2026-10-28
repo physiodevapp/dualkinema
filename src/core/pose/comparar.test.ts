@@ -4,8 +4,9 @@ import { aImagen, direccion } from '../articulaciones/poses'
 import type { OrientacionVista } from '../geometria/canonico'
 import type { Muestra2D } from '../modelo/tipos'
 import { crearTablaFrames } from '../tiempo/tablaFrames'
-import { anguloFiltradoPorFrame, compararSeries } from './comparar'
-import { idPose, rodillaSagitalPose } from './puntos'
+import { anguloFiltradoPorFrame, compararFuentes, compararSeries } from './comparar'
+import { articulacionesPoseSagitales } from './catalogo'
+import { idPose } from './puntos'
 
 describe('compararSeries', () => {
   it('una diferencia constante es todo sesgo: ECM sin sesgo 0 y correlación 1', () => {
@@ -47,7 +48,7 @@ describe('compararSeries', () => {
 
 describe('anguloFiltradoPorFrame', () => {
   const o: OrientacionVista = { plano: 'sagital', mira: 'derecha' }
-  const def = rodillaSagitalPose('der')
+  const def = articulacionesPoseSagitales('der')[0]!
   const tabla = crearTablaFrames(Array.from({ length: 60 }, (_, i) => i / 30))
   // Flexión que sube de 0° a 59° (1° por frame) con el muslo quieto.
   const flexion = (i: number) => i
@@ -84,5 +85,39 @@ describe('anguloFiltradoPorFrame', () => {
     const rodillaGomets = articulacionesSagitales('der')[1]!
     const v = anguloFiltradoPorFrame(trayectorias(new Set()), rodillaGomets, { plano: 'frontal', ve: 'delante' }, tabla, { corteHz: 6 })
     expect([...v].every(Number.isNaN)).toBe(true)
+  })
+})
+
+describe('compararFuentes', () => {
+  // 3 s a 10 fps: quieto 1 s y luego una flexión de 0 a 90°; sin marcadores, 7° por encima y con un hueco.
+  const tiempos = Array.from({ length: 30 }, (_, i) => i / 10)
+  const gomets = tiempos.map((t) => (t < 1 ? -5 : -5 + 90 * Math.sin(((t - 1) / 2) * (Math.PI / 2))))
+  const pose = gomets.map((v, i) => (i >= 20 && i < 23 ? NaN : v + 7))
+
+  it('directa: la diferencia constante es todo sesgo', () => {
+    const c = compararFuentes(gomets, pose, tiempos, null)
+    expect(c.directa!.n).toBe(27)
+    expect(c.directa!.media).toBeCloseTo(7, 9)
+    expect(c.directa!.ecmSinSesgo).toBeCloseTo(0, 9)
+    expect(c.relativa).toBeNull()
+    expect(c.ceroA).toBeNaN()
+  })
+
+  it('relativa al cero de cada una en el mismo tramo: la diferencia desaparece', () => {
+    const c = compararFuentes(gomets, pose, tiempos, { desde: 0, hasta: 0.9 })
+    expect(c.ceroA).toBeCloseTo(-5, 9)
+    expect(c.ceroB).toBeCloseTo(2, 9)
+    expect(c.relativa!.media).toBeCloseTo(0, 9)
+    expect(c.relativa!.ecm).toBeCloseTo(0, 9)
+    expect(c.relativa!.rangoA.max - c.relativa!.rangoA.min).toBeCloseTo(c.relativa!.rangoB.max - c.relativa!.rangoB.min, 9)
+    expect(c.relativa!.rangoA.max).toBeCloseTo(90 * Math.sin((0.95 * Math.PI) / 2), 9)
+  })
+
+  it('sin valor de alguna en el tramo, no hay relativa', () => {
+    const sinInicio = pose.map((v, i) => (i < 10 ? NaN : v))
+    const c = compararFuentes(gomets, sinInicio, tiempos, { desde: 0, hasta: 0.9 })
+    expect(c.relativa).toBeNull()
+    expect(c.ceroB).toBeNaN()
+    expect(c.directa!.n).toBe(17)
   })
 })

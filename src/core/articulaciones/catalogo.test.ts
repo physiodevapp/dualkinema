@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { OrientacionVista } from '../geometria/canonico'
 import { serieAngular } from './calculo'
 import { articulacionesFrontales, articulacionesSagitales, conRodillaFrontal, marcadores, marcadoresFrontalesRodilla, modeloRodilla3, type Lado } from './catalogo'
-import type { DefinicionArticulacion } from './definicion'
+import { marcadoresDeArticulacion, type DefinicionArticulacion } from './definicion'
 import { aImagen, direccion, frame } from './poses'
 
 const LADOS: Lado[] = ['der', 'izq']
@@ -192,7 +192,7 @@ describe('catálogo', () => {
       const ids = new Set(modelo.marcadores.map((m) => m.id))
       expect(ids.size).toBe(3)
       for (const a of modelo.articulaciones) {
-        for (const id of [a.proximal.desde, a.proximal.hasta, a.distal.desde, a.distal.hasta]) expect(ids.has(id)).toBe(true)
+        for (const id of marcadoresDeArticulacion(a)) expect(ids.has(id)).toBe(true)
       }
     }
   })
