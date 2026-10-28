@@ -230,7 +230,18 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     titulo: 'Inclinación del tronco',
     texto: [
       'Sin marcadores, de perfil: el ángulo de la línea cadera → hombro (los de la pierna que ve la cámara) respecto a la vertical de la imagen. De pie y erguido, 0°; inclinado hacia delante, positivo; hacia atrás, negativo.',
+      'De frente: la línea del punto medio de las caderas al punto medio de los hombros respecto a la vertical; inclinado hacia la izquierda de la persona, positivo; hacia la derecha, negativo (igual con la cámara delante o detrás).',
       'Es un ángulo absoluto, no entre dos segmentos: depende de que el móvil esté vertical (si está inclinado, todo sale desplazado lo que esté inclinado). El cero de referencia en una toma de pie quita ese desplazamiento.',
+    ],
+  },
+  {
+    id: 'pelvis-cadera-frente',
+    titulo: 'Pelvis y cadera de frente',
+    texto: [
+      'Sin marcadores, en la vista de frente se miden las dos piernas a la vez: el FPPA de cada rodilla (ver «FPPA de la rodilla»), la cadera de cada lado, la pelvis y el tronco.',
+      'Pelvis (oblicuidad): la línea que une las dos caderas respecto a la horizontal. Con la cadera izquierda más alta, positivo; con la derecha más alta, negativo. En un apoyo sobre una pierna, la pelvis que cae del lado contrario (signo de Trendelenburg) se ve aquí.',
+      'Cadera (abducción-aducción respecto a la pelvis): el muslo (cadera → rodilla) respecto a la línea de las caderas. Con el muslo perpendicular a esa línea, 0°; la rodilla hacia fuera (abducción), positivo; hacia dentro (aducción), negativo, igual en las dos piernas. Va respecto a la pelvis, no al tronco: si la pelvis se inclina, el muslo puede no moverse respecto a la vertical y la cadera sí cambia.',
+      'Todo depende de que la cámara esté de frente a la persona, perpendicular y a la altura de la cadera: si la persona gira, una flexión se ve como abducción o como valgo. Por eso se mira junto con la vista de perfil.',
     ],
   },
   {
