@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Fuente } from '../../core/pose/catalogo'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
-import type { ModeloMarcadores } from '../../core/modelo/tipos'
+import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
+import { esPuntoMedio } from '../../core/pose/puntos'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { Sincronia } from '../../core/modelo/tipos'
 import type { VideoAbierto } from '../../media/video'
@@ -48,6 +50,10 @@ import { incertidumbreEvento, pasoTipico } from '../../core/sincronia/evento'
 import type { VistaViva } from './vistas'
 import BotonDetectar from './BotonDetectar'
 
+/** Las series de una vista sin los puntos medios del modelo (salen de los dos lados: no se guardan). */
+const sinMedios = (series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>) =>
+  new Map([...series].filter(([id]) => !esPuntoMedio(id)))
+
 /** Letra de cada vista, en el orden de la sesión. */
 const LETRAS = ['A', 'B'] as const
 
@@ -84,7 +90,7 @@ interface Props {
   onCambiarAjustes: (a: AjustesFiltro) => void
   revAjustes: number
   onElegirVista: (id: string) => void
-  onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista) => void
+  onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista, fuente: Fuente) => void
 }
 
 export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, ajustes, onCambiarAjustes: cambiarAjustes, revAjustes, onElegirVista, onAnadirVista }: Props) {
@@ -193,7 +199,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       id: w.id,
       huella: w.huella,
       orientacion: w.orientacion,
-      series: w.series,
+      // Los puntos medios salen siempre de los dos lados: no se guardan (van vacíos).
+      series: sinMedios(w.series),
       ceros: w.ceros,
       calibracion: w.calibracion,
       desfase: w.desfaseS,
@@ -228,19 +235,16 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       : otraDetecta
         ? { texto: 'Se está detectando el cuerpo en la otra vista: espera a que acabe para seguir o detectar en esta.' }
         : null)
-  // «Detectar el cuerpo», de momento solo de perfil (de frente, el paso 4 de la fase 5).
-  const panelDeteccion =
-    orientacion.plano === 'sagital'
-      ? {
-          progreso: progresoDeteccion,
-          deshabilitado: siguiendo || otraSiguiendo,
-          hecha: deteccion,
-          modelo: modeloPose,
-          onModelo: setModeloPose,
-          onDetectar: detectar,
-          onParar: pararDeteccion,
-        }
-      : null
+  // «Detectar el cuerpo», de perfil y de frente.
+  const panelDeteccion = {
+    progreso: progresoDeteccion,
+    deshabilitado: siguiendo || otraSiguiendo,
+    hecha: deteccion,
+    modelo: modeloPose,
+    onModelo: setModeloPose,
+    onDetectar: detectar,
+    onParar: pararDeteccion,
+  }
   // Sincronizar por un evento visual: mientras se marca, el cursor está desenlazado (cada vista se mueve sola) y el botón de
   // marcar va también sobre el vídeo (en el móvil el panel de la pestaña queda fuera de pantalla al recorrerlo).
   const [marcandoEvento, setMarcandoEvento] = useState(false)
