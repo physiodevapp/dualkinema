@@ -13,7 +13,6 @@ import { asegurarVideos } from './videos.mjs'
 import {
   abrirApp,
   abrirPestana,
-  arrastrarAsa,
   cajaElemento,
   cajaVideo,
   cargarVideo,
@@ -904,12 +903,14 @@ describe('corrección manual: arrastrar, a ojo, quitar y anclas', () => {
     await irAFrame(p, 60)
     assert.equal(await p.getByTestId('aviso-anclas').count(), 0)
     await irAFrame(p, 0)
-    // También en el vídeo grande (versión corta), que es donde se marca y se sigue.
+    // También en el vídeo grande del móvil (versión corta), que es donde se marca y se sigue.
+    await p.setViewportSize({ width: 390, height: 844 })
     await p.getByTestId('ampliar-video').click()
     const compacto = p.getByTestId('marcado-compacto').getByTestId('aviso-anclas')
     await compacto.waitFor()
     assert.match(await compacto.innerText(), /frames 31\): se usan como anclas/)
     await p.getByTestId('reducir-video').click()
+    await p.setViewportSize({ width: 1280, height: 900 })
     await aviso.getByRole('button', { name: 'Quitar las marcas a mano posteriores' }).click()
     assert.equal(await p.getByTestId('aviso-anclas').count(), 0)
     assert.match(await p.getByTestId('aviso').innerText(), /Quitadas 1 marca a mano posteriores al frame 1/)
@@ -4761,7 +4762,7 @@ describe('preferencias recordadas en el dispositivo', () => {
 
   it('la pestaña abierta se recuerda al recuperar un trabajo, pero un vídeo nuevo empieza en «Marcar»; con un valor ilegible, «Marcar»', async () => {
     const video = videos.verde
-    const p = await abrirApp(navegador, { ancho: 390 })
+    const p = await abrirApp(navegador, { ancho: 1280 })
     try {
       await cargarVideo(p, video.ruta)
       assert.deepEqual(await abierta(p), ['marcar'], 'de partida, «Marcar»')
