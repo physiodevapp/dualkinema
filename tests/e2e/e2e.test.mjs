@@ -4312,6 +4312,10 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
       const tira = await p.getByRole('tablist').locator('..').boundingBox()
       assert.ok(tarjetas.y + tarjetas.height <= tira.y + 1, 'las tarjetas pasan por debajo de la fila de botones')
       assert.equal(await p.locator('header').getByTestId('volver-cabecera').count(), 1, 'el botón de volver va en la cabecera')
+      // Con el texto más largo, el glosario y «Cambiar vídeo» siguen en su fila, no debajo.
+      const volverCab = await p.getByTestId('volver-cabecera').boundingBox()
+      const cambiar = await p.getByTestId('cambiar-video').boundingBox()
+      assert.ok(Math.abs(cambiar.y + cambiar.height / 2 - (volverCab.y + volverCab.height / 2)) <= 4, `${id}: los iconos de la cabecera no van en la fila del botón de volver`)
       assert.ok(tarjetas.height > 300, `la herramienta mide ${tarjetas.height} px`)
       assert.ok(await visible('barra-fija'))
       await p.getByTestId('volver-cabecera').click()
@@ -4371,6 +4375,9 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
     const volverCab = await p.getByTestId('volver-cabecera').boundingBox()
     assert.ok(volverCab.y >= cabecera.y - 1 && volverCab.y + volverCab.height <= cabecera.y + cabecera.height + 1, 'el botón de volver no está en la cabecera')
     assert.equal(await p.locator('header h1').count(), 0, 'con el botón de volver, el título deja su sitio')
+    // El glosario y «Cambiar vídeo» siguen en la misma fila que el botón de volver, no debajo.
+    const cambiar = await p.getByTestId('cambiar-video').boundingBox()
+    assert.ok(Math.abs(cambiar.y + cambiar.height / 2 - (volverCab.y + volverCab.height / 2)) <= 4, 'los iconos de la cabecera no van en la fila del botón de volver')
     assert.ok((await p.getByTestId('lienzo').boundingBox()).y >= cabecera.y + cabecera.height - 1, 'el vídeo grande tapa la cabecera')
     await p.getByTestId('volver-cabecera').click()
     assert.ok(await visible('panel-escala'))
@@ -4535,42 +4542,23 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
   })
 
-  it('en las vistas ampliadas, tirar del asa en sentido contrario al de entrar vuelve a la mixta (con poco recorrido, no)', async () => {
+  it('las vistas ampliadas no llevan asa para volver: se vuelve con el botón y el reparto aterriza en el extremo del que se viene', async () => {
     await asentar()
     const antes = await asa().getAttribute('data-reparto')
-    const tirar = async (id, dy) => {
-      const c = await p.getByTestId(id).boundingBox()
-      const x = c.x + c.width / 2
-      const y = c.y + c.height / 2
-      await p.mouse.move(x, y)
-      await p.mouse.down()
-      await p.mouse.move(x, y + dy / 2, { steps: 4 })
-      await p.mouse.move(x, y + dy, { steps: 4 })
-      return () => p.mouse.up()
-    }
-    // Vídeo grande: se entra tirando hacia abajo y se sale tirando hacia arriba.
+    // Vídeo grande: se entra tirando hacia abajo.
     await arrastrar(500)
     await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
-    let soltar = await tirar('asa-volver-video', -20)
-    assert.equal(await p.getByTestId('asa-volver-video-aviso').count(), 0, 'con poco recorrido no avisa')
-    await soltar()
-    assert.equal(await p.getByTestId('reducir-video').count(), 1, 'con poco recorrido no vuelve')
-    soltar = await tirar('asa-volver-video', -120)
-    await p.getByTestId('asa-volver-video-aviso').waitFor({ state: 'visible' })
-    await soltar()
+    assert.equal(await p.getByTestId('asa-volver-video').count(), 0, 'el vídeo grande no lleva asa para volver')
+    await p.getByTestId('reducir-video').click()
     await p.getByTestId('reducir-video').waitFor({ state: 'detached' })
     await asentar()
     assert.equal(await asa().getAttribute('data-reparto'), 'video')
     assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoVideo')), antes)
-    // Solo gráficas: se entra tirando hacia arriba y se sale tirando hacia abajo.
+    // Solo gráficas: se entra tirando hacia arriba.
     await arrastrar(-500)
     await p.getByTestId('vista-graficas').waitFor({ state: 'visible' })
-    soltar = await tirar('asa-volver-graficas', 20)
-    await soltar()
-    assert.equal(await p.getByTestId('reducir-graficas').count(), 1, 'con poco recorrido no vuelve')
-    soltar = await tirar('asa-volver-graficas', 120)
-    await p.getByTestId('asa-volver-graficas-aviso').waitFor({ state: 'visible' })
-    await soltar()
+    assert.equal(await p.getByTestId('asa-volver-graficas').count(), 0, 'solo gráficas no lleva asa para volver')
+    await p.getByTestId('reducir-graficas').click()
     await p.getByTestId('reducir-graficas').waitFor({ state: 'detached' })
     await asentar()
     assert.equal(await asa().getAttribute('data-reparto'), 'grafica')

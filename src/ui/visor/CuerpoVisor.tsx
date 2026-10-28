@@ -17,7 +17,6 @@ import Pestanas, { PanelPestana } from './Pestanas'
 import { useAltura } from './useAltura'
 import { useVistaMovil } from './useVistaMovil'
 import SeparadorVideo from './SeparadorVideo'
-import AsaVolver from './AsaVolver'
 import { altosVideo } from './reparto'
 import { useAltoDisponible } from './useAltoDisponible'
 import { usePonerVolver } from '../volverCabecera'
@@ -604,7 +603,6 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           )}
           {enVideo && !dosColumnas && (
             <>
-              <AsaVolver sentido="arriba" destino="volver a la vista con gráfica" onVolver={() => volverDe('video')} testid="asa-volver-video" />
               {nodoError}
               {tiraVuelta}
               {tiraMarcado}
@@ -666,7 +664,6 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             enGraficas ? `aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo ${apaisado ? 'max-lg:p-2' : 'max-lg:p-4'}` : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
-          {enGraficas && !apaisado && <AsaVolver sentido="abajo" destino="volver a la vista con vídeo" onVolver={() => volverDe('graficas')} testid="asa-volver-graficas" />}
           {enGraficas && !apaisado && (
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono text-xs tracking-wider text-texto-2 uppercase">Solo gráficas</span>

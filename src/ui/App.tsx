@@ -431,14 +431,14 @@ function Aplicacion() {
       <header
         ref={cabecera}
         // Con el botón de volver a la vista, la cabecera queda por encima del vídeo grande (que empieza justo debajo de ella).
-        className={`flex flex-wrap items-center justify-between gap-3 ${volver ? 'max-lg:relative max-lg:z-40 max-lg:bg-fondo' : ''}`}
+        className={`flex items-center justify-between gap-3 ${volver ? 'max-lg:relative max-lg:z-40 max-lg:bg-fondo' : 'flex-wrap'}`}
       >
         {volver ? (
           <button
             type="button"
             onClick={volver.onVolver}
             data-testid="volver-cabecera"
-            className="flex min-h-11 min-w-0 items-center gap-2 rounded-md border border-acento px-3 text-acento"
+            className="flex min-h-11 min-w-0 items-center gap-2 rounded-md border border-acento px-3 text-sm text-acento"
           >
             <ArrowLeftIcon className="size-5 shrink-0" />
             <span className="truncate">{volver.texto}</span>
@@ -448,7 +448,7 @@ function Aplicacion() {
             dual<span className="text-acento">kinema</span>
           </h1>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <BotonGlosario conVideo={hayVideo} />
           {hayVideo && (
             <button
