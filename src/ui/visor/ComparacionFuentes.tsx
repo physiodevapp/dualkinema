@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { Comparacion, ComparacionFuentes as Resumen } from '../../core/pose/comparar'
@@ -32,7 +32,14 @@ const linea = (c: Comparacion) =>
  * y relativo al cero de cada una, que quita esa diferencia. Con el informe para copiar (validación, paso 5).
  */
 export default function ComparacionFuentes({ gomets, sinMarcadores, resumen, tramo, informe, tiempos, mostrado, onBuscar }: Props) {
-  const [copiado, setCopiado] = useState(false)
+  // «Copiado» solo mientras lo copiado es el informe de ahora, y unos segundos: si cambia (un cero, otra articulación) o
+  // pasa el tiempo, el botón vuelve a «Copiar el informe» (antes se quedaba en «Copiado» y parecía que ya no copiaba).
+  const [copiado, setCopiado] = useState<string | null>(null)
+  useEffect(() => {
+    if (copiado === null) return
+    const id = setTimeout(() => setCopiado(null), 2000)
+    return () => clearTimeout(id)
+  }, [copiado])
   const xs = useMemo(() => Array.from(tiempos), [tiempos])
   const series = useMemo<SerieGrafica[]>(() => {
     const comoLinea = (v: Float64Array) => Array.from(v, (x) => (Number.isFinite(x) ? x : null))
@@ -44,9 +51,9 @@ export default function ComparacionFuentes({ gomets, sinMarcadores, resumen, tra
   const copiar = async () => {
     try {
       await navigator.clipboard.writeText(informe)
-      setCopiado(true)
+      setCopiado(informe)
     } catch {
-      setCopiado(false)
+      setCopiado(null)
     }
   }
   const { directa, relativa } = resumen
@@ -87,7 +94,7 @@ export default function ComparacionFuentes({ gomets, sinMarcadores, resumen, tra
         </p>
       )}
       <button type="button" onClick={copiar} className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-2 text-sm">
-        <ClipboardDocumentIcon className="size-5" /> {copiado ? 'Copiado' : 'Copiar el informe'}
+        <ClipboardDocumentIcon className="size-5" /> {copiado === informe ? 'Copiado' : 'Copiar el informe'}
       </button>
     </section>
   )

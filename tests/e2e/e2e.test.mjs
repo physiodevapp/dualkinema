@@ -3951,6 +3951,13 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
       // Con un cero de referencia, la comparación relativa al cero.
       await p.getByRole('button', { name: /Primeros 2 s/ }).click()
       await comparacion.getByTestId('comparacion-relativa').filter({ hasText: /diferencia media/ }).waitFor()
+      // «Copiar el informe» copia el de ahora (ya con el cero) y vuelve a su texto al rato.
+      await p.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+      const copiar = comparacion.getByRole('button', { name: /Copiar el informe|Copiado/ })
+      await copiar.click()
+      await comparacion.getByRole('button', { name: 'Copiado' }).waitFor()
+      assert.match(await p.evaluate(() => navigator.clipboard.readText()), /Relativo al cero de cada una \(tramo 0,000–/)
+      await comparacion.getByRole('button', { name: 'Copiar el informe' }).waitFor({ timeout: 5000 })
       // La fuente: por defecto los gomets; «Sin marcadores» mide con los puntos del modelo (casi lo mismo aquí).
       const fuente = p.getByRole('radiogroup', { name: 'Fuente' })
       assert.equal(await fuente.getByRole('radio', { checked: true }).innerText(), 'Gomets')
