@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowPathIcon, BookOpenIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ArrowLeftIcon, ArrowPathIcon, BookOpenIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { codigoDeBusqueda } from '../core/sala/codigo'
 import type { AjustesFiltro } from '../core/filtros/tramos'
@@ -18,6 +18,7 @@ import RecuperarSesion, { type Candidata } from './RecuperarSesion'
 import SesionesGuardadas from './SesionesGuardadas'
 import { huellaDe } from './sesion'
 import { useVersionNueva } from './useVersionNueva'
+import { ProveedorVolver, type Volver } from './volverCabecera'
 import type { SesionAbierta } from './visor/useGuardado'
 import type { EntradaVista } from './visor/vistas'
 // El visor (con la gráfica y uPlot) solo se descarga al abrir un vídeo.
@@ -126,6 +127,25 @@ function Aplicacion() {
     const codigo = PUEDE_GRABAR ? codigoDeBusqueda(location.search) : null
     return codigo ? { fase: 'emparejar', codigo } : { fase: 'inicio' }
   })
+  // El botón de volver de la cabecera (en el móvil, de una herramienta o del vídeo grande a la pantalla principal): lo pide el
+  // visor, que sabe a dónde se vuelve, y la cabecera lo pinta en lugar del título.
+  const [volver, setVolver] = useState<Volver | null>(null)
+  const cabecera = useRef<HTMLElement>(null)
+  // Dónde acaba la cabecera (`--alto-cabecera`): el vídeo grande empieza ahí cuando la cabecera se queda a la vista.
+  useLayoutEffect(() => {
+    const el = cabecera.current
+    if (!el) return
+    const medir = () => document.documentElement.style.setProperty('--alto-cabecera', `${Math.ceil(el.getBoundingClientRect().bottom)}px`)
+    medir()
+    const observador = new ResizeObserver(medir)
+    observador.observe(el)
+    window.addEventListener('resize', medir)
+    return () => {
+      observador.disconnect()
+      window.removeEventListener('resize', medir)
+      document.documentElement.style.removeProperty('--alto-cabecera')
+    }
+  }, [])
   const selector = useRef<HTMLInputElement>(null)
   const selectorDoble = useRef<HTMLInputElement>(null)
   const { nueva: versionNueva, descartar: descartarVersion } = useVersionNueva()
@@ -367,7 +387,8 @@ function Aplicacion() {
   )
 
   return (
-    // El visor aprovecha pantallas anchas (vídeo, gráfica y herramientas lado a lado); la portada y los diálogos, no.
+    <ProveedorVolver value={setVolver}>
+    {/* El visor aprovecha pantallas anchas (vídeo, gráfica y herramientas lado a lado); la portada y los diálogos, no. */}
     <main
       className={`mx-auto flex min-h-dvh flex-col px-4 pb-[calc(1.5rem+var(--alto-barra,0px))] lg:gap-6 lg:pt-6 lg:pb-6 ${
         hayVideo ? 'gap-3 pt-3' : 'gap-6 pt-6'
@@ -407,10 +428,26 @@ function Aplicacion() {
       {/* Con un vídeo abierto, la cabecera es baja en el móvil: el sitio es para el vídeo y la gráfica. Cambiar de vídeo
           se hace poco, así que su botón es secundario (sin el ámbar, que queda para lo que se está usando) y en el
           móvil solo lleva el icono. */}
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className={`font-serif ${hayVideo ? 'text-2xl lg:text-3xl' : 'text-3xl'}`}>
-          dual<span className="text-acento">kinema</span>
-        </h1>
+      <header
+        ref={cabecera}
+        // Con el botón de volver a la vista, la cabecera queda por encima del vídeo grande (que empieza justo debajo de ella).
+        className={`flex flex-wrap items-center justify-between gap-3 ${volver ? 'max-lg:relative max-lg:z-40 max-lg:bg-fondo' : ''}`}
+      >
+        {volver ? (
+          <button
+            type="button"
+            onClick={volver.onVolver}
+            data-testid="volver-cabecera"
+            className="flex min-h-11 min-w-0 items-center gap-2 rounded-md border border-acento px-3 text-acento"
+          >
+            <ArrowLeftIcon className="size-5 shrink-0" />
+            <span className="truncate">{volver.texto}</span>
+          </button>
+        ) : (
+          <h1 className={`font-serif ${hayVideo ? 'text-2xl lg:text-3xl' : 'text-3xl'}`}>
+            dual<span className="text-acento">kinema</span>
+          </h1>
+        )}
         <div className="flex items-center gap-2">
           <BotonGlosario conVideo={hayVideo} />
           {hayVideo && (
@@ -600,6 +637,7 @@ function Aplicacion() {
         {__RAMA__} · {__COMMIT__}
       </footer>
     </main>
+    </ProveedorVolver>
   )
 }
 

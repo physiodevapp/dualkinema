@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftIcon, ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
+import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
@@ -20,6 +20,7 @@ import SeparadorVideo from './SeparadorVideo'
 import AsaVolver from './AsaVolver'
 import { altosVideo } from './reparto'
 import { useAltoDisponible } from './useAltoDisponible'
+import { usePonerVolver } from '../volverCabecera'
 import { useGuardado, type SesionAbierta } from './useGuardado'
 import SelectorMarcadores from './SelectorMarcadores'
 import BotonSeguir from './BotonSeguir'
@@ -306,6 +307,27 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     setAbierta(true)
     setVista('mixta')
   }
+  // El botón de volver va en la cabecera de la app (en el móvil en vertical): de una herramienta a la pantalla principal y,
+  // desde el vídeo grande que piden la escala o el evento de la sincronía, a esa herramienta. Con él a la vista, el vídeo
+  // grande deja la cabecera libre (empieza debajo de ella).
+  const volverEn = !movilVertical
+    ? enVideo && !apaisado && (tocandoEscala || marcandoEvento)
+      ? tocandoEscala
+        ? 'Volver a la escala'
+        : 'Volver a la sincronía'
+      : null
+    : abierta
+      ? 'Volver al vídeo y la gráfica'
+      : null
+  const alVolver = useRef(() => {})
+  useEffect(() => {
+    alVolver.current = () => (movilVertical && abierta ? setAbierta(false) : volverAHerramienta())
+  })
+  const ponerVolver = usePonerVolver()
+  useEffect(() => {
+    ponerVolver(volverEn ? { texto: volverEn, onVolver: () => alVolver.current() } : null)
+    return () => ponerVolver(null)
+  }, [volverEn, ponerVolver])
   // El bloque de arriba (vídeo y gráfica) ocupa lo que deja la fila de botones de abajo.
   const altoBloque = mixtaApaisada ? disponible : Math.max(0, disponible - altoTira)
   // Tope de alto del vídeo: su parte del bloque de arriba (o lo que diga el asa mientras se arrastra). El ancho lo limita
@@ -341,18 +363,14 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // Móvil girado con el vídeo grande: dos columnas (el vídeo con todo el alto; a su lado, aviso, marcado y barra fija).
   const dosColumnas = enVideo && apaisado
 
-  // Calibrar la escala o marcar el evento de la sincronía se hace sobre el vídeo: esta tira dice qué falta y vuelve a la herramienta.
+  // Calibrar la escala o marcar el evento de la sincronía se hace sobre el vídeo: esta tira dice qué falta (volver a la
+  // herramienta es el botón de la cabecera).
   const tiraVuelta = (tocandoEscala || marcandoEvento) && (
-    <div data-testid="tira-vuelta" className="flex items-center justify-between gap-2 rounded-2xl border border-acento/40 bg-panel p-3 text-sm">
-      <span>
-        {tocandoEscala
-          ? 'Calibrando la escala: toca los extremos del objeto en el vídeo.'
-          : `Marca el evento en cada vista: A ${marcaEvento.referencia !== undefined ? '✓' : '·'} B ${marcaEvento.vista !== undefined ? '✓' : '·'}`}
-      </span>
-      <button type="button" data-testid="volver-herramienta" onClick={volverAHerramienta} className="shrink-0 rounded-md border border-acento px-3 py-1.5 text-acento">
-        {tocandoEscala ? 'Volver a la escala' : 'Volver a la sincronía'}
-      </button>
-    </div>
+    <p data-testid="tira-vuelta" className="rounded-2xl border border-acento/40 bg-panel p-3 text-sm">
+      {tocandoEscala
+        ? 'Calibrando la escala: toca los extremos del objeto en el vídeo.'
+        : `Marca el evento en cada vista: A ${marcaEvento.referencia !== undefined ? '✓' : '·'} B ${marcaEvento.vista !== undefined ? '✓' : '·'}`}
+    </p>
   )
 
   const interruptorAOjo = <InterruptorAOjo activo={colocarAOjo} deshabilitado={siguiendo} onCambiar={() => setColocarAOjo((v) => !v)} enFila={dosColumnas} />
@@ -408,7 +426,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               dosColumnas
                 ? 'aparece max-lg:fixed max-lg:inset-0 max-lg:gap-0 max-lg:overflow-hidden max-lg:py-2 max-lg:pl-3'
                 : enVideo
-                ? 'aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4'
+                ? `aparece max-lg:fixed max-lg:inset-x-0 ${volverEn ? 'max-lg:top-(--alto-cabecera)' : 'max-lg:top-0'} max-lg:bottom-(--alto-barra) max-lg:overflow-y-auto max-lg:p-4`
                 : // Mixta: el bloque de arriba, con el alto que da el asa de las herramientas (plegado, no se ve pero sigue montado).
                   `max-lg:order-1 max-lg:shrink-0 max-lg:overflow-hidden ${mixtaApaisada ? 'max-lg:col-start-1 max-lg:row-span-3 max-lg:row-start-1' : ''}`
             } ${enGraficas || (movilVertical && abierta) ? 'max-lg:hidden' : ''}`}
@@ -695,18 +713,6 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           data-testid="panel-herramientas"
           className={`flex flex-col gap-3 max-lg:relative max-lg:min-h-0 max-lg:flex-1 max-lg:overflow-y-auto max-lg:pb-2 ${movilVertical ? 'max-lg:order-2' : 'max-lg:order-6 max-lg:pt-2'} ${mixtaApaisada ? 'max-lg:col-start-2 max-lg:row-start-3 max-lg:mb-(--alto-barra)' : ''} lg:relative lg:min-h-0 lg:flex-1 lg:gap-0 lg:overflow-y-auto lg:rounded-2xl lg:border lg:border-borde lg:bg-panel lg:p-4 lg:[&_section]:rounded-none lg:[&_section]:border-0 lg:[&_section]:bg-transparent lg:[&_section]:p-0 lg:[&_section+section]:mt-4 lg:[&_section+section]:border-t lg:[&_section+section]:border-borde lg:[&_section+section]:pt-4 ${ampliada || (movilVertical && !abierta) ? 'max-lg:hidden' : ''}`}
         >
-          {movilVertical && (
-            <button
-              type="button"
-              data-testid="cerrar-herramienta"
-              onClick={() => setAbierta(false)}
-              className="sticky top-0 z-10 flex shrink-0 items-center gap-2 self-start rounded-md border border-borde bg-fondo px-3 py-2 text-sm text-texto"
-            >
-              <ArrowLeftIcon className="size-4" />
-              Volver al vídeo y la gráfica
-            </button>
-          )}
-
           <PanelPestana id="marcar" activa={pestana === 'marcar'}>
             <PanelMarcar
               lado={lado}

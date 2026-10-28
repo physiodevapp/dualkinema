@@ -2032,7 +2032,7 @@ describe('gráfica pequeña del móvil: conserva su modo', () => {
         await abrirPestana(p, id)
         await enVelocidad(`en la pestaña ${id}`)
       }
-      await p.getByTestId('cerrar-herramienta').click()
+      await p.getByTestId('volver-cabecera').click()
       await enVelocidad('al volver de una herramienta')
       // Al pasar al vídeo grande o a solo gráficas (la gráfica pequeña no está) y volver, sigue en «Velocidad».
       await p.getByTestId('ampliar-video').click()
@@ -4311,9 +4311,10 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
       const tarjetas = await caja('panel-herramientas')
       const tira = await p.getByRole('tablist').locator('..').boundingBox()
       assert.ok(tarjetas.y + tarjetas.height <= tira.y + 1, 'las tarjetas pasan por debajo de la fila de botones')
+      assert.equal(await p.locator('header').getByTestId('volver-cabecera').count(), 1, 'el botón de volver va en la cabecera')
       assert.ok(tarjetas.height > 300, `la herramienta mide ${tarjetas.height} px`)
       assert.ok(await visible('barra-fija'))
-      await p.getByTestId('cerrar-herramienta').click()
+      await p.getByTestId('volver-cabecera').click()
       assert.ok(await visible('lienzo'))
       assert.ok(await visible('minigrafica'))
       assert.equal(await visible('panel-herramientas'), false)
@@ -4344,7 +4345,7 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
     await p.getByTestId('pestana-video').click()
     await p.getByTestId('guardado').waitFor({ state: 'visible' })
     assert.equal(await p.getByTestId('guardado').count(), 1)
-    await p.getByTestId('cerrar-herramienta').click()
+    await p.getByTestId('volver-cabecera').click()
   })
 
   it('con las herramientas abiertas, las tarjetas se desplazan por dentro y la página no', async () => {
@@ -4357,7 +4358,7 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
     await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
     assert.ok(await tarjetas.evaluate((el) => el.scrollTop > 0))
     assert.deepEqual(await cajas(), a, 'algo se ha movido al desplazar las tarjetas')
-    await p.getByTestId('cerrar-herramienta').click()
+    await p.getByTestId('volver-cabecera').click()
   })
 
   it('escala: «Empezar» pasa al vídeo con una tira para volver, y vuelve a la escala con el borrador', async () => {
@@ -4365,10 +4366,16 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
     await p.getByRole('button', { name: /Medir con un objeto|Calibrar|Empezar/i }).first().click()
     await p.getByTestId('tira-vuelta').waitFor({ state: 'visible' })
     assert.ok(await visible('toca-escala'))
-    await p.getByTestId('volver-herramienta').click()
+    // El botón de volver está en la cabecera de la app (en lugar del título) y el vídeo grande empieza justo debajo.
+    const cabecera = await p.locator('header').boundingBox()
+    const volverCab = await p.getByTestId('volver-cabecera').boundingBox()
+    assert.ok(volverCab.y >= cabecera.y - 1 && volverCab.y + volverCab.height <= cabecera.y + cabecera.height + 1, 'el botón de volver no está en la cabecera')
+    assert.equal(await p.locator('header h1').count(), 0, 'con el botón de volver, el título deja su sitio')
+    assert.ok((await p.getByTestId('lienzo').boundingBox()).y >= cabecera.y + cabecera.height - 1, 'el vídeo grande tapa la cabecera')
+    await p.getByTestId('volver-cabecera').click()
     assert.ok(await visible('panel-escala'))
     assert.equal(await p.getByTestId('pestana-escala').getAttribute('aria-selected'), 'true')
-    await p.getByTestId('cerrar-herramienta').click()
+    await p.getByTestId('volver-cabecera').click()
   })
 })
 
