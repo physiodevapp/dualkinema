@@ -501,6 +501,19 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     botonDetectar
   )
   const detectarAparte = conGomets && botonDetectar
+  // Sin gomets, en la tira del vídeo grande (en el móvil «Marcar» abre el vídeo grande, no la tarjeta): añadir los gomets
+  // de su plano para seguirlos también y compararlos con el modelo. Secundario, debajo de «Detectar el cuerpo».
+  const anadirGomets = !conGomets && (
+    <button
+      type="button"
+      disabled={ocupada || !!progresoDeteccion}
+      onClick={activaViva.anadirGomets}
+      className="rounded-md border border-borde px-3 py-2 text-sm disabled:opacity-50"
+      data-testid="anadir-gomets-compacto"
+    >
+      Añadir los gomets
+    </button>
+  )
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
       <SelectorMarcadores marcadores={marcables} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={ocupada} onElegir={setSeleccionado} compacto />
@@ -513,6 +526,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             {botonSeguir}
             {detectarAparte}
           </div>
+          {anadirGomets}
         </>
       ) : (
         <>
@@ -520,6 +534,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           {avisoAnclas}
           {botonSeguir}
           {detectarAparte}
+          {anadirGomets}
         </>
       )}
       {extrasCompactos}
