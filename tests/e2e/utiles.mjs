@@ -194,6 +194,16 @@ export async function seguirHastaElFinal(p) {
 }
 
 /** Abre una pestaña de herramientas del visor («marcar», «analisis», «escala», «video») si no es la abierta. */
+/**
+ * Móvil, vista mixta: con las herramientas abiertas arriba se ve el vídeo o la gráfica, no los dos. Pasa a la gráfica si
+ * se está viendo el vídeo (si ya se ve, o las herramientas están plegadas y se ven las dos, no hace nada).
+ */
+export async function verGrafica(p) {
+  const boton = p.getByTestId('ver-grafica')
+  if (await boton.isVisible()) await boton.click()
+  await p.getByTestId('minigrafica').waitFor({ state: 'visible' })
+}
+
 export async function abrirPestana(p, id) {
   const pestana = p.getByTestId(`pestana-${id}`)
   if ((await pestana.getAttribute('aria-selected')) !== 'true') await pestana.click()
