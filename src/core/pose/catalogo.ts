@@ -25,7 +25,7 @@ import { articulacionesFrontales, articulacionesSagitales, type Lado } from '../
 import { marcadoresDeArticulacion, type DefinicionArticulacion } from '../articulaciones/definicion'
 import type { OrientacionVista } from '../geometria/canonico'
 import type { Marcador, ModeloMarcadores } from '../modelo/tipos'
-import { idMedio, idPose, PUNTOS_MEDIOS, PUNTOS_POSE, type ParteCuerpo, type ParteMedia } from './puntos'
+import { esIdPose, idMedio, idPose, PUNTOS_MEDIOS, PUNTOS_POSE, type ParteCuerpo, type ParteMedia } from './puntos'
 
 const otroLado = (l: Lado): Lado => (l === 'der' ? 'izq' : 'der')
 
@@ -144,11 +144,24 @@ export function modeloPose(orientacion: OrientacionVista, l: Lado): ModeloMarcad
   return { marcadores: marcadoresPose(true), articulaciones: articulacionesPoseFrontales(l) }
 }
 
+/**
+ * El modelo de la sesión con lo sin marcadores de perfil añadido (como `conRodillaFrontal`: un único modelo por sesión con
+ * todos los marcadores, fijado al abrir; cada vista sigue los suyos): los 12 puntos del modelo y las articulaciones de la
+ * pierna `l`. Lo que ya tenía no cambia (ni de orden: las trayectorias guardadas van por id) y no se repite.
+ */
+export function conPose(modelo: ModeloMarcadores, l: Lado): ModeloMarcadores {
+  const ids = new Set(modelo.marcadores.map((mk) => mk.id))
+  const articulaciones = new Set(modelo.articulaciones.map((a) => a.id))
+  const nuevos = marcadoresPose(false).filter((mk) => !ids.has(mk.id))
+  const nuevas = articulacionesPoseSagitales(l).filter((a) => !articulaciones.has(a.id))
+  if (nuevos.length === 0 && nuevas.length === 0) return modelo
+  return { marcadores: [...modelo.marcadores, ...nuevos], articulaciones: [...modelo.articulaciones, ...nuevas] }
+}
+
 export type Fuente = 'gomets' | 'sinMarcadores'
 
 /** De qué sale una articulación: de los puntos del modelo (todos sus marcadores son `pose_…`) o de gomets. */
-export const fuenteDe = (def: DefinicionArticulacion): Fuente =>
-  marcadoresDeArticulacion(def).every((id) => id.startsWith('pose_')) ? 'sinMarcadores' : 'gomets'
+export const fuenteDe = (def: DefinicionArticulacion): Fuente => (marcadoresDeArticulacion(def).every(esIdPose) ? 'sinMarcadores' : 'gomets')
 
 /**
  * La articulación de los gomets que mide lo mismo que una sin marcadores (misma convención), para compararlas; null si

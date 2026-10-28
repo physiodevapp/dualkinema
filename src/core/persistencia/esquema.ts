@@ -2,7 +2,7 @@ import { esTramoEstatico, type TramoEstatico } from '../articulaciones/cero'
 import { esCalibracion, type CalibracionVista } from '../calibracion/escala'
 import type { DefinicionArticulacion, Plano } from '../articulaciones/definicion'
 import type { OrientacionVista } from '../geometria/canonico'
-import type { IdMarcador, MetodoSincronia, ModeloMarcadores, Sincronia } from '../modelo/tipos'
+import type { DeteccionPose, IdMarcador, MetodoSincronia, ModeloMarcadores, Sincronia, TamanoModeloPose } from '../modelo/tipos'
 import { esAjustesFiltro, type AjustesFiltro } from '../filtros/tramos'
 import { claveHuella, esHuella, type HuellaArchivo } from './huella'
 import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, type TrayectoriaGuardada } from './trayectorias'
@@ -41,9 +41,18 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  * `reloj` (con el desfase y su cota). Lo guardado antes vale tal cual (la
  * migración 3 → 4 no cambia nada), pero una app de esquema 3 rechazaría el
  * método nuevo como inválido en vez de decir que es de una versión más nueva.
+ *
+ * Esquema 5 (fase 5, sin marcadores): cada vista guarda cómo se detectaron sus
+ * puntos sin marcadores (`deteccion`: modelo, librería, GPU o CPU, fecha y
+ * recuentos; null si no se ha detectado), y una articulación puede medir un
+ * segmento respecto a la vertical o la horizontal (`Referencia` en lugar del
+ * segmento proximal: el tronco, la pelvis). Los puntos del modelo son
+ * marcadores más (`pose_…`), con sus trayectorias como las de los gomets. Lo
+ * guardado antes vale tal cual (la migración 4 → 5 pone `deteccion: null`),
+ * pero una app de esquema 4 rechazaría la referencia como inválida.
  */
 
-export const ESQUEMA_ACTUAL = 4
+export const ESQUEMA_ACTUAL = 5
 
 export interface VistaCabecera {
   readonly id: string
@@ -59,6 +68,8 @@ export interface VistaCabecera {
   readonly marcadores: readonly IdMarcador[]
   /** Cómo se halló el desfase (esquema 3). */
   readonly sincronia: Sincronia
+  /** La última detección sin marcadores (esquema 5); null si no se ha detectado. */
+  readonly deteccion: DeteccionPose | null
 }
 
 export interface CabeceraSesion {
@@ -116,6 +127,8 @@ export interface EntradaGuardado {
     readonly marcadores?: readonly IdMarcador[]
     /** Cómo se sincronizó; sin ella, «ninguna». */
     readonly sincronia?: Sincronia
+    /** La última detección sin marcadores; sin ella (o null), ninguna. */
+    readonly deteccion?: DeteccionPose | null
   }[]
   /** Id de la vista de referencia; sin él, la primera. */
   readonly referencia?: string
@@ -153,6 +166,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
       ceros: { ...v.ceros },
       marcadores: [...(v.marcadores ?? e.modelo.marcadores.map((mk) => mk.id))],
       sincronia: v.sincronia ?? SIN_SINCRONIA,
+      deteccion: v.deteccion ?? null,
     })),
     referencia: e.referencia ?? e.vistas[0]!.id,
     filtro: e.filtro ?? null,
@@ -190,6 +204,8 @@ export const MIGRACIONES_CABECERA: Migraciones = {
   },
   // 3 → 4 (fase 4): solo se añaden métodos de sincronía; lo guardado vale tal cual.
   3: (r) => r,
+  // 4 → 5 (fase 5): ninguna vista se había detectado sin marcadores.
+  4: (r) => (Array.isArray(r.vistas) ? { ...r, vistas: (r.vistas as unknown[]).map((v) => (esObjeto(v) ? { ...v, deteccion: null } : v)) } : r),
 }
 export const MIGRACIONES_DATOS: Migraciones = {
   1: (r) => {
@@ -212,6 +228,8 @@ export const MIGRACIONES_DATOS: Migraciones = {
   2: (r) => r,
   // 3 → 4: tampoco.
   3: (r) => r,
+  // 4 → 5: tampoco (los puntos sin marcadores son trayectorias como las de los gomets).
+  4: (r) => r,
 }
 
 /**
@@ -259,11 +277,13 @@ function errorModelo(v: unknown): string | null {
   }
   if (ids.size === 0) return 'el modelo no tiene marcadores'
   const segmento = (s: unknown) => esObjeto(s) && esTexto(s.desde) && esTexto(s.hasta) && ids.has(s.desde) && ids.has(s.hasta)
+  // Esquema 5: un ángulo absoluto lleva una referencia (solo esa clave) en lugar del segmento proximal.
+  const referencia = (s: unknown) => esObjeto(s) && Object.keys(s).length === 1 && (s.referencia === 'vertical' || s.referencia === 'horizontal')
   for (const a of v.articulaciones as unknown[]) {
     const d = a as Partial<Record<keyof DefinicionArticulacion, unknown>>
     if (
       !esObjeto(a) || !esTexto(d.id) || !esTexto(d.nombre) || !PLANOS.includes(d.plano as Plano) ||
-      !segmento(d.proximal) || !segmento(d.distal) || (d.signo !== 1 && d.signo !== -1) ||
+      !(segmento(d.proximal) || referencia(d.proximal)) || !segmento(d.distal) || (d.signo !== 1 && d.signo !== -1) ||
       typeof d.cero !== 'number' || !Number.isFinite(d.cero) || !esTexto(d.positivo) || !esTexto(d.negativo)
     ) {
       return `articulación no válida${esObjeto(a) && esTexto(a.id) ? `: ${a.id}` : ''}`
@@ -290,6 +310,17 @@ function errorSincronia(v: unknown): string | null {
   return null
 }
 
+const TAMANOS_POSE: readonly TamanoModeloPose[] = ['lite', 'full', 'heavy']
+const esRecuento = (n: unknown) => Number.isInteger(n) && (n as number) >= 0
+
+/** ¿Es la detección sin marcadores de una vista (esquema 5)? */
+export function esDeteccion(v: unknown): v is DeteccionPose {
+  return (
+    esObjeto(v) && TAMANOS_POSE.includes(v.modelo as TamanoModeloPose) && esTexto(v.libreria) && (v.delegado === 'GPU' || v.delegado === 'CPU') &&
+    esFecha(v.fecha) && esRecuento(v.conPersona) && esRecuento(v.intercambiados) && esRecuento(v.dudosos)
+  )
+}
+
 function errorVista(v: unknown): string | null {
   if (!esObjeto(v) || !esTexto(v.id)) return 'vista sin id'
   if (!esHuella(v.huella)) return `huella no válida en la vista ${v.id}`
@@ -302,6 +333,7 @@ function errorVista(v: unknown): string | null {
   if (new Set(v.marcadores).size !== v.marcadores.length) return `marcadores repetidos en la vista ${v.id}`
   const s = errorSincronia(v.sincronia)
   if (s) return `${s} en la vista ${v.id}`
+  if (v.deteccion !== null && !esDeteccion(v.deteccion)) return `detección sin marcadores no válida en la vista ${v.id}`
   return null
 }
 

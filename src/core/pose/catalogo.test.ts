@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { serieAngular } from '../articulaciones/calculo'
-import { articulacionesFrontales, articulacionesSagitales, marcadores, type Lado } from '../articulaciones/catalogo'
+import { articulacionesFrontales, articulacionesSagitales, conRodillaFrontal, marcadores, modeloRodilla3, type Lado } from '../articulaciones/catalogo'
 import { marcadoresDeArticulacion, type DefinicionArticulacion } from '../articulaciones/definicion'
-import { modeloDeVista } from '../articulaciones/modeloVista'
+import { marcadoresParaVista, modeloDeVista } from '../articulaciones/modeloVista'
 import { aImagen, direccion, frame } from '../articulaciones/poses'
 import type { OrientacionVista } from '../geometria/canonico'
 import type { Muestra2D } from '../modelo/tipos'
 import {
   articulacionesPoseFrontales,
   articulacionesPoseSagitales,
+  conPose,
   equivalenteGomets,
   fuenteDe,
   marcadoresPose,
@@ -16,7 +17,7 @@ import {
   PELVIS_FRONTAL_POSE,
   TRONCO_FRONTAL_POSE,
 } from './catalogo'
-import { conPuntosMedios, idMedio, idPose } from './puntos'
+import { conPuntosMedios, esIdPose, idMedio, idPose, PUNTOS_POSE } from './puntos'
 
 const LADOS: Lado[] = ['der', 'izq']
 const SAGITALES: OrientacionVista[] = [
@@ -290,5 +291,31 @@ describe('catálogo sin marcadores', () => {
       const g = gomets.find((x) => x.id === id)!
       expect([a.signo, a.cero, a.plano]).toEqual([g.signo, g.cero, g.plano])
     }
+  })
+})
+
+describe('conPose: el modelo de la sesión con lo sin marcadores', () => {
+  const base = conRodillaFrontal(modeloRodilla3('der'), 'der')
+
+  it('añade los 12 puntos y las articulaciones de perfil de la pierna de la cámara, sin tocar lo que había', () => {
+    const m = conPose(base, 'der')
+    expect(m.marcadores.slice(0, base.marcadores.length)).toEqual(base.marcadores)
+    expect(m.articulaciones.slice(0, base.articulaciones.length)).toEqual(base.articulaciones)
+    expect(m.marcadores).toHaveLength(base.marcadores.length + 12)
+    expect(m.articulaciones.map((a) => a.id).slice(base.articulaciones.length)).toEqual(articulacionesPoseSagitales('der').map((a) => a.id))
+    expect(conPose(m, 'der')).toBe(m)
+  })
+
+  it('una vista con gomets sigue los suyos y mide con gomets; una sin marcadores, los puntos del modelo', () => {
+    const m = conPose(base, 'der')
+    const o: OrientacionVista = { plano: 'sagital', mira: 'derecha' }
+    const gomets = marcadoresParaVista(m, o, (a) => fuenteDe(a) === 'gomets')
+    expect(gomets).toEqual(modeloRodilla3('der').marcadores.map((mk) => mk.id))
+    expect(modeloDeVista(m, gomets, o).articulaciones.map((a) => a.id)).toEqual(['rodilla_sagital_der'])
+    const sin = marcadoresParaVista(m, o, (a) => fuenteDe(a) === 'sinMarcadores')
+    expect(sin.every(esIdPose)).toBe(true)
+    expect(modeloDeVista(m, PUNTOS_POSE.map((p) => p.id), o).articulaciones[0]!.id).toBe('pose_rodilla_sagital_der')
+    // Con los dos, mandan los gomets (D5): su articulación va primero.
+    expect(modeloDeVista(m, [...gomets, ...PUNTOS_POSE.map((p) => p.id)], o).articulaciones[0]!.id).toBe('rodilla_sagital_der')
   })
 })
