@@ -1,6 +1,6 @@
 # Fase 5: sin marcadores en 2D (con gomets opcionales)
 
-Estado: **plan aceptado** (2026-10-27; D1–D8 aceptadas por el usuario tal como se proponen). En curso: pasos 1 y 2 hechos (ver «Hecho»).
+Estado: **plan aceptado** (2026-10-27; D1–D8 aceptadas por el usuario tal como se proponen). En curso: pasos 1, 2 y 3a hechos (ver «Hecho»).
 
 ## Cambio de rumbo (27-10-2026)
 
@@ -79,7 +79,8 @@ En una vista pueden convivir gomets y puntos del modelo. Cada articulación dice
 |---|---|---|
 | 1 | **Experimento de MediaPipe** (detalle abajo): detrás de `?pose`, «Detectar el cuerpo (experimental)» en el visor; esqueleto sobre el vídeo y, si la sesión tiene gomets, la flexión de la rodilla de las dos fuentes superpuestas, con un informe para copiar. Sin guardar nada | Opus |
 | 2 | **Núcleo:** puntos del modelo como trayectorias, calidad, cambios de lado, catálogo sin marcadores (sagital, frontal bilateral, tronco absoluto) con sus tests, comparación de dos fuentes | Opus |
-| 3 | **Visor:** «Detectar el cuerpo» de verdad (worker, progreso, cancelar), esqueleto, elegir con gomets o sin marcadores al abrir, fuente por articulación, comparación, CSV, glosario, esquema 5. e2e | Opus (maquetación fina en un PR de Sonnet si hace falta) |
+| 3a | **Visor, detectar y ver:** «Detectar el cuerpo» de verdad (worker, progreso, parar), esqueleto, elegir con gomets o sin marcadores al abrir, corrección a mano, esquema 5, el modelo *full* alojado. e2e | Opus |
+| 3b | **Visor, varias articulaciones:** articulación elegida por vista (rodilla, cadera, tobillo, tronco), fuente por articulación, comparación con los gomets (directa y relativa al cero, con el informe), CSV con todas, glosario. e2e | Opus (maquetación fina en un PR de Sonnet si hace falta) |
 | 4 | **Vista de frente sin marcadores:** las dos rodillas y la cadera de cada lado, oblicuidad pélvica; con dos vistas (perfil y frente sincronizadas), cada una con su fuente | Opus |
 | 5 | **Validación con el usuario** y ajustes: umbral de visibilidad, modelo por defecto, filtro, cambios de lado; `docs/grabacion.md` (cómo grabar sin marcadores: ropa, luz, fondo, distancia) | Opus |
 | 6 | Cierre: revisión de código, documentación y limitaciones | Opus |
@@ -146,6 +147,18 @@ Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualiza
 - **Piernas intercambiadas (`cambiosLado.ts`):** de frente, cada cadera tiene su lado de la imagen según la orientación (`asignarLadosFrontal`): un frame con las caderas al revés tiene los 12 puntos intercambiados, y se arregla también un modelo que etiquete como si la persona estuviera de frente cuando la cámara está detrás. De perfil (`corregirCambiosDeLado`), un cambio que se deshace en `VUELTA_MAX_S` (0,5 s) como mucho, sin perder a la persona entre medias, se deshace intercambiando los frames de en medio; si tarda más o no vuelve, las piernas de esos frames quedan **dudosas** (`CALIDAD_LADO_DUDOSO`, 0,4: por debajo de `CALIDAD_MINIMA`, con su posición) y lo marcado a mano no se toca. Devuelven copias y los tramos corregidos y dudosos, para que el visor los enseñe. Se aplica sobre la detección **antes** de juntarla con lo que había.
 - **Fusión (`fusionarDeteccion`):** volver a detectar no sobrescribe lo marcado a mano; donde la detección no llegó (un recorrido cancelado) se queda lo de antes.
 - **Comparación (`compararFuentes`):** la directa (sesgo, dispersión, ECM con y sin sesgo, rangos, correlación) y la **relativa al cero de cada fuente** en el mismo tramo (con `ceroDeReferencia`, el cálculo del cero del visor), que quita la diferencia constante entre los puntos de una y de otra: con el +7,5° de la sentadilla, la relativa compara forma y recorrido.
+
+**Paso 3a — el visor sin marcadores: detectar, guardar y ver** (propuesta aceptada el 28-10 con las recomendaciones: el paso 3 partido en 3a y 3b, y el modelo *full* alojado en el sitio). Hoy cada vista mide una sola articulación (la primera de su modelo); sin marcadores, de perfil hay cuatro: elegir cuál y comparar las fuentes es el 3b.
+
+- **Con gomets o sin marcadores al abrir** (`ElegirOrientacion`, primer vídeo): solo decide por dónde se empieza. El modelo de la sesión lleva siempre lo sin marcadores de perfil (`conPose`, fijado al abrir como `conRodillaFrontal`); cada vista sigue lo suyo (`marcadoresParaVista` con la fuente). Al detectar en una vista con gomets se le añaden los 12 puntos (`usarPose` en `Visor.tsx`) y siguen mandando los gomets (su articulación va primero, D5).
+- **«Detectar el cuerpo»** (`useDeteccionPose`, `BotonDetectar`): en «Marcar», con el modelo (*full*, el de por defecto, o *heavy*), y en la tira del vídeo grande (en el móvil en vertical, «Marcar» es el vídeo grande): sin gomets en el sitio de «Seguir», en ámbar; con ellos, debajo. El worker del paso 1 se crea al pedirlo y se cierra al acabar o al parar; progreso «cargando…», «N %» y «atrás N %». Lo detectado aparece mientras recorre el vídeo; al acabar, `corregirLados` y `fusionar` (lo marcado a mano no se toca), y un aviso con los frames con persona, los corregidos y los dudosos. Seguir y detectar no van a la vez (D8).
+- **El tiempo de cada frame** es el de la tabla del visor por su índice, no el que manda el worker: lo descubrieron las e2e (con otro `t`, el ángulo, que empareja las trayectorias por instante, salía vacío).
+- **Corregir a mano:** los puntos de la articulación se eligen en el selector y se colocan siempre a ojo; los puntos del modelo no se siguen (seguir, sus anclas y «quitar lo seguido después» solo tocan los gomets). Los demás puntos (la pierna lejana) solo se dibujan y no cuentan en la franja.
+- **Esqueleto** sobre el vídeo (`dibujarEsqueleto`, ahora con las trayectorias de la vista): pierna derecha en ámbar, izquierda en gris, lo dudoso tenue y a trazos, lo interpolado en azul.
+- **Esquema 5:** `deteccion` por vista (modelo, librería y versión, GPU o CPU, fecha, frames con persona, corregidos y dudosos; null si no se ha detectado) y la `Referencia` de los ángulos absolutos en la validación del modelo; migración 4 → 5 con su test.
+- **Modelo alojado:** `public/modelos/pose_landmarker_full_float16_1.task` (9 MB, con la versión en el nombre y caché de un año); *heavy* y *lite* siguen viniendo de Google.
+- **Retirado el experimento `?pose`** (`ExperimentoPose.tsx`); `informe.ts` queda para el 3b.
+- **Comprobado en el Chromium de la nube** con la foto de prueba de MediaPipe hecha vídeo (2 s): el modelo se descarga del propio sitio, persona en los 60 frames, el esqueleto cae sobre la persona y cada lado en su pierna (35 s en GPU emulada por software). **e2e:** el worker se sustituye por uno falso que manda la verdad del vídeo sintético como si fuera una persona (pierna de la cámara en los gomets, la lejana 40 px detrás con visibilidad 0,3; cinco frames con las piernas intercambiadas y cinco sin nadie): la flexión sin marcadores coincide con la verdad (también en los intercambiados, que sin corregir no tendrían ángulo), una corrección a mano sobrevive a volver a detectar, se guarda y se recupera; con gomets, detectar no cambia lo que se marca ni lo que se mide y seguir sigue funcionando; en el móvil, el botón está en el vídeo grande.
 
 ## Riesgos
 

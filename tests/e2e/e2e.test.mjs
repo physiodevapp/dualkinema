@@ -3394,7 +3394,15 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
     })
     assert.deepEqual(c.vistas[0].marcadores, ['trocanter_der', 'epicondilo_femoral_der', 'maleolo_der'])
     assert.deepEqual(c.vistas[1].marcadores, ['muslo_proximal_der', 'centro_rodilla_der', 'centro_tobillo_der'])
-    assert.deepEqual(c.modelo.articulaciones.map((a) => a.id), ['rodilla_sagital_der', 'rodilla_frontal_der'])
+    // El modelo de la sesión lleva también lo sin marcadores de perfil (fase 5), aunque estas vistas solo siguen gomets.
+    assert.deepEqual(c.modelo.articulaciones.map((a) => a.id), [
+      'rodilla_sagital_der',
+      'rodilla_frontal_der',
+      'pose_rodilla_sagital_der',
+      'pose_cadera_sagital_der',
+      'pose_tobillo_sagital_der',
+      'pose_tronco_sagital_der',
+    ])
     await p.reload()
     await p.setInputFiles('input[type=file]', videos.frontal.ruta)
     await p.getByRole('heading', { name: 'Ya has trabajado con este vídeo' }).waitFor({ timeout: 20000 })
@@ -3635,30 +3643,202 @@ describe('dos vistas: gráficas en el tiempo común y CSV con tiempo común', ()
   })
 })
 
-describe('sin marcadores: experimento (fase 5, paso 1)', () => {
-  // El modelo de verdad no corre aquí (se descarga de Google y el vídeo sintético no tiene una persona): se prueba con una
-  // imagen de una persona fuera de la CI (ver docs/plan-fase-5.md, «Hecho»). Aquí, que solo aparece con `?pose`.
-  it('sin ?pose no aparece', async () => {
-    const p = await abrirApp(navegador)
+/**
+ * Lo que daría MediaPipe con una persona cuyos puntos son la verdad del vídeo (fase 5, paso 3). El modelo de verdad no se
+ * puede probar aquí (el vídeo sintético no tiene una persona; se probó aparte con una foto: docs/plan-fase-5.md): el
+ * worker sin marcadores se sustituye por uno falso que manda estos frames con su protocolo. La pierna derecha (la de la
+ * cámara: mira a la derecha) cae en los gomets, con visibilidad 0,98; la izquierda, 40 px detrás y con 0,3 (como la
+ * lejana de verdad). En `intercambiados` el modelo da las dos piernas al revés y en `sinPersona` no ve a nadie.
+ */
+function deteccionFalsa(verdad, { intercambiados = [], sinPersona = [] } = {}) {
+  const PARTES = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta']
+  return verdad.map((v, indice) => {
+    if (sinPersona.includes(indice)) return { indice, t: v.t, puntos: null }
+    const [cadera, rodilla, tobillo] = v.ps
+    const der = {
+      hombro: { x: cadera.x - 5, y: cadera.y - 40 },
+      cadera,
+      rodilla,
+      tobillo,
+      talon: { x: tobillo.x - 12, y: tobillo.y + 8 },
+      punta: { x: tobillo.x + 30, y: tobillo.y + 10 },
+    }
+    const al = intercambiados.includes(indice)
+    const puntos = PARTES.flatMap((parte) =>
+      ['izq', 'der'].flatMap((lado) => {
+        const izq = (lado === 'izq') !== al
+        const q = der[parte]
+        return izq ? [q.x - 40, q.y, 0.3] : [q.x, q.y, 0.98]
+      }),
+    )
+    return { indice, t: v.t, puntos }
+  })
+}
+
+/** Abre la app con el worker sin marcadores sustituido por uno falso que manda `frames` (y cuenta las detecciones). */
+async function abrirConPoseFalsa(nav, frames, { ancho = 1280 } = {}) {
+  const p = await nav.newPage({ locale: 'es-ES', viewport: { width: ancho, height: ancho >= 800 ? 900 : 844 }, hasTouch: ancho < 800 })
+  p.on('pageerror', (e) => errores.push(`pageerror: ${e.message}`))
+  p.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()}`))
+  await p.addInitScript((frames) => {
+    const Original = window.Worker
+    window.__detecciones = 0
+    window.Worker = function (url, opciones) {
+      if (!String(url).includes('pose.worker')) return new Original(url, opciones)
+      window.__detecciones++
+      const w = { onmessage: null, onerror: null, cancelado: false, terminate() {} }
+      const enviar = (data, ms) => setTimeout(() => w.onmessage?.({ data }), ms)
+      w.postMessage = (m) => {
+        if (m.tipo === 'cancelar') w.cancelado = true
+        if (m.tipo !== 'detectar') return
+        enviar({ tipo: 'listo', delegado: 'GPU', msCarga: 1 }, 10)
+        const lotes = []
+        for (let k = 0; k < frames.length; k += 20) lotes.push(frames.slice(k, k + 20))
+        lotes.forEach((lote, k) => enviar({ tipo: 'frames', lote, progreso: (k + 1) / lotes.length }, 20 + 20 * k))
+        enviar({ tipo: 'fin', motivo: 'final', procesados: frames.length, msProceso: 100, recuperados: 0, msAtras: 0 }, 40 + 20 * lotes.length)
+      }
+      return w
+    }
+  }, frames)
+  await p.goto(URL_APP)
+  return p
+}
+
+/** Carga un vídeo «sin marcadores» mirando a la derecha. */
+async function cargarSinMarcadores(p, ruta) {
+  await p.setInputFiles('input[type=file]', ruta)
+  await p.getByRole('radio', { name: /Sin marcadores/ }).click({ timeout: 20000 })
+  await p.getByRole('button', { name: 'Mira a la derecha' }).click()
+  await esperarQuieto(p)
+}
+
+/** Pulsa «Detectar el cuerpo» (o «Volver a detectar») en el panel «Marcar» y espera a que acabe. */
+async function detectarCuerpo(p) {
+  const seccion = p.getByTestId('detectar-cuerpo')
+  await seccion.getByRole('button', { name: /detectar/i }).click()
+  await p.waitForFunction(() => !document.querySelector('[data-testid=progreso-deteccion]'), null, { timeout: 20000 })
+  await p.getByTestId('deteccion-hecha').waitFor({ timeout: 20000 })
+}
+
+describe('sin marcadores: detectar el cuerpo (fase 5, paso 3)', () => {
+  const INTERCAMBIADOS = [30, 31, 32, 33, 34]
+  const SIN_PERSONA = [100, 101, 102, 103, 104]
+  let p
+
+  before(async () => {
+    p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad, { intercambiados: INTERCAMBIADOS, sinPersona: SIN_PERSONA }))
+    await cargarSinMarcadores(p, videos.verde.ruta)
+    await abrirPestana(p, 'marcar')
+  })
+  after(() => p?.close())
+
+  it('sin marcadores no hay «Seguir»: «Detectar el cuerpo», en ámbar, y nada elegido para marcar', async () => {
+    assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).count(), 0)
+    assert.ok(await p.getByTestId('detectar-cuerpo').getByRole('button', { name: 'Detectar el cuerpo' }).isVisible())
+    assert.equal(await p.getByTestId('detectar-cuerpo').getByLabel('Modelo').inputValue(), 'full')
+    assert.equal(await p.getByRole('radio', { checked: true, name: /derech/ }).count(), 0)
+    assert.equal(await leerAngulo(p), NaN)
+  })
+
+  it('detecta, corrige las piernas intercambiadas y mide la rodilla con los puntos del modelo', async () => {
+    await detectarCuerpo(p)
+    assert.equal(await p.evaluate(() => window.__detecciones), 1)
+    const aviso = await p.getByTestId('aviso').innerText()
+    assert.match(aviso, new RegExp(`persona en ${120 - SIN_PERSONA.length} de 120 frames`))
+    assert.match(aviso, new RegExp(`piernas intercambiadas corregidas en ${INTERCAMBIADOS.length} frames`))
+    assert.match(await p.getByTestId('deteccion-hecha').innerText(), /full · GPU · persona en 115 frames · 5 con las piernas corregidas/)
+    // Los puntos de la articulación, en el selector; la pierna lejana no.
+    const selector = await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText()
+    assert.match(selector, /Cadera derecha/)
+    assert.match(selector, /Rodilla derecha/)
+    assert.match(selector, /Tobillo derecho/)
+    assert.doesNotMatch(selector, /izquierd/)
+    // El ángulo es el de la verdad (los puntos del modelo caen en los gomets), también en los frames que venían
+    // intercambiados (sin corregir, la rodilla «derecha» sería la lejana, con visibilidad 0,3: no habría ángulo).
+    for (const i of [...FRAMES_A_COMPARAR.filter((i) => !SIN_PERSONA.includes(i)), 30, 32, 34]) {
+      await irAFrame(p, i)
+      assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[i].flexion) < TOLERANCIA_GRADOS, `frame ${i + 1}`)
+    }
+    // Sin persona: sin ángulo, nunca 0.
+    await irAFrame(p, 102)
+    assert.equal(await p.getByTestId('angulo').innerText(), '—')
+  })
+
+  it('un punto se corrige a mano (a ojo) y volver a detectar no lo sobrescribe', async () => {
+    await irAFrame(p, 10)
+    const rodilla = videos.verde.verdad[10].ps[1]
+    await p.getByRole('radio', { name: /Rodilla derecha/ }).click()
+    await tocarVideo(p, rodilla.x + 20, rodilla.y)
+    const corregido = await p.getByTestId('angulo').innerText()
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[10].flexion) > 3, 'la corrección cambia el ángulo')
+    assert.match(await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText(), /a mano/)
+    await detectarCuerpo(p)
+    assert.equal(await p.evaluate(() => window.__detecciones), 2)
+    await irAFrame(p, 10)
+    assert.equal(await p.getByTestId('angulo').innerText(), corregido)
+    await irAFrame(p, 11)
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[11].flexion) < TOLERANCIA_GRADOS)
+  })
+
+  it('se guarda con la detección y se recupera tal cual', async () => {
+    await esperarGuardado(p, 120)
+    const antes = []
+    for (const i of [10, 32, 60]) {
+      await irAFrame(p, i)
+      antes.push(await p.getByTestId('angulo').innerText())
+    }
+    await p.reload()
+    await p.getByTestId('sesion-guardada').waitFor()
+    await p.setInputFiles('input[type=file]', videos.verde.ruta)
+    await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+    await esperarQuieto(p)
+    await abrirPestana(p, 'marcar')
+    for (const [k, i] of [10, 32, 60].entries()) {
+      await irAFrame(p, i)
+      assert.equal(await p.getByTestId('angulo').innerText(), antes[k], `frame ${i + 1}`)
+    }
+    assert.match(await p.getByTestId('deteccion-hecha').innerText(), /full · GPU · persona en 115 frames/)
+    assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).count(), 0)
+  })
+})
+
+describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
+  it('detectar no cambia lo que se marca y se mide (mandan los gomets) y no toca lo seguido', async () => {
+    const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad))
     try {
       await cargarVideo(p, videos.verde.ruta)
-      assert.equal(await p.getByTestId('experimento-pose').count(), 0)
+      await abrirPestana(p, 'marcar')
+      const boton = p.getByTestId('detectar-cuerpo').getByRole('button', { name: 'Detectar el cuerpo' })
+      assert.ok(await boton.isVisible())
+      assert.ok(await p.getByRole('button', { name: 'Seguir desde aquí' }).isVisible())
+      await marcarTres(p, videos.verde.verdad[0].ps)
+      await irAFrame(p, 0)
+      const angulo0 = await p.getByTestId('angulo').innerText()
+      await detectarCuerpo(p)
+      const selector = await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText()
+      assert.match(selector, /Trocánter/)
+      assert.doesNotMatch(selector, /\(modelo\)|Cadera derecha/)
+      await irAFrame(p, 0)
+      assert.equal(await p.getByTestId('angulo').innerText(), angulo0)
+      // Seguir sigue funcionando con los gomets, con los puntos del modelo ya en la vista (el aviso de la detección se
+      // quita al seguir y sale el del seguimiento).
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      await p.getByTestId('aviso').filter({ hasText: /Seguimiento completado/ }).waitFor({ timeout: 90000 })
+      await irAFrame(p, 60)
+      assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
     } finally {
       await p.close()
     }
   })
 
-  it('con ?pose aparece en «Marcar», con el modelo y el procesador a elegir, y sin informe hasta detectar', async () => {
-    const p = await abrirApp(navegador, { consulta: '?pose' })
+  it('en el móvil, «Detectar el cuerpo» está en el vídeo grande («Marcar»)', async () => {
+    const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad), { ancho: 390 })
     try {
-      await cargarVideo(p, videos.verde.ruta)
-      await abrirPestana(p, 'marcar')
-      const seccion = p.getByTestId('experimento-pose')
-      await seccion.waitFor()
-      assert.ok(await seccion.getByRole('button', { name: /Detectar el cuerpo/ }).isVisible())
-      assert.equal(await seccion.getByLabel('Modelo').inputValue(), 'full')
-      assert.equal(await seccion.getByLabel('Procesador').inputValue(), 'GPU')
-      assert.equal(await p.getByTestId('informe-pose').count(), 0)
+      await cargarSinMarcadores(p, videos.verde.ruta)
+      await p.getByRole('tab', { name: 'Marcar' }).click()
+      const tira = p.getByTestId('marcado-compacto')
+      await tira.getByRole('button', { name: 'Detectar el cuerpo' }).click()
+      await tira.getByRole('button', { name: 'Volver a detectar' }).waitFor({ timeout: 20000 })
     } finally {
       await p.close()
     }
