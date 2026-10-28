@@ -4,6 +4,8 @@ import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
 import type { LeerVentana } from '../../core/seguimiento/imagen'
 import type { TrayectoriaFiltrada } from '../../core/filtros/tramos'
 import { polilineasTrayectoria } from '../../core/graficas/trayectoria'
+import { CALIDAD_MINIMA } from '../../core/articulaciones/calculo'
+import { LINEAS_ESQUELETO, PUNTOS_POSE, VALORES_POR_PUNTO } from '../../core/pose/puntos'
 import { COLORES_MARCADOR } from '../marcadores'
 import type { BorradorEscala } from './PanelEscala'
 
@@ -189,4 +191,56 @@ export function dibujarCapa(
         ? calibracion
         : null
     if (segmento) dibujarSegmentoEscala(ctx, base, segmento.a, segmento.b)
+}
+
+/**
+ * Esqueleto del modelo sin marcadores (fase 5, paso 1) en un frame: `puntos` como `FramePose.puntos` (x, y, visibilidad
+ * por punto de `PUNTOS_POSE`). Las líneas y los puntos utilizables (visibilidad ≥ `CALIDAD_MINIMA`) van enteros; los
+ * dudosos, a trazos y más tenues. La pierna derecha de la persona en ámbar y la izquierda en gris claro.
+ */
+export function dibujarEsqueleto(ctx: CanvasRenderingContext2D, escala: number, puntos: readonly number[] | null | undefined) {
+  if (!puntos) return
+  const base = 2 * escala
+  const estilo = getComputedStyle(document.documentElement)
+  const color = { der: estilo.getPropertyValue('--color-acento').trim() || '#f2a65a', izq: estilo.getPropertyValue('--color-texto-2').trim() || '#bbb' }
+  const indice = new Map(PUNTOS_POSE.map((p, k) => [p.id, k * VALORES_POR_PUNTO]))
+  const punto = (id: string) => {
+    const k = indice.get(id)!
+    const x = puntos[k]!
+    const y = puntos[k + 1]!
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y, v: puntos[k + 2]! } : null
+  }
+  ctx.save()
+  ctx.lineCap = 'round'
+  for (const [a, b] of LINEAS_ESQUELETO) {
+    const p = punto(a)
+    const q = punto(b)
+    if (!p || !q) continue
+    const bueno = p.v >= CALIDAD_MINIMA && q.v >= CALIDAD_MINIMA
+    ctx.globalAlpha = bueno ? 0.9 : 0.45
+    ctx.setLineDash(bueno ? [] : [base * 2, base * 1.5])
+    ctx.lineWidth = base * 1.6
+    ctx.strokeStyle = '#000'
+    ctx.beginPath()
+    ctx.moveTo(p.x, p.y)
+    ctx.lineTo(q.x, q.y)
+    ctx.stroke()
+    ctx.lineWidth = base * 0.8
+    ctx.strokeStyle = a.endsWith('_der') && b.endsWith('_der') ? color.der : a.endsWith('_izq') && b.endsWith('_izq') ? color.izq : '#fff'
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+  for (const p of PUNTOS_POSE) {
+    const q = punto(p.id)
+    if (!q) continue
+    ctx.globalAlpha = q.v >= CALIDAD_MINIMA ? 1 : 0.45
+    ctx.fillStyle = color[p.lado]
+    ctx.strokeStyle = '#000'
+    ctx.lineWidth = base * 0.6
+    ctx.beginPath()
+    ctx.arc(q.x, q.y, base * 2, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+  ctx.restore()
 }

@@ -70,3 +70,42 @@ export type DelWorkerAudio =
     }
   | { readonly tipo: 'falta'; readonly faltas: readonly FaltaAudio[] }
   | { readonly tipo: 'error'; readonly mensaje: string }
+
+/** Tamaño del modelo de MediaPipe Pose Landmarker (fase 5, paso 1: el experimento compara los tres). */
+export type TamanoModeloPose = 'lite' | 'full' | 'heavy'
+
+/** Mensajes del hilo principal al worker sin marcadores (fase 5, paso 1). Para pararlo, `cancelar` o se cierra. */
+export type AlWorkerPose =
+  | {
+      readonly tipo: 'detectar'
+      readonly archivo: File
+      readonly modelo: TamanoModeloPose
+      /** Delegado pedido; si es 'GPU' y no se puede crear, se usa 'CPU' y se dice. */
+      readonly delegado: 'GPU' | 'CPU'
+    }
+  | { readonly tipo: 'cancelar' }
+
+/** Lo que da el modelo en un frame (ver `FramePose` en `core/pose/puntos.ts`). */
+export interface FramePoseWorker {
+  readonly indice: number
+  readonly t: number
+  /** `[x, y, visibilidad]` por punto de `PUNTOS_POSE`, en px del vídeo tal como se ve; null = nadie detectado. */
+  readonly puntos: number[] | null
+}
+
+/** Mensajes del worker sin marcadores al hilo principal. */
+export type DelWorkerPose =
+  | { readonly tipo: 'listo'; readonly delegado: 'GPU' | 'CPU'; readonly avisoDelegado?: string; readonly msCarga: number }
+  /** `atras`: los frames son de la segunda pasada (hacia atrás); `progreso` es entonces el de esa pasada. */
+  | { readonly tipo: 'frames'; readonly lote: readonly FramePoseWorker[]; readonly progreso: number; readonly atras?: boolean }
+  | {
+      readonly tipo: 'fin'
+      readonly motivo: 'final' | 'cancelado'
+      /** Frames recorridos hacia delante y lo que tardó (ms). */
+      readonly procesados: number
+      readonly msProceso: number
+      /** Frames sin persona que la segunda pasada, hacia atrás, recuperó, y lo que tardó (ms). */
+      readonly recuperados: number
+      readonly msAtras: number
+    }
+  | { readonly tipo: 'error'; readonly mensaje: string }
