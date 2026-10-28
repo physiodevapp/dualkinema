@@ -4375,6 +4375,8 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
     await p.getByTestId('volver-cabecera').click()
     assert.ok(await visible('panel-escala'))
     assert.equal(await p.getByTestId('pestana-escala').getAttribute('aria-selected'), 'true')
+    // Se deja la calibración como estaba (sin borrador) para las demás pruebas, y se cierra la herramienta.
+    await p.getByTestId('panel-escala').getByRole('button', { name: 'Cancelar' }).click()
     await p.getByTestId('volver-cabecera').click()
   })
 

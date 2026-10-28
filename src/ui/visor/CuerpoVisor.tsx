@@ -335,6 +335,10 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // botón, el visor quita su entrada. Sin ella, atrás sacaría de la página.
   const nivel = !anchoLg && ((movilVertical && abierta) || enVideo || enGraficas)
   const entradaPuesta = useRef(false)
+  // Retroceso pedido por el visor (al volver con un botón) que aún no ha llegado: mientras tanto no se pone otra entrada, o el
+  // retroceso pendiente se cruzaría con ella y la quitaría.
+  const retrocediendo = useRef(false)
+  const [, repasar] = useState(0)
   const alAtras = useRef(() => {})
   useEffect(() => {
     alAtras.current = () => {
@@ -347,16 +351,23 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // Se revisa en cada cambio: tras volver a una herramienta desde el vídeo grande, el gesto se ha llevado la entrada y hay
   // que ponerla de nuevo.
   useEffect(() => {
-    if (nivel && !entradaPuesta.current) {
+    if (nivel && !entradaPuesta.current && !retrocediendo.current) {
       history.pushState({ dualkinema: 'nivel' }, '')
       entradaPuesta.current = true
     } else if (!nivel && entradaPuesta.current) {
       entradaPuesta.current = false
+      retrocediendo.current = true
       history.back()
     }
   })
   useEffect(() => {
     const alRetroceder = () => {
+      if (retrocediendo.current) {
+        // Es el retroceso que pidió el visor: si mientras tanto se abrió otra herramienta, ahora se pone su entrada.
+        retrocediendo.current = false
+        repasar((n) => n + 1)
+        return
+      }
       if (!entradaPuesta.current) return
       entradaPuesta.current = false
       alAtras.current()
