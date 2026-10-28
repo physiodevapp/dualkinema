@@ -431,6 +431,34 @@ async function frenarWorker(p, ms = 15) {
   })
 }
 
+describe('la navegación se pausa mientras se sigue', () => {
+  it('con el seguimiento en marcha el deslizador, los pasos y el teclado no mueven el frame; al parar, vuelven', async () => {
+    const p = await abrirApp(navegador, { ancho: 1280 })
+    try {
+      await frenarWorker(p)
+      await cargarVideo(p, videos.verde.ruta)
+      await marcarTres(p, videos.verde.verdad[0].ps)
+      const frame0 = (await leerPosicion(p)).frame
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      const parar = p.getByRole('button', { name: /^Parar/ })
+      await parar.waitFor()
+      assert.ok(await p.getByRole('slider', { name: 'Posición en el vídeo' }).isDisabled(), 'el deslizador está deshabilitado')
+      assert.ok(await p.getByRole('button', { name: 'Frame siguiente' }).isDisabled(), 'los pasos están deshabilitados')
+      await p.keyboard.press('ArrowRight')
+      await p.keyboard.press('End')
+      assert.equal((await leerPosicion(p)).frame, frame0, 'el teclado no mueve el frame')
+      await parar.click()
+      await p.getByTestId('aviso').waitFor({ timeout: 90000 })
+      assert.ok(await p.getByRole('slider', { name: 'Posición en el vídeo' }).isEnabled())
+      assert.ok(await p.getByRole('button', { name: 'Frame siguiente' }).isEnabled())
+      await p.keyboard.press('ArrowRight')
+      await p.waitForFunction((f) => /frame (\d+)/.exec(document.querySelector('[data-testid=posicion]')?.textContent ?? '')?.[1] > f, frame0, { timeout: 5000 })
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('«Parar» a mitad del seguimiento', () => {
   let p
   const verdad = () => videos.verde.verdad
@@ -952,38 +980,27 @@ describe('mientras se sigue, lo filtrado se rehace (no se queda en la pasada ant
     await seguir.click()
     await p.getByTestId('progreso-seguimiento').waitFor()
   }
-  /** Toca la gráfica en el instante del frame i (se puede mientras se sigue). */
-  async function tocarFrame(i) {
-    const ts = verdad().map((f) => f.t)
-    const caja = await cajaElemento(p, 'grafica-angulo-area')
-    await p.mouse.click(caja.x + (caja.width * (ts[i] - ts[0])) / (ts.at(-1) - ts[0]), caja.y + caja.height / 2)
-    await esperarQuieto(p)
-  }
+  // Mientras se sigue, la navegación está en pausa (ver «la navegación se pausa mientras se sigue»): no se puede ir a
+  // otros frames para mirarlos. Lo que se ve es el frame donde se pulsó «Seguir desde aquí».
 
-  it('la primera vez, el ángulo filtrado aparece antes de acabar de seguir y da el real', async () => {
+  it('la primera vez, el ángulo filtrado del frame actual aparece antes de acabar de seguir y da el real', async () => {
     await pulsarSeguir()
-    await tocarFrame(20)
     // Antes, lo filtrado era lo de antes de seguir (solo el frame 0) hasta parar: «—» todo el seguimiento.
     await p.waitForFunction(() => /\d/.test(document.querySelector('[data-testid=valor-serie-filtrado]')?.textContent ?? ''), null, { timeout: 15000 })
     const filtrado = await leerNumero(p, 'valor-serie-filtrado')
     assert.ok(await siguiendo(), 'el ángulo filtrado no apareció hasta acabar de seguir')
-    assert.ok(Math.abs(filtrado - verdad()[20].flexion) < 1, `filtrado ${filtrado}°, real ${verdad()[20].flexion.toFixed(2)}°`)
+    assert.ok(Math.abs(filtrado - verdad()[0].flexion) < 1, `filtrado ${filtrado}°, real ${verdad()[0].flexion.toFixed(2)}°`)
     await p.getByTestId('aviso').waitFor({ timeout: 90000 })
   })
 
-  it('al seguir de nuevo desde un frame intermedio, no queda ángulo filtrado donde ya no hay nada seguido', async () => {
+  it('al seguir de nuevo desde un frame intermedio, lo seguido y lo filtrado dan al acabar el ángulo real', async () => {
     await irAFrame(p, 30)
     await pulsarSeguir()
-    await tocarFrame(115)
-    // Primero lo filtrado y después lo crudo: si lo filtrado tiene valor, el frame ya estaba seguido al filtrar.
-    const filtrado = await p.getByTestId('valor-serie-filtrado').innerText()
-    const crudo = await p.getByTestId('valor-serie-crudo').innerText()
-    assert.ok(await siguiendo(), 'el seguimiento acabó antes de poder mirar: la prueba no dice nada')
-    assert.equal(crudo.trim(), '—', 'el frame 116 aún no se ha vuelto a seguir')
-    assert.equal(filtrado.trim(), '—', `ángulo filtrado ${filtrado} en un frame sin nada seguido (lo de la pasada anterior)`)
+    assert.ok(await p.getByRole('slider', { name: 'Posición en el vídeo' }).isDisabled(), 'el seguimiento acabó antes de poder mirar: la prueba no dice nada')
     await p.getByTestId('aviso').waitFor({ timeout: 90000 })
-    await esperarQuieto(p)
+    await irAFrame(p, 115)
     assert.ok(Math.abs((await leerNumero(p, 'valor-serie-filtrado')) - verdad()[115].flexion) < TOLERANCIA_GRADOS)
+    assert.ok(Math.abs((await leerNumero(p, 'valor-serie-crudo')) - verdad()[115].flexion) < TOLERANCIA_GRADOS)
   })
 })
 
@@ -3676,11 +3693,11 @@ function deteccionFalsa(verdad, { intercambiados = [], sinPersona = [] } = {}) {
 }
 
 /** Abre la app con el worker sin marcadores sustituido por uno falso que manda `frames` (y cuenta las detecciones). */
-async function abrirConPoseFalsa(nav, frames, { ancho = 1280 } = {}) {
+async function abrirConPoseFalsa(nav, frames, { ancho = 1280, ritmoMs = 20 } = {}) {
   const p = await nav.newPage({ locale: 'es-ES', viewport: { width: ancho, height: ancho >= 800 ? 900 : 844 }, hasTouch: ancho < 800 })
   p.on('pageerror', (e) => errores.push(`pageerror: ${e.message}`))
   p.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()}`))
-  await p.addInitScript((frames) => {
+  await p.addInitScript(({ frames, ritmoMs }) => {
     const Original = window.Worker
     window.__detecciones = 0
     window.Worker = function (url, opciones) {
@@ -3694,12 +3711,12 @@ async function abrirConPoseFalsa(nav, frames, { ancho = 1280 } = {}) {
         enviar({ tipo: 'listo', delegado: 'GPU', msCarga: 1 }, 10)
         const lotes = []
         for (let k = 0; k < frames.length; k += 20) lotes.push(frames.slice(k, k + 20))
-        lotes.forEach((lote, k) => enviar({ tipo: 'frames', lote, progreso: (k + 1) / lotes.length }, 20 + 20 * k))
-        enviar({ tipo: 'fin', motivo: 'final', procesados: frames.length, msProceso: 100, recuperados: 0, msAtras: 0 }, 40 + 20 * lotes.length)
+        lotes.forEach((lote, k) => enviar({ tipo: 'frames', lote, progreso: (k + 1) / lotes.length }, 20 + ritmoMs * k))
+        enviar({ tipo: 'fin', motivo: 'final', procesados: frames.length, msProceso: 100, recuperados: 0, msAtras: 0 }, 40 + ritmoMs * lotes.length)
       }
       return w
     }
-  }, frames)
+  }, { frames, ritmoMs })
   await p.goto(URL_APP)
   return p
 }
@@ -3799,6 +3816,31 @@ describe('sin marcadores: detectar el cuerpo (fase 5, paso 3)', () => {
     }
     assert.match(await p.getByTestId('deteccion-hecha').innerText(), /full · GPU · persona en 115 frames/)
     assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).count(), 0)
+  })
+})
+
+describe('la navegación se pausa mientras se detecta el cuerpo', () => {
+  it('con la detección en marcha el deslizador, los pasos y el teclado no mueven el frame; al acabar, vuelven', async () => {
+    // Un lote cada 400 ms: la detección dura unos 2 s y da tiempo a probar.
+    const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad), { ritmoMs: 400 })
+    try {
+      await cargarSinMarcadores(p, videos.verde.ruta)
+      await abrirPestana(p, 'marcar')
+      const frame0 = (await leerPosicion(p)).frame
+      await p.getByTestId('detectar-cuerpo').getByRole('button', { name: 'Detectar el cuerpo' }).click()
+      await p.getByTestId('progreso-deteccion').first().waitFor()
+      assert.ok(await p.getByRole('slider', { name: 'Posición en el vídeo' }).isDisabled(), 'el deslizador está deshabilitado')
+      assert.ok(await p.getByRole('button', { name: 'Frame anterior' }).isDisabled(), 'los pasos están deshabilitados')
+      await p.keyboard.press('ArrowRight')
+      await p.keyboard.press('End')
+      assert.equal((await leerPosicion(p)).frame, frame0, 'el teclado no mueve el frame')
+      await p.getByTestId('deteccion-hecha').waitFor({ timeout: 20000 })
+      assert.ok(await p.getByRole('slider', { name: 'Posición en el vídeo' }).isEnabled())
+      await irAFrame(p, 20)
+      assert.equal((await leerPosicion(p)).frame, 21)
+    } finally {
+      await p.close()
+    }
   })
 })
 

@@ -92,10 +92,17 @@ export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number)
     [tabla, pintar, alIr],
   )
   const mover = useCallback((d: number) => ir(pedido.current + d), [ir])
+  // Mientras se sigue o se detecta (fase 5), la navegación del usuario queda en pausa: pintar frames para mirarlos compite
+  // con el worker por el decodificador y lo frena. Aquí solo el teclado; el resto de controles los deshabilita el visor.
+  const bloqueo = useRef(false)
+  const bloquear = useCallback((b: boolean) => {
+    bloqueo.current = b
+  }, [])
 
   useEffect(() => {
     if (!activa) return
     const tecla = (e: KeyboardEvent) => {
+      if (bloqueo.current) return
       // Las flechas de otro campo son suyas (el corte del filtro, los de texto); las del
       // deslizador de frames, de los botones y de las pestañas mueven el frame.
       const el = e.target instanceof Element ? e.target : null
@@ -113,5 +120,5 @@ export function useNavegacionFrames(video: VideoAbierto, alIr: (destino: number)
   }, [mover, ir, total, activa])
 
 
-  return { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover }
+  return { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover, bloquear }
 }

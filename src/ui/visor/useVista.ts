@@ -120,7 +120,7 @@ export function useVista({
     },
     [alCambiarFrame],
   )
-  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover } = useNavegacionFrames(video, alIr, activa)
+  const { lienzo, deseado, mostrado, error, msDecodificar, lectura, ultimoFrame, sentido, ir, mover, bloquear } = useNavegacionFrames(video, alIr, activa)
 
   // Marcado a mano: marcador elegido, «Colocar a ojo», colocar (en el gomet o a ojo), la lupa y quitar.
   const { seleccionado, setSeleccionado, colocarAOjo, setColocarAOjo, ponerManual, previsualizar, colocar, quitarManual } = useMarcado({
@@ -379,6 +379,7 @@ export function useVista({
     sentido,
     ir,
     mover,
+    bloquear,
     seleccionado,
     setSeleccionado,
     colocarAOjo,

@@ -33,6 +33,8 @@ interface Props {
   velocidad: ArrayLike<number>
   aceleracion: ArrayLike<number>
   onMover: (d: number) => void
+  /** Se sigue o se detecta: los botones de paso se deshabilitan. */
+  deshabilitado?: boolean
   /** Móvil girado con el vídeo grande: la barra ocupa solo la columna de la derecha, no todo el ancho. */
   columna?: boolean
 }
@@ -56,6 +58,7 @@ export default function BarraPosicion({
   velocidad,
   aceleracion,
   onMover,
+  deshabilitado,
   columna,
 }: Props) {
   return (
@@ -114,16 +117,16 @@ export default function BarraPosicion({
               ))}
             </dl>
             <div className="flex gap-2 lg:order-2">
-              <BotonPaso etiqueta={`Retroceder ${SALTO} frames`} accion={() => onMover(-SALTO)}>
+              <BotonPaso deshabilitado={deshabilitado} etiqueta={`Retroceder ${SALTO} frames`} accion={() => onMover(-SALTO)}>
                 <ChevronDoubleLeftIcon className="size-6" />
               </BotonPaso>
-              <BotonPaso etiqueta="Frame anterior" accion={() => onMover(-1)}>
+              <BotonPaso deshabilitado={deshabilitado} etiqueta="Frame anterior" accion={() => onMover(-1)}>
                 <ChevronLeftIcon className="size-7" />
               </BotonPaso>
-              <BotonPaso etiqueta="Frame siguiente" accion={() => onMover(1)}>
+              <BotonPaso deshabilitado={deshabilitado} etiqueta="Frame siguiente" accion={() => onMover(1)}>
                 <ChevronRightIcon className="size-7" />
               </BotonPaso>
-              <BotonPaso etiqueta={`Avanzar ${SALTO} frames`} accion={() => onMover(SALTO)}>
+              <BotonPaso deshabilitado={deshabilitado} etiqueta={`Avanzar ${SALTO} frames`} accion={() => onMover(SALTO)}>
                 <ChevronDoubleRightIcon className="size-6" />
               </BotonPaso>
             </div>

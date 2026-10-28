@@ -113,6 +113,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     lectura,
     ir,
     mover,
+    bloquear,
     seleccionado,
     setSeleccionado,
     colocarAOjo,
@@ -212,6 +213,13 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   const otraSigue = vistas.some((w, i) => i !== activa && w.siguiendo)
   const otraDetecta = vistas.some((w, i) => i !== activa && w.detectando)
   const otraSiguiendo = otraSigue || otraDetecta
+  // Mientras se sigue o se detecta en cualquier vista, la navegación queda en pausa (deslizador, botones de paso, teclado,
+  // tocar la gráfica o «ir a…»): pintar otros frames compite con el worker por el decodificador y lo frena, y la franja se
+  // rellena a saltos. Al acabar o parar vuelve todo.
+  const navBloqueada = siguiendo || detectando || otraSiguiendo
+  useEffect(() => bloquear(navBloqueada), [bloquear, navBloqueada])
+  const irLibre = useCallback((i: number) => !navBloqueada && ir(i), [navBloqueada, ir])
+  const moverLibre = useCallback((d: number) => !navBloqueada && mover(d), [navBloqueada, mover])
   const listoParaSeguir = listoPropio && !otraSiguiendo && !detectando
   const aviso =
     avisoPropio ??
@@ -253,7 +261,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // La vista de referencia tiene desfase 0, así que con una vista (o con A) nada cambia.
   const desfaseActiva = activaViva.desfaseS
   const tiemposGrafica = useMemo(() => (desfaseActiva === 0 ? tabla.tiempos : tabla.tiempos.map((t) => t + desfaseActiva)), [tabla, desfaseActiva])
-  const buscarEnComun = useCallback((t: number) => buscarEnTiempo(t - desfaseActiva), [buscarEnTiempo, desfaseActiva])
+  const buscarEnComun = useCallback((t: number) => !navBloqueada && buscarEnTiempo(t - desfaseActiva), [buscarEnTiempo, desfaseActiva, navBloqueada])
   const dosVistas = vistas.length === 2
   const vistaA = vistas[0]
   const vistaB = vistas[1]
@@ -420,7 +428,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // En el móvil va en la fila de posición de la barra de abajo (a mano desde cualquier pestaña y vista); desde `lg`, en el
   // flujo de la página, bajo el vídeo. Es el mismo control dibujado en los dos sitios y solo se ve uno.
   const controlDeslizador = (
-    <DeslizadorFrames estados={estadosFrames} total={total} deseado={deseado} t={tabla.tiempos[deseado]!} onIr={ir} />
+    <DeslizadorFrames estados={estadosFrames} total={total} deseado={deseado} t={tabla.tiempos[deseado]!} onIr={irLibre} deshabilitado={navBloqueada} />
   )
   const nodoDeslizador = <div className="flex flex-col gap-1 max-lg:hidden lg:order-1">{controlDeslizador}</div>
 
@@ -430,7 +438,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       <div className="flex flex-wrap gap-2" data-testid="extras-compactos">
         <BotonesQuitarManual marcas={marcasManualesAqui} siguiendo={ocupada} frame={mostrado} onQuitar={quitarManual} claseExtra="" />
         <AccionesHuecos huecosCortos={huecosCortos.length} hayInterpolados={hayInterpolados} onRellenar={rellenarHuecosCortos} onQuitarInterpolados={quitarInterpolados} compacto />
-        {aviso?.irA !== undefined && <BotonIrAlHueco frame={aviso.irA} onIr={ir} compacto />}
+        {aviso?.irA !== undefined && <BotonIrAlHueco frame={aviso.irA} onIr={irLibre} compacto />}
       </div>
     ) : null
 
@@ -689,7 +697,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             cero={cero}
             velocidad={filtrado.derivadas.velocidad}
             aceleracion={filtrado.derivadas.aceleracion}
-            onMover={mover}
+            onMover={moverLibre}
+            deshabilitado={navBloqueada}
             columna={dosColumnas || mixtaApaisada}
           />
 
@@ -834,7 +843,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               onSeguir={seguirDesdeAqui}
               onParar={pararSeguimiento}
               aviso={aviso}
-              onIr={ir}
+              onIr={irLibre}
               huecosCortos={huecosCortos.length}
               hayInterpolados={hayInterpolados}
               onRellenarHuecos={rellenarHuecosCortos}
@@ -880,7 +889,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               segmentos={segmentos}
               tramos={{ cero: tramoEstatico, primeros: tramoInicial(tabla.tiempos), actual: t }}
               constancia={constancia}
-              onIr={ir}
+              onIr={irLibre}
               frameCalibracion={frameCalibracion === null ? null : frameCalibracion + 1}
               onEmpezar={empezarEscala}
               onBorrador={setBorrador}
