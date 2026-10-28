@@ -62,10 +62,12 @@ export const lanzarNavegadorConCamaraFalsa = () =>
   })
 
 /**
- * Abre la app como un móvil (o ancho de escritorio con `ancho` ≥ 800). El idioma es es-ES: uPlot lo necesita.
+ * Abre la app con un ancho de escritorio (1280) o, con `ancho` por debajo de 800, como un móvil: las pruebas de
+ * funcionamiento (seguimiento, huecos, escala…) no dependen del diseño del móvil y van en escritorio, donde todo está a la
+ * vista; las que prueban el móvil piden `ancho: 390`. El idioma es es-ES: uPlot lo necesita.
  * `consulta` va tras la dirección (p. ej. `?laboratorio`).
  */
-export async function abrirApp(navegador, { ancho = 390, alto, consulta = '' } = {}) {
+export async function abrirApp(navegador, { ancho = 1280, alto, consulta = '' } = {}) {
   const pagina = await navegador.newPage({
     locale: 'es-ES',
     viewport: { width: ancho, height: alto ?? (ancho >= 800 ? 900 : 844) },
@@ -98,20 +100,10 @@ export async function esperarQuieto(p) {
 }
 
 /**
- * Espera a que el vídeo pegado del móvil esté oculto (`true`) o a la vista (`false`) tras bajar o subir por las
- * tarjetas, y a que acaben el fundido del vídeo y el deslizamiento de las pestañas (200 ms): medir cajas mientras se
- * mueven da posiciones distintas para cada elemento. En pantalla ancha no hay nada que esperar.
+ * Espera a que acaben las animaciones (el fundido de una vista ampliada, el aviso de un asa): medir cajas mientras se
+ * mueven da posiciones distintas para cada elemento.
  */
-export async function esperarVideoAsentado(p, oculto) {
-  await p.waitForFunction(
-    (esperado) => {
-      const fijo = document.querySelector('[data-testid=visor-fijo]')
-      if (!fijo || getComputedStyle(fijo).position === 'static') return true
-      return esperado === undefined || (fijo.dataset.oculto === 'true') === esperado
-    },
-    oculto,
-    { timeout: 5000 },
-  )
+export async function esperarVideoAsentado(p) {
   await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
   await p.waitForFunction(() => document.getAnimations().length === 0, null, { timeout: 5000 })
 }
@@ -155,14 +147,28 @@ export function leerFrameDibujado(p, { bits, ladoBloque }) {
  */
 export async function cajaVideo(p) {
   const capa = p.getByTestId('capa')
+  // En pantalla ancha la página puede desplazarse; en el móvil no (el vídeo está siempre en su sitio).
   await capa.evaluate((el) => el.scrollIntoView({ block: 'center' }))
-  // Desplazar la página puede haber ocultado el vídeo (en el móvil se oculta al bajar por las tarjetas): se
-  // vuelve a ver con su botón, como haría la persona, y así no se vuelve a ocultar al seguir.
-  await p.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok))))
-  const mostrar = p.getByTestId('mostrar-video')
-  if (await mostrar.count()) await mostrar.click()
-  await esperarVideoAsentado(p, false)
+  await esperarVideoAsentado(p)
   return capa.boundingBox()
+}
+
+/**
+ * Arrastra un asa (`data-testid`) `dy` px en vertical y la suelta (en dos tramos, como un dedo). Devuelve lo que
+ * `durante()` mide justo antes de soltar, si se pasa.
+ */
+export async function arrastrarAsa(p, testid, dy, durante) {
+  const c = await p.getByTestId(testid).boundingBox()
+  const x = c.x + c.width / 2
+  const y = c.y + c.height / 2
+  await p.mouse.move(x, y)
+  await p.mouse.down()
+  await p.mouse.move(x, y + dy / 2, { steps: 4 })
+  await p.mouse.move(x, y + dy, { steps: 4 })
+  const medido = durante ? await durante() : undefined
+  await p.mouse.up()
+  await esperarVideoAsentado(p)
+  return medido
 }
 
 /** Toca el vídeo en (x, y) de los px del vídeo (640×360 por defecto). */
@@ -176,17 +182,43 @@ export async function marcarTres(p, posiciones, desvio = 2) {
   for (const [i, q] of posiciones.entries()) await tocarVideo(p, q.x + (i % 2 ? -desvio : desvio), q.y + (i === 2 ? desvio : -desvio))
 }
 
+/** Móvil en vertical (por debajo de `lg` y más alto que ancho): ahí cada herramienta es una pantalla completa. */
+export function esMovilVertical(p) {
+  const v = p.viewportSize()
+  return v.width < 1024 && v.height > v.width
+}
+
+/**
+ * Ejecuta `f` con el ancho de escritorio, donde todas las pestañas y paneles están a la vista, y deja la ventana como
+ * estaba. Lo usan los ayudantes que leen o escriben en un panel (seguir, leer un ángulo) cuando la prueba va en un móvil
+ * en vertical y lo que prueba no es el diseño del móvil.
+ */
+export async function enEscritorio(p, f) {
+  if (!esMovilVertical(p)) return f()
+  const v = p.viewportSize()
+  await p.setViewportSize({ width: 1280, height: 900 })
+  await esperarVideoAsentado(p)
+  try {
+    return await f()
+  } finally {
+    await p.setViewportSize(v)
+    await esperarVideoAsentado(p)
+  }
+}
+
 /** Pulsa «Seguir desde aquí» y espera a que termine. Devuelve el texto del aviso final. La pestaña abierta queda como estaba. */
 export async function seguirHastaElFinal(p) {
-  const antes = await pestanaAbierta(p)
-  await abrirPestana(p, 'marcar')
-  const seguir = p.getByRole('button', { name: 'Seguir desde aquí' })
-  await centrarLibre(seguir)
-  await seguir.click()
-  await p.getByTestId('aviso').waitFor({ timeout: 90000 })
-  const aviso = (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
-  await abrirPestana(p, antes)
-  return aviso
+  return enEscritorio(p, async () => {
+    const antes = await pestanaAbierta(p)
+    await abrirPestana(p, 'marcar')
+    const seguir = p.getByRole('button', { name: 'Seguir desde aquí' })
+    await centrarLibre(seguir)
+    await seguir.click()
+    await p.getByTestId('aviso').waitFor({ timeout: 90000 })
+    const aviso = (await p.getByTestId('aviso').innerText()).replace(/\s+/g, ' ')
+    await abrirPestana(p, antes)
+    return aviso
+  })
 }
 
 /** Abre una pestaña de herramientas del visor («marcar», «analisis», «escala», «video») si no es la abierta. */
@@ -210,14 +242,16 @@ async function pestanaAbierta(p) {
 
 /** Lee el texto de un elemento abriendo su pestaña y dejando abierta la que estaba (para no estorbar al resto de la prueba). */
 export async function textoDe(p, testid) {
-  const id = pestanaDe(testid)
-  const antes = id ? await pestanaAbierta(p) : null
-  if (id) await abrirPestana(p, id)
-  try {
-    return await p.getByTestId(testid).innerText()
-  } finally {
-    if (id && antes !== id) await abrirPestana(p, antes)
-  }
+  return enEscritorio(p, async () => {
+    const id = pestanaDe(testid)
+    const antes = id ? await pestanaAbierta(p) : null
+    if (id) await abrirPestana(p, id)
+    try {
+      return await p.getByTestId(testid).innerText()
+    } finally {
+      if (id && antes !== id) await abrirPestana(p, antes)
+    }
+  })
 }
 
 /**

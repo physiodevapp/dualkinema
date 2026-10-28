@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from 'react'
-import { ALTO_VIDEO_DVH, altoArrastrado, altoElastico, altosVideo, desbordeArrastre, DOBLE_TOQUE_MS, MOVER_PX, repartoMasCercano, repartoVecino, type Reparto } from './reparto'
+import { PORCENTAJE_VIDEO, altoArrastrado, altoElastico, altosVideo, desbordeArrastre, DOBLE_TOQUE_MS, MOVER_PX, repartoMasCercano, repartoVecino, type Reparto } from './reparto'
 
 interface Props {
   readonly reparto: Reparto
@@ -11,6 +11,8 @@ interface Props {
   readonly lienzo: RefObject<HTMLCanvasElement | null>
   /** Alto / ancho del vídeo: lo más alto que puede verse con el ancho disponible. */
   readonly proporcion: number
+  /** Alto del bloque de arriba (vídeo, asa y gráfica), px: las posiciones son partes de él. */
+  readonly altoBloque: number
   /** Al soltar tras tirar más allá de un extremo: pasa a la vista ampliada (el reparto no cambia). */
   readonly onAmpliar: (vista: 'video' | 'graficas') => void
 }
@@ -24,7 +26,7 @@ const NOMBRES: Readonly<Record<Reparto, string>> = { grafica: 'gráfica grande',
  * (el vídeo grande o solo las gráficas); volviendo atrás sin soltar, no.
  * Solo el asa bloquea el desplazamiento de la página (`touch-action: none`): fuera de ella, arrastrar sigue desplazando.
  */
-export default function SeparadorVideo({ reparto, onReparto, onArrastre, lienzo, proporcion, onAmpliar }: Props) {
+export default function SeparadorVideo({ reparto, onReparto, onArrastre, lienzo, proporcion, altoBloque, onAmpliar }: Props) {
   const arrastre = useRef<{ id: number; y0: number; inicio: number; altos: Record<Reparto, number>; movido: boolean } | null>(null)
   const ultimoToque = useRef(0)
   const [desborde, setDesborde] = useState<'video' | 'graficas' | null>(null)
@@ -34,10 +36,10 @@ export default function SeparadorVideo({ reparto, onReparto, onArrastre, lienzo,
       role="separator"
       aria-orientation="horizontal"
       aria-label="Repartir el alto entre el vídeo y la gráfica"
-      // Valor: tope de alto del vídeo en % de la ventana.
-      aria-valuenow={ALTO_VIDEO_DVH[reparto]}
-      aria-valuemin={ALTO_VIDEO_DVH.grafica}
-      aria-valuemax={ALTO_VIDEO_DVH.video}
+      // Valor: tope de alto del vídeo en % del bloque de arriba.
+      aria-valuenow={PORCENTAJE_VIDEO[reparto]}
+      aria-valuemin={PORCENTAJE_VIDEO.grafica}
+      aria-valuemax={PORCENTAJE_VIDEO.video}
       aria-valuetext={NOMBRES[reparto]}
       tabIndex={0}
       data-testid="separador-video"
@@ -57,7 +59,7 @@ export default function SeparadorVideo({ reparto, onReparto, onArrastre, lienzo,
           id: e.pointerId,
           y0: e.clientY,
           inicio: c.getBoundingClientRect().height,
-          altos: altosVideo(window.innerHeight, ancho * proporcion),
+          altos: altosVideo(altoBloque, ancho * proporcion),
           movido: false,
         }
       }}
