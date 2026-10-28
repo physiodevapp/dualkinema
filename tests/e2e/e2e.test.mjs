@@ -3249,14 +3249,42 @@ describe('glosario', () => {
       await boton.click()
       const dialogo = p.getByRole('dialog', { name: 'Glosario' })
       await dialogo.waitFor()
-      assert.ok((await p.locator('[data-testid^=glosario-]').count()) >= 12, 'el listado tiene las entradas')
-      // Ninguna está abierta si no se pidió una concreta.
-      assert.equal(await dialogo.locator('details[open]').count(), 0)
-      await p.getByText('Filtro y frecuencia de corte').click()
+      // En pantalla ancha, a dos columnas: la lista a la izquierda y, sin pedir ninguna, la primera entrada a la derecha.
+      const total = await p.locator('[data-testid^=glosario-entrada-]').count()
+      assert.ok(total >= 12, 'el listado tiene las entradas')
+      assert.equal(await p.locator('[data-testid^=glosario-entrada-][aria-current=true]').count(), 1)
+      await p.getByTestId('glosario-entrada-filtro').click()
       assert.match(await p.getByTestId('glosario-filtro').innerText(), /Butterworth/)
+      assert.equal(await p.locator('[data-abierta=true]').count(), 1, 'se ve una entrada cada vez')
+      // Las flechas recorren la lista.
+      await p.keyboard.press('ArrowDown')
+      assert.equal(await p.getByTestId('glosario-filtro').count(), 0)
+      assert.equal(await p.locator('[data-testid^=glosario-entrada-][aria-current=true]').count(), 1)
+      // El buscador, sin tildes: «angulo» encuentra «Ángulo: sin cero y relativo».
+      await p.getByTestId('buscar-glosario').fill('angulo')
+      assert.ok(await p.getByTestId('glosario-entrada-angulo').isVisible())
+      assert.ok((await p.locator('[data-testid^=glosario-entrada-]').count()) < total, 'la búsqueda deja menos entradas')
       await p.keyboard.press('Escape')
       await dialogo.waitFor({ state: 'detached' })
       assert.equal(await boton.evaluate((el) => document.activeElement === el), true, 'el foco vuelve al botón')
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('en el móvil, las entradas son desplegables: ninguna abierta si no se pide una', async () => {
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await p.getByTestId('abrir-glosario').click()
+      const dialogo = p.getByRole('dialog', { name: 'Glosario' })
+      await dialogo.waitFor()
+      assert.equal(await dialogo.locator('details[open]').count(), 0)
+      await p.getByText('Filtro y frecuencia de corte').click()
+      await p.locator('[data-testid=glosario-filtro][data-abierta=true]').waitFor()
+      assert.match(await p.getByTestId('glosario-filtro').innerText(), /Butterworth/)
+      await p.getByTestId('buscar-glosario').fill('reenganche')
+      assert.ok(await p.getByTestId('glosario-anclas').isVisible())
+      assert.equal(await p.getByTestId('glosario-filtro').count(), 0)
     } finally {
       await p.close()
     }
@@ -3269,8 +3297,8 @@ describe('glosario', () => {
       await abrirPestana(p, 'analisis')
       await p.getByTestId('info-filtro').click()
       await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
-      assert.equal(await p.getByTestId('glosario-filtro').evaluate((el) => el.open), true, 'la entrada pedida está abierta')
-      assert.equal(await p.getByTestId('glosario-cero').evaluate((el) => el.open), false)
+      assert.equal(await p.getByTestId('glosario-filtro').getAttribute('data-abierta'), 'true', 'la entrada pedida está abierta')
+      assert.equal(await p.getByTestId('glosario-cero').count(), 0)
       assert.equal(await p.evaluate(() => document.body.style.overflow), 'hidden')
       // Las flechas son del glosario: el vídeo no avanza.
       const antes = (await leerPosicion(p)).frame
@@ -3299,7 +3327,7 @@ describe('glosario', () => {
         assert.ok((await p.getByTestId(`info-${id}`).count()) > 0, `no hay icono de «${id}»`)
         await icono.evaluate((el) => el.click())
         await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
-        assert.equal(await p.getByTestId(`glosario-${id}`).evaluate((el) => el.open), true, `«${id}» abierta`)
+        assert.equal(await p.getByTestId(`glosario-${id}`).getAttribute('data-abierta'), 'true', `«${id}» abierta`)
         assert.match(await p.getByTestId(`glosario-${id}`).innerText(), new RegExp(titulo))
         await p.keyboard.press('Escape')
         await p.getByRole('dialog', { name: 'Glosario' }).waitFor({ state: 'detached' })
@@ -3315,7 +3343,7 @@ describe('glosario', () => {
       // Con un hueco por rellenar, el resumen dice «sin valor» y lo explica el glosario.
       await p.getByTestId('resumen-grafica').getByTestId('info-huecos').click()
       await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
-      assert.equal(await p.getByTestId('glosario-huecos').evaluate((el) => el.open), true)
+      assert.equal(await p.getByTestId('glosario-huecos').getAttribute('data-abierta'), 'true')
       await p.keyboard.press('Escape')
       await p.getByRole('button', { name: /Rellenar \d+ hueco/ }).click()
       await p.getByTestId('resumen-grafica').getByTestId('info-interpolado').click()
