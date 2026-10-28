@@ -1,12 +1,12 @@
 /// <reference lib="webworker" />
-// Sin marcadores (fase 5, paso 1): recorre el vídeo entero y pasa cada frame por MediaPipe Pose Landmarker, en modo
+// Sin marcadores (fase 5): recorre el vídeo entero y pasa cada frame por MediaPipe Pose Landmarker, en modo
 // vídeo y con el tiempo del vídeo de cada frame (nunca un reloj). El archivo no sale del dispositivo: se lee a trozos
 // desde el File que manda el hilo principal y el modelo corre aquí.
 //
 // El WASM de MediaPipe se aloja en el propio sitio (lo copia Vite de node_modules con `?url`): la variante «module», que
-// en un worker de módulo se carga con `import()`. El modelo (.task) se descarga de Google al empezar (D2 del plan:
-// decidir en el paso 3 si se aloja también; el «heavy», 30 MB, no cabe en el límite por archivo de Cloudflare). Solo se
-// descarga el modelo: no se envía nada.
+// en un worker de módulo se carga con `import()`. El modelo *full* (el de por defecto, 9 MB) también se aloja en el sitio
+// (`public/modelos/`, decisión del paso 3); el *heavy* (30 MB) no cabe en el límite por archivo de Cloudflare y se descarga
+// de Google al pedirlo, como el *lite*. Solo se descarga el modelo: no se envía nada.
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'mediabunny'
 import { PoseLandmarker } from '@mediapipe/tasks-vision'
 import cargadorWasm from '@mediapipe/tasks-vision/vision_wasm_module_internal.js?url'
@@ -24,7 +24,9 @@ const LADO_MAXIMO = 960
 const BLOQUE_ATRAS = 20
 
 const urlModelo = (m: TamanoModeloPose) =>
-  `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${m}/float16/1/pose_landmarker_${m}.task`
+  m === 'full'
+    ? new URL('/modelos/pose_landmarker_full_float16_1.task', self.location.origin).href
+    : `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${m}/float16/1/pose_landmarker_${m}.task`
 
 let cancelado = false
 const enviar = (m: DelWorkerPose) => self.postMessage(m)

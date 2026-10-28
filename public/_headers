@@ -10,3 +10,7 @@
 # Vite pone un hash en el nombre de estos archivos: si cambian, cambia el nombre.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# El modelo sin marcadores (fase 5) lleva su versión en el nombre: si cambia, cambia el nombre.
+/modelos/*
+  Cache-Control: public, max-age=31536000, immutable
