@@ -2705,6 +2705,37 @@ describe('dos vistas: añadir la segunda, cursor común, A / B y recuperarlas', 
     assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
   })
 
+  it('en pantalla ancha las dos vistas van lado a lado, del mismo ancho y siempre A a la izquierda; en el móvil en vertical, B en pequeño', async () => {
+    const caja = (loc) => loc.evaluate((el) => el.getBoundingClientRect().toJSON())
+    const otra = p.getByTestId('miniatura-vista')
+    const activa = p.locator('[data-activa=true]')
+    assert.equal(await otra.getAttribute('data-lado'), 'true')
+    let a = await caja(activa)
+    let o = await caja(otra)
+    assert.ok(o.left > a.right, 'B a la derecha de A')
+    assert.ok(Math.abs(a.width - o.width) <= 2, `mismo ancho: ${a.width} y ${o.width}`)
+    // Activar B tocándola: A pasa a ser la de al lado, a la izquierda (no se intercambian de sitio).
+    await otra.click()
+    await esperarQuieto(p)
+    assert.equal(await p.getByTestId('vista-B').getAttribute('aria-pressed'), 'true')
+    a = await caja(activa)
+    o = await caja(otra)
+    assert.ok(o.right < a.left, 'A a la izquierda de B')
+    assert.match(await otra.innerText(), /^A/)
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    // Móvil en vertical: la otra vista, en pequeño sobre el vídeo.
+    const antes = p.viewportSize()
+    await p.setViewportSize({ width: 390, height: 844 })
+    try {
+      await p.waitForFunction(() => !document.querySelector('[data-testid=miniatura-vista]')?.hasAttribute('data-lado'))
+      assert.ok((await caja(otra)).width < 120)
+    } finally {
+      await p.setViewportSize(antes)
+      await esperarVideoAsentado(p)
+    }
+  })
+
   it('el cursor común lleva B al frame que toca por tiempo (25 y 30 fps), no al mismo número', async () => {
     for (const k of [0, 10, 40, 41, 59, 80, 81, 100]) {
       await abrirPestana(p, 'video')

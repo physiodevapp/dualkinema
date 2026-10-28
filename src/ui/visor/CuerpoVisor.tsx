@@ -56,6 +56,8 @@ const sinMedios = (series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefin
 
 /** Letra de cada vista, en el orden de la sesión. */
 const LETRAS = ['A', 'B'] as const
+/** Tope de alto del vídeo en pantalla ancha (también el de la otra vista, al lado). */
+const TOPE_LG = 'lg:max-h-[max(14rem,calc(100dvh-25rem))]'
 
 interface Props {
   /** Todas las vistas de la sesión (la de referencia primero). */
@@ -449,6 +451,19 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
   // Móvil girado con el vídeo grande: dos columnas (el vídeo con todo el alto; a su lado, aviso, marcado y barra fija).
   const dosColumnas = enVideo && apaisado
+  // Las dos vistas lado a lado (pantalla ancha, o móvil girado en la vista mixta), con el mismo tope de alto que el vídeo.
+  const ladoALado = vistas.length > 1 && (anchoLg || mixtaApaisada)
+  const topeMovilVideo = activo ? `${altoVideoMovil}px` : undefined
+  const otraAlLado = (w: VistaViva, i: number) => (
+    <MiniaturaVista
+      key={w.id}
+      vista={w}
+      etiqueta={LETRAS[i]!}
+      fuera={fuera.has(w.id)}
+      onElegir={() => onElegirVista(w.id)}
+      lado={{ topeLg: TOPE_LG, topeMovil: topeMovilVideo }}
+    />
+  )
 
   // Calibrar la escala o marcar el evento de la sincronía se hace sobre el vídeo: esta tira dice qué falta (volver a la
   // herramienta es el botón de la cabecera).
@@ -543,13 +558,23 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                   `max-lg:order-1 max-lg:shrink-0 max-lg:overflow-hidden ${mixtaApaisada ? 'max-lg:col-start-1 max-lg:row-span-3 max-lg:row-start-1' : ''}`
             } ${enGraficas || (movilVertical && abierta) ? 'max-lg:hidden' : ''}`}
           >
-          <div className={dosColumnas ? 'relative min-w-0 flex-1' : 'relative'}>
+          {/* Dos vistas en pantalla ancha o con el móvil girado (vista mixta): lado a lado y del mismo tamaño, siempre A a la
+              izquierda; la activa con un anillo ámbar y la otra se toca para activarla. En el móvil en vertical y en el vídeo
+              grande (donde se marca), la otra va en pequeño sobre el vídeo. */}
+          <div className={ladoALado ? 'grid grid-cols-2 items-start gap-3' : 'contents'} data-testid={ladoALado ? 'vistas-lado' : undefined}>
+          {ladoALado && vistas.slice(0, activa).map((w, i) => otraAlLado(w, i))}
+          <div
+            className={
+              ladoALado ? 'relative min-w-0 rounded-2xl ring-2 ring-acento' : dosColumnas ? 'relative min-w-0 flex-1' : 'relative'
+            }
+            data-activa={ladoALado ? 'true' : undefined}
+          >
             <LienzoVideo
               key={activaViva.id}
               llenar={enVideo}
               apaisado={dosColumnas}
-              topeLg="lg:max-h-[max(14rem,calc(100dvh-25rem))]"
-              topeMovil={activo ? `${altoVideoMovil}px` : undefined}
+              topeLg={TOPE_LG}
+              topeMovil={topeMovilVideo}
               ancho={info.ancho}
               alto={info.alto}
               lienzo={lienzo}
@@ -592,10 +617,11 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                   activa={activaViva.id}
                   onElegir={onElegirVista}
                 />
-                {vistas.map(
-                  (w, i) =>
-                    i !== activa && <MiniaturaVista key={w.id} vista={w} etiqueta={LETRAS[i]!} fuera={fuera.has(w.id)} onElegir={() => onElegirVista(w.id)} />,
-                )}
+                {!ladoALado &&
+                  vistas.map(
+                    (w, i) =>
+                      i !== activa && <MiniaturaVista key={w.id} vista={w} etiqueta={LETRAS[i]!} fuera={fuera.has(w.id)} onElegir={() => onElegirVista(w.id)} />,
+                  )}
               </div>
             )}
             {marcandoEvento && (
@@ -635,6 +661,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                 <ArrowTrendingUpIcon className="size-5" />
               </button>
             )}
+          </div>
+          {ladoALado && vistas.slice(activa + 1).map((w, i) => otraAlLado(w, activa + 1 + i))}
           </div>
           {!anchoLg && vista === 'mixta' && (
             <SeparadorVideo
