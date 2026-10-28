@@ -1,8 +1,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { conRodillaFrontal, modeloRodilla3 } from '../core/articulaciones/catalogo'
 import { marcadoresParaVista } from '../core/articulaciones/modeloVista'
-import { conPose, fuenteDe } from '../core/pose/catalogo'
-import { PUNTOS_POSE } from '../core/pose/puntos'
+import { conPose, fuenteDe, marcadoresSinMarcadores, type Fuente } from '../core/pose/catalogo'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores, Sincronia } from '../core/modelo/tipos'
@@ -25,7 +24,7 @@ interface Props {
   filtro?: AjustesFiltro | null
   avisoInicial?: string
   /** Se ha abierto otro vídeo como vista nueva de la sesión. */
-  onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista) => void
+  onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista, fuente: Fuente) => void
   /** La pestaña con que empezar (al abrir una grabación doble, «Vídeo», donde está la sincronía propuesta). */
   pestanaInicial?: string
 }
@@ -86,8 +85,8 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
   // vista de referencia (lateral) y, para una vista de frente, sus 3 marcadores y el FPPA de esa rodilla. Cada vista sigue
   // los suyos (`modeloDeVista`). Una sesión recuperada parte del que se guardó con ella. Se fija al abrir, ya con lo de la
   // vista de frente, para que no cambie al añadirla (lo de cada vista depende de él).
-  // Fase 5: también lo sin marcadores de perfil (`conPose`: los 12 puntos del modelo y sus articulaciones), para que no
-  // cambie al detectar el cuerpo; una vista con gomets no los sigue hasta que se detecta en ella.
+  // Fase 5: también lo sin marcadores (`conPose`: los 12 puntos del modelo, los puntos medios y las articulaciones de perfil
+  // y de frente), para que no cambie al detectar el cuerpo; una vista con gomets no los sigue hasta que se detecta en ella.
   const lado = ladoDeVista(vistas[0]!.orientacion)
   const modelo = useMemo(() => conPose(conRodillaFrontal(modeloGuardado ?? modeloRodilla3(lado), lado), lado), [modeloGuardado, lado])
   const recuperada = !!vistas[0]!.inicial
@@ -108,8 +107,10 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
       vistas.map((v) => {
         const conSinc = sinc[v.id] ? { ...v, ...sinc[v.id] } : v
         if (!conPuntosPose.has(v.id)) return conSinc
-        const propios = v.marcadores ?? marcadoresParaVista(modelo, v.orientacion, (a) => fuenteDe(a) === (v.fuente ?? 'gomets'))
-        const nuevos = PUNTOS_POSE.map((p) => p.id).filter((id) => !propios.includes(id))
+        const propios =
+          v.marcadores ??
+          (v.fuente === 'sinMarcadores' ? marcadoresSinMarcadores(v.orientacion) : marcadoresParaVista(modelo, v.orientacion, (a) => fuenteDe(a) === 'gomets'))
+        const nuevos = marcadoresSinMarcadores(v.orientacion).filter((id) => !propios.includes(id))
         return nuevos.length ? { ...conSinc, marcadores: [...propios, ...nuevos] } : conSinc
       }),
     [vistas, sinc, conPuntosPose, modelo],

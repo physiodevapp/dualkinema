@@ -2,7 +2,7 @@ import { useCallback, useMemo, type ReactNode } from 'react'
 import { marcadoresParaVista, modeloDeVista } from '../../core/articulaciones/modeloVista'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { ModeloMarcadores } from '../../core/modelo/tipos'
-import { fuenteDe } from '../../core/pose/catalogo'
+import { fuenteDe, marcadoresSinMarcadores } from '../../core/pose/catalogo'
 import { useVista } from './useVista'
 import type { EntradaVista, VistaViva } from './vistas'
 
@@ -34,7 +34,9 @@ export default function AnfitrionVista({ entrada, modelo, filtro, avisoInicial, 
   // los de su plano con la fuente con que se abrió (gomets o sin marcadores, fase 5).
   const fuente = entrada.fuente ?? 'gomets'
   const marcadores = useMemo(
-    () => entrada.marcadores ?? marcadoresParaVista(modelo, entrada.orientacion, (a) => fuenteDe(a) === fuente),
+    () =>
+      entrada.marcadores ??
+      (fuente === 'sinMarcadores' ? marcadoresSinMarcadores(entrada.orientacion) : marcadoresParaVista(modelo, entrada.orientacion, (a) => fuenteDe(a) === fuente)),
     [entrada.marcadores, modelo, entrada.orientacion, fuente],
   )
   const modeloVista = useMemo(() => modeloDeVista(modelo, marcadores, entrada.orientacion), [modelo, marcadores, entrada.orientacion])
