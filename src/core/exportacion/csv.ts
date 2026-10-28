@@ -4,7 +4,7 @@ import { distanciaPx, incertidumbreEscala, metrosPorPx, type CalibracionVista } 
 import type { VelocidadMarcador } from '../filtros/derivadas'
 import type { TrayectoriaFiltrada } from '../filtros/tramos'
 import type { OrientacionVista } from '../geometria/canonico'
-import type { IdMarcador, Muestra2D, Sincronia } from '../modelo/tipos'
+import type { DeteccionPose, IdMarcador, Muestra2D, Sincronia } from '../modelo/tipos'
 import { compararConEvento, precisionDelMetodo, seComprueba } from '../sincronia/audio'
 import { ajusteManual, desfaseDeEvento } from '../sincronia/evento'
 
@@ -43,6 +43,8 @@ export interface MarcadorExportado {
 export interface AnguloExportado {
   readonly id: string
   readonly nombre: string
+  /** De qué salen sus puntos (fase 5): de gomets o del modelo sin marcadores. */
+  readonly fuente: 'gomets' | 'sinMarcadores'
   readonly positivo: string
   readonly negativo: string
   /** Por frame (NaN = sin valor), todas del mismo largo que `tiempos`. */
@@ -75,8 +77,11 @@ export interface DatosExportacion {
   /** Tiempo de cada frame, en segundos de vídeo. */
   readonly tiempos: ArrayLike<number>
   readonly marcadores: readonly MarcadorExportado[]
-  /** null si la articulación no es del plano de la vista. */
-  readonly angulo: AnguloExportado | null
+  /**
+   * Las articulaciones del plano de la vista (fase 5: con gomets y sin marcadores, varias), la elegida en el visor
+   * primero. Vacío si no hay ninguna de su plano.
+   */
+  readonly angulos: readonly AnguloExportado[]
   readonly calibracion: CalibracionVista | null
   /** Solo con varias vistas (ver `SincronizacionExportada`). */
   readonly sincronia?: SincronizacionExportada
@@ -94,6 +99,8 @@ export interface DatosExportacion {
     readonly corteEfectivoHz: number
     /** ISO 8601, de quien llama (así la función es pura). */
     readonly exportado: string
+    /** La última detección sin marcadores de la vista (fase 5), si la hubo. */
+    readonly deteccion?: DeteccionPose | null
   }
 }
 
@@ -197,18 +204,30 @@ function cabecera(d: DatosExportacion, e: Estilo): [string, string][] {
         'cada tramo sin huecos por separado; la posición filtrada, el ángulo y las derivadas salen de ahí',
     ],
   ]
-  const a = d.angulo
-  if (a) {
-    filas.push(['articulación', `${a.nombre} (positivo: ${a.positivo}; negativo: ${a.negativo})`])
+  // Con varias articulaciones, cada fila dice de cuál es (con una, como siempre).
+  const varias = d.angulos.length > 1
+  for (const a of d.angulos) {
+    const de = varias ? `${a.id}: ` : ''
+    const fuente = a.fuente === 'sinMarcadores' ? '; sin marcadores' : ''
+    filas.push(['articulación', `${de}${a.nombre} (positivo: ${a.positivo}; negativo: ${a.negativo})${fuente}`])
     filas.push(
       a.cero
         ? [
             'cero de referencia',
-            `tramo estático ${n(a.cero.tramo.desde, 3)}–${n(a.cero.tramo.hasta, 3)} s; media ${n(a.cero.media, 3)} grados; ` +
+            `${de}tramo estático ${n(a.cero.tramo.desde, 3)}–${n(a.cero.tramo.hasta, 3)} s; media ${n(a.cero.media, 3)} grados; ` +
               `desviación típica ${n(a.cero.desviacion, 3)} grados; ${a.cero.muestras} frames`,
           ]
-        : ['cero de referencia', 'ninguno (la columna relativa queda vacía)'],
+        : ['cero de referencia', `${de}ninguno (la columna relativa queda vacía)`],
     )
+  }
+  const det = m.deteccion
+  if (det) {
+    filas.push([
+      'sin marcadores',
+      `puntos del cuerpo detectados con ${det.libreria} (Pose Landmarker ${det.modelo}, ${det.delegado}) el ${det.fecha}; persona en ${det.conPersona} frames; ` +
+        `piernas corregidas en ${det.intercambiados} frames y dudosas en ${det.dudosos}; calidad = visibilidad del punto; ` +
+        'son centros articulares aproximados, no referencias óseas como los gomets',
+    ])
   }
   if (d.sincronia) {
     filas.push(...filasSincronia(d.sincronia, n))
@@ -247,8 +266,8 @@ function columnas(d: DatosExportacion): string[] {
     if (conEscala) cols.push(`${p}_filtrado_x_m`, `${p}_filtrado_y_m`)
     cols.push(`${p}_velocidad_${conEscala ? 'm_s' : 'px_s'}`)
   }
-  if (d.angulo) {
-    const p = `angulo_${d.angulo.id}`
+  for (const a of d.angulos) {
+    const p = `angulo_${a.id}`
     cols.push(`${p}_crudo_grados`, `${p}_filtrado_grados`, `${p}_relativo_grados`, `${p}_vel_grados_s`, `${p}_acel_grados_s2`)
   }
   return cols
@@ -283,10 +302,7 @@ export function construirCsv(d: DatosExportacion, formato: FormatoCsv = 'es'): s
       if (mpp !== null) f.push(n(p ? p.x * mpp : undefined, 6), n(p ? p.y * mpp : undefined, 6))
       f.push(n(mk.velocidad.modulo[i], 4))
     }
-    if (d.angulo) {
-      const a = d.angulo
-      f.push(n(a.crudo[i], 3), n(a.filtrado[i], 3), n(a.relativo?.[i], 3), n(a.velocidad[i], 3), n(a.aceleracion[i], 2))
-    }
+    for (const a of d.angulos) f.push(n(a.crudo[i], 3), n(a.filtrado[i], 3), n(a.relativo?.[i], 3), n(a.velocidad[i], 3), n(a.aceleracion[i], 2))
     lineas.push(f.join(e.sep))
   }
   return `${formato === 'es' ? BOM : ''}${lineas.join('\r\n')}\r\n`

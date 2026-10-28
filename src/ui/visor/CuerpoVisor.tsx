@@ -90,9 +90,8 @@ interface Props {
 export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, ajustes, onCambiarAjustes: cambiarAjustes, revAjustes, onElegirVista, onAnadirVista }: Props) {
   const activaViva = vistas[activa]!
   const orientacion = activaViva.orientacion
-  // Lo de la vista activa: sus marcadores y su articulación.
-  const modeloVista = activaViva.modelo
-  const articulacion = modeloVista.articulaciones[0]!
+  // La articulación que se mira en la vista activa (fase 5: la elegida en «Análisis»).
+  const articulacion = activaViva.articulacion
 
   // Todo lo de la vista activa (trayectorias, frames, marcado, seguimiento, escala, análisis, dibujo, valores y CSV).
   const {
@@ -201,9 +200,10 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       sincronia: w.sincronia,
       marcadores: w.marcadores,
       deteccion: w.deteccion,
+      articulacion: w.articulacion.id,
     })),
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: revSinc + revAjustes + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion, 0),
+    version: revSinc + revAjustes + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion, 0),
     recuperada,
     sinGuardar,
   })
@@ -876,6 +876,12 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               conEscala={!!calibracion}
               mismoPlano={orientacion.plano === articulacion.plano}
               siguiendo={ocupada}
+              articulaciones={activaViva.articulaciones}
+              articulacion={articulacion}
+              onElegirArticulacion={activaViva.elegirArticulacion}
+              comparacion={activaViva.comparacionFuentes}
+              tiemposGrafica={tiemposGrafica}
+              onBuscar={buscarEnComun}
             />
           </PanelPestana>
 

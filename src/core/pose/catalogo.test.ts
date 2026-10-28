@@ -11,6 +11,7 @@ import {
   articulacionesPoseSagitales,
   conPose,
   equivalenteGomets,
+  parejaDeFuente,
   fuenteDe,
   marcadoresPose,
   modeloPose,
@@ -317,5 +318,20 @@ describe('conPose: el modelo de la sesión con lo sin marcadores', () => {
     expect(modeloDeVista(m, PUNTOS_POSE.map((p) => p.id), o).articulaciones[0]!.id).toBe('pose_rodilla_sagital_der')
     // Con los dos, mandan los gomets (D5): su articulación va primero.
     expect(modeloDeVista(m, [...gomets, ...PUNTOS_POSE.map((p) => p.id)], o).articulaciones[0]!.id).toBe('rodilla_sagital_der')
+  })
+})
+
+describe('parejaDeFuente', () => {
+  it('cada articulación con la de la otra fuente que mide lo mismo, si está', () => {
+    const gomets = articulacionesSagitales('der')
+    const pose = articulacionesPoseSagitales('der')
+    const todas = [...gomets, ...pose]
+    const rodilla = gomets.find((a) => a.id === 'rodilla_sagital_der')!
+    const rodillaPose = pose.find((a) => a.id === 'pose_rodilla_sagital_der')!
+    expect(parejaDeFuente(rodilla, todas)).toBe(rodillaPose)
+    expect(parejaDeFuente(rodillaPose, todas)).toBe(rodilla)
+    expect(parejaDeFuente(pose.find((a) => a.id === 'pose_tronco_sagital_der')!, todas)).toBeNull()
+    expect(parejaDeFuente(rodilla, gomets)).toBeNull()
+    expect(parejaDeFuente(rodillaPose, pose)).toBeNull()
   })
 })

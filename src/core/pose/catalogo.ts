@@ -171,3 +171,16 @@ export function equivalenteGomets(idPoseArticulacion: string): string | null {
   const m = /^pose_((?:cadera|rodilla|tobillo)_sagital|rodilla_frontal)_(der|izq)$/.exec(idPoseArticulacion)
   return m ? `${m[1]}_${m[2]}` : null
 }
+
+/**
+ * La misma articulación con la otra fuente, entre las de `articulaciones` (las de una vista): de una sin marcadores, la de
+ * los gomets que mide lo mismo (`equivalenteGomets`); de una de gomets, la sin marcadores que la tiene por equivalente.
+ * null si no está (sin la otra fuente, o sin equivalente: el tronco, la pelvis).
+ */
+export function parejaDeFuente(def: DefinicionArticulacion, articulaciones: readonly DefinicionArticulacion[]): DefinicionArticulacion | null {
+  if (fuenteDe(def) === 'sinMarcadores') {
+    const id = equivalenteGomets(def.id)
+    return (id && articulaciones.find((a) => a.id === id)) || null
+  }
+  return articulaciones.find((a) => equivalenteGomets(a.id) === def.id) ?? null
+}

@@ -44,6 +44,8 @@ export interface VistaAGuardar {
   readonly marcadores: readonly IdMarcador[]
   /** La última detección sin marcadores (null = ninguna). */
   readonly deteccion: DeteccionPose | null
+  /** La articulación que se mira (fase 5, paso 3b). */
+  readonly articulacion: string
 }
 
 export type EstadoGuardado =

@@ -395,6 +395,21 @@ describe('varias vistas (esquema 3)', () => {
     expect(leerDatos(comoIDB(datos), c.valor).ok).toBe(true)
   })
 
+  it('guarda la articulación que se mira, opcional y sin cambiar de versión', () => {
+    const e = entrada()
+    const art = modelo.articulaciones[0]!.id
+    const { cabecera } = prepararGuardado({ ...e, vistas: [{ ...e.vistas[0]!, articulacion: art }] })
+    expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL)
+    const c = leerCabecera(comoIDB(cabecera))
+    expect(c.ok && c.valor.vistas[0]!.articulacion).toBe(art)
+    expect('articulacion' in prepararGuardado(e).cabecera.vistas[0]!).toBe(false)
+    const ajena = leerCabecera({ ...cabecera, vistas: [{ ...cabecera.vistas[0]!, articulacion: 'codo_sagital_der' }] })
+    expect(ajena.ok).toBe(false)
+    if (!ajena.ok) expect(ajena.detalle).toMatch(/articulación que no está en el modelo: codo_sagital_der/)
+    const rara = leerCabecera({ ...cabecera, vistas: [{ ...cabecera.vistas[0]!, articulacion: 3 }] })
+    expect(!rara.ok && rara.detalle).toMatch(/articulación elegida no válida/)
+  })
+
   it('rechaza una detección o una referencia que no cuadran', () => {
     const e = entrada()
     const { cabecera } = prepararGuardado(e)

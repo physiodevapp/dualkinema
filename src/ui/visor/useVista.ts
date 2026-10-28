@@ -1,5 +1,11 @@
 import { useCallback, useMemo, useState } from 'react'
+import { serieAngular } from '../../core/articulaciones/calculo'
 import { marcadoresDeArticulacion, segmentosDeArticulacion } from '../../core/articulaciones/definicion'
+import { comoMuestras } from '../../core/filtros/tramos'
+import { seriePorFrame } from '../../core/graficas/series'
+import { fuenteDe, parejaDeFuente } from '../../core/pose/catalogo'
+import { compararFuentes } from '../../core/pose/comparar'
+import { textoInforme } from '../../core/pose/informe'
 import { CALIDAD_MINIMA } from '../../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../../core/exportacion/csv'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
@@ -49,6 +55,8 @@ interface Opciones {
   readonly deteccionGuardada?: DeteccionPose | null
   /** La vista pasa a seguir los puntos del modelo sin marcadores (al detectar el cuerpo). Debe ser estable. */
   readonly alUsarPose?: () => void
+  /** Al recuperar: la articulación que se miraba (fase 5, paso 3b). */
+  readonly articulacionGuardada?: string
 }
 
 /**
@@ -70,9 +78,23 @@ export function useVista({
   alCambiarFrame,
   deteccionGuardada,
   alUsarPose,
+  articulacionGuardada,
 }: Opciones) {
   const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
-  const articulacion = modelo.articulaciones[0]!
+  // La articulación que se mira (fase 5, paso 3b): una de las de su plano que se pueden calcular con los marcadores de la
+  // vista (de perfil sin marcadores, cuatro). Sin elegir, la primera (con gomets y sin marcadores, la de los gomets: D5).
+  // Si deja de estar (no debería: el modelo solo crece), la primera.
+  const articulaciones = useMemo(() => {
+    const delPlano = modelo.articulaciones.filter((a) => a.plano === orientacion.plano)
+    return delPlano.length ? delPlano : modelo.articulaciones.slice(0, 1)
+  }, [modelo, orientacion])
+  const [elegida, setElegida] = useState<string | undefined>(articulacionGuardada)
+  const [revArticulacion, setRevArticulacion] = useState(0)
+  const articulacion = articulaciones.find((a) => a.id === elegida) ?? articulaciones[0]!
+  const elegirArticulacion = useCallback((id: string) => {
+    setElegida(id)
+    setRevArticulacion((n) => n + 1)
+  }, [])
   // Fase 5: una vista puede tener gomets, los puntos del modelo sin marcadores o los dos. Los gomets se siguen; los puntos
   // del modelo se detectan. Se marcan (y cuentan en la franja) los gomets y los puntos de la articulación que se mide: los
   // demás puntos del modelo (la pierna lejana, casi siempre dudosa) se dibujan en el esqueleto, pero no se eligen.
@@ -282,6 +304,39 @@ export function useVista({
   // (flexión / hiperextensión) concuerde con el número visible.
   const anguloRedondeado = Math.round(angulo * 10) / 10 + 0
   const est = useMemo(() => estadisticas(tabla), [tabla])
+  // Gomets frente a sin marcadores (fase 5, paso 3b): si la articulación que se mira tiene en la vista la de la otra
+  // fuente, las dos filtradas por frame (la otra, con el mismo camino: las coordenadas ya filtradas de `filtrado`) y su
+  // comparación, a pelo y relativa al cero (el tramo del cero de la que se mira o, si no tiene, el de la otra).
+  const comparacionFuentes = useMemo(() => {
+    const pareja = parejaDeFuente(articulacion, articulaciones)
+    if (!pareja || orientacion.plano !== pareja.plano) return null
+    const ids = marcadoresDeArticulacion(pareja)
+    const filtradas = Object.fromEntries(ids.flatMap((id) => (filtrado.porMarcador.has(id) ? [[id, comoMuestras(filtrado.porMarcador.get(id)!)] as const] : [])))
+    const otra = seriePorFrame(serieAngular(pareja, filtradas, orientacion), tabla.tiempos).valores
+    const esGomets = fuenteDe(articulacion) === 'gomets'
+    const gomets = esGomets ? filtradoPorFrame.valores : otra
+    const sinMarcadores = esGomets ? otra : filtradoPorFrame.valores
+    const tramo = ceros[articulacion.id] ?? ceros[pareja.id] ?? null
+    const resumen = compararFuentes(gomets, sinMarcadores, tabla.tiempos, tramo)
+    const nombre = (esGomets ? articulacion : pareja).nombre.replace(/\s*\(.*\)$/, '')
+    const informe = textoInforme({
+      deteccion,
+      ancho: info.ancho,
+      alto: info.alto,
+      duracion: info.duracion,
+      total,
+      fps: est.fpsMedio,
+      // Las articulaciones de perfil llevan su pierna al final del id (`…_der`, `…_izq`).
+      lado: articulacion.id.endsWith('_izq') ? 'izq' : 'der',
+      trayectorias: series,
+      articulacion: nombre,
+      positivo: articulacion.positivo,
+      comparacion: resumen,
+      tramo,
+      corteHz: ajustes.corteHz,
+    })
+    return { pareja, gomets, sinMarcadores, resumen, tramo, informe }
+  }, [articulacion, articulaciones, orientacion, filtrado, filtradoPorFrame, tabla, ceros, deteccion, info, total, est, series, ajustes])
   const generarCsv = useCallback(
     (formato: FormatoCsv, sincronia?: SincronizacionExportada) => {
       const datos = datosCsv({
@@ -290,6 +345,9 @@ export function useVista({
         crudo: series,
         filtrado,
         articulacion,
+        otras: articulaciones,
+        ceros,
+        deteccion,
         orientacion,
         anguloCrudo: crudoPorFrame.valores,
         anguloFiltrado: filtradoPorFrame.valores,
@@ -302,9 +360,10 @@ export function useVista({
         sincronia,
       })
       const texto = construirCsv(datos, formato)
-      return { nombre: nombreArchivoCsv(info.nombre, datos.angulo ? articulacion.id : null), texto }
+      // Con una sola articulación, su id en el nombre (como siempre); con varias, sin él.
+      return { nombre: nombreArchivoCsv(info.nombre, datos.angulos.length === 1 ? articulacion.id : null), texto }
     },
-    [orientacion, articulacion, filtrado, tabla, modelo, crudoPorFrame, filtradoPorFrame, cero, calibracion, info, est, ajustes, series],
+    [orientacion, articulacion, articulaciones, ceros, deteccion, filtrado, tabla, modelo, crudoPorFrame, filtradoPorFrame, cero, calibracion, info, est, ajustes, series],
   )
   const buscarEnTiempo = useCallback(
     (t: number) => {
@@ -340,6 +399,12 @@ export function useVista({
     /** El modelo de esta vista (sus marcadores y su articulación). */
     modelo,
     articulacion,
+    /** Las articulaciones que se pueden mirar en la vista (las de su plano), y elegir una. */
+    articulaciones,
+    elegirArticulacion,
+    revArticulacion,
+    /** Gomets frente a sin marcadores de la articulación que se mira (null si no tiene la otra fuente en la vista). */
+    comparacionFuentes,
     /** Los marcadores que se marcan (los gomets y los puntos del modelo de la articulación), en el orden del modelo. */
     marcables,
     /** La vista tiene los puntos del modelo sin marcadores (se dibuja el esqueleto). */

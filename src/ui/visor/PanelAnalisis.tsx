@@ -1,5 +1,6 @@
 import type { CeroReferencia, TramoEstatico } from '../../core/articulaciones/cero'
 import { relativoAlCero, tramoInicial } from '../../core/articulaciones/cero'
+import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import type { Marcador } from '../../core/modelo/tipos'
 import { COLORES_MARCADOR, nombreCorto } from '../marcadores'
@@ -7,6 +8,8 @@ import { grados } from './formato'
 import PanelCinematica from './PanelCinematica'
 import PanelExportar from './PanelExportar'
 import PanelFiltro from './PanelFiltro'
+import ComparacionFuentes from './ComparacionFuentes'
+import SelectorArticulacion from './SelectorArticulacion'
 import type { Filtrado } from './useFiltrado'
 
 interface Props {
@@ -30,6 +33,14 @@ interface Props {
   conEscala: boolean
   mismoPlano: boolean
   siguiendo: boolean
+  /** Fase 5, paso 3b: las articulaciones que se pueden mirar, la que se mira y elegir otra. */
+  articulaciones: readonly DefinicionArticulacion[]
+  articulacion: DefinicionArticulacion
+  onElegirArticulacion: (id: string) => void
+  /** Gomets frente a sin marcadores de la que se mira (null sin la otra fuente), con el eje X de las gráficas. */
+  comparacion: Omit<React.ComponentProps<typeof ComparacionFuentes>, 'tiempos' | 'mostrado' | 'onBuscar'> | null
+  tiemposGrafica: readonly number[]
+  onBuscar: (t: number) => void
 }
 
 /** Pestaña «Análisis»: filtro, velocidad y cero, y exportar. */
@@ -50,9 +61,20 @@ export default function PanelAnalisis({
   conEscala,
   mismoPlano,
   siguiendo,
+  articulaciones,
+  articulacion,
+  onElegirArticulacion,
+  comparacion,
+  tiemposGrafica,
+  onBuscar,
 }: Props) {
   return (
     <>
+            {articulaciones.length > 1 && (
+              <SelectorArticulacion articulaciones={articulaciones} elegida={articulacion} onElegir={onElegirArticulacion} deshabilitado={siguiendo} />
+            )}
+            {comparacion && <ComparacionFuentes {...comparacion} tiempos={tiemposGrafica} mostrado={mostrado} onBuscar={onBuscar} />}
+
             <PanelFiltro
               ajustes={ajustes}
               onCambiar={onCambiarAjustes}
@@ -90,7 +112,7 @@ export default function PanelAnalisis({
 
             <PanelExportar
               generar={generarCsv}
-              resumen={`${total} frames · ${marcadores.length} marcadores · ${
+              resumen={`${total} frames · ${marcadores.length} marcadores · ${articulaciones.length > 1 ? `${articulaciones.length} articulaciones · ` : ''}${
                 conEscala ? 'posiciones en px y en m, velocidades en m/s' : 'sin escala: todo en píxeles'
               }${mismoPlano ? '' : ' · sin ángulo (la articulación es de otro plano)'}`}
               deshabilitado={siguiendo}

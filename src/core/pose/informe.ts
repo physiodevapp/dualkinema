@@ -1,41 +1,33 @@
 /*
- * Informe del experimento sin marcadores (fase 5, paso 1): un texto para copiar y pegar con lo que hace falta para
- * decidir (docs/plan-fase-5.md): qué modelo, cuánto tarda, cuánto detecta y cuánto se aparta de los gomets. Sin el
- * nombre del archivo (puede llevar el del paciente).
+ * Informe de la comparación sin marcadores frente a gomets (fase 5, paso 3b; el paso 1 tenía otro, del experimento): un
+ * texto para copiar y pegar con lo que hace falta para validar el modelo (paso 5 de docs/plan-fase-5.md): qué detectó,
+ * con qué, cuánto ve de la pierna de la cámara y cuánto se aparta de los gomets, a pelo y relativo al cero. Sin el nombre
+ * del archivo (puede llevar el del paciente).
  */
 import { CALIDAD_MINIMA } from '../articulaciones/calculo'
 import type { Lado } from '../articulaciones/catalogo'
-import type { IdMarcador, Muestra2D } from '../modelo/tipos'
-import type { Comparacion } from './comparar'
+import type { TramoEstatico } from '../articulaciones/cero'
+import type { DeteccionPose, IdMarcador, Muestra2D } from '../modelo/tipos'
+import type { Comparacion, ComparacionFuentes } from './comparar'
 import { idPose, type ParteCuerpo } from './puntos'
 
 export interface DatosInforme {
-  readonly modelo: string
-  /** El delegado con que corrió de verdad ('GPU' o 'CPU') y, si se pidió GPU y no pudo, por qué. */
-  readonly delegado: string
-  readonly avisoDelegado?: string
-  /** Lo que tardó en cargar el modelo y en recorrer el vídeo, ms. */
-  readonly msCarga: number
-  readonly msProceso: number
-  /** La segunda pasada, hacia atrás: frames sin persona que recuperó y lo que tardó, ms. */
-  readonly recuperados: number
-  readonly msAtras: number
-  /** Frames procesados y frames del vídeo. */
-  readonly procesados: number
-  readonly total: number
+  readonly deteccion: DeteccionPose | null
   readonly ancho: number
   readonly alto: number
   readonly duracion: number
+  readonly total: number
   readonly fps: number
+  /** La pierna que ve la cámara. */
   readonly lado: Lado
   readonly trayectorias: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>
-  /** Frames con la flexión de la rodilla sin marcadores. */
-  readonly conAngulo: number
-  readonly cambiosLado: number
+  /** El ángulo que se compara (sin «sin marcadores» en el nombre) y lo que da positivo. */
+  readonly articulacion: string
+  readonly positivo: string
+  readonly comparacion: ComparacionFuentes
+  /** El tramo del cero con que se compara relativo al cero (null = sin cero). */
+  readonly tramo: TramoEstatico | null
   readonly corteHz: number
-  /** Gomets frente al modelo (b − a, con a = gomets); null si la vista no tiene gomets seguidos. */
-  readonly comparacion: Comparacion | null
-  readonly framesGomets: number
 }
 
 /** Mediana de los valores finitos (NaN si no hay). */
@@ -49,40 +41,43 @@ export function mediana(v: readonly number[]): number {
 const NOMBRE_PARTE: Record<ParteCuerpo, string> = { hombro: 'hombro', cadera: 'cadera', rodilla: 'rodilla', tobillo: 'tobillo', talon: 'talón', punta: 'punta del pie' }
 const n1 = (x: number) => (Number.isFinite(x) ? (Math.round(x * 10) / 10 + 0).toFixed(1).replace('.', ',') : '—')
 const n2 = (x: number) => (Number.isFinite(x) ? (Math.round(x * 100) / 100 + 0).toFixed(2).replace('.', ',') : '—')
+const n3 = (x: number) => (Number.isFinite(x) ? (Math.round(x * 1000) / 1000 + 0).toFixed(3).replace('.', ',') : '—')
 const pc = (a: number, b: number) => (b > 0 ? `${Math.round((100 * a) / b)} %` : '—')
+
+function lineasComparacion(c: Comparacion): string[] {
+  return [
+    `  ${c.n} frames con las dos · diferencia media ${n1(c.media)}° · DE ${n1(c.de)}° · ECM ${n1(c.ecm)}° · ECM sin la diferencia media ${n1(c.ecmSinSesgo)}°`,
+    `  rango gomets ${n1(c.rangoA.min)}° a ${n1(c.rangoA.max)}° (${n1(c.rangoA.max - c.rangoA.min)}°) · sin marcadores ${n1(c.rangoB.min)}° a ${n1(c.rangoB.max)}° (${n1(c.rangoB.max - c.rangoB.min)}°) · correlación ${n2(c.correlacion)}`,
+  ]
+}
 
 export function textoInforme(d: DatosInforme): string {
   const l: string[] = []
-  l.push('dualkinema · experimento sin marcadores (fase 5, paso 1)')
-  l.push(`Modelo: MediaPipe Pose Landmarker ${d.modelo} · ${d.delegado}${d.avisoDelegado ? ` (${d.avisoDelegado})` : ''}`)
-  l.push(`Vídeo: ${d.ancho}×${d.alto}, ${n1(d.duracion)} s, ${d.total} frames, ${n1(d.fps)} fps medianos`)
-  const segProceso = d.msProceso / 1000
+  l.push('dualkinema · sin marcadores frente a gomets (fase 5)')
+  const det = d.deteccion
   l.push(
-    `Tiempo: carga ${n1(d.msCarga / 1000)} s; proceso ${n1(segProceso)} s para ${d.procesados} frames (${n1(d.procesados / Math.max(segProceso, 1e-9))} frames/s, ${n2(segProceso / Math.max(d.duracion, 1e-9))} × la duración); hacia atrás ${n1(d.msAtras / 1000)} s`,
+    det
+      ? `Detección: ${det.libreria}, Pose Landmarker ${det.modelo} · ${det.delegado} · persona en ${det.conPersona} de ${d.total} frames (${pc(det.conPersona, d.total)}) · piernas corregidas en ${det.intercambiados} frames, dudosas en ${det.dudosos}`
+      : 'Detección: sin datos',
   )
-  const serieDe = (p: ParteCuerpo, lado: Lado) => d.trayectorias.get(idPose(p, lado)) ?? []
-  const detectados = serieDe('cadera', d.lado).filter((m) => m && Number.isFinite(m.x)).length
-  l.push(`Persona detectada: ${detectados} de ${d.procesados} frames (${pc(detectados, d.procesados)}), ${d.recuperados} de ellos recuperados hacia atrás`)
+  l.push(`Vídeo: ${d.ancho}×${d.alto}, ${n1(d.duracion)} s, ${d.total} frames, ${n1(d.fps)} fps medianos; filtro ${n1(d.corteHz)} Hz`)
   const lado = d.lado === 'der' ? 'derecha' : 'izquierda'
-  for (const [nombre, l2] of [[`pierna ${lado} (la de la cámara)`, d.lado], [`pierna ${d.lado === 'der' ? 'izquierda' : 'derecha'} (la lejana)`, d.lado === 'der' ? 'izq' : 'der']] as const) {
-    const partes = (['cadera', 'rodilla', 'tobillo'] as const).map((p) => {
-      const s = serieDe(p, l2)
-      const vis = s.filter((m): m is Muestra2D => !!m && Number.isFinite(m.x)).map((m) => m.calidad)
-      const utiles = s.filter((m) => m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)).length
-      return `${NOMBRE_PARTE[p]} ${n2(mediana(vis))} (${pc(utiles, d.procesados)} ≥ ${n1(CALIDAD_MINIMA)})`
-    })
-    l.push(`Visibilidad mediana, ${nombre}: ${partes.join(' · ')}`)
-  }
-  l.push(`Flexión de la rodilla sin marcadores: ${d.conAngulo} frames con valor (${pc(d.conAngulo, d.total)}); filtro ${n1(d.corteHz)} Hz`)
-  l.push(`Cambios de lado (izquierda ↔ derecha) detectados: ${d.cambiosLado}`)
+  const partes = (['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta'] as const).map((p) => {
+    const s = d.trayectorias.get(idPose(p, d.lado)) ?? []
+    const vis = s.filter((m): m is Muestra2D => !!m && Number.isFinite(m.x)).map((m) => m.calidad)
+    const utiles = s.filter((m) => m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x)).length
+    return `${NOMBRE_PARTE[p]} ${n2(mediana(vis))} (${pc(utiles, d.total)} ≥ ${n1(CALIDAD_MINIMA)})`
+  })
+  l.push(`Visibilidad mediana, pierna ${lado} (la de la cámara): ${partes.join(' · ')}`)
+  l.push(`${d.articulacion} (${d.positivo} +), sin marcadores − gomets:`)
   const c = d.comparacion
-  if (!c) {
-    l.push(d.framesGomets > 0 ? 'Gomets: muy pocos frames en común con el modelo para comparar.' : 'Gomets: la vista no tiene gomets seguidos (sin comparación).')
-  } else {
-    l.push(`Comparación con los gomets (sin marcadores − gomets), ${c.n} frames en común:`)
-    l.push(`  diferencia media ${n1(c.media)}° · DE ${n1(c.de)}° · ECM ${n1(c.ecm)}° · ECM sin la diferencia media ${n1(c.ecmSinSesgo)}°`)
-    l.push(`  rango gomets ${n1(c.rangoA.min)}° a ${n1(c.rangoA.max)}° (${n1(c.rangoA.max - c.rangoA.min)}°) · sin marcadores ${n1(c.rangoB.min)}° a ${n1(c.rangoB.max)}° (${n1(c.rangoB.max - c.rangoB.min)}°)`)
-    l.push(`  correlación ${n2(c.correlacion)}`)
+  if (!c.directa) l.push('  muy pocos frames con las dos para comparar')
+  else {
+    l.push('A pelo:', ...lineasComparacion(c.directa))
+    if (c.relativa && d.tramo) {
+      l.push(`Relativo al cero de cada una (tramo ${n3(d.tramo.desde)}–${n3(d.tramo.hasta)} s; cero gomets ${n1(c.ceroA)}°, sin marcadores ${n1(c.ceroB)}°):`)
+      l.push(...lineasComparacion(c.relativa))
+    } else l.push('Relativo al cero: sin cero de referencia (pon uno en «Análisis» para quitar la diferencia constante)')
   }
   return l.join('\n')
 }
