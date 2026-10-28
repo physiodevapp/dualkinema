@@ -169,6 +169,13 @@ Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualiza
 - **Glosario:** «Gomets frente a sin marcadores», «Inclinación del tronco» y «Piernas intercambiadas», cada una con su icono.
 - **e2e:** con el worker falso, cadera, tobillo y tronco dan lo que deben con los puntos de la verdad, los puntos que se marcan siguen a la articulación, el CSV lleva las cuatro, y la elegida se guarda y se recupera; en una vista con gomets, la comparación (diferencia casi nula, correlación 1, relativa al cero con «Primeros 2 s») y la fuente.
 
+**Primera medida con el visor (28-10-2026; Pixel 8, *full*, GPU; la misma sentadilla de perfil con gomets, 642×968, 20,1 s, 603 frames), del informe de «Gomets frente a sin marcadores» de la rodilla:**
+- **Detección:** persona en los 603 frames, ninguna pierna corregida ni dudosa; visibilidad mediana de la pierna de la cámara de 0,90 (talón) a 1,00 (hombro y cadera), todos los puntos ≥ 0,5 en el 100 % de los frames.
+- **A pelo:** diferencia media +7,5° (sin marcadores por encima), DE 3,5°, correlación 1,00; recorrido 95,6° con gomets y 97,2° sin marcadores. Lo mismo que en el paso 1.
+- **Relativo al cero, en un valle entre repeticiones (7,75–8,15 s):** diferencia media −1,8°, DE 3,5°; **flexión máxima respecto a estar de pie 94,8° con gomets y 95,2° sin marcadores (0,4° de diferencia)**, mínimo −0,8° y −2,0°. El recorrido coincide; frame a frame quedan unos ±3,5°, sobre todo en la zona intermedia de la bajada y la subida (no en los extremos): puede ser el gomet que se desplaza sobre la piel al flexionar, el centro articular que estima el modelo, o las dos cosas.
+- **El cero importa:** con «Primeros 2 s» la relativa daba −3,8°. Al empezar la persona estaba algo más flexionada que entre repeticiones (las dos fuentes lo ven), y en ese tramo, recuperado por la pasada hacia atrás, las curvas se separan algo más (unos 11° frente a unos 8°). El cero va en un tramo quieto y representativo; el aviso de «no parece quieto» ayuda (un tramo de 8 a 12 s, con una repetición dentro, dio ±37,6°).
+- **Pendiente para el paso 5:** más vídeos (otra persona, ropa ancha, un gesto rápido) y la vista de frente. Una forma más directa de marcar un tramo corto del cero (hoy: «Inicio aquí» conserva el final y «Fin aquí» el principio; los 2 s solo se ponen sin el otro extremo).
+
 ## Riesgos
 
 - **La precisión sin marcadores** puede no bastar para algún ángulo (el tobillo, con pocos píxeles en el pie; el FPPA, sensible a pocos píxeles). Se sabe en el paso 1.
