@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { copyFile, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { after, before, describe, it } from 'node:test'
+import { after, before, beforeEach, describe, it } from 'node:test'
 import { asegurarVideos } from './videos.mjs'
 import {
   abrirApp,
@@ -19,6 +19,8 @@ import {
   centrarLibre,
   elegirArchivoDesde,
   errores,
+  prueba,
+  vigilarErrores,
   esperarFiltroGuardado,
   esperarGuardado,
   esperarQuieto,
@@ -51,6 +53,11 @@ const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
 let videos
 let navegador
 let pararServidor
+
+// Cada error de consola dice en qué prueba salió (ver `vigilarErrores`).
+beforeEach((t) => {
+  prueba.actual = t.fullName ?? t.name
+})
 
 before(async () => {
   videos = await asegurarVideos()
@@ -3769,8 +3776,7 @@ function deteccionFalsa(verdad, { intercambiados = [], sinPersona = [] } = {}) {
 /** Abre la app con el worker sin marcadores sustituido por uno falso que manda `frames` (y cuenta las detecciones). */
 async function abrirConPoseFalsa(nav, frames, { ancho = 1280, ritmoMs = 20 } = {}) {
   const p = await nav.newPage({ locale: 'es-ES', viewport: { width: ancho, height: ancho >= 800 ? 900 : 844 }, hasTouch: ancho < 800 })
-  p.on('pageerror', (e) => errores.push(`pageerror: ${e.message}`))
-  p.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()}`))
+  await vigilarErrores(p)
   await p.addInitScript(({ frames, ritmoMs }) => {
     const Original = window.Worker
     window.__detecciones = 0
@@ -4179,6 +4185,10 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
       const tira = p.getByTestId('marcado-compacto')
       await tira.getByRole('button', { name: 'Detectar el cuerpo' }).click()
       await tira.getByRole('button', { name: 'Volver a detectar' }).waitFor({ timeout: 20000 })
+      // «Añadir los gomets» también está en la tira (en el móvil «Marcar» abre el vídeo grande, no la tarjeta).
+      await tira.getByTestId('anadir-gomets-compacto').click()
+      await tira.getByRole('button', { name: 'Seguir desde aquí' }).waitFor()
+      assert.equal(await tira.getByTestId('anadir-gomets-compacto').count(), 0)
     } finally {
       await p.close()
     }
