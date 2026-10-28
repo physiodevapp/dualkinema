@@ -717,10 +717,12 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
 
         {/* La gráfica completa: en pantalla ancha, debajo del vídeo; en el móvil solo en la vista «Solo gráficas»
             (oculta pero montada en las demás, para no perder qué series se ven) y en la mixta se ve la pequeña. */}
+        {/* Con dos vistas hay más gráficas de las que caben en la altura de la ventana: la columna se desplaza por dentro y, como
+            la de herramientas, va en una caja absoluta para no alargar la fila (con su alto, la rejilla crecía igual). */}
+        <div className={dosVistas ? 'max-lg:contents lg:relative lg:min-h-0' : 'contents'}>
         <div
           data-testid="vista-graficas"
-          // Con dos vistas hay más gráficas de las que caben en la altura de la ventana: la columna se desplaza por dentro.
-          className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0${dosVistas ? ' lg:overflow-y-auto' : ''} ${
+          className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0${dosVistas ? ' lg:absolute lg:inset-0 lg:overflow-y-auto' : ''} ${
             enGraficas ? `aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo ${apaisado ? 'max-lg:p-2' : 'max-lg:p-4'}` : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
@@ -785,6 +787,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           />
 
           {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
+        </div>
         </div>
       </div>
 

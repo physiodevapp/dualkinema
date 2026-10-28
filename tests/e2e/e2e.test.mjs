@@ -3522,6 +3522,14 @@ describe('dos vistas: gráficas en el tiempo común y CSV con tiempo común', ()
     }
   })
 
+  it('en escritorio la columna de gráficas no alarga la fila: acaba con la de herramientas y se desplaza por dentro', async () => {
+    const caja = (id) => p.getByTestId(id).evaluate((el) => el.getBoundingClientRect().toJSON())
+    const graficas = await caja('vista-graficas')
+    const herramientas = await caja('columna-herramientas')
+    assert.ok(Math.abs(graficas.bottom - herramientas.bottom) <= 1, `gráficas hasta ${graficas.bottom}, herramientas hasta ${herramientas.bottom}`)
+    assert.ok(await p.getByTestId('vista-graficas').evaluate((el) => el.scrollHeight > el.clientHeight + 20), 'las gráficas deberían desplazarse')
+  })
+
   it('cambiar de frame no redibuja las gráficas de la comparación (el cursor va en su capa), alineadas ni superpuestas', async () => {
     const redibujos = (ids) => Promise.all(ids.map((id) => p.getByTestId(id).getAttribute('data-redibujos')))
     const mover = async () => {
