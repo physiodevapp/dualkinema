@@ -4831,6 +4831,8 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
       const tarjetas = await caja('panel-herramientas')
       const tira = await p.getByRole('tablist').locator('..').boundingBox()
       assert.ok(tarjetas.y + tarjetas.height <= tira.y + 1, 'las tarjetas pasan por debajo de la fila de botones')
+      // El botón lo pone la app en un efecto, después del render que muestra la herramienta: se espera a que salga.
+      await p.locator('header').getByTestId('volver-cabecera').waitFor({ timeout: 5000 })
       assert.equal(await p.locator('header').getByTestId('volver-cabecera').count(), 1, 'el botón de volver va en la cabecera')
       // Con el texto más largo, el glosario y «Cambiar vídeo» siguen en su fila, no debajo.
       const volverCab = await p.getByTestId('volver-cabecera').boundingBox()
