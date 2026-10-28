@@ -216,6 +216,33 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'comparar-fuentes',
+    titulo: 'Gomets frente a sin marcadores',
+    texto: [
+      'Cuando una vista tiene la misma articulación con gomets y sin marcadores, en «Análisis» se ven las dos curvas filtradas superpuestas (gomets en ámbar, sin marcadores en claro) y lo que se apartan. Mandan los gomets: son los que salen por defecto en la gráfica y en los valores; la fuente se cambia en «Articulación».',
+      'No miden exactamente lo mismo: el gomet va sobre una referencia ósea (el trocánter, el epicóndilo, el maléolo) y el modelo da un centro articular aproximado. Por eso se espera una diferencia más o menos constante (en una sentadilla de perfil, unos 7° en la rodilla), sobre todo en la posición de partida.',
+      '«A pelo» compara las dos tal cual: la diferencia media es esa diferencia constante, y lo que queda al quitarla (la desviación típica y el error cuadrático medio sin la diferencia media) es lo que de verdad no coincide. El recorrido y la correlación dicen si la forma de la curva es la misma.',
+      '«Relativo al cero» resta a cada una su propio cero de referencia en el mismo tramo quieto: quita la diferencia constante y deja comparar el movimiento. «Copiar el informe» da todo esto en texto, sin el nombre del archivo.',
+    ],
+  },
+  {
+    id: 'inclinacion-tronco',
+    titulo: 'Inclinación del tronco',
+    texto: [
+      'Sin marcadores, de perfil: el ángulo de la línea cadera → hombro (los de la pierna que ve la cámara) respecto a la vertical de la imagen. De pie y erguido, 0°; inclinado hacia delante, positivo; hacia atrás, negativo.',
+      'Es un ángulo absoluto, no entre dos segmentos: depende de que el móvil esté vertical (si está inclinado, todo sale desplazado lo que esté inclinado). El cero de referencia en una toma de pie quita ese desplazamiento.',
+    ],
+  },
+  {
+    id: 'piernas-intercambiadas',
+    titulo: 'Piernas intercambiadas',
+    texto: [
+      'El modelo sin marcadores a veces confunde la pierna izquierda con la derecha durante unos frames, sobre todo de perfil, cuando una queda detrás de la otra. Al acabar de detectar, la app lo corrige.',
+      'De perfil: si las dos piernas saltan a la vez a donde estaba la otra y vuelven en medio segundo como mucho, esos frames se intercambian de vuelta. Si no vuelven (o tardan más), no se sabe cuál es cada una: esos puntos quedan dudosos (se ven tenues y no se usan para los ángulos) para que los revises y, si hace falta, los corrijas a mano.',
+      'De frente: cada cadera tiene su lado de la imagen según la cámara esté delante o detrás, así que se ponen siempre en su sitio.',
+    ],
+  },
+  {
     id: 'datos',
     titulo: 'Dónde se guardan los datos',
     texto: [

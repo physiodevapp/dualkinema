@@ -197,10 +197,13 @@ export default function PanelMarcar({
                     onParar={deteccion.onParar}
                   />
                   {deteccion.hecha && !deteccion.progreso && (
-                    <p className="font-mono text-xs text-texto-2" data-testid="deteccion-hecha">
-                      {deteccion.hecha.modelo} · {deteccion.hecha.delegado} · persona en {deteccion.hecha.conPersona} frames
-                      {deteccion.hecha.intercambiados > 0 && ` · ${deteccion.hecha.intercambiados} con las piernas corregidas`}
-                      {deteccion.hecha.dudosos > 0 && ` · ${deteccion.hecha.dudosos} dudosos`}
+                    <p className="flex items-center gap-1 font-mono text-xs text-texto-2">
+                      <span data-testid="deteccion-hecha">
+                        {deteccion.hecha.modelo} · {deteccion.hecha.delegado} · persona en {deteccion.hecha.conPersona} frames
+                        {deteccion.hecha.intercambiados > 0 && ` · ${deteccion.hecha.intercambiados} con las piernas corregidas`}
+                        {deteccion.hecha.dudosos > 0 && ` · ${deteccion.hecha.dudosos} dudosos`}
+                      </span>
+                      <InfoGlosario id="piernas-intercambiadas" tema="las piernas intercambiadas" className="-my-1.5" />
                     </p>
                   )}
                 </div>

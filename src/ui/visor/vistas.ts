@@ -32,6 +32,8 @@ export interface EntradaVista {
   readonly fuente?: Fuente
   /** Al recuperar: la última detección sin marcadores de la vista. */
   readonly deteccion?: DeteccionPose | null
+  /** Al recuperar: la articulación que se miraba (fase 5, paso 3b). */
+  readonly articulacion?: string
 }
 
 /** Una vista con todo su estado (lo que devuelve `useVista`) y los datos de su entrada que necesita la sesión. */
