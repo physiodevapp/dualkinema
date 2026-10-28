@@ -14,22 +14,28 @@ interface Props {
   className?: string
   /** Para medir la tira desde fuera (el reparto del móvil cuenta con su alto). */
   contenedorRef?: Ref<HTMLDivElement>
+  /** Móvil en vertical: la tira va abajo, sobre la barra fija (con su línea de arriba y sin el degradado por debajo). */
+  abajo?: boolean
 }
 
 /**
- * Tira de pestañas del visor. En pantalla ancha va pegada arriba de su columna (sticky); en el móvil, entre el asa de las
- * herramientas y sus tarjetas (la página no se desplaza). Un punto en el nombre avisa de lo que
+ * Tira de pestañas del visor. En pantalla ancha va pegada arriba de su columna (sticky); en el móvil en vertical, abajo,
+ * sobre la barra fija (la página no se desplaza). Un punto en el nombre avisa de lo que
  * pide atención en una pestaña que no se está viendo (huecos, escala a rehacer, cero que no
  * parece quieto).
  */
-export default function Pestanas({ pestanas, activa, onElegir, className = '', contenedorRef }: Props) {
+export default function Pestanas({ pestanas, activa, onElegir, className = '', contenedorRef, abajo = false }: Props) {
   return (
     // El contenedor es opaco y llega a los bordes: así no se ven por las esquinas ni por debajo las tarjetas que se
     // desplazan detrás. En el móvil, sin borde propio y con un degradado por debajo para que el texto de las tarjetas no se
     // corte en seco; en pantalla ancha, con su caja.
     <div
       ref={contenedorRef}
-      className={`relative z-20 bg-fondo pb-1 max-lg:-mx-4 max-lg:px-4 lg:sticky lg:top-0 ${className} after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-3 after:bg-linear-to-b after:from-fondo after:to-transparent`}
+      className={`relative z-20 bg-fondo pb-1 max-lg:-mx-4 max-lg:px-4 lg:sticky lg:top-0 ${className} ${
+        abajo
+          ? 'max-lg:border-t max-lg:border-borde max-lg:pt-1'
+          : 'after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-3 after:bg-linear-to-b after:from-fondo after:to-transparent'
+      }`}
     >
       <div
         role="tablist"
