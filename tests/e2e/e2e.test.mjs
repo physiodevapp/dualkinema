@@ -4459,12 +4459,12 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
   }
   /** Tope del vídeo en una posición: su % de lo que queda en el bloque de arriba sin el asa y los botones de la gráfica (60 px). */
   const tope = async (porcentaje) => (((await p.getByTestId('visor-fijo').boundingBox()).height - 60) * porcentaje) / 100
-  /** La tira de pestañas no se mueve: lo que gana el vídeo lo pierde la gráfica. */
-  let yTira
+  /** El bloque de arriba no cambia de alto: lo que gana el vídeo lo pierde la gráfica. */
+  let altoFijo
   const tiraQuieta = async () => {
-    const y = (await p.getByRole('tablist').boundingBox()).y
-    yTira ??= y
-    assert.ok(Math.abs(y - yTira) <= 1, `la tira estaba en ${yTira} y está en ${y}`)
+    const h = (await p.getByTestId('visor-fijo').boundingBox()).height
+    altoFijo ??= h
+    assert.ok(Math.abs(h - altoFijo) <= 1, `el bloque medía ${altoFijo} y mide ${h}`)
   }
 
   it('de partida, el reparto de siempre: el vídeo, un 60 % del bloque de arriba', async () => {
