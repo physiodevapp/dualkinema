@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { OrientacionVista } from '../core/geometria/canonico'
+import type { Fuente } from '../core/pose/catalogo'
 
 type Sagital = Extract<OrientacionVista, { plano: 'sagital' }>
 
@@ -29,12 +31,20 @@ function Frente({ ve }: { ve: Extract<OrientacionVista, { plano: 'frontal' }>['v
 }
 
 interface Props {
-  onElegir: (o: OrientacionVista) => void
+  /** `fuente`: con qué se analiza (solo en el primer vídeo; la segunda vista va con gomets). */
+  onElegir: (o: OrientacionVista, fuente: Fuente) => void
   /** Para la segunda vista: además del perfil, la cámara de frente o de espaldas. */
   conFrontal?: boolean
 }
 
+const FUENTES: readonly { id: Fuente; texto: string; detalle: string }[] = [
+  { id: 'gomets', texto: 'Con gomets', detalle: 'Se marcan y se siguen los gomets pegados a la persona.' },
+  { id: 'sinMarcadores', texto: 'Sin marcadores', detalle: 'El móvil detecta el cuerpo en cada frame. Los gomets se pueden añadir después.' },
+]
+
 export default function ElegirOrientacion({ onElegir, conFrontal = false }: Props) {
+  // Fase 5: con gomets o sin marcadores. Solo decide por dónde se empieza: lo otro se puede añadir después.
+  const [fuente, setFuente] = useState<Fuente>('gomets')
   const opciones: { mira: Sagital['mira']; texto: string }[] = [
     { mira: 'izquierda', texto: 'Mira a la izquierda' },
     { mira: 'derecha', texto: 'Mira a la derecha' },
@@ -54,12 +64,32 @@ export default function ElegirOrientacion({ onElegir, conFrontal = false }: Prop
           </p>
         )}
       </div>
+      {!conFrontal && (
+        <div className="flex flex-col gap-2">
+          <h3 className="font-mono text-xs tracking-wider text-texto-2 uppercase">Cómo se analiza</h3>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Cómo se analiza">
+            {FUENTES.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                role="radio"
+                aria-checked={fuente === f.id}
+                onClick={() => setFuente(f.id)}
+                className={`flex flex-col gap-1 rounded-md border px-3 py-2 text-left ${fuente === f.id ? 'border-acento text-texto' : 'border-borde text-texto-2'}`}
+              >
+                <span className="font-medium">{f.texto}</span>
+                <span className="text-xs text-texto-2">{f.detalle}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         {opciones.map(({ mira, texto }) => (
           <button
             key={mira}
             type="button"
-            onClick={() => onElegir({ plano: 'sagital', mira })}
+            onClick={() => onElegir({ plano: 'sagital', mira }, conFrontal ? 'gomets' : fuente)}
             className="flex flex-col items-center gap-2 rounded-md border border-borde px-3 py-4 text-texto hover:border-acento focus-visible:border-acento"
           >
             <Perfil mira={mira} />
@@ -71,7 +101,7 @@ export default function ElegirOrientacion({ onElegir, conFrontal = false }: Prop
             <button
               key={ve}
               type="button"
-              onClick={() => onElegir({ plano: 'frontal', ve })}
+              onClick={() => onElegir({ plano: 'frontal', ve }, 'gomets')}
               className="flex flex-col items-center gap-2 rounded-md border border-borde px-3 py-4 text-texto hover:border-acento focus-visible:border-acento"
             >
               <Frente ve={ve} />

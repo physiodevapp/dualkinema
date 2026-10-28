@@ -1,5 +1,8 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { conRodillaFrontal, modeloRodilla3 } from '../core/articulaciones/catalogo'
+import { marcadoresParaVista } from '../core/articulaciones/modeloVista'
+import { conPose, fuenteDe } from '../core/pose/catalogo'
+import { PUNTOS_POSE } from '../core/pose/puntos'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores, Sincronia } from '../core/modelo/tipos'
@@ -35,17 +38,34 @@ interface PropsAnfitriones {
   readonly avisoInicial?: string
   readonly activaId: string
   readonly alCambiarFrame: (id: string, frame: number) => void
+  readonly alUsarPose: (id: string) => void
   readonly children: (vistas: readonly VistaViva[]) => ReactNode
 }
 
 /** Una vista dentro de otra: cada una con sus hooks, y el último nivel pinta con todas. */
-function Anfitriones({ entradas, acumuladas, modelo, filtro, avisoInicial, activaId, alCambiarFrame, children }: PropsAnfitriones) {
+function Anfitriones({ entradas, acumuladas, modelo, filtro, avisoInicial, activaId, alCambiarFrame, alUsarPose, children }: PropsAnfitriones) {
   const [primera, ...resto] = entradas
   return (
-    <AnfitrionVista entrada={primera!} modelo={modelo} filtro={filtro} avisoInicial={avisoInicial} activa={primera!.id === activaId} alCambiarFrame={alCambiarFrame}>
+    <AnfitrionVista
+      entrada={primera!}
+      modelo={modelo}
+      filtro={filtro}
+      avisoInicial={avisoInicial}
+      activa={primera!.id === activaId}
+      alCambiarFrame={alCambiarFrame}
+      alUsarPose={alUsarPose}
+    >
       {(vista) =>
         resto.length ? (
-          <Anfitriones entradas={resto} acumuladas={[...acumuladas, vista]} modelo={modelo} filtro={filtro} activaId={activaId} alCambiarFrame={alCambiarFrame}>
+          <Anfitriones
+            entradas={resto}
+            acumuladas={[...acumuladas, vista]}
+            modelo={modelo}
+            filtro={filtro}
+            activaId={activaId}
+            alCambiarFrame={alCambiarFrame}
+            alUsarPose={alUsarPose}
+          >
             {children}
           </Anfitriones>
         ) : (
@@ -66,8 +86,10 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
   // vista de referencia (lateral) y, para una vista de frente, sus 3 marcadores y el FPPA de esa rodilla. Cada vista sigue
   // los suyos (`modeloDeVista`). Una sesión recuperada parte del que se guardó con ella. Se fija al abrir, ya con lo de la
   // vista de frente, para que no cambie al añadirla (lo de cada vista depende de él).
+  // Fase 5: también lo sin marcadores de perfil (`conPose`: los 12 puntos del modelo y sus articulaciones), para que no
+  // cambie al detectar el cuerpo; una vista con gomets no los sigue hasta que se detecta en ella.
   const lado = ladoDeVista(vistas[0]!.orientacion)
-  const modelo = useMemo(() => conRodillaFrontal(modeloGuardado ?? modeloRodilla3(lado), lado), [modeloGuardado, lado])
+  const modelo = useMemo(() => conPose(conRodillaFrontal(modeloGuardado ?? modeloRodilla3(lado), lado), lado), [modeloGuardado, lado])
   const recuperada = !!vistas[0]!.inicial
   const cursor = useCursorComun(vistas[0]!.id)
   // El desfase y la sincronía de cada vista cambian al sincronizar: se guardan aquí, sobre lo que traía cada vista.
@@ -78,7 +100,20 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
     setSinc((s) => ({ ...s, [id]: { desfase, sincronia } }))
     setRevSinc((n) => n + 1)
   }, [])
-  const entradas = useMemo(() => vistas.map((v) => (sinc[v.id] ? { ...v, ...sinc[v.id] } : v)), [vistas, sinc])
+  // Las vistas en las que se ha detectado el cuerpo pasan a seguir también los puntos del modelo (se guardan con la vista).
+  const [conPuntosPose, setConPuntosPose] = useState<ReadonlySet<string>>(new Set())
+  const usarPose = useCallback((id: string) => setConPuntosPose((s) => (s.has(id) ? s : new Set([...s, id]))), [])
+  const entradas = useMemo(
+    () =>
+      vistas.map((v) => {
+        const conSinc = sinc[v.id] ? { ...v, ...sinc[v.id] } : v
+        if (!conPuntosPose.has(v.id)) return conSinc
+        const propios = v.marcadores ?? marcadoresParaVista(modelo, v.orientacion, (a) => fuenteDe(a) === (v.fuente ?? 'gomets'))
+        const nuevos = PUNTOS_POSE.map((p) => p.id).filter((id) => !propios.includes(id))
+        return nuevos.length ? { ...conSinc, marcadores: [...propios, ...nuevos] } : conSinc
+      }),
+    [vistas, sinc, conPuntosPose, modelo],
+  )
   // Un solo filtro para toda la sesión: las vistas se comparan con el mismo corte y se guarda uno (cada vista lo limita a
   // 0,4·sus fps). Vive aquí, como la sincronía, y no en cada vista: antes cada una tenía el suyo y solo se guardaba el de A.
   const [ajustes, setAjustes] = useState<AjustesFiltro>(filtro ?? AJUSTES_FILTRO_DEFECTO)
@@ -95,7 +130,16 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
     if (esPestana(id)) guardarPestana(id)
   }
   return (
-    <Anfitriones entradas={entradas} acumuladas={[]} modelo={modelo} filtro={ajustes} avisoInicial={avisoInicial} activaId={cursor.activaId} alCambiarFrame={cursor.propagar}>
+    <Anfitriones
+      entradas={entradas}
+      acumuladas={[]}
+      modelo={modelo}
+      filtro={ajustes}
+      avisoInicial={avisoInicial}
+      activaId={cursor.activaId}
+      alCambiarFrame={cursor.propagar}
+      alUsarPose={usarPose}
+    >
       {(vivas) => (
         <CuerpoVisor
           vistas={vivas}

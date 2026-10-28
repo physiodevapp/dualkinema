@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
@@ -46,11 +46,7 @@ import { rangoSesion } from '../../core/tiempo/comun'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
 import { incertidumbreEvento, pasoTipico } from '../../core/sincronia/evento'
 import type { VistaViva } from './vistas'
-import { dibujarEsqueleto } from './capa'
-import type { EsqueletoPorFrame } from './ExperimentoPose'
-
-// Experimento sin marcadores de la fase 5 (paso 1): solo con `?pose`, y solo se descarga entonces.
-const ExperimentoPose = new URLSearchParams(location.search).has('pose') ? lazy(() => import('./ExperimentoPose')) : null
+import BotonDetectar from './BotonDetectar'
 
 /** Letra de cada vista, en el orden de la sesión. */
 const LETRAS = ['A', 'B'] as const
@@ -96,7 +92,6 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   const orientacion = activaViva.orientacion
   // Lo de la vista activa: sus marcadores y su articulación.
   const modeloVista = activaViva.modelo
-  const ids = useMemo(() => modeloVista.marcadores.map((m) => m.id), [modeloVista])
   const articulacion = modeloVista.articulaciones[0]!
 
   // Todo lo de la vista activa (trayectorias, frames, marcado, seguimiento, escala, análisis, dibujo, valores y CSV).
@@ -129,6 +124,15 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     siguiendo,
     progresoSeguimiento,
     listoParaSeguir: listoPropio,
+    marcables,
+    conGomets,
+    detectando,
+    progresoDeteccion,
+    deteccion,
+    modeloPose,
+    setModeloPose,
+    detectar,
+    pararDeteccion,
     seguirDesdeAqui,
     pararSeguimiento,
     calibracion,
@@ -175,15 +179,10 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     quitarMarcasPosteriores,
   } = activaViva
 
-  // Esqueleto del experimento sin marcadores (`?pose`), dibujado encima de lo de siempre.
-  const [esqueleto, setEsqueleto] = useState<EsqueletoPorFrame | null>(null)
-  const dibujarConEsqueleto = useCallback(
-    (ctx: CanvasRenderingContext2D, escala: number) => {
-      dibujar(ctx, escala)
-      if (esqueleto && mostrado !== null) dibujarEsqueleto(ctx, escala, esqueleto.get(mostrado))
-    },
-    [dibujar, esqueleto, mostrado],
-  )
+  // Los marcadores que se marcan en la vista activa (para el color del elegido, en el orden del selector).
+  const ids = useMemo(() => marcables.map((m) => m.id), [marcables])
+  // Mientras se sigue o se detecta el cuerpo en esta vista, no se marca ni se calibra.
+  const ocupada = siguiendo || detectando
 
   // Se guardan todas las vistas, con el filtro de la sesión.
   const guardado = useGuardado({
@@ -200,17 +199,40 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       desfase: w.desfaseS,
       sincronia: w.sincronia,
       marcadores: w.marcadores,
+      deteccion: w.deteccion,
     })),
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: revSinc + revAjustes + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion, 0),
+    version: revSinc + revAjustes + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion, 0),
     recuperada,
     sinGuardar,
   })
   // Con varias vistas se sigue de una en una (dos decodificadores a la vez duplican la memoria y compiten por el del
   // hardware): mientras otra vista sigue, esta espera.
-  const otraSiguiendo = vistas.some((w, i) => i !== activa && w.siguiendo)
-  const listoParaSeguir = listoPropio && !otraSiguiendo
-  const aviso = avisoPropio ?? (otraSiguiendo ? { texto: 'Se está siguiendo la otra vista: espera a que acabe para seguir esta.' } : null)
+  // Lo mismo al detectar el cuerpo (decodifica el vídeo entero y el modelo ocupa la GPU): una cosa cada vez en la sesión.
+  const otraSigue = vistas.some((w, i) => i !== activa && w.siguiendo)
+  const otraDetecta = vistas.some((w, i) => i !== activa && w.detectando)
+  const otraSiguiendo = otraSigue || otraDetecta
+  const listoParaSeguir = listoPropio && !otraSiguiendo && !detectando
+  const aviso =
+    avisoPropio ??
+    (otraSigue
+      ? { texto: 'Se está siguiendo la otra vista: espera a que acabe para seguir esta.' }
+      : otraDetecta
+        ? { texto: 'Se está detectando el cuerpo en la otra vista: espera a que acabe para seguir o detectar en esta.' }
+        : null)
+  // «Detectar el cuerpo», de momento solo de perfil (de frente, el paso 4 de la fase 5).
+  const panelDeteccion =
+    orientacion.plano === 'sagital'
+      ? {
+          progreso: progresoDeteccion,
+          deshabilitado: siguiendo || otraSiguiendo,
+          hecha: deteccion,
+          modelo: modeloPose,
+          onModelo: setModeloPose,
+          onDetectar: detectar,
+          onParar: pararDeteccion,
+        }
+      : null
   // Sincronizar por un evento visual: mientras se marca, el cursor está desenlazado (cada vista se mueve sola) y el botón de
   // marcar va también sobre el vídeo (en el móvil el panel de la pestaña queda fuera de pantalla al recorrerlo).
   const [marcandoEvento, setMarcandoEvento] = useState(false)
@@ -404,9 +426,9 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
 
   // Vista de vídeo grande: botones que solo salen cuando hacen falta (quitar una marca a mano, rellenar huecos cortos, ir a un hueco).
   const extrasCompactos =
-    !siguiendo && (marcasManualesAqui.length > 0 || huecosCortos.length > 0 || hayInterpolados || aviso?.irA !== undefined) ? (
+    !ocupada && (marcasManualesAqui.length > 0 || huecosCortos.length > 0 || hayInterpolados || aviso?.irA !== undefined) ? (
       <div className="flex flex-wrap gap-2" data-testid="extras-compactos">
-        <BotonesQuitarManual marcas={marcasManualesAqui} siguiendo={siguiendo} frame={mostrado} onQuitar={quitarManual} claseExtra="" />
+        <BotonesQuitarManual marcas={marcasManualesAqui} siguiendo={ocupada} frame={mostrado} onQuitar={quitarManual} claseExtra="" />
         <AccionesHuecos huecosCortos={huecosCortos.length} hayInterpolados={hayInterpolados} onRellenar={rellenarHuecosCortos} onQuitarInterpolados={quitarInterpolados} compacto />
         {aviso?.irA !== undefined && <BotonIrAlHueco frame={aviso.irA} onIr={ir} compacto />}
       </div>
@@ -426,12 +448,35 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     </p>
   )
 
-  const interruptorAOjo = <InterruptorAOjo activo={colocarAOjo} deshabilitado={siguiendo} onCambiar={() => setColocarAOjo((v) => !v)} enFila={dosColumnas} />
-  const avisoAnclas = <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={quitarMarcasPosteriores} compacto />
-  const botonSeguir = <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={seguirDesdeAqui} onParar={pararSeguimiento} compacto enFila={dosColumnas} />
+  // Sin gomets (solo los puntos del modelo) no hay «a ojo» (siempre lo es) ni «Seguir»: en su sitio, «Detectar el cuerpo».
+  const interruptorAOjo = conGomets && (
+    <InterruptorAOjo activo={colocarAOjo} deshabilitado={ocupada} onCambiar={() => setColocarAOjo((v) => !v)} enFila={dosColumnas} />
+  )
+  const avisoAnclas = conGomets && <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={quitarMarcasPosteriores} compacto />
+  // «Detectar el cuerpo» va también en la tira del vídeo grande (en el móvil en vertical, «Marcar» es el vídeo grande): sin
+  // gomets, en el sitio de «Seguir» y en ámbar; con ellos, debajo y secundario.
+  const botonDetectar = panelDeteccion && (
+    <BotonDetectar
+      progreso={panelDeteccion.progreso}
+      deshabilitado={panelDeteccion.deshabilitado}
+      principal={!conGomets}
+      hecha={!!deteccion}
+      onDetectar={detectar}
+      onParar={pararDeteccion}
+      compacto
+      enFila={dosColumnas}
+      corto={dosColumnas && conGomets}
+    />
+  )
+  const botonSeguir = conGomets ? (
+    <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={seguirDesdeAqui} onParar={pararSeguimiento} compacto enFila={dosColumnas} />
+  ) : (
+    botonDetectar
+  )
+  const detectarAparte = conGomets && botonDetectar
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
-      <SelectorMarcadores marcadores={modeloVista.marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={setSeleccionado} compacto />
+      <SelectorMarcadores marcadores={marcables} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={ocupada} onElegir={setSeleccionado} compacto />
       {dosColumnas ? (
         // Móvil girado: «a ojo» y «seguir» en una fila (la columna tiene poco alto y, con el aviso y los botones de huecos, no cabía sin scroll).
         <>
@@ -439,6 +484,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           <div className="flex items-stretch gap-2">
             {interruptorAOjo}
             {botonSeguir}
+            {detectarAparte}
           </div>
         </>
       ) : (
@@ -446,6 +492,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           {interruptorAOjo}
           {avisoAnclas}
           {botonSeguir}
+          {detectarAparte}
         </>
       )}
       {extrasCompactos}
@@ -494,8 +541,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               ancho={info.ancho}
               alto={info.alto}
               lienzo={lienzo}
-              dibujar={dibujarConEsqueleto}
-              interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !siguiendo && mostrado === deseado}
+              dibujar={dibujar}
+              interactivo={(tocandoEscala || (!calibrando && !!seleccionado)) && !ocupada && mostrado === deseado}
               onToque={tocandoEscala ? tocarExtremo : colocar}
               // Al calibrar no se busca ningún gomet: el extremo queda justo donde se suelta.
               previsualizar={!calibrando && seleccionado && !colocarAOjo ? previsualizar : undefined}
@@ -503,7 +550,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             {mostrado === null && !error && (
               <p className="absolute inset-0 grid place-items-center text-texto-2">Decodificando…</p>
             )}
-            {tocandoEscala && !siguiendo && (
+            {tocandoEscala && !ocupada && (
               <p className="pointer-events-none absolute top-2 left-2 rounded-md bg-fondo/85 px-2 py-1 text-sm" data-testid="toca-escala">
                 Escala:{' '}
                 {!borrador!.a
@@ -515,13 +562,13 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                     : 'toca cerca de un extremo para moverlo'}
               </p>
             )}
-            {!calibrando && seleccionado && !siguiendo && (
+            {!calibrando && seleccionado && !ocupada && (
               <p className="pointer-events-none absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-fondo/85 px-2 py-1 text-sm">
                 <span
                   className="size-3 rounded-full"
                   style={{ background: COLORES_MARCADOR[ids.indexOf(seleccionado) % COLORES_MARCADOR.length] }}
                 />
-                Toca: {nombreCorto(modeloVista.marcadores.find((x) => x.id === seleccionado)!.nombre)}
+                Toca: {nombreCorto(marcables.find((x) => x.id === seleccionado)!.nombre)}
                 {colocarAOjo && <span className="text-texto-2">· a ojo</span>}
               </p>
             )}
@@ -768,7 +815,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             <PanelMarcar
               lado={lado}
               frontal={orientacion.plano === 'frontal'}
-              marcadores={modeloVista.marcadores}
+              marcadores={marcables}
               estadosMarcadores={estadosMarcadores}
               seleccionado={seleccionado}
               onElegirMarcador={setSeleccionado}
@@ -776,6 +823,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               colocarAOjo={colocarAOjo}
               onCambiarAOjo={() => setColocarAOjo((v) => !v)}
               listoParaSeguir={listoParaSeguir}
+              conGomets={conGomets}
+              deteccion={panelDeteccion}
               marcasManualesAqui={marcasManualesAqui}
               mostrado={mostrado}
               onQuitarManual={quitarManual}
@@ -798,25 +847,6 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               angulo={angulo}
               anguloRedondeado={anguloRedondeado}
             />
-            {ExperimentoPose && (
-              <Suspense fallback={<p className="text-sm text-texto-2">Cargando el experimento sin marcadores…</p>}>
-                <ExperimentoPose
-                  key={activaViva.id}
-                  archivo={activaViva.archivo}
-                  tabla={tabla}
-                  ancho={info.ancho}
-                  alto={info.alto}
-                  orientacion={orientacion}
-                  lado={lado}
-                  ajustes={ajustes}
-                  gomets={orientacion.plano === 'sagital' && articulacion.id.startsWith('rodilla_sagital') ? filtradoPorFrame.valores : null}
-                  tiemposGrafica={tiemposGrafica}
-                  mostrado={mostrado}
-                  onBuscar={buscarEnComun}
-                  onEsqueleto={setEsqueleto}
-                />
-              </Suspense>
-            )}
           </PanelPestana>
 
           <PanelPestana id="analisis" activa={pestana === 'analisis'}>
@@ -826,7 +856,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               filtrado={filtrado}
               anguloFiltrado={anguloFiltrado}
               mostrado={mostrado}
-              marcadores={modeloVista.marcadores}
+              marcadores={marcables}
               tramoEstatico={tramoEstatico}
               cero={cero}
               t={t}
@@ -836,7 +866,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               generarCsv={(formato) => generarCsv(formato, sincroniaCsv)}
               conEscala={!!calibracion}
               mismoPlano={orientacion.plano === articulacion.plano}
-              siguiendo={siguiendo}
+              siguiendo={ocupada}
             />
           </PanelPestana>
 
@@ -858,7 +888,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               onCancelar={() => setBorrador(null)}
               onQuitar={quitarEscala}
               onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
-              deshabilitado={siguiendo}
+              deshabilitado={ocupada}
             />
 
           </PanelPestana>

@@ -1,6 +1,7 @@
 import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
 import { interpolarHueco, quitarInterpolados, type HuecoInterpolable } from '../../core/seguimiento/interpolar'
 import { quitarMarcasManuales } from '../../core/seguimiento/manuales'
+import { fusionarDeteccion, muestrasDeFrame, PUNTOS_POSE, type FramePose } from '../../core/pose/puntos'
 import type { MuestraFrame } from '../../workers/protocolo'
 
 export type SeriesTrayectorias = Map<IdMarcador, (Muestra2D | undefined)[]>
@@ -57,6 +58,36 @@ export class AlmacenTrayectorias {
     this.publicar()
   }
 
+  /**
+   * Que haya serie para cada id (vacía si no la había). Al detectar sin marcadores, la vista empieza a seguir los puntos
+   * del modelo y sus series aparecen. No publica: no cambia nada que se vea, y se puede llamar durante el render.
+   */
+  readonly asegurar = (ids: readonly IdMarcador[]) => {
+    for (const id of ids) if (!this.mapa.has(id)) this.mapa.set(id, new Array(this.tiempos.length))
+  }
+
+  /** Un lote del worker sin marcadores mientras detecta: lo detectado no sobrescribe lo marcado a mano. */
+  readonly aplicarPose = (lote: readonly FramePose[]) => {
+    this.asegurar(PUNTOS_POSE.map((p) => p.id))
+    for (const f of lote) {
+      muestrasDeFrame(f).forEach((m, k) => {
+        const serie = this.mapa.get(PUNTOS_POSE[k]!.id)!
+        if (!serie[f.indice]?.editadoManual) serie[f.indice] = m
+      })
+    }
+    this.publicar()
+  }
+
+  /**
+   * Una detección entera ya corregida (las piernas en su lado): sustituye lo que había salvo lo marcado a mano, y donde no
+   * llegó deja lo de antes (`fusionarDeteccion`).
+   */
+  readonly fusionar = (nuevas: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>) => {
+    const r = fusionarDeteccion(this.mapa, nuevas)
+    for (const id of nuevas.keys()) this.mapa.set(id, r.get(id)!)
+    this.publicar()
+  }
+
   /** Un lote del worker: lo seguido no sobrescribe lo marcado a mano. */
   readonly aplicarLote = (lote: readonly MuestraFrame[]) => {
     for (const f of lote) {
@@ -70,13 +101,15 @@ export class AlmacenTrayectorias {
   }
 
   /**
-   * Quita lo seguido después de `desde` (lo marcado a mano se conserva) y devuelve lo quitado, por si hay que
-   * devolverlo (`devolver`).
+   * Quita lo seguido después de `desde` en las series de `ids` (lo marcado a mano se conserva; los puntos sin marcadores
+   * no se siguen y no se tocan) y devuelve lo quitado, por si hay que devolverlo (`devolver`).
    */
-  readonly borrarDespuesDe = (desde: number) => {
+  readonly borrarDespuesDe = (desde: number, ids: readonly IdMarcador[]) => {
     const total = this.tiempos.length
     const quitado: SeriesTrayectorias = new Map()
-    for (const [id, serie] of this.mapa) {
+    for (const id of ids) {
+      const serie = this.mapa.get(id)
+      if (!serie) continue
       const antes = new Array<Muestra2D | undefined>(total)
       for (let i = desde + 1; i < total; i++) {
         if (!serie[i]?.editadoManual) {
@@ -102,9 +135,9 @@ export class AlmacenTrayectorias {
     this.publicar()
   }
 
-  /** Quita las marcas a mano posteriores a `desde`. Devuelve cuántas. */
-  readonly quitarManualesDespuesDe = (desde: number) => {
-    const n = quitarMarcasManuales(this.mapa, desde)
+  /** Quita las marcas a mano posteriores a `desde` en las series de `ids` (las que se siguen). Devuelve cuántas. */
+  readonly quitarManualesDespuesDe = (desde: number, ids: readonly IdMarcador[]) => {
+    const n = quitarMarcasManuales(new Map(ids.flatMap((id) => (this.mapa.has(id) ? [[id, this.mapa.get(id)!] as const] : []))), desde)
     this.publicar()
     return n
   }

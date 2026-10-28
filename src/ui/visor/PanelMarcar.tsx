@@ -1,18 +1,39 @@
 import type { Lado } from '../../core/articulaciones/catalogo'
 import type { DefinicionArticulacion } from '../../core/articulaciones/definicion'
-import type { IdMarcador, Marcador } from '../../core/modelo/tipos'
+import type { DeteccionPose, IdMarcador, Marcador, TamanoModeloPose } from '../../core/modelo/tipos'
+import { esIdPose } from '../../core/pose/puntos'
 import { COLORES_MARCADOR, nombreCorto } from '../marcadores'
 import AccionesHuecos from './AccionesHuecos'
 import AvisoAnclas from './AvisoAnclas'
 import BotonesQuitarManual from './BotonesQuitarManual'
 import BotonIrAlHueco from './BotonIrAlHueco'
+import BotonDetectar from './BotonDetectar'
 import BotonSeguir from './BotonSeguir'
 import ControlTrayectoria from './ControlTrayectoria'
 import { grados } from './formato'
 import InterruptorAOjo from './InterruptorAOjo'
 import SelectorMarcadores from './SelectorMarcadores'
 import type { Aviso } from './useSeguimiento'
+import type { ProgresoDeteccion } from './useDeteccionPose'
 import { InfoGlosario } from '../glosario/Glosario'
+
+/** «Detectar el cuerpo» (sin marcadores, fase 5): solo en una vista de perfil. */
+export interface DeteccionPanel {
+  readonly progreso: ProgresoDeteccion | null
+  /** Otra cosa ocupa el vídeo (se sigue, o se detecta en la otra vista). */
+  readonly deshabilitado: boolean
+  /** La última detección (null = todavía no). */
+  readonly hecha: DeteccionPose | null
+  readonly modelo: TamanoModeloPose
+  readonly onModelo: (m: TamanoModeloPose) => void
+  readonly onDetectar: () => void
+  readonly onParar: () => void
+}
+
+const MODELOS: readonly { id: TamanoModeloPose; nombre: string }[] = [
+  { id: 'full', nombre: 'Normal (full)' },
+  { id: 'heavy', nombre: 'Preciso y lento (heavy, se descarga 30 MB)' },
+]
 
 interface Props {
   /** Pierna que ve la cámara. */
@@ -28,6 +49,10 @@ interface Props {
   colocarAOjo: boolean
   onCambiarAOjo: () => void
   listoParaSeguir: boolean
+  /** La vista sigue gomets: sin ellos (solo los puntos del modelo) no hay «Seguir desde aquí». */
+  conGomets: boolean
+  /** «Detectar el cuerpo»; null en una vista de frente (llega en el paso 4). */
+  deteccion: DeteccionPanel | null
   /** Marcadores con una marca a mano en el frame mostrado, con su posición en el modelo. */
   marcasManualesAqui: readonly { mk: Marcador; k: number }[]
   mostrado: number | null
@@ -67,6 +92,8 @@ export default function PanelMarcar({
   colocarAOjo,
   onCambiarAOjo,
   listoParaSeguir,
+  conGomets,
+  deteccion,
   marcasManualesAqui,
   mostrado,
   onQuitarManual,
@@ -89,6 +116,9 @@ export default function PanelMarcar({
   angulo,
   anguloRedondeado,
 }: Props) {
+  // Mientras se detecta el cuerpo, como mientras se sigue, no se marca.
+  const ocupado = siguiendo || !!deteccion?.progreso
+  const elegido = seleccionado ? marcadores.find((x) => x.id === seleccionado) : undefined
   return (
             <section className="flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4">
               <div className="flex items-baseline justify-between gap-2">
@@ -99,32 +129,82 @@ export default function PanelMarcar({
                 {frontal && <InfoGlosario id="fppa" tema="el FPPA de la rodilla y dónde van los gomets" className="-my-1.5" />}
               </div>
 
-              <SelectorMarcadores marcadores={marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={siguiendo} onElegir={onElegirMarcador} />
+              <SelectorMarcadores marcadores={marcadores} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={ocupado} onElegir={onElegirMarcador} />
 
               <p className="text-sm text-texto-2">
                 {siguiendo
                   ? 'Siguiendo los gomets…'
-                  : seleccionado && colocarAOjo
-                    ? `A ojo: el ${nombreCorto(marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} queda justo donde sueltas el dedo, sin ajustarse a ningún gomet. Usa la lupa para afinar.`
-                    : seleccionado
-                      ? `Toca el ${nombreCorto(marcadores.find((x) => x.id === seleccionado)!.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
-                      : listoParaSeguir
-                        ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
-                        : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
+                  : deteccion?.progreso
+                    ? 'Detectando el cuerpo en cada frame del vídeo…'
+                    : elegido && esIdPose(elegido.id)
+                      ? `Toca el punto (${nombreCorto(elegido.nombre).toLowerCase()}) en la imagen: queda justo donde sueltas el dedo, a mano (los puntos del modelo no tienen gomet que buscar). Usa la lupa para afinar.`
+                      : elegido && colocarAOjo
+                        ? `A ojo: el ${nombreCorto(elegido.nombre).toLowerCase()} queda justo donde sueltas el dedo, sin ajustarse a ningún gomet. Usa la lupa para afinar.`
+                        : elegido
+                          ? `Toca el ${nombreCorto(elegido.nombre).toLowerCase()} en la imagen. Mantén el dedo para ver la lupa: cuando el gomet salga rodeado por un anillo, suelta y el marcador irá a su centro.`
+                          : !conGomets
+                            ? deteccion?.hecha
+                              ? 'Para corregir un punto del modelo, elígelo y tócalo en la imagen.'
+                              : 'Pulsa «Detectar el cuerpo»: el móvil busca a la persona en cada frame, sin marcadores.'
+                            : listoParaSeguir
+                              ? 'Los tres marcadores están en este frame: ya puedes seguir. Para corregir uno, elígelo y arrástralo con la lupa.'
+                              : 'Elige un marcador para colocarlo o corregirlo en este frame.'}
               </p>
 
-              <InterruptorAOjo activo={colocarAOjo} deshabilitado={siguiendo} onCambiar={onCambiarAOjo} />
+              {conGomets && <InterruptorAOjo activo={colocarAOjo} deshabilitado={ocupado} onCambiar={onCambiarAOjo} />}
 
               {/* Quitar una marca a mano equivocada de cualquier marcador, en este frame, sin elegirlo antes. */}
-              {marcasManualesAqui.length > 0 && !siguiendo && (
+              {marcasManualesAqui.length > 0 && !ocupado && (
                 <div className="flex flex-wrap gap-2">
-                  <BotonesQuitarManual marcas={marcasManualesAqui} siguiendo={siguiendo} frame={mostrado} onQuitar={onQuitarManual} claseExtra="" />
+                  <BotonesQuitarManual marcas={marcasManualesAqui} siguiendo={ocupado} frame={mostrado} onQuitar={onQuitarManual} claseExtra="" />
                 </div>
               )}
 
-              <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={onQuitarMarcasPosteriores} />
+              {conGomets && (
+                <>
+                  <AvisoAnclas frames={framesAnclas} siguiendo={siguiendo} onQuitar={onQuitarMarcasPosteriores} />
+                  <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={onSeguir} onParar={onParar} />
+                </>
+              )}
 
-              <BotonSeguir siguiendo={siguiendo} progreso={progresoSeguimiento} listo={listoParaSeguir} onSeguir={onSeguir} onParar={onParar} />
+              {deteccion && (
+                <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="detectar-cuerpo">
+                  <p className="flex items-center gap-1 text-sm text-texto-2">
+                    Sin marcadores: el cuerpo se detecta en el propio móvil (el vídeo no sale de él).
+                    <InfoGlosario id="sin-marcadores" tema="cómo se detecta el cuerpo sin marcadores" className="-my-1.5" />
+                  </p>
+                  <label className="flex items-center gap-2 text-sm">
+                    Modelo
+                    <select
+                      value={deteccion.modelo}
+                      disabled={ocupado}
+                      onChange={(e) => deteccion.onModelo(e.target.value as TamanoModeloPose)}
+                      className="min-w-0 flex-1 rounded-md border border-borde bg-fondo px-2 py-1"
+                    >
+                      {MODELOS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <BotonDetectar
+                    progreso={deteccion.progreso}
+                    deshabilitado={deteccion.deshabilitado}
+                    principal={!conGomets}
+                    hecha={!!deteccion.hecha}
+                    onDetectar={deteccion.onDetectar}
+                    onParar={deteccion.onParar}
+                  />
+                  {deteccion.hecha && !deteccion.progreso && (
+                    <p className="font-mono text-xs text-texto-2" data-testid="deteccion-hecha">
+                      {deteccion.hecha.modelo} · {deteccion.hecha.delegado} · persona en {deteccion.hecha.conPersona} frames
+                      {deteccion.hecha.intercambiados > 0 && ` · ${deteccion.hecha.intercambiados} con las piernas corregidas`}
+                      {deteccion.hecha.dudosos > 0 && ` · ${deteccion.hecha.dudosos} dudosos`}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {aviso && (
                 <div className="flex flex-col gap-2 rounded-md border border-acento/50 p-3 text-sm" role="status">
@@ -139,7 +219,7 @@ export default function PanelMarcar({
                 </div>
               )}
 
-              {!siguiendo && (huecosCortos > 0 || hayInterpolados) && (
+              {!ocupado && (huecosCortos > 0 || hayInterpolados) && (
                 <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="huecos-cortos">
                   <AccionesHuecos huecosCortos={huecosCortos} hayInterpolados={hayInterpolados} onRellenar={onRellenarHuecos} onQuitarInterpolados={onQuitarInterpolados} />
                 </div>

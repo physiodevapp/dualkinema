@@ -7,7 +7,7 @@ import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
-import type { IdMarcador, ModeloMarcadores, Muestra2D, Sincronia } from '../../core/modelo/tipos'
+import type { DeteccionPose, IdMarcador, ModeloMarcadores, Muestra2D, Sincronia } from '../../core/modelo/tipos'
 import { prepararGuardado } from '../../core/persistencia/esquema'
 import type { HuellaArchivo } from '../../core/persistencia/huella'
 import { guardarSesion, pedirPersistencia } from '../../persistencia/almacen'
@@ -42,6 +42,8 @@ export interface VistaAGuardar {
   readonly sincronia: Sincronia
   /** Marcadores del modelo que sigue. */
   readonly marcadores: readonly IdMarcador[]
+  /** La última detección sin marcadores (null = ninguna). */
+  readonly deteccion: DeteccionPose | null
 }
 
 export type EstadoGuardado =

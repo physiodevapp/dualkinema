@@ -2,11 +2,14 @@ import { useEffect, useRef } from 'react'
 
 export type EstadoFrame = 'vacio' | 'seguido' | 'perdido' | 'manual' | 'interpolado'
 
+/** Lo interpolado, igual en la franja que sobre el vídeo (azul). */
+export const COLOR_INTERPOLADO = '#56b4e9'
+
 const COLOR: Record<EstadoFrame, string> = {
   vacio: 'transparent',
   seguido: '#34d399',
   manual: '#f2a65a',
-  interpolado: '#56b4e9',
+  interpolado: COLOR_INTERPOLADO,
   perdido: '#f87171',
 }
 // Si varios frames caen en el mismo píxel, se pinta el estado más importante.
