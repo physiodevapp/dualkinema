@@ -62,10 +62,12 @@ export const lanzarNavegadorConCamaraFalsa = () =>
   })
 
 /**
- * Abre la app como un móvil (o ancho de escritorio con `ancho` ≥ 800). El idioma es es-ES: uPlot lo necesita.
+ * Abre la app con un ancho de escritorio (1280) o, con `ancho` por debajo de 800, como un móvil: las pruebas de
+ * funcionamiento (seguimiento, huecos, escala…) no dependen del diseño del móvil y van en escritorio, donde todo está a la
+ * vista; las que prueban el móvil piden `ancho: 390`. El idioma es es-ES: uPlot lo necesita.
  * `consulta` va tras la dirección (p. ej. `?laboratorio`).
  */
-export async function abrirApp(navegador, { ancho = 390, alto, consulta = '' } = {}) {
+export async function abrirApp(navegador, { ancho = 1280, alto, consulta = '' } = {}) {
   const pagina = await navegador.newPage({
     locale: 'es-ES',
     viewport: { width: ancho, height: alto ?? (ancho >= 800 ? 900 : 844) },
