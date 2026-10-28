@@ -1777,9 +1777,8 @@ describe('pestañas de herramientas', () => {
   it('en el móvil la página no se desplaza: vídeo y gráfica arriba, el asa, las pestañas y las tarjetas, que se desplazan por dentro', async () => {
     const { p } = await seguirVideo(videos.verde, { ancho: 390 })
     try {
-      // Con las herramientas abiertas arriba va el vídeo o la gráfica; plegadas, las dos: se miden con las dos a la vista.
-      await arrastrarAsa(p, 'separador-herramientas', 2000)
       await abrirPestana(p, 'analisis')
+      // Con las herramientas abiertas arriba va el vídeo o la gráfica (la otra queda montada, sin verse): se mide cada una.
       const cajas = async () => ({
         video: await p.getByTestId('capa').boundingBox(),
         mini: await p.getByTestId('minigrafica').boundingBox(),
@@ -1790,9 +1789,9 @@ describe('pestañas de herramientas', () => {
         barra: await p.getByTestId('barra-fija').boundingBox(),
       })
       const a = await cajas()
-      // En orden y sin solaparse: vídeo, gráfica (dentro del bloque de arriba), asa, pestañas, tarjetas y la barra.
-      assert.ok(a.mini.y >= a.video.y + a.video.height - 1, 'la gráfica va debajo del vídeo')
-      assert.ok(a.mini.y + a.mini.height <= a.fijo.y + a.fijo.height + 1, 'la gráfica se sale del bloque de arriba')
+      // En orden y sin solaparse: el vídeo (dentro del bloque de arriba), el asa, las pestañas, las tarjetas y la barra.
+      assert.equal(a.mini, null, 'con las herramientas abiertas no se ven el vídeo y la gráfica a la vez')
+      assert.ok(a.video.y + a.video.height <= a.fijo.y + a.fijo.height + 1, 'el vídeo se sale del bloque de arriba')
       assert.ok(a.asa.y >= a.fijo.y + a.fijo.height - 1 && a.pestanas.y >= a.asa.y + a.asa.height - 1, 'el asa va entre el bloque y las pestañas')
       assert.ok(a.tarjetas.y >= a.pestanas.y + a.pestanas.height - 1 && a.tarjetas.y + a.tarjetas.height <= a.barra.y + 1, 'las tarjetas, entre las pestañas y la barra')
       // «Análisis» es larga: sus tarjetas se desplazan por dentro y nada más se mueve.
@@ -1802,7 +1801,7 @@ describe('pestañas de herramientas', () => {
       await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
       const b = await cajas()
       assert.ok(await tarjetas.evaluate((el) => el.scrollTop > 0))
-      for (const k of ['video', 'mini', 'asa', 'pestanas', 'barra']) assert.deepEqual(b[k], a[k], `${k} se ha movido al desplazar las tarjetas`)
+      for (const k of ['video', 'asa', 'pestanas', 'barra']) assert.deepEqual(b[k], a[k], `${k} se ha movido al desplazar las tarjetas`)
     } finally {
       await p.close()
     }
@@ -2076,7 +2075,7 @@ describe('gráfica pequeña del móvil: conserva su modo', () => {
       await arrastrarAsa(p, 'separador-herramientas', 2000)
       await enVelocidad('al plegar el vídeo y volver')
       // Al pasar al vídeo grande o a solo gráficas (la gráfica pequeña no está) y volver, sigue en «Velocidad».
-      await p.getByTestId('ver-video').click()
+      if (await p.getByTestId('ver-video').isVisible()) await p.getByTestId('ver-video').click()
       await p.getByTestId('ampliar-video').click()
       await p.getByTestId('reducir-video').click()
       await verGrafica(p)
@@ -2333,8 +2332,9 @@ describe('vistas ampliadas del móvil', () => {
       assert.ok((await leerPosicion(p)).frame >= esperado)
       // Volver.
       await p.getByTestId('reducir-graficas').click()
-      assert.ok(await p.getByTestId('capa').isVisible())
       assert.ok(await p.getByTestId('minigrafica').isVisible())
+      await p.getByTestId('ver-video').click()
+      assert.ok(await p.getByTestId('capa').isVisible())
       assert.equal(await p.getByTestId('vista-graficas').isVisible(), false)
     } finally {
       await p.close()
@@ -4411,7 +4411,7 @@ describe('asa entre el vídeo con su gráfica y las herramientas (móvil)', () =
     await arrastrarAsa(p, 'separador-herramientas', -2000)
     assert.equal(await posicion(), 'todo')
     await abrirPestana(p, 'marcar')
-    await p.getByTestId('panel-herramientas').getByRole('radio', { name: /Epicóndilo/ }).click()
+    await p.getByTestId('panel-herramientas').getByRole('radio', { name: /Maléolo/ }).click()
     assert.equal(await posicion(), 'alta')
     assert.ok(await p.getByTestId('lienzo').isVisible())
   })
@@ -4476,8 +4476,10 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
   it('arrastrar hacia abajo agranda el vídeo, encaja en «vídeo grande» y la gráfica cede el sitio', async () => {
     const miniAntes = await altoMini()
     const inicio = await altoVideo()
-    const durante = await arrastrar(60)
-    assert.ok(Math.abs(durante - (inicio + 60)) <= 2, `durante el arrastre el vídeo mide ${durante} px`)
+    // Del 60 al 90 % del bloque hay un trecho que depende del alto de la pantalla.
+    const dy = (await tope(90)) - inicio
+    const durante = await arrastrar(dy)
+    assert.ok(Math.abs(durante - (inicio + dy)) <= 2, `durante el arrastre el vídeo mide ${durante} px`)
     assert.equal(await asa().getAttribute('data-reparto'), 'video')
     assert.ok(Math.abs((await altoVideo()) - (await tope(90))) <= 2, `el vídeo mide ${await altoVideo()} px`)
     assert.ok((await altoMini()) < miniAntes - 60, `la gráfica mide ${await altoMini()} px (antes ${miniAntes})`)
@@ -4487,7 +4489,7 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
 
   it('arrastrar hacia arriba agranda la gráfica', async () => {
     const miniAntes = await altoMini()
-    await arrastrar(-130)
+    await arrastrar((await tope(40)) - (await altoVideo()))
     assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
     assert.ok(Math.abs((await altoVideo()) - (await tope(40))) <= 2, `el vídeo mide ${await altoVideo()} px`)
     assert.ok((await altoMini()) > miniAntes + 60, `la gráfica mide ${await altoMini()} px (antes ${miniAntes})`)
@@ -4516,7 +4518,7 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     const y = c.y + c.height / 2
     await p.mouse.move(x, y)
     await p.mouse.down()
-    await p.mouse.move(x, y + 300, { steps: 8 })
+    await p.mouse.move(x, y + (await tope(90)) - (await altoVideo()) + 120, { steps: 8 })
     assert.equal(await asa().getAttribute('data-desborde'), 'video')
     await p.getByTestId('aviso-ampliar').waitFor({ state: 'visible' })
     // Con resistencia: pasado el extremo (90 %), el vídeo sigue un poco más (56 × 0,35 ≈ 20 px como mucho), no se para en seco.
@@ -4584,7 +4586,7 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     const y = c.y + c.height / 2
     await p.mouse.move(x, y)
     await p.mouse.down()
-    await p.mouse.move(x, y + 300, { steps: 8 })
+    await p.mouse.move(x, y + (await tope(90)) - (await altoVideo()) + 120, { steps: 8 })
     assert.equal(await asa().getAttribute('data-desborde'), 'video')
     await p.mouse.move(x, y + 5, { steps: 8 })
     assert.equal(await asa().getAttribute('data-desborde'), null)
