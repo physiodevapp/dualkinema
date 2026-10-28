@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { segmentosDeArticulacion } from '../../core/articulaciones/definicion'
 import { CALIDAD_MINIMA } from '../../core/articulaciones/calculo'
 import { construirCsv, nombreArchivoCsv, type FormatoCsv } from '../../core/exportacion/csv'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
@@ -143,7 +144,7 @@ export function useVista({ video, orientacion, modelo, inicial, filtro, cerosGua
   // Segmentos de la articulación: se pueden usar para calibrar y se vigila su longitud.
   const segmentos = useMemo(() => {
     const nombre = (id: IdMarcador) => nombreCorto(modelo.marcadores.find((m) => m.id === id)?.nombre ?? id)
-    return [articulacion.proximal, articulacion.distal].map((s) => ({ desde: s.desde, hasta: s.hasta, nombre: `${nombre(s.desde)} – ${nombre(s.hasta)}` }))
+    return segmentosDeArticulacion(articulacion).map((s) => ({ desde: s.desde, hasta: s.hasta, nombre: `${nombre(s.desde)} – ${nombre(s.hasta)}` }))
   }, [modelo, articulacion])
   // Análisis: cero de referencia, serie del ángulo, lo filtrado (con el filtro de la sesión), series por frame y segmentos.
   const {

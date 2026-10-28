@@ -7,7 +7,8 @@
  * cuentan los frames con valor en las dos.
  */
 import { serieAngular } from '../articulaciones/calculo'
-import type { DefinicionArticulacion } from '../articulaciones/definicion'
+import { ceroDeReferencia, type TramoEstatico } from '../articulaciones/cero'
+import { marcadoresDeArticulacion, type DefinicionArticulacion } from '../articulaciones/definicion'
 import { comoMuestras, filtrarTrayectoria, type AjustesFiltro } from '../filtros/tramos'
 import type { OrientacionVista } from '../geometria/canonico'
 import { seriePorFrame } from '../graficas/series'
@@ -90,8 +91,43 @@ export function anguloFiltradoPorFrame(
   ajustes: AjustesFiltro,
 ): Float64Array {
   const fs = fpsMediano(tabla)
-  const ids = [...new Set([articulacion.proximal.desde, articulacion.proximal.hasta, articulacion.distal.desde, articulacion.distal.hasta])]
+  const ids = marcadoresDeArticulacion(articulacion)
   if (!Number.isFinite(fs) || orientacion.plano !== articulacion.plano) return new Float64Array(tabla.tiempos.length).fill(NaN)
   const filtradas = Object.fromEntries(ids.map((id) => [id, comoMuestras(filtrarTrayectoria(trayectorias.get(id) ?? [], fs, ajustes))]))
   return seriePorFrame(serieAngular(articulacion, filtradas, orientacion), tabla.tiempos).valores
+}
+
+export interface ComparacionFuentes {
+  /** Las dos medidas tal cual (b − a). */
+  readonly directa: Comparacion | null
+  /**
+   * Cada una relativa a su propio cero de referencia en el mismo tramo (b − cero_b frente a a − cero_a): quita la
+   * diferencia constante entre los puntos de una fuente y los de la otra (D4: un ángulo sin marcadores no se compara a
+   * pelo con uno de gomets). null sin tramo o si alguna no tiene valor en él.
+   */
+  readonly relativa: Comparacion | null
+  /** El cero de cada una en el tramo (°; NaN si no hay). */
+  readonly ceroA: number
+  readonly ceroB: number
+}
+
+/**
+ * Compara dos medidas del mismo ángulo por frame (a = gomets, b = sin marcadores; NaN = sin valor), las dos con la misma
+ * tabla de frames (`tiempos`, s de vídeo), directamente y relativas al cero de cada una en `tramo` (con `ceroDeReferencia`,
+ * el mismo cálculo que el cero del visor).
+ */
+export function compararFuentes(a: ArrayLike<number>, b: ArrayLike<number>, tiempos: readonly number[], tramo: TramoEstatico | null): ComparacionFuentes {
+  const directa = compararSeries(a, b)
+  const cero = (v: ArrayLike<number>) => {
+    if (!tramo) return NaN
+    const serie = tiempos.map((t, i) => ({ t, valor: i < v.length ? v[i]! : NaN, interpolado: false }))
+    return ceroDeReferencia(serie, tramo)?.media ?? NaN
+  }
+  const ceroA = cero(a)
+  const ceroB = cero(b)
+  const relativa =
+    Number.isFinite(ceroA) && Number.isFinite(ceroB)
+      ? compararSeries(Array.from(a, (x) => x - ceroA), Array.from(b, (x) => x - ceroB))
+      : null
+  return { directa, relativa, ceroA, ceroB }
 }

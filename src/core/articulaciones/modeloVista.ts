@@ -1,6 +1,6 @@
 import type { OrientacionVista } from '../geometria/canonico'
 import type { IdMarcador, ModeloMarcadores } from '../modelo/tipos'
-import type { DefinicionArticulacion } from './definicion'
+import { marcadoresDeArticulacion } from './definicion'
 
 /*
  * Lo que ve cada vista del modelo de la sesión (D4 de la fase 3): el modelo tiene todos los marcadores; cada vista sigue
@@ -8,7 +8,7 @@ import type { DefinicionArticulacion } from './definicion'
  * el análisis de una vista trabajan con este modelo recortado, así que no necesitan saber que hay otros marcadores.
  */
 
-const marcadoresDe = (a: DefinicionArticulacion): IdMarcador[] => [a.proximal.desde, a.proximal.hasta, a.distal.desde, a.distal.hasta]
+const marcadoresDe = marcadoresDeArticulacion
 
 /**
  * Los marcadores que sigue una vista nueva: los de las articulaciones del plano de la vista (sin repetir, en el orden del

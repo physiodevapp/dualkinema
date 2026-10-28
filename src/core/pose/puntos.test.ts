@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { serieAngular } from '../articulaciones/calculo'
-import { articulacionesSagitales, marcadores, type Lado } from '../articulaciones/catalogo'
-import { aImagen, direccion, frame } from '../articulaciones/poses'
-import type { OrientacionVista } from '../geometria/canonico'
-import { idPose, LINEAS_ESQUELETO, PUNTOS_POSE, puntosDeLandmarks, rodillaSagitalPose, trayectoriasPose, VALORES_POR_PUNTO, type FramePose } from './puntos'
+import type { Muestra2D } from '../modelo/tipos'
+import {
+  conPuntosMedios,
+  esPuntoMedio,
+  fusionarDeteccion,
+  idMedio,
+  idPose,
+  LINEAS_ESQUELETO,
+  PUNTOS_POSE,
+  puntoMedio,
+  puntosDeLandmarks,
+  trayectoriasPose,
+  VALORES_POR_PUNTO,
+  type FramePose,
+} from './puntos'
 
 describe('puntos del modelo', () => {
   it('son 12, con el índice de MediaPipe de cada parte y lado de la persona', () => {
@@ -60,33 +70,59 @@ describe('puntos del modelo', () => {
   })
 })
 
-describe('rodilla de perfil sin marcadores', () => {
-  const LADOS: Lado[] = ['der', 'izq']
-  const VISTAS: OrientacionVista[] = [
-    { plano: 'sagital', mira: 'derecha' },
-    { plano: 'sagital', mira: 'izquierda' },
-  ]
-  // Muslo y pierna en el marco canónico (x delante, y arriba) con la flexión dada.
-  const pierna = (flexion: number) => {
-    const cadera = { x: 0, y: 0 }
-    const d1 = direccion(10) // muslo algo adelantado
-    const rodilla = { x: d1.x * 1.3, y: d1.y * 1.3 }
-    const d2 = direccion(10 - flexion)
-    return { cadera, rodilla, tobillo: { x: rodilla.x + d2.x * 1.2, y: rodilla.y + d2.y * 1.2 } }
-  }
-  describe.each(LADOS)('lado %s', (l) => {
-    it.each(VISTAS)('mirando a la $mira: da lo mismo que la de los gomets con los mismos puntos', (o) => {
-      const defPose = rodillaSagitalPose(l)
-      const defGomets = articulacionesSagitales(l).find((a) => a.id === `rodilla_sagital_${l}`)!
-      const m = marcadores(l)
-      for (const flexion of [0, 45, 90, 120, -10]) {
-        const p = pierna(flexion)
-        const img = (q: { x: number; y: number }) => aImagen(q, o)
-        const pose = serieAngular(defPose, frame(0, { [idPose('cadera', l)]: img(p.cadera), [idPose('rodilla', l)]: img(p.rodilla), [idPose('tobillo', l)]: img(p.tobillo) }), o)
-        const gomets = serieAngular(defGomets, frame(0, { [m.cadera]: img(p.cadera), [m.rodilla]: img(p.rodilla), [m.tobillo]: img(p.tobillo) }), o)
-        expect(pose[0]!.valor).toBeCloseTo(flexion, 6)
-        expect(pose[0]!.valor).toBeCloseTo(gomets[0]!.valor, 9)
-      }
-    })
+const m = (x: number, y: number, calidad = 0.9, extra: Partial<Muestra2D> = {}): Muestra2D => ({ t: 0, x, y, calidad, editadoManual: false, ...extra })
+
+describe('puntos medios', () => {
+  it('la media de los dos lados, con la peor calidad', () => {
+    expect(puntoMedio(m(100, 200, 0.9), m(300, 260, 0.6))).toEqual({ t: 0, x: 200, y: 230, calidad: 0.6, editadoManual: false })
+  })
+
+  it('interpolado si lo es alguno de los dos', () => {
+    expect(puntoMedio(m(0, 0), m(10, 0, 0.9, { interpolado: true }))!.interpolado).toBe(true)
+  })
+
+  it('perdido si alguno lo está, y sin muestra si falta alguno: nunca se inventa', () => {
+    const p = puntoMedio(m(0, 0), m(NaN, NaN, 0))!
+    expect(p.x).toBeNaN()
+    expect(p.calidad).toBe(0)
+    expect(puntoMedio(m(0, 0), undefined)).toBeUndefined()
+  })
+
+  it('se añaden a las trayectorias frame a frame, sin tocar las demás', () => {
+    const izq = [m(100, 0), m(110, 0), undefined]
+    const der = [m(200, 0), m(220, 10), m(0, 0)]
+    const series = new Map([
+      [idPose('cadera', 'izq'), izq],
+      [idPose('cadera', 'der'), der],
+    ])
+    const r = conPuntosMedios(series)
+    expect(r.get(idPose('cadera', 'izq'))).toBe(izq)
+    expect(r.get(idMedio('cadera'))!.map((p) => p && [p.x, p.y])).toEqual([[150, 0], [165, 5], undefined])
+    expect(r.get(idMedio('hombro'))).toEqual([])
+    expect(esPuntoMedio(idMedio('hombro'))).toBe(true)
+    expect(esPuntoMedio(idPose('hombro', 'der'))).toBe(false)
+  })
+})
+
+describe('fusionarDeteccion', () => {
+  it('lo marcado a mano se queda; lo demás, lo detectado; donde no se detectó, lo de antes', () => {
+    const id = idPose('rodilla', 'der')
+    const manual = m(5, 5, 1, { editadoManual: true })
+    const previas = new Map([
+      [id, [m(1, 1), manual, m(3, 3), undefined]],
+      ['epicondilo_femoral_der', [m(9, 9)]],
+    ])
+    const nuevas = new Map([[id, [m(10, 10), m(20, 20), undefined, m(40, 40)]]])
+    const r = fusionarDeteccion(previas, nuevas)
+    expect(r.get(id)!.map((p) => p?.x)).toEqual([10, 5, 3, 40])
+    expect(r.get(id)![1]).toBe(manual)
+    expect(r.get('epicondilo_femoral_der')!.map((p) => p?.x)).toEqual([9])
+    // Copias: lo de entrada no cambia.
+    expect(previas.get(id)![0]!.x).toBe(1)
+  })
+
+  it('una serie nueva entra entera', () => {
+    const r = fusionarDeteccion(new Map(), new Map([[idPose('talon', 'izq'), [m(1, 2)]]]))
+    expect(r.get(idPose('talon', 'izq'))![0]!.x).toBe(1)
   })
 })

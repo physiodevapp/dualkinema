@@ -6,7 +6,8 @@ import type { OrientacionVista } from '../../core/geometria/canonico'
 import { cambiosDeLado } from '../../core/pose/cambiosLado'
 import { anguloFiltradoPorFrame, compararSeries } from '../../core/pose/comparar'
 import { textoInforme } from '../../core/pose/informe'
-import { rodillaSagitalPose, trayectoriasPose, type FramePose } from '../../core/pose/puntos'
+import { articulacionesPoseSagitales } from '../../core/pose/catalogo'
+import { trayectoriasPose, type FramePose } from '../../core/pose/puntos'
 import { fpsMediano, type TablaFrames } from '../../core/tiempo/tablaFrames'
 import type { AlWorkerPose, DelWorkerPose, TamanoModeloPose } from '../../workers/protocolo'
 import { grados } from './formato'
@@ -129,7 +130,7 @@ export default function ExperimentoPose({ archivo, tabla, ancho, alto, orientaci
     if (!hecho || !medida) return null
     const lista: FramePose[] = [...frames].map(([indice, puntos]) => ({ indice, t: tabla.tiempos[indice]!, puntos }))
     const trayectorias = trayectoriasPose(lista, total)
-    const pose = sagital ? anguloFiltradoPorFrame(trayectorias, rodillaSagitalPose(lado), orientacion, tabla, ajustes) : null
+    const pose = sagital ? anguloFiltradoPorFrame(trayectorias, articulacionesPoseSagitales(lado)[0]!, orientacion, tabla, ajustes) : null
     const comparacion = pose && gomets ? compararSeries(gomets, pose) : null
     const framesGomets = gomets ? gomets.filter(Number.isFinite).length : 0
     const texto = textoInforme({
