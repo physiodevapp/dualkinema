@@ -4377,6 +4377,46 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
     assert.equal(await p.getByTestId('pestana-escala').getAttribute('aria-selected'), 'true')
     await p.getByTestId('volver-cabecera').click()
   })
+
+  it('atrás del móvil (el historial) hace lo mismo que volver: de una herramienta, del vídeo grande y de solo gráficas', async () => {
+    // Una herramienta abierta: atrás vuelve a vídeo y gráfica sin salir de la página.
+    await p.getByTestId('pestana-analisis').click()
+    assert.ok(await visible('panel-filtro'))
+    await p.goBack()
+    assert.ok(await visible('lienzo'))
+    assert.ok(await visible('minigrafica'))
+    assert.equal(await visible('panel-herramientas'), false)
+    // El vídeo grande.
+    await p.getByTestId('ampliar-video').click()
+    await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
+    await p.goBack()
+    await p.getByTestId('reducir-video').waitFor({ state: 'detached' })
+    assert.ok(await visible('minigrafica'))
+    // Solo gráficas.
+    await p.getByTestId('ampliar-graficas').click()
+    await p.getByTestId('vista-graficas').waitFor({ state: 'visible' })
+    await p.goBack()
+    await p.getByTestId('vista-graficas').waitFor({ state: 'hidden' })
+    assert.ok(await visible('lienzo'))
+    assert.ok(await visible('minigrafica'))
+  })
+
+  it('atrás desde el vídeo grande de la escala vuelve a la escala, y volver con los botones no deja entradas de más', async () => {
+    await p.getByTestId('pestana-escala').click()
+    await p.getByRole('button', { name: /Medir con un objeto|Calibrar|Empezar/i }).first().click()
+    await p.getByTestId('tira-vuelta').waitFor({ state: 'visible' })
+    await p.goBack()
+    await p.getByTestId('tira-vuelta').waitFor({ state: 'hidden' })
+    assert.ok(await visible('panel-escala'))
+    assert.equal(await p.getByTestId('pestana-escala').getAttribute('aria-selected'), 'true')
+    // Sigue en una herramienta: atrás la cierra, y el botón de la cabecera también.
+    await p.goBack()
+    assert.ok(await visible('lienzo'))
+    await p.getByTestId('pestana-analisis').click()
+    await p.getByTestId('volver-cabecera').click()
+    assert.ok(await visible('lienzo'))
+    assert.equal(await p.evaluate(() => history.state?.dualkinema ?? null), null, 'tras volver con el botón queda una entrada de más en el historial')
+  })
 })
 
 describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {

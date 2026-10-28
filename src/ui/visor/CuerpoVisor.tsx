@@ -328,6 +328,49 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     ponerVolver(volverEn ? { texto: volverEn, onVolver: () => alVolver.current() } : null)
     return () => ponerVolver(null)
   }, [volverEn, ponerVolver])
+  // Atrás del móvil (el gesto del borde, el botón de atrás del sistema): hace lo mismo que el botón de volver. Mientras se
+  // está en una herramienta, en el vídeo grande o en solo gráficas (en el móvil), el visor tiene una entrada puesta en el
+  // historial del navegador; el gesto la quita y el visor vuelve un paso (de una herramienta o del vídeo grande de la escala,
+  // a la pantalla principal o a su herramienta; del vídeo grande o de solo gráficas, a vídeo y gráfica). Si se vuelve con un
+  // botón, el visor quita su entrada. Sin ella, atrás sacaría de la página.
+  const nivel = !anchoLg && ((movilVertical && abierta) || enVideo || enGraficas)
+  const entradaPuesta = useRef(false)
+  const alAtras = useRef(() => {})
+  useEffect(() => {
+    alAtras.current = () => {
+      if (movilVertical && abierta) setAbierta(false)
+      else if (enVideo && volverEn) volverAHerramienta()
+      else if (enVideo) volverDe('video')
+      else if (enGraficas) volverDe('graficas')
+    }
+  })
+  // Se revisa en cada cambio: tras volver a una herramienta desde el vídeo grande, el gesto se ha llevado la entrada y hay
+  // que ponerla de nuevo.
+  useEffect(() => {
+    if (nivel && !entradaPuesta.current) {
+      history.pushState({ dualkinema: 'nivel' }, '')
+      entradaPuesta.current = true
+    } else if (!nivel && entradaPuesta.current) {
+      entradaPuesta.current = false
+      history.back()
+    }
+  })
+  useEffect(() => {
+    const alRetroceder = () => {
+      if (!entradaPuesta.current) return
+      entradaPuesta.current = false
+      alAtras.current()
+    }
+    window.addEventListener('popstate', alRetroceder)
+    return () => {
+      window.removeEventListener('popstate', alRetroceder)
+      // El visor se cierra o se vuelve a montar con la entrada puesta: se quita.
+      if (entradaPuesta.current) {
+        entradaPuesta.current = false
+        history.back()
+      }
+    }
+  }, [])
   // El bloque de arriba (vídeo y gráfica) ocupa lo que deja la fila de botones de abajo.
   const altoBloque = mixtaApaisada ? disponible : Math.max(0, disponible - altoTira)
   // Tope de alto del vídeo: su parte del bloque de arriba (o lo que diga el asa mientras se arrastra). El ancho lo limita
