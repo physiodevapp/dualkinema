@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { Fuente } from '../../core/pose/catalogo'
 import { FilmIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import { claveHuella, type HuellaArchivo } from '../../core/persistencia/huella'
@@ -10,7 +11,7 @@ interface Props {
   /** Huellas de las vistas que ya hay: el mismo archivo no vale como segunda vista. */
   readonly existentes: readonly HuellaArchivo[]
   /** La vista ya está lista para entrar en la sesión. */
-  readonly onAnadir: (video: VideoAbierto, orientacion: OrientacionVista) => void
+  readonly onAnadir: (video: VideoAbierto, orientacion: OrientacionVista, fuente: Fuente) => void
 }
 
 /**
@@ -80,10 +81,10 @@ export default function AnadirVista({ existentes, onAnadir }: Props) {
         </p>
         <ElegirOrientacion
           conFrontal
-          onElegir={(o) => {
+          onElegir={(o, fuente) => {
             const video = pendiente
             setPendiente(null)
-            onAnadir(video, o)
+            onAnadir(video, o, fuente)
           }}
         />
         <button type="button" onClick={cancelar} className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-2 text-texto-2">

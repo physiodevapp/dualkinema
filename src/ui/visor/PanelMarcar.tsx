@@ -51,8 +51,10 @@ interface Props {
   listoParaSeguir: boolean
   /** La vista sigue gomets: sin ellos (solo los puntos del modelo) no hay «Seguir desde aquí». */
   conGomets: boolean
-  /** «Detectar el cuerpo»; null en una vista de frente (llega en el paso 4). */
+  /** «Detectar el cuerpo»; null si no se puede en esta vista. */
   deteccion: DeteccionPanel | null
+  /** Una vista sin gomets pasa a seguir también los de su plano (para compararlos con el modelo). */
+  onAnadirGomets: () => void
   /** Marcadores con una marca a mano en el frame mostrado, con su posición en el modelo. */
   marcasManualesAqui: readonly { mk: Marcador; k: number }[]
   mostrado: number | null
@@ -94,6 +96,7 @@ export default function PanelMarcar({
   listoParaSeguir,
   conGomets,
   deteccion,
+  onAnadirGomets,
   marcasManualesAqui,
   mostrado,
   onQuitarManual,
@@ -206,6 +209,21 @@ export default function PanelMarcar({
                       <InfoGlosario id="piernas-intercambiadas" tema="las piernas intercambiadas" className="-my-1.5" />
                     </p>
                   )}
+                </div>
+              )}
+
+              {!conGomets && (
+                <div className="flex flex-col gap-2 border-t border-borde pt-3">
+                  <p className="text-sm text-texto-2">¿La persona lleva gomets? Añádelos para seguirlos también y comparar las dos medidas.</p>
+                  <button
+                    type="button"
+                    disabled={ocupado}
+                    onClick={onAnadirGomets}
+                    className="rounded-md border border-borde px-4 py-2 text-sm disabled:opacity-50"
+                    data-testid="anadir-gomets"
+                  >
+                    Añadir los gomets
+                  </button>
                 </div>
               )}
 

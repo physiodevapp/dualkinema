@@ -12,6 +12,11 @@ export type ProgresoDeteccion = { fase: 'cargando' } | { fase: 'delante' | 'atra
 
 /** Salto (fracción del alto del vídeo) a partir del cual cambiar de lado de un frame al siguiente cuenta como intercambio. */
 const UMBRAL_LADO = 0.05
+/**
+ * De frente, separación de las caderas (fracción del alto) a partir de la cual se decide su lado: las caderas de una
+ * persona de frente están a un 5–15 % del alto de la imagen; por debajo (de lado, muy lejos) no se toca nada.
+ */
+const UMBRAL_LADO_FRENTE = 0.02
 
 interface Opciones {
   readonly video: VideoAbierto
@@ -83,7 +88,7 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
         setProgreso({ fase: m.atras ? 'atras' : 'delante', fraccion: m.progreso })
       } else if (m.tipo === 'fin') {
         // Las piernas, en su lado; luego, todo lo detectado sustituye lo de antes (salvo lo marcado a mano).
-        const correccion = corregirLados(trayectoriasPose(frames.values(), total), u.orientacion, tabla.tiempos, UMBRAL_LADO * info.alto)
+        const correccion = corregirLados(trayectoriasPose(frames.values(), total), u.orientacion, tabla.tiempos, (u.orientacion.plano === 'frontal' ? UMBRAL_LADO_FRENTE : UMBRAL_LADO) * info.alto)
         u.fusionar(correccion.series)
         const cuenta = (tramos: readonly { desde: number; hasta: number }[]) => tramos.reduce((s, t) => s + t.hasta - t.desde + 1, 0)
         const conPersona = [...frames.values()].filter((f) => f.puntos).length

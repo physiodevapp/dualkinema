@@ -8,6 +8,23 @@ export const URL_APP = `http://localhost:${PUERTO}/`
 /** Errores de consola y de página de todas las pruebas: la última prueba exige que no haya ninguno. */
 export const errores = []
 
+/** La prueba en marcha (la pone un `beforeEach` de `e2e.test.mjs`), para saber en cuál salió cada error. */
+export const prueba = { actual: '(preparando)' }
+
+/**
+ * `E2E_GC=1` (solo para buscar fallos en local): Chromium expone el recolector de basura y cada página lo llama cada
+ * 200 ms, para que salgan enseguida los avisos que dependen de él (como un `VideoFrame` que no se cerró).
+ */
+const conGc = process.env.E2E_GC === '1'
+const argsGc = conGc ? ['--js-flags=--expose-gc'] : []
+
+/** Recoge los errores de consola y de página de `p`, cada uno con la prueba en la que salió. Antes de abrir la página. */
+export async function vigilarErrores(p) {
+  p.on('pageerror', (e) => errores.push(`pageerror: ${e.message} [${prueba.actual}]`))
+  p.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()} [${prueba.actual}]`))
+  if (conGc) await p.addInitScript(() => setInterval(() => globalThis.gc?.(), 200))
+}
+
 /** Sirve `dist/` (hay que haber hecho `npm run build`). Devuelve una función para pararlo. */
 export async function servirApp() {
   const servidor = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PUERTO), '--strictPort'], {
@@ -49,7 +66,7 @@ export async function servirRele() {
 }
 
 /** `CHROMIUM_PATH` permite usar un Chromium ya instalado en vez del de Playwright. */
-export const lanzarNavegador = () => chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
+export const lanzarNavegador = () => chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: argsGc })
 
 /**
  * Como `lanzarNavegador`, con cámara y micrófono falsos (Chromium genera una imagen en movimiento y un pitido) y los
@@ -58,7 +75,7 @@ export const lanzarNavegador = () => chromium.launch({ executablePath: process.e
 export const lanzarNavegadorConCamaraFalsa = () =>
   chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || undefined,
-    args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+    args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', ...argsGc],
   })
 
 /**
@@ -74,8 +91,7 @@ export async function abrirApp(navegador, { ancho = 1280, alto, consulta = '' } 
     // Un móvil girado (poco alto) también es táctil.
     hasTouch: ancho < 800 || (alto ?? 900) < 600,
   })
-  pagina.on('pageerror', (e) => errores.push(`pageerror: ${e.message}`))
-  pagina.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()}`))
+  await vigilarErrores(pagina)
   await pagina.goto(URL_APP + consulta)
   return pagina
 }

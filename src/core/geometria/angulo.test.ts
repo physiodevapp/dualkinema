@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anguloConSigno, centrarVueltas, desenrollar, normalizarGrados } from './angulo'
+import { anguloConSigno, centrarVueltas, centrarVueltasPorTrozos, desenrollar, normalizarGrados } from './angulo'
 import { vec3 } from './vector'
 
 const Z = vec3(0, 0, 1)
@@ -100,3 +100,32 @@ describe('centrarVueltas', () => {
   })
 })
 
+
+describe('centrarVueltasPorTrozos', () => {
+  it('unos frames mal detectados no dejan una vuelta de más en lo que sigue', () => {
+    // −10° de verdad; en medio, puntos cruzados que hacen girar el ángulo: desenrollado, lo bueno del final sale a 350°.
+    const crudos = [-10, -12, 120, -100, -10, -8]
+    const desenrollada = desenrollar(crudos)
+    expect(desenrollada).toEqual([-10, -12, 120, 260, 350, 352])
+    expect(centrarVueltas(desenrollada)).toEqual(desenrollada)
+    expect(centrarVueltasPorTrozos(desenrollada)).toEqual([-10, -12, 120, -100, -10, -8])
+  })
+
+  it('también si lo mal detectado va al principio', () => {
+    const desenrollada = desenrollar([170, -175, -10, -9, -11])
+    expect(centrarVueltasPorTrozos(desenrollada)).toEqual([170, 185, -10, -9, -11])
+  })
+
+  it('sin saltos de más de 45° es lo mismo que centrarVueltas, con huecos o cruzando ±180°', () => {
+    const lenta = desenrollar([170, 178, -175, -178, NaN, -179])
+    expect(centrarVueltasPorTrozos(lenta)).toEqual(centrarVueltas(lenta))
+    expect(centrarVueltasPorTrozos(lenta)).toEqual([170, 178, 185, 182, NaN, 181])
+    const vuelta = [-400, -380, NaN, -360]
+    expect(centrarVueltasPorTrozos(vuelta)).toEqual([-40, -20, NaN, 0])
+  })
+
+  it('un trozo de valores normales no se mueve aunque se parta', () => {
+    expect(centrarVueltasPorTrozos([0, 10, 90, 95])).toEqual([0, 10, 90, 95])
+    expect(centrarVueltasPorTrozos([])).toEqual([])
+  })
+})

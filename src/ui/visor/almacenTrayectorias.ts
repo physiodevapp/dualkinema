@@ -1,7 +1,7 @@
 import type { IdMarcador, Muestra2D } from '../../core/modelo/tipos'
 import { interpolarHueco, quitarInterpolados, type HuecoInterpolable } from '../../core/seguimiento/interpolar'
 import { quitarMarcasManuales } from '../../core/seguimiento/manuales'
-import { fusionarDeteccion, muestrasDeFrame, PUNTOS_POSE, type FramePose } from '../../core/pose/puntos'
+import { fusionarDeteccion, idPose, muestrasDeFrame, PUNTOS_MEDIOS, PUNTOS_POSE, puntoMedio, type FramePose } from '../../core/pose/puntos'
 import type { MuestraFrame } from '../../workers/protocolo'
 
 export type SeriesTrayectorias = Map<IdMarcador, (Muestra2D | undefined)[]>
@@ -29,7 +29,24 @@ export class AlmacenTrayectorias {
     inicial?: ReadonlyMap<IdMarcador, (Muestra2D | undefined)[]>,
   ) {
     for (const id of ids) this.mapa.set(id, inicial?.get(id) ?? new Array(tiempos.length))
+    // Al recuperar, los medios no vienen guardados: salen de lo que hay.
+    this.recalcularMedios()
     this.instantanea = { version: 0, series: this.mapa }
+  }
+
+  /**
+   * Los puntos medios del modelo sin marcadores (fase 5: el tronco de frente va del medio de las caderas al de los
+   * hombros), si la vista los usa: se rehacen de los dos lados con cada cambio, así que una corrección a mano de una cadera
+   * llega al medio. No se marcan ni se guardan (`esPuntoMedio`).
+   */
+  private recalcularMedios() {
+    for (const { id, parte } of PUNTOS_MEDIOS) {
+      const medio = this.mapa.get(id)
+      if (!medio) continue
+      const izq = this.mapa.get(idPose(parte, 'izq')) ?? []
+      const der = this.mapa.get(idPose(parte, 'der')) ?? []
+      for (let i = 0; i < medio.length; i++) medio[i] = puntoMedio(izq[i], der[i])
+    }
   }
 
   readonly suscribir = (oyente: () => void) => {
@@ -42,6 +59,7 @@ export class AlmacenTrayectorias {
   readonly leer = () => this.instantanea
 
   private publicar() {
+    this.recalcularMedios()
     this.instantanea = { version: this.instantanea.version + 1, series: this.mapa }
     for (const oyente of this.oyentes) oyente()
   }
@@ -63,7 +81,13 @@ export class AlmacenTrayectorias {
    * del modelo y sus series aparecen. No publica: no cambia nada que se vea, y se puede llamar durante el render.
    */
   readonly asegurar = (ids: readonly IdMarcador[]) => {
-    for (const id of ids) if (!this.mapa.has(id)) this.mapa.set(id, new Array(this.tiempos.length))
+    let nuevos = false
+    for (const id of ids) {
+      if (this.mapa.has(id)) continue
+      this.mapa.set(id, new Array(this.tiempos.length))
+      nuevos = true
+    }
+    if (nuevos) this.recalcularMedios()
   }
 
   /** Un lote del worker sin marcadores mientras detecta: lo detectado no sobrescribe lo marcado a mano. */
