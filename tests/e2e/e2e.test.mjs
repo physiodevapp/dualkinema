@@ -1280,6 +1280,15 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
       assert.ok(Math.abs((await leerNumero(p, 'angulo-relativo')) - (sinCero - (await leerNumero(p, 'cero-media')))) < 0.11)
       assert.equal(await leerNumero(p, 'rapida-relativo'), await leerNumero(p, 'angulo-relativo'))
 
+      // «Aquí ± 0,2 s»: 0,4 s centrados en el frame 61 (una pausa corta entre dos repeticiones).
+      await irAFrame(p, 60)
+      await abrirPestana(p, 'analisis')
+      await p.getByTestId('cero-aqui').click()
+      const corto = { desde: verdad[60].t - 0.2, hasta: verdad[60].t + 0.2 }
+      assert.match(await textoDe(p, 'cero-tramo'), new RegExp(`^${corto.desde.toFixed(2).replace('.', ',')}–${corto.hasta.toFixed(2).replace('.', ',')} s`))
+      const m3 = media(corto.desde, corto.hasta)
+      assert.ok(Math.abs((await leerNumero(p, 'cero-media')) - m3) < 0.5, `media ${await textoDe(p, 'cero-media')}, real ${m3.toFixed(2)}`)
+
       // Inicio en el frame 11 y fin en el 31 (tiempos del vídeo).
       await irAFrame(p, 10)
       await abrirPestana(p, 'analisis')

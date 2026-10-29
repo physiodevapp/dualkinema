@@ -174,7 +174,7 @@ Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualiza
 - **A pelo:** diferencia media +7,5° (sin marcadores por encima), DE 3,5°, correlación 1,00; recorrido 95,6° con gomets y 97,2° sin marcadores. Lo mismo que en el paso 1.
 - **Relativo al cero, en un valle entre repeticiones (7,75–8,15 s):** diferencia media −1,8°, DE 3,5°; **flexión máxima respecto a estar de pie 94,8° con gomets y 95,2° sin marcadores (0,4° de diferencia)**, mínimo −0,8° y −2,0°. El recorrido coincide; frame a frame quedan unos ±3,5°, sobre todo en la zona intermedia de la bajada y la subida (no en los extremos): puede ser el gomet que se desplaza sobre la piel al flexionar, el centro articular que estima el modelo, o las dos cosas.
 - **El cero importa:** con «Primeros 2 s» la relativa daba −3,8°. Al empezar la persona estaba algo más flexionada que entre repeticiones (las dos fuentes lo ven), y en ese tramo, recuperado por la pasada hacia atrás, las curvas se separan algo más (unos 11° frente a unos 8°). El cero va en un tramo quieto y representativo; el aviso de «no parece quieto» ayuda (un tramo de 8 a 12 s, con una repetición dentro, dio ±37,6°).
-- **Pendiente para el paso 5:** más vídeos (otra persona, ropa ancha, un gesto rápido) y la vista de frente. Una forma más directa de marcar un tramo corto del cero (hoy: «Inicio aquí» conserva el final y «Fin aquí» el principio; los 2 s solo se ponen sin el otro extremo).
+- **Pendiente para el paso 5:** más vídeos (otra persona, ropa ancha, un gesto rápido) y la vista de frente. Una forma más directa de marcar un tramo corto del cero: hecho después del paso 4, «Aquí ± 0,2 s» (0,4 s centrados en el frame que se ve, `tramoAlrededor`).
 
 **Paso 4 — la vista de frente sin marcadores.**
 

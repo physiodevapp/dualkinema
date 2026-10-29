@@ -35,6 +35,7 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     texto: [
       'Un tramo en que la persona está quieta (por ejemplo, de pie antes de empezar). Su ángulo medio se resta del ángulo de todo el vídeo para dar el relativo: así «0°» es la postura de referencia y no la que tenga la cámara.',
       'Se guarda el tramo y la media se recalcula cada vez, con lo que sale del seguimiento actual. Junto a la media se muestra su desviación: si es grande, la persona no estaba quieta y el cero no es fiable.',
+      'Se elige con «Primeros 2 s», con «Inicio aquí» y «Fin aquí» en el frame que se ve, o con «Aquí ± 0,2 s»: 0,4 s centrados en ese frame, para una pausa corta, como estar de pie entre dos sentadillas.',
     ],
   },
   {

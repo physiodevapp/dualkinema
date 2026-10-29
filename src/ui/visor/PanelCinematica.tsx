@@ -1,4 +1,4 @@
-import type { CeroReferencia, TramoEstatico } from '../../core/articulaciones/cero'
+import { tramoAlrededor, type CeroReferencia, type TramoEstatico } from '../../core/articulaciones/cero'
 import type { UnidadVelocidad } from '../../core/filtros/derivadas'
 import { InfoGlosario } from '../glosario/Glosario'
 
@@ -114,8 +114,8 @@ export default function PanelCinematica({
           </p>
         ) : (
           <p className="text-sm text-texto-2">
-            Elige un tramo quieto (por ejemplo, de pie antes de empezar). Su ángulo medio se resta para dar el relativo; el
-            ángulo sin cero se sigue viendo.
+            Elige un tramo quieto (de pie antes de empezar, o una pausa entre dos repeticiones con «Aquí ± 0,2 s»). Su ángulo
+            medio se resta para dar el relativo; el ángulo sin cero se sigue viendo.
           </p>
         )}
         {cero && cero.desviacion > DESVIACION_AVISO && (
@@ -126,6 +126,16 @@ export default function PanelCinematica({
         <div className="flex flex-wrap gap-2">
           <button type="button" className={boton} disabled={deshabilitado || tn <= t0} onClick={onPrimeros}>
             Primeros 2 s
+          </button>
+          {/* El cero de un toque en una pausa corta (de pie entre dos repeticiones): 0,4 s centrados en el frame que se ve. */}
+          <button
+            type="button"
+            className={boton}
+            disabled={deshabilitado || t === null || tn <= t0}
+            onClick={() => t !== null && onTramo(tramoAlrededor(t, t0, tn))}
+            data-testid="cero-aqui"
+          >
+            Aquí ± 0,2 s
           </button>
           <button type="button" className={boton} disabled={deshabilitado || t === null || t >= tn} onClick={inicioAqui}>
             Inicio aquí
