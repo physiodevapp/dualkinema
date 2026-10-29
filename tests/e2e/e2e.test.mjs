@@ -2699,6 +2699,10 @@ describe('dos vistas: añadir la segunda, cursor común, A / B y recuperarlas', 
   it('al añadir el otro vídeo y decir cómo se ve la persona, entra como vista B y la A sigue siendo la activa', async () => {
     await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.numerado25.ruta)
     await p.getByTestId('anadir-vista-orientacion').waitFor({ timeout: 20000 })
+    // Las cuatro figuras (perfil a un lado y a otro, de frente y de espaldas), una por botón y sin texto alternativo propio.
+    const figuras = p.getByTestId('anadir-vista-orientacion').locator('button svg[viewBox="0 0 100 196"]')
+    assert.equal(await figuras.count(), 4)
+    assert.equal(await figuras.evaluateAll((l) => l.every((el) => el.getAttribute('aria-hidden') === 'true')), true)
     await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
     await p.getByTestId('conmutador-vista').waitFor()
     assert.equal(await p.getByTestId('vista-A').getAttribute('aria-pressed'), 'true')
