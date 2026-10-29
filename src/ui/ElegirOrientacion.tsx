@@ -1,55 +1,9 @@
 import { useState } from "react";
 import type { OrientacionVista } from "../core/geometria/canonico";
 import type { Fuente } from "../core/pose/catalogo";
+import { Frente, Perfil } from "./FigurasVista";
 
 type Sagital = Extract<OrientacionVista, { plano: "sagital" }>;
-
-/** Silueta de perfil muy simple que mira hacia `mira`. */
-function Perfil({ mira }: { mira: Sagital["mira"] }) {
-  return (
-    <svg
-      viewBox="0 0 60 100"
-      className="h-24"
-      aria-hidden="true"
-      style={{ transform: mira === "izquierda" ? "scaleX(-1)" : undefined }}
-    >
-      <g
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="30" cy="14" r="9" />
-        <path d="M37 13 l5 3 -5 2" />
-        <path d="M30 24 L30 58 M30 32 L42 46 M30 58 L36 78 L32 96 M30 58 L24 78 L22 96 M32 96 L42 96 M22 96 L32 96" />
-      </g>
-    </svg>
-  );
-}
-
-/** Silueta de frente (o de espaldas) muy simple. */
-function Frente({
-  ve,
-}: {
-  ve: Extract<OrientacionVista, { plano: "frontal" }>["ve"];
-}) {
-  return (
-    <svg viewBox="0 0 60 100" className="h-24" aria-hidden="true">
-      <g
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="30" cy="14" r="9" />
-        {ve === "delante" && <path d="M26 13 v2 M34 13 v2" />}
-        <path d="M30 24 L30 58 M30 32 L16 46 M30 32 L44 46 M30 58 L22 78 L22 96 M30 58 L38 78 L38 96" />
-      </g>
-    </svg>
-  );
-}
 
 interface Props {
   /** `fuente`: con qué se analiza (gomets o sin marcadores), en el primer vídeo y en la segunda vista. */
