@@ -159,6 +159,17 @@ Si la B1 dice que MediaPipe no marca el mismo punto desde los dos flancos (resid
 - **e2e:** grabar con un acelerómetro falso (10° hacia abajo y una sacudida a mitad): la inclinación sale de lo grabado y se avisa de la sacudida; en la sala, dos perfiles opuestos valen y dos iguales no.
 - **Pendiente de validar con vídeos:** que la imagen del vídeo siga al giro de la pantalla en los móviles del usuario (con el giro automático bloqueado, la pantalla no gira pero la cámara podría), el sesgo del acelerómetro de cada móvil y los umbrales de «se ha movido».
 
+**Paso 2 — núcleo 3D** (`core/tresd/`), con tests de valor conocido sobre la persona sintética:
+
+- `camara.ts`: cámara estenopeica (punto principal centrado, focal en px), proyección, centro, giros (Rodrigues) y `camaraMirando` para las cámaras virtuales; la focal previa (65° sobre el lado largo).
+- `triangular.ts`: DLT homogénea con dos o más cámaras y Gauss–Newton sobre la reproyección; un punto que solo ve una cámara, o que queda detrás de alguna, no se triangula (NaN). Con 2 px de ruido y los móviles en los flancos a 3 m, el punto queda a menos de 1 cm.
+- `calibrar.ts` (`calibrarDosCamaras`): la nivelación de cada cámara por su gravedad, el arranque por barrido del giro ψ alrededor de la vertical (de grado en grado y afinado a 0,01°, con la dirección de B del autovector menor de la restricción epipolar y el coste mediano), el sentido de la dirección por los puntos delante de las dos cámaras, y el ajuste de haces (Levenberg–Marquardt con el complemento de Schur, Huber a 3 px, previos de 1° en la vertical y 15 % en la focal). Da el error de reproyección mediano, por correspondencia y **por punto del cuerpo** (lo que mira la B1). Sin sensores supone el móvil en vertical sin inclinar (se dice: `sinVertical`); la matriz esencial para vídeos sin sensores queda para cuando haga falta.
+- `escala.ts`: metros por la estatura (el percentil 90 de la altura tobillo → hombro = 0,779·H), comparación con la distancia entre los móviles (aviso por encima del 10 %) y la altura del suelo (percentil 5 de talones y puntas).
+- `sintetico.ts`: la persona sintética (12 puntos con las proporciones de Winter; 6 s de pasos por la zona, dos sentadillas y marcha en el sitio) y un ruido gaussiano reproducible.
+- `algebra.ts`: resolver un sistema, inversa 3×3 y el autovector menor (Jacobi).
+
+**Lo que dice la persona sintética (importante para la B1):** con los datos exactos y la focal de cada móvil conocida, todo sale exacto (ángulo entre cámaras a 0,005°). Pero **la focal está mal determinada con la persona sola**: moviéndose en un metro a 3 m de las cámaras, cambiar las dos focales un 2 % (y con ellas el ángulo entre cámaras ~1°) apenas cambia la reproyección (centésimas de px). Con 2 px de ruido, un 5 % de puntos malos y la focal previa de B un 8 % errada: ángulo entre cámaras a ~1,1°, focales a ~2 %, longitudes (en unidades de la distancia entre cámaras) a ~3 %. Con la focal de cada móvil conocida, el ángulo baja a menos de 0,5°. Los **ángulos articulares** sufren poco por esto (la deformación es casi una escala), pero las longitudes sí: si la B1 lo confirma, conviene **fijar la focal de cada móvil una vez** (la hoja A4 de §3, o leerla de la ficha de vídeo del modelo) y guardarla en el móvil, como el retraso de la cámara. Se decide con la B1.
+
 ## Riesgos
 
 - **MediaPipe no marca el mismo punto desde dos flancos** (sobre todo la cadera, que se estima tras la ropa y cambia con el punto de vista). Es el riesgo principal: lo mira la B1 en el paso 3.
