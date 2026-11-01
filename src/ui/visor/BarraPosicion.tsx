@@ -14,7 +14,7 @@ import { SALTO } from './useNavegacionFrames'
 export const ANCHO_COLUMNA_APAISADA = 'max-lg:w-[clamp(18rem,40vw,24rem)]'
 
 interface Props {
-  /** La caja de la barra: el visor mide su alto (`--alto-barra`) y deja su sitio encima (`useRepartoHerramientas`). */
+  /** La caja de la barra: el visor mide su alto (`--alto-barra`) y deja su sitio encima (`useAltoDisponible`). */
   contenedorRef: Ref<HTMLDivElement>
   /** Tiempo del frame mostrado (s). */
   t: number | null

@@ -101,7 +101,7 @@ export default function MiniGrafica({ tiempos, indice, onBuscar, crudo, filtrado
   }, [modo, crudo, filtrado, velocidad, n])
 
   return (
-    // Llena lo que le deja el vídeo en el bloque de arriba (ver `repartoHerramientas.ts`).
+    // Llena lo que le deja el vídeo en el bloque de arriba (ver `reparto.ts`).
     <div className="flex min-h-0 flex-1 flex-col gap-1">
       <div className="flex shrink-0 items-center justify-between gap-2">
         <div className="flex gap-1" role="group" aria-label="Qué muestra la gráfica pequeña">

@@ -114,6 +114,7 @@ async function detectar(m: Extract<AlWorkerPose, { tipo: 'detectar' }>) {
         enviar({ tipo: 'fin', motivo: 'cancelado', procesados, msProceso: performance.now() - inicio, recuperados: 0, msAtras: 0 })
         return
       }
+      if (indice < 0) continue
       const t = tabla.tiempos[indice]!
       // Modo vídeo: el tiempo de cada frame tiene que crecer (en ms desde el primero; MediaPipe lo lleva a µs).
       let ms = (t - t0) * 1000

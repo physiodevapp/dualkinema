@@ -953,7 +953,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               onGuardar={guardarEscala}
               onCancelar={() => setBorrador(null)}
               onQuitar={quitarEscala}
-              onIrAlFrame={() => frameCalibracion !== null && ir(frameCalibracion)}
+              onIrAlFrame={() => frameCalibracion !== null && irLibre(frameCalibracion)}
               deshabilitado={ocupada}
             />
 

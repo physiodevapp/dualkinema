@@ -98,15 +98,16 @@ export function trayectoriasPose(frames: Iterable<FramePose>, total: number): Ma
 }
 
 /**
- * La muestra de cada punto de `PUNTOS_POSE` (en ese orden) en un frame: sin nadie detectado, o un punto sin posición,
- * perdido (NaN, calidad 0); si no, su posición con calidad = visibilidad.
+ * La muestra de cada punto de `PUNTOS_POSE` (en ese orden) en un frame: sin nadie detectado, o un punto sin posición
+ * o sin visibilidad, perdido (NaN, calidad 0); si no, su posición con calidad = visibilidad.
  */
 export function muestrasDeFrame(f: FramePose): Muestra2D[] {
   return PUNTOS_POSE.map((_, k) => {
     const x = f.puntos?.[k * VALORES_POR_PUNTO] ?? NaN
     const y = f.puntos?.[k * VALORES_POR_PUNTO + 1] ?? NaN
     const v = f.puntos?.[k * VALORES_POR_PUNTO + 2] ?? 0
-    return Number.isFinite(x) && Number.isFinite(y) ? { t: f.t, x, y, calidad: v, editadoManual: false } : { t: f.t, x: NaN, y: NaN, calidad: 0, editadoManual: false }
+    // Sin visibilidad cuenta como perdido (posición NaN, calidad 0), como un gomet perdido.
+    return Number.isFinite(x) && Number.isFinite(y) && v > 0 ? { t: f.t, x, y, calidad: v, editadoManual: false } : { t: f.t, x: NaN, y: NaN, calidad: 0, editadoManual: false }
   })
 }
 

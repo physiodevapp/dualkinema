@@ -1,6 +1,6 @@
 # Fase 5: sin marcadores en 2D (con gomets opcionales)
 
-Estado: **plan aceptado** (2026-10-27; D1–D8 aceptadas por el usuario tal como se proponen). En curso: pasos 1 a 4 hechos (ver «Hecho»).
+Estado: **cerrada** (01-11-2026). Plan aceptado el 27-10 (D1–D8 tal como se proponían); pasos 1 a 4 hechos (ver «Hecho»), el 5 (validación con vídeos) pospuesto al final del proyecto y el 6, el cierre (ver «Cierre de la fase 5»).
 
 ## Cambio de rumbo (27-10-2026)
 
@@ -188,6 +188,57 @@ Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualiza
 - **Falta validar con un vídeo real de frente** (paso 5): sobre todo el FPPA, sensible a pocos píxeles, y lo que hace el modelo con la cámara detrás de la persona.
 
 **Paso 5 — pospuesto al final del proyecto (01-11-2026).** El usuario prefiere que se completen las fases 5, 6 y 7 sin esperar vídeos nuevos y probarlo todo al final (ver «Hasta el final del proyecto» en CLAUDE.md). Quedan **pendientes de validar con vídeos**: el umbral de visibilidad (`CALIDAD_MINIMA`, 0,5, uno solo para gomets y sin marcadores), *full* como modelo por defecto, el FPPA sin marcadores (sensible a pocos píxeles), la cámara de espaldas, ropa ancha, poca luz, un gesto rápido y otra persona. Lo que se grabará entonces (acotado con el usuario el 30-10): de perfil, sentadilla con ropa ancha, rápida y con poca luz y fondo con objetos, e inclinar el tronco y ponerse de puntillas; de frente, sentadilla, a una pierna y apoyo en una pierna con inclinación del tronco y elevar la pierna al lado; de espaldas, sentadilla y a una pierna; la rodilla mantenida a 0°, 30°, 60°, 90° y 120° medida con goniómetro; y otra persona de perfil y de frente.
+
+## Cierre de la fase 5 (paso 6)
+
+### Revisión de código
+
+Revisado todo lo que añade la fase 5 (`git diff b3a15ff..0d7f847`), en dos partes independientes: el núcleo y el worker (`core/pose/`, los ángulos absolutos de `core/articulaciones/`, el esquema 5, el CSV, `workers/pose.worker.ts` y su protocolo) y la interfaz (`useDeteccionPose`, `BotonDetectar`, `useVista`, `CuerpoVisor`, `almacenTrayectorias`, `SelectorArticulacion`, `ComparacionFuentes`, `PanelMarcar`, `capa.ts`, el reparto de la pantalla del móvil, `ElegirOrientacion` y el glosario). Cada hallazgo se ha comprobado en el código antes de arreglarlo.
+
+**Corregido:**
+
+1. **Una racha de frames que empezaba con las piernas intercambiadas dejaba dudoso todo lo que venía después.** De perfil, un cambio de lado sin vuelta dejaba dudosas (calidad 0,4, por debajo de `CALIDAD_MINIMA`) las piernas desde el cambio hasta que se perdía a la persona: si lo malo era lo de antes (la racha empezó intercambiada; por ejemplo, lo recuperado por la pasada hacia atrás con otro detector, que se junta con lo de delante en el frame ancla), se perdía la pierna de la cámara del resto del vídeo. Ahora se deja dudoso **lo más corto** de los dos lados del cambio dentro de la racha (nunca se intercambia: no se sabe cuál es el bueno, solo cuál es menos). Test nuevo.
+2. **«Parar» no paraba mientras se cargaba el modelo** (el worker solo mira «cancelar» entre frames; el *heavy* son 30 MB de Google), y un worker que muere sin avisar (falta de memoria en Android) dejaba la navegación bloqueada hasta recargar. Ahora, cargando, «Parar» cierra el worker; recorriendo el vídeo, si no contesta en 5 s, también. Lo detectado hasta ahí se queda.
+3. **Al cambiar de articulación, el marcador elegido podía quedar fuera de lo que se marca** (de la rodilla al tronco con la rodilla elegida: el siguiente toque ponía una rodilla a mano que no se mide ni cuenta en la franja). Ahora deja de estar elegido.
+4. **«Ir al frame» de la escala movía el vídeo durante un seguimiento o una detección** (se saltaba la pausa de la navegación).
+5. **Un punto del modelo sin visibilidad** guardaba su posición con calidad 0 (rompía «perdido = NaN y calidad 0» y contaba en la visibilidad mediana del informe). Ahora queda perdido.
+6. El worker no comprobaba que el frame decodificado estuviera en la tabla (índice −1): ahora lo salta (sin efecto visible: el visor ya lo descartaba).
+7. Limpieza: comentarios que citaban archivos retirados (`useRepartoHerramientas`, `repartoHerramientas.ts`), un comentario duplicado en `AnfitrionVista`, un alias sobrante en `modeloVista.ts` y dos importaciones del mismo módulo.
+
+**Revisado sin fallos:** el signo de cada ángulo nuevo, comprobado a mano contra el marco canónico (tronco de perfil, pelvis, tronco de frente, cadera respecto a la pelvis y `asignarLadosFrontal`); el worker cierra el detector y cada resultado en todos los caminos, y la pasada hacia atrás da tiempos crecientes al modelo y solo rellena frames sin nadie; el tiempo de cada frame es el de la tabla del visor; la fusión no pisa lo marcado a mano; los puntos medios (sin muestra si falta un lado, perdidos si lo está uno, la peor calidad, nunca guardados ni marcables); el esquema 5 y su migración; las columnas del CSV; la detección no va nunca a otra vista (cada una cierra sobre su almacén y el worker se cierra al desmontar); la pausa de la navegación se quita al acabar, con error y si el worker falla; la barra fija no cambia de alto; la articulación elegida se guarda y se recupera.
+
+**Revisado y que se queda como está (apuntado):**
+
+- **Parar una detección a medias** guarda los recuentos de lo recorrido (`deteccion`), mientras que lo de después del punto en que se paró conserva lo de la detección anterior, si la había. El aviso dice «Detección parada»; la cabecera del CSV, no. Arreglarlo pide un campo nuevo en el esquema: con el 6.
+- **`conPuntosMedios`** (núcleo) solo lo usan los tests: el almacén rehace los medios en sitio (`recalcularMedios`) con el mismo `puntoMedio`. Se queda para el núcleo 3D de la fase 6, que trabaja sin almacén. `anguloFiltradoPorFrame` (comparar) repite el camino de `anguloExportadoDe` (CSV): se unificarán cuando la fase 6 toque el CSV.
+- **El alto disponible del móvil** se mide al cambiar el tamaño de la ventana, la barra y la vista activa; algo encima del visor que cambie de alto sin eso (un aviso en la cabecera) lo dejaría desfasado. Hoy no hay nada así (el aviso de versión nueva es flotante).
+- `asegurar` del almacén durante el render, el esqueleto que lee los colores del tema en cada redibujo y `recalcularMedios` en cada publicación: correctos y baratos; se quedan.
+
+**Pruebas:** 773 tests de núcleo y las e2e de siempre.
+
+### Limitaciones conocidas
+
+**Sin marcadores:**
+
+1. **Todo lo sin marcadores está validado con un solo vídeo real** (la sentadilla de perfil con gomets del usuario): la rodilla coincide con la de los gomets a 0,4° en la flexión máxima relativa al cero, con ±3,5° frame a frame. **Pendiente de validar con vídeos** (paso 5, al final del proyecto): la vista de frente (sobre todo el FPPA, sensible a pocos píxeles), de espaldas, la cadera, el tobillo y el tronco frente a una referencia, ropa ancha, poca luz, un gesto rápido, otra persona, y el umbral de visibilidad.
+2. **Los puntos son centros articulares estimados, no referencias óseas:** a pelo, el ángulo sin marcadores se aparta unos grados del de los gomets (+7,5° en la rodilla de la sentadilla). Se compara la forma, el recorrido y lo relativo al cero.
+3. **De perfil, la pierna lejana no se mide** (el modelo la supone: visibilidad ~0,4).
+4. **Un solo umbral (`CALIDAD_MINIMA`, 0,5) para gomets y sin marcadores**, aunque la visibilidad no significa lo mismo en *full* y en *heavy*.
+5. **Las piernas intercambiadas** de perfil se corrigen solo si el cambio se deshace en 0,5 s; si no, lo más corto queda dudoso y hay que corregirlo a mano. De frente dependen de que las caderas estén separadas un 2 % del alto.
+6. **El modelo *heavy*** no cabe en el límite por archivo de Cloudflare: se descarga de Google al elegirlo (no envía nada, pero sin conexión no está).
+7. **El modelo de verdad no se prueba en la CI** (necesita una persona en el vídeo): las e2e usan un worker falso con la verdad del vídeo sintético; el modelo se probó a mano en la nube con una foto.
+8. **Parar una detección a medias** deja los recuentos de lo recorrido aunque lo de después siga siendo de la anterior (ver la revisión).
+
+**Interfaz:**
+
+9. **La navegación queda en pausa mientras se sigue o se detecta**, en todas las vistas: es a propósito (el decodificador por hardware se comparte), pero no se puede mirar otro frame mientras.
+
+Las de las fases 3 y 4 siguen valiendo.
+
+### Pendientes y propuestas
+
+- **El paso 5 (validación con vídeos), al final del proyecto**, con la lista de tomas acordada el 30-10 (arriba, en «Paso 5»).
+- **Fase 6:** plan en `docs/plan-fase-6.md`.
 
 ## Riesgos
 

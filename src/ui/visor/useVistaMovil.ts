@@ -11,8 +11,7 @@ export type Vista = 'mixta' | 'video' | 'graficas'
  * de esa gráfica (aquí, porque se desmonta en las vistas ampliadas y no puede guardarlo ella) y lo que cuelga de ello en
  * la raíz (`--alto-barra`) y en la página (en el móvil no se desplaza: cada zona lo hace por dentro).
  *
- * El reparto entre el bloque de arriba y las herramientas (`useRepartoHerramientas`) se llama en el visor (depende de
- * refs que se crean allí) y de aquí solo toma `activo`.
+ * El alto del visor entre la cabecera y la barra lo mide `useAltoDisponible`, que de aquí solo toma `activo`.
  */
 export function useVistaMovil({ altoBarra }: { altoBarra: number }) {
   const anchoLg = useAnchoMinimo()

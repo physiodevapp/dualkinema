@@ -45,6 +45,9 @@ export function useMarcado({ ids, tabla, info, inicial, valida, series, muestra,
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
     inicial ? (ids.find((id) => !valida(inicial.get(id)?.[0])) ?? null) : (ids.find((id) => !esIdPose(id)) ?? null),
   )
+  // Si el elegido deja de poderse marcar (otra articulación), no queda elegido: el siguiente toque no lo pondría a mano
+  // fuera de lo que se mide.
+  if (seleccionado !== null && !ids.includes(seleccionado)) setSeleccionado(null)
   // «Colocar a ojo»: cada toque deja el marcador justo donde se suelta el dedo, sin buscar el gomet (gomet tapado o movido).
   const [colocarAOjo, setColocarAOjo] = useState(false)
   // Un punto del modelo sin marcadores no tiene gomet que buscar: siempre se coloca a ojo (fase 5).
