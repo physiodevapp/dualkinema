@@ -120,8 +120,9 @@ export function asignarLadosFrontal(series: SeriesPose, orientacion: Extract<Ori
 /**
  * De perfil, los intercambios que detecta `cambiosDeLado`: si al cambio le sigue el de vuelta en `VUELTA_MAX_S` como
  * mucho, sin que el modelo deje de ver a la persona entre medias, los frames de en medio se intercambian de vuelta. Si
- * tarda más, o no vuelve antes de que se pierda a la persona o acabe el vídeo, no se sabe qué lado es el bueno: las
- * piernas de esos frames quedan dudosas (`CALIDAD_LADO_DUDOSO`), con su posición. Nunca se inventa nada. Las
+ * tarda más, no se sabe qué lado es el bueno: las piernas de esos frames quedan dudosas (`CALIDAD_LADO_DUDOSO`), con su
+ * posición. Un cambio que no vuelve antes de que se pierda a la persona o acabe el vídeo deja dudoso lo más corto de
+ * los dos lados del cambio dentro de esa racha (lo de antes, si la racha empezó intercambiada). Nunca se inventa nada. Las
  * detecciones se corrigen antes de juntarlas con lo marcado a mano.
  */
 export function corregirCambiosDeLado(series: SeriesPose, tiempos: readonly number[], umbralPx: number): CorreccionLados {
@@ -135,8 +136,15 @@ export function corregirCambiosDeLado(series: SeriesPose, tiempos: readonly numb
     while (j < n && con(caderas[j])) j++
     return j
   }
+  const inicioDeRacha = (i: number) => {
+    let j = i
+    while (j > 0 && con(caderas[j - 1])) j--
+    return j
+  }
   const intercambiados: TramoFrames[] = []
   const dudosos: TramoFrames[] = []
+  // Primer frame que todavía no ha caído en ningún tramo.
+  let libre = 0
   for (let k = 0; k < cambios.length; ) {
     const e = cambios[k]!
     const fin = finDeRacha(e)
@@ -145,9 +153,15 @@ export function corregirCambiosDeLado(series: SeriesPose, tiempos: readonly numb
       const tramo = { desde: e, hasta: vuelta - 1 }
       if (tiempos[vuelta]! - tiempos[e]! <= VUELTA_MAX_S) intercambiados.push(tramo)
       else dudosos.push(tramo)
+      libre = vuelta
       k += 2
     } else {
-      dudosos.push({ desde: e, hasta: fin - 1 })
+      // Un cambio sin vuelta: o lo malo es lo de después, o la racha empezó ya intercambiada (p. ej. lo recuperado por
+      // la pasada hacia atrás, con otro detector) y lo malo es lo de antes. Se deja dudoso lo más corto de los dos.
+      const desde = Math.max(inicioDeRacha(e), libre)
+      const tramo = e - desde > 0 && e - desde < fin - e ? { desde, hasta: e - 1 } : { desde: e, hasta: fin - 1 }
+      dudosos.push(tramo)
+      libre = fin
       k += 1
     }
   }

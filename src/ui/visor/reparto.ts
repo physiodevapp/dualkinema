@@ -1,6 +1,6 @@
 /*
  * Reparto del alto entre el vídeo y la gráfica pequeña (móvil, vista mixta), dentro del bloque de arriba (el que deja
- * el asa de las herramientas: ver `repartoHerramientas.ts`). Un separador entre los dos se arrastra: el vídeo crece o
+ * queda entre la cabecera y la fila de botones de abajo: ver `useAltoDisponible.ts`). Un separador entre los dos se arrastra: el vídeo crece o
  * mengua y la gráfica llena lo que quede del bloque, así la tira de pestañas no se mueve. Al soltar encaja en una de
  * tres posiciones, que se guardan en este dispositivo. Lógica pura: el separador mide y este archivo decide.
  */

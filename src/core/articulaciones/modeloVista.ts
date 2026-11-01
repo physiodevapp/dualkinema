@@ -8,7 +8,6 @@ import { marcadoresDeArticulacion, type DefinicionArticulacion } from './definic
  * el análisis de una vista trabajan con este modelo recortado, así que no necesitan saber que hay otros marcadores.
  */
 
-const marcadoresDe = marcadoresDeArticulacion
 
 /**
  * Los marcadores que sigue una vista nueva: los de las articulaciones del plano de la vista que admite `admite` (sin
@@ -20,7 +19,7 @@ export function marcadoresParaVista(
   orientacion: OrientacionVista,
   admite: (a: DefinicionArticulacion) => boolean = () => true,
 ): IdMarcador[] {
-  const delPlano = new Set(modelo.articulaciones.filter((a) => a.plano === orientacion.plano && admite(a)).flatMap(marcadoresDe))
+  const delPlano = new Set(modelo.articulaciones.filter((a) => a.plano === orientacion.plano && admite(a)).flatMap(marcadoresDeArticulacion))
   const ids = modelo.marcadores.map((mk) => mk.id).filter((id) => delPlano.has(id))
   return ids.length ? ids : modelo.marcadores.map((mk) => mk.id)
 }
@@ -33,7 +32,7 @@ export function marcadoresParaVista(
 export function modeloDeVista(modelo: ModeloMarcadores, marcadoresVista: readonly IdMarcador[], orientacion: OrientacionVista): ModeloMarcadores {
   const sigue = new Set(marcadoresVista)
   const marcadores = modelo.marcadores.filter((mk) => sigue.has(mk.id))
-  const calculables = modelo.articulaciones.filter((a) => marcadoresDe(a).every((id) => sigue.has(id)))
+  const calculables = modelo.articulaciones.filter((a) => marcadoresDeArticulacion(a).every((id) => sigue.has(id)))
   const ordenadas = [...calculables.filter((a) => a.plano === orientacion.plano), ...calculables.filter((a) => a.plano !== orientacion.plano)]
   return { marcadores, articulaciones: ordenadas.length ? ordenadas : modelo.articulaciones.slice(0, 1) }
 }

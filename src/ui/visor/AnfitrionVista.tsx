@@ -16,7 +16,6 @@ interface Props {
   readonly activa: boolean
   /** Esta vista cambió de frame (el cursor común mueve con ello las demás). Debe ser estable. */
   readonly alCambiarFrame: (id: string, frame: number) => void
-  /** Esta vista pasa a seguir los puntos del modelo sin marcadores (al detectar el cuerpo). Debe ser estable. */
   /** La vista pasa a seguir también lo de la otra fuente (los puntos al detectar, o los gomets a petición). */
   readonly alUsarFuente: (id: string, fuente: Fuente) => void
   readonly children: (vista: VistaViva) => ReactNode

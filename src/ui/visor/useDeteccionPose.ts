@@ -17,6 +17,8 @@ const UMBRAL_LADO = 0.05
  * persona de frente están a un 5–15 % del alto de la imagen; por debajo (de lado, muy lejos) no se toca nada.
  */
 const UMBRAL_LADO_FRENTE = 0.02
+/** Tiempo que se espera a que el worker conteste a «cancelar» antes de cerrarlo sin más (ms): un frame tarda < 0,1 s. */
+const ESPERA_CANCELAR_MS = 5000
 
 interface Opciones {
   readonly video: VideoAbierto
@@ -46,6 +48,12 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
   const [modeloPose, setModeloPose] = useState<TamanoModeloPose>('full')
   const worker = useRef<Worker | null>(null)
   useEffect(() => () => worker.current?.terminate(), [])
+  // Cerrar el worker en marcha sin esperarle (al parar mientras carga, o si no responde a «cancelar»).
+  const cortar = useRef<(() => void) | null>(null)
+  const fase = useRef<ProgresoDeteccion['fase'] | null>(null)
+  useEffect(() => {
+    fase.current = progreso?.fase ?? null
+  })
 
   // Lo último, para los manejadores del worker (se crean una vez por detección).
   const ultimo = useRef({ orientacion, fusionar, aplicarPose, setAviso })
@@ -69,8 +77,17 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
     const cerrar = () => {
       w.terminate()
       if (worker.current === w) worker.current = null
+      if (cortar.current === cortarEste) cortar.current = null
       setProgreso(null)
     }
+    // Parar mientras se carga el modelo (el *heavy* son 30 MB) o con un worker que ya no responde: se cierra sin más;
+    // lo detectado hasta ahí se queda en el almacén como al ir llegando.
+    const cortarEste = () => {
+      if (worker.current !== w) return
+      ultimo.current.setAviso({ texto: 'Detección parada antes de terminar: lo detectado hasta ahí se queda, sin corregir las piernas.' })
+      cerrar()
+    }
+    cortar.current = cortarEste
     w.onmessage = (e: MessageEvent<DelWorkerPose>) => {
       if (worker.current !== w) return
       const m = e.data
@@ -118,7 +135,19 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
     w.postMessage({ tipo: 'detectar', archivo: video.archivo, modelo, delegado: 'GPU' } satisfies AlWorkerPose)
   }, [video, modeloPose, alEmpezar, setAviso])
 
-  const pararDeteccion = useCallback(() => worker.current?.postMessage({ tipo: 'cancelar' } satisfies AlWorkerPose), [])
+  const pararDeteccion = useCallback(() => {
+    const w = worker.current
+    if (!w) return
+    if (fase.current === 'cargando') {
+      cortar.current?.()
+      return
+    }
+    w.postMessage({ tipo: 'cancelar' } satisfies AlWorkerPose)
+    const corta = cortar.current
+    setTimeout(() => {
+      if (worker.current === w) corta?.()
+    }, ESPERA_CANCELAR_MS)
+  }, [])
 
   return { detectando: progreso !== null, progresoDeteccion: progreso, deteccion, revDeteccion, modeloPose, setModeloPose, detectar, pararDeteccion }
 }

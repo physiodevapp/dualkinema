@@ -112,6 +112,14 @@ describe('corregirCambiosDeLado (de perfil)', () => {
     expect(r.dudosos).toEqual([{ desde: 15, hasta: 19 }])
   })
 
+  it('una racha que empieza intercambiada deja dudoso lo de antes del cambio, no el resto', () => {
+    // La persona aparece en el frame 3 con las piernas al revés hasta el 9 (lo recuperado hacia atrás, por ejemplo).
+    const r = corregirCambiosDeLado(cuerpo(60, rango(3, 9), rango(0, 2)), tiempos(60), 20)
+    expect(r.dudosos).toEqual([{ desde: 3, hasta: 9 }])
+    expect(r.series.get(idPose('tobillo', 'der'))![5]!.calidad).toBe(CALIDAD_LADO_DUDOSO)
+    expect(r.series.get(idPose('tobillo', 'der'))![30]!.calidad).toBe(0.95)
+  })
+
   it('dos intercambios cortos se corrigen por separado', () => {
     const r = corregirCambiosDeLado(cuerpo(60, new Set([...rango(5, 7), ...rango(40, 41)])), tiempos(60), 20)
     expect(r.intercambiados).toEqual([{ desde: 5, hasta: 7 }, { desde: 40, hasta: 41 }])

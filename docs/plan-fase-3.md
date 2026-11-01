@@ -228,7 +228,7 @@ Dos móviles Android del usuario (24-10-2026), sentadilla de perfil y de frente 
 
 **Código:**
 
-12. **Siguen las supresiones de `react-hooks`** en `useFiltrado`, `useGuardado`, `useMiniGrande` y `useNavegacionFrames` (la de `useTrayectorias` se quitó en el paso 2), más una nueva en `PanelComparacion` (B: la función de las series solo lee los ids de las vistas). Cada una con su motivo.
+12. **Siguen las supresiones de `react-hooks`** en `useFiltrado`, `useGuardado`, `useMiniGrande` (retirado en la fase 5) y `useNavegacionFrames` (la de `useTrayectorias` se quitó en el paso 2), más una nueva en `PanelComparacion` (B: la función de las series solo lee los ids de las vistas). Cada una con su motivo.
 
 Las de la fase 2 siguen valiendo salvo la 1 (en parte: la vista frontal da el FPPA, pero no corrige la flexión de la lateral; eso es el 3D) y la 2 (hay vista frontal, aunque sigue sin editor de modelos).
 
