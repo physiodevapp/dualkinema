@@ -15,6 +15,7 @@ import { leerCalibracion } from './calibracionCamara'
 import { Captura, type Tiempos } from './captura'
 import { FORMATO_METADATOS, textoMetadatos, type DatosDoble, type MetadatosGrabacion } from '../core/grabacion/metadatos'
 import { abrirGrabacion, crearArchivoGrabacion } from './grabaciones'
+import { RegistroSensores } from './sensores'
 
 /*
  * Grabar con la cámara del móvil dentro de la app (fase 4, paso 2; D1–D3 de docs/plan-fase-4.md).
@@ -102,6 +103,8 @@ export class Grabadora {
     /** Rechaza si el codificador falla a mitad. */
     readonly error: Promise<never>,
     private readonly captura: Captura,
+    /** Completa los metadatos con lo que se sabe al acabar (los sensores) y deja de leer los sensores. */
+    private readonly cerrarMetadatos: () => void,
   ) {}
 
   /** Cómo quedaron colocados los frames y el audio: por su captura o, si no se pudo, por su llegada. */
@@ -153,7 +156,17 @@ export class Grabadora {
       ...(doble ? { doble } : {}),
       ...(calibracion ? { camara: { retrasoMs: calibracion.ms, cotaMs: calibracion.cotaMs } } : {}),
     }
-    salida.setMetadataTags({ comment: textoMetadatos(metadatos) })
+    // Mediabunny no deja cambiar los metadatos tras empezar, pero sin `fastStart` los escribe al cerrar con este mismo
+    // objeto: al parar se le añaden los sensores (fase 6, paso 1). Lo vigila la e2e de los sensores.
+    const etiquetas = { comment: textoMetadatos(metadatos) }
+    salida.setMetadataTags(etiquetas)
+    // El acelerómetro desde ya (la cuenta atrás de la grabación doble cuenta), salvo al calibrar la cámara.
+    const sensores = opciones.calibrando ? null : new RegistroSensores()
+    sensores?.empezar()
+    const cerrarMetadatos = () => {
+      const resumen = sensores?.detener() ?? null
+      if (resumen) etiquetas.comment = textoMetadatos({ ...metadatos, sensores: resumen })
+    }
 
     // Al girar el móvil, Android da los frames con el ancho y el alto cambiados: se encajan en el tamaño del principio
     // (con bandas) en vez de parar la grabación, que con «deny» perdía el archivo entero.
@@ -164,6 +177,7 @@ export class Grabadora {
     // Se empieza a leer ya (para tener el paso entre relojes al arrancar); hasta entonces, nada entra en el archivo.
     const captura = new Captura(pistaVideo, fuenteAudio ? pistaAudio! : null, fuenteVideo, fuenteAudio, calibracion?.ms ?? 0)
     const descartar = async () => {
+      sensores?.detener()
       await captura.detener()
       if (salida.state !== 'finalized' && salida.state !== 'canceled') await salida.cancel().catch(() => {})
       await almacen?.quitar()
@@ -174,12 +188,14 @@ export class Grabadora {
           await salida.start()
           // Grabando con un móvil, se espera un poco al paso entre relojes; en la grabación doble ya ha dado tiempo.
           if (origen === undefined) await captura.esperarPaso(ESPERA_PASO_MS)
-          captura.empezar(origen ?? performance.now())
+          const cero = origen ?? performance.now()
+          captura.empezar(cero)
+          sensores?.fijarOrigen(cero)
         } catch (e) {
           await descartar()
           throw e
         }
-        return new Grabadora(salida, nombre, almacen, destino, almacen ? DURACION_MAXIMA_S : DURACION_MAXIMA_MEMORIA_S, captura.error, captura)
+        return new Grabadora(salida, nombre, almacen, destino, almacen ? DURACION_MAXIMA_S : DURACION_MAXIMA_MEMORIA_S, captura.error, captura, cerrarMetadatos)
       },
       descartar,
     }
@@ -189,6 +205,7 @@ export class Grabadora {
   async parar(): Promise<GrabacionTerminada> {
     try {
       await this.captura.detener()
+      this.cerrarMetadatos()
       await this.salida.finalize()
     } catch (e) {
       await this.almacen?.quitar()
@@ -204,6 +221,7 @@ export class Grabadora {
 
   /** Descarta la grabación (no queda nada en el almacén). */
   async cancelar(): Promise<void> {
+    this.cerrarMetadatos()
     await this.captura.detener()
     if (this.salida.state !== 'finalized' && this.salida.state !== 'canceled') await this.salida.cancel().catch(() => {})
     await this.almacen?.quitar()

@@ -4345,9 +4345,30 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     assert.ok(Math.abs(previstos - concedidos) < 0.1 * concedidos, `previstos ${previstos}, la cámara da ${concedidos}`)
     assert.equal(await prevision.getAttribute('data-causa'), 'camara')
     assert.match(await p.getByTestId('grabar-aviso-fps-previsto').innerText(), /poca luz/)
+    // Fase 6, paso 1: un acelerómetro falso, con la cámara mirando 10° hacia abajo (la gravedad, en los ejes del móvil,
+    // con componente hacia la pantalla) y quieto salvo una sacudida a mitad de la grabación.
+    await p.evaluate(() => {
+      const G = 9.81
+      const a = (10 * Math.PI) / 180
+      window.__sacudir = false
+      window.__sensores = setInterval(() => {
+        const s = window.__sacudir ? (Math.random() - 0.5) * 6 : 0
+        window.dispatchEvent(
+          new DeviceMotionEvent('devicemotion', {
+            accelerationIncludingGravity: { x: 0, y: G * Math.cos(a) + s, z: G * Math.sin(a) },
+            rotationRate: { alpha: window.__sacudir ? 40 : 0.2, beta: 0, gamma: 0 },
+            interval: 16,
+          }),
+        )
+      }, 16)
+    })
     await p.getByTestId('grabar-empezar').click()
     await p.getByTestId('grabar-parar').waitFor({ timeout: 20000 })
-    await p.waitForTimeout(3000)
+    await p.waitForTimeout(1500)
+    await p.evaluate(() => (window.__sacudir = true))
+    await p.waitForTimeout(300)
+    await p.evaluate(() => (window.__sacudir = false))
+    await p.waitForTimeout(1500)
     await p.getByTestId('grabar-parar').click()
     await p.getByTestId('grabar-resultado').waitFor({ timeout: 30000 })
     assert.equal(await p.getByTestId('grabar-error').count(), 0)
@@ -4364,6 +4385,13 @@ describe('grabar con este móvil (fase 4, paso 2)', () => {
     assert.ok(await p.getByTestId('grabar-aviso-fps').isVisible())
     assert.match(await p.getByTestId('grabar-revision').innerText(), /con sonido/)
     assert.equal(await p.getByTestId('grabacion').count(), 1)
+    // Los sensores llegan al MP4 (se escriben al cerrarlo) y se leen: la inclinación de las ventanas quietas y la sacudida.
+    await p.evaluate(() => clearInterval(window.__sensores))
+    const sensores = p.getByTestId('revision-sensores')
+    assert.ok(Math.abs(Number(await sensores.getAttribute('data-cabeceo')) - 10) < 0.5, `cabeceo ${await sensores.getAttribute('data-cabeceo')}`)
+    assert.ok(Math.abs(Number(await sensores.getAttribute('data-alabeo'))) < 0.5)
+    assert.equal(await sensores.getAttribute('data-movido'), 'sacudidas')
+    assert.match(await p.getByTestId('aviso-movido').innerText(), /se movió durante la grabación.*no para el 3D/s)
   })
 
   it('«Abrir en el visor» abre la grabación con los mismos frames que contó la revisión', async () => {
@@ -4547,11 +4575,15 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     await a.getByTestId('otro-estado').filter({ hasText: /grabaría a \d+ fps/ }).waitFor({ timeout: 10000 })
     assert.match(await a.getByTestId('aviso-fps-otro').innerText(), /El otro móvil grabaría a unos 20 fps de los 30/)
     assert.ok(await b.getByTestId('aviso-fps-previsto').isVisible())
-    await b.getByTestId('vista-perfil-izquierda').click()
+    await b.getByTestId('vista-perfil-derecha').click()
     await a.getByTestId('aviso-vistas').waitFor()
     await b.getByTestId('aviso-vistas').waitFor()
-    await b.getByTestId('vista-frente').click()
+    // Un móvil en cada flanco (la persona mira a un lado en uno y al otro en el otro): vale, para el 3D (fase 6).
+    await b.getByTestId('vista-perfil-izquierda').click()
     await a.getByTestId('aviso-vistas').waitFor({ state: 'detached' })
+    await a.getByTestId('aviso-flancos').waitFor()
+    await b.getByTestId('vista-frente').click()
+    await a.getByTestId('aviso-flancos').waitFor({ state: 'detached' })
   })
 
   it('un tercer móvil no entra: «la sala está llena»', async () => {
@@ -4755,8 +4787,8 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
     assert.match(await a.getByTestId('aviso-grabacion').innerText(), /cancel/i)
   })
 
-  it('sin una vista de perfil y otra de frente no se ofrece grabar', async () => {
-    await b.getByTestId('vista-perfil-izquierda').click()
+  it('sin una vista de perfil y otra de frente (o una en cada flanco) no se ofrece grabar', async () => {
+    await b.getByTestId('vista-perfil-derecha').click()
     await a.getByTestId('grabar-doble').waitFor({ state: 'detached' })
     await b.getByTestId('vista-frente').click()
     await a.getByTestId('grabar-doble').waitFor()
