@@ -14,7 +14,8 @@ import { encode } from 'uqr'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { revisarFps } from '../core/grabacion/revision'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
-import { CUENTAS_ATRAS_S, DURACIONES_S, vistasCompatibles } from '../core/sala/doble'
+import { RevisionSensores } from './RevisionSensores'
+import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil } from '../core/sala/protocolo'
 import { CALIDAD_PITIDO_MINIMA, DURACION_SECUENCIA_S, PITIDO_OTRA_S, VENTANA_DESPUES_S, type Deteccion } from '../core/sincronia/pitido'
 import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
@@ -204,7 +205,7 @@ function TarjetaGrabar({ doble, puede, alAbrirDoble }: { doble: GrabacionDoble; 
             <VideoCameraIcon className="size-6" />
             Grabar con los dos
           </button>
-          {!puede && <p className="text-sm text-texto-2">Hace falta el reloj común medido y una vista de perfil y otra de frente o de espaldas.</p>}
+          {!puede && <p className="text-sm text-texto-2">Hace falta el reloj común medido y una vista de perfil y otra de frente o de espaldas (o, para el 3D, un móvil en cada flanco).</p>}
         </>
       )}
       {fase.f === 'esperando' && <p data-testid="esperando-confirmacion">Esperando a que el otro móvil confirme…</p>}
@@ -301,6 +302,7 @@ function ResultadoDoble({
           Ha grabado a {a!.fpsMediano.toLocaleString('es-ES', { maximumFractionDigits: 1 })} fps de los 30 pedidos. Puede ser poca luz o que este aparato no da para más.
         </p>
       )}
+      <RevisionSensores sensores={a?.metadatos?.sensores} />
       <PitidosDoble fase={fase} />
       <p className="text-sm text-texto-2">
         Está en «Grabaciones de este móvil». Para analizar los dos vídeos juntos, pasa el de un móvil al otro con «Compartir» (Quick Share) y, en el que lo
@@ -363,7 +365,8 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   const url = urlDeSala(location.origin, codigo)
   const { otro, reloj, deriva } = sala
   const emparejado = sala.conexion === 'emparejado'
-  const mismoPlano = vista && otro?.vista && vista.plano === otro.vista.plano
+  const mismoPlano = !!vista && !!otro?.vista && !vistasCompatibles(vista, otro.vista)
+  const flancos = enFlancos(vista, otro?.vista ?? null)
   const camaraOtro = otro?.estado?.camara
 
   return (
@@ -462,8 +465,16 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
 
       {emparejado && mismoPlano && (
         <Aviso testid="aviso-vistas">
-          Los dos móviles están {vista!.plano === 'sagital' ? 'de perfil' : 'de frente o de espaldas'}: uno tiene que ver a la persona de perfil y el otro de frente.
+          {vista!.plano === 'sagital'
+            ? 'Los dos móviles ven a la persona de perfil mirando hacia el mismo lado: uno tiene que verla de frente o, para el 3D, cada uno en un flanco (la persona mira a un lado en un móvil y al otro en el otro).'
+            : 'Los dos móviles están de frente o de espaldas: uno tiene que ver a la persona de perfil.'}
         </Aviso>
+      )}
+      {emparejado && flancos && (
+        <p className="rounded-md border border-borde p-3 text-sm text-texto-2" data-testid="aviso-flancos">
+          Un móvil en cada flanco: así se graba para el 3D. Ponlos por delante de la persona, a unos 90° entre ellos y a unos 3 m, apoyados en algo firme
+          entre la rodilla y la cadera de alto, con la persona entera en las dos imágenes.
+        </p>
       )}
 
       {((emparejado && vistasCompatibles(vista, otro?.vista ?? null)) || doble.fase.f !== 'libre') && (

@@ -18,6 +18,12 @@ describe('parejaDoble', () => {
     expect(parejaDoble(meta('b', frente), meta('a'))).toMatchObject({ ok: true, referencia: 1 })
   })
 
+  it('un móvil en cada flanco (para el 3D): los dos de perfil, mirando a lados distintos; la referencia, el de la derecha', () => {
+    const izquierda = { vista: { plano: 'sagital', mira: 'izquierda' } as const }
+    expect(parejaDoble(meta('a'), meta('b', izquierda))).toMatchObject({ ok: true, referencia: 0 })
+    expect(parejaDoble(meta('b', izquierda), meta('a'))).toMatchObject({ ok: true, referencia: 1 })
+  })
+
   it('se rechaza lo que no es una pareja, con el motivo', () => {
     expect(parejaDoble(null, meta('b', frente))).toEqual({ ok: false, motivo: 'sin-metadatos', cual: 0 })
     expect(parejaDoble(meta('a'), meta('b', null))).toEqual({ ok: false, motivo: 'no-doble', cual: 1 })

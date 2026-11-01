@@ -1,6 +1,6 @@
 # Fase 6: 3D con dos móviles calibrado con la propia persona
 
-Estado: **plan propuesto** (01-11-2026), con las decisiones D1–D10 escritas y seguido con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**; la única toma que se pide antes es la **B1** (ver «La toma B1»).
+Estado: **plan propuesto** (01-11-2026; paso 1 hecho, ver «Hecho»), con las decisiones D1–D10 escritas y seguido con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**; la única toma que se pide antes es la **B1** (ver «La toma B1»).
 
 Parte del anticipo escrito al final de `docs/plan-fase-5.md` (lo hablado el 27-10) y lo concreta.
 
@@ -146,6 +146,18 @@ Si la B1 dice que MediaPipe no marca el mismo punto desde los dos flancos (resid
 | D8 | Interfaz | «Calibrar en 3D» en «Vídeo», monigote en canvas propio, articulaciones 3D en el selector, comparación 2D frente a 3D |
 | D9 | Asistente | Inclinación, persona entera, distancia por el pitido, altura de las cámaras y ángulo, antes de grabar |
 | D10 | Esquema | 6: la calibración 3D y la estatura en la sesión, los sensores en cada vista; los puntos 3D se recalculan |
+
+## Hecho
+
+**Paso 1 — sensores al grabar** (`core/sensores/`, `media/sensores.ts`, `ui/RevisionSensores.tsx`).
+
+- **Al grabar** (con un móvil y en la grabación doble; no al calibrar la cámara), `RegistroSensores` escucha `devicemotion` desde que se prepara la grabadora (en la doble, 1,5 s antes del inicio) y `AcumuladorSensores` lo resume por ventanas de 1 s contadas desde el tiempo 0 del vídeo (lo que llega antes de saberlo se guarda y se coloca al arrancar): media de la aceleración con gravedad, desviación típica de su módulo y giro máximo. Se guarda desde 5 s antes del tiempo 0, y el giro de la pantalla al empezar (y si giró después).
+- **En el MP4:** `sensores` en el JSON de dualkinema (opcional; el formato sigue en 1). Se escribe al cerrar: el objeto de etiquetas que se le dio a Mediabunny se completa antes de `finalize()` (sin `fastStart`, el `moov` se escribe entonces). Lo vigila la e2e.
+- **Núcleo:** `aEjesCamara` (de los ejes del aparato a los de la cámara trasera según el giro de la pantalla), `verticalCamara` (la gravedad hacia abajo en ejes de la cámara, de las ventanas quietas de la grabación), `inclinacion` (cabeceo: + mirando hacia abajo; alabeo: + con la gravedad hacia la derecha de la imagen) y `movimiento` (sacudidas o giro por encima de 0,15 m/s² o 3 °/s, la vertical que cambia más de 1° entre los primeros y los últimos 3 s, o la pantalla que gira; lo de la cuenta atrás no cuenta). Con tests de valor conocido: de pie, 10° hacia abajo, 5° de alabeo, en horizontal, la cuenta atrás, una sacudida, un resbalón de 2°.
+- **Al parar** (en «Grabar con este móvil» y en el resultado de la grabación doble): «Cámara mirando hacia abajo 10,0° · girada 0,0°» y, si se movió, el aviso de que la toma vale para 2D pero no para el 3D. Glosario: «Sensores al grabar».
+- **Para 3D en la sala:** dos móviles de perfil mirando a lados distintos (uno en cada flanco) son ahora una pareja válida (`vistasCompatibles`, `enFlancos`), con un aviso de cómo colocarlos; al abrir la pareja, la referencia es la de la persona mirando a la derecha. No cambia el protocolo. **Pendiente (paso 3 o 4):** en el visor, la vista B de una pareja de flancos sigue la pierna de la referencia, que en su imagen es la lejana; sus ángulos 2D no valen (lo que vale es el 3D).
+- **e2e:** grabar con un acelerómetro falso (10° hacia abajo y una sacudida a mitad): la inclinación sale de lo grabado y se avisa de la sacudida; en la sala, dos perfiles opuestos valen y dos iguales no.
+- **Pendiente de validar con vídeos:** que la imagen del vídeo siga al giro de la pantalla en los móviles del usuario (con el giro automático bloqueado, la pantalla no gira pero la cámara podría), el sesgo del acelerómetro de cada móvil y los umbrales de «se ha movido».
 
 ## Riesgos
 

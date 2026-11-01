@@ -9,7 +9,9 @@ describe('grabación doble', () => {
   it('vistas: una de perfil y otra de frente o de espaldas; las dos iguales o sin elegir, no', () => {
     expect(vistasCompatibles(perfil, frente)).toBe(true)
     expect(vistasCompatibles({ plano: 'frontal', ve: 'detras' }, { plano: 'sagital', mira: 'izquierda' })).toBe(true)
-    expect(vistasCompatibles(perfil, { plano: 'sagital', mira: 'izquierda' })).toBe(false)
+    // Un móvil en cada flanco (para 3D): la persona mira a un lado en una imagen y al otro en la otra.
+    expect(vistasCompatibles(perfil, { plano: 'sagital', mira: perfil.mira === 'derecha' ? 'izquierda' : 'derecha' })).toBe(true)
+    expect(vistasCompatibles(perfil, perfil)).toBe(false)
     expect(vistasCompatibles(frente, { plano: 'frontal', ve: 'detras' })).toBe(false)
     expect(vistasCompatibles(null, frente)).toBe(false)
   })

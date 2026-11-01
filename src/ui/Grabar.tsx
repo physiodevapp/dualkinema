@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDownTrayIcon, ArrowLeftIcon, FilmIcon, ShareIcon, Square2StackIcon, StopIcon, TrashIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 import { nombreGrabacion, revisarFps } from '../core/grabacion/revision'
+import { RevisionSensores } from './RevisionSensores'
 import { pedirPersistencia } from '../persistencia/almacen'
 import {
   abrirGrabacion,
@@ -322,6 +323,7 @@ export default function Grabar({ alAbrir, alAbrirDoble, alSalir }: Props) {
               <InfoGlosario id="grabacion" tema="los fps de la grabación" className="-my-1.5" />
             </p>
           )}
+          <RevisionSensores sensores={resultado.analisis?.metadatos?.sensores} />
           {!resultado.enAlmacen && (
             <p className="text-sm text-texto-2">
               Este navegador no deja guardarla en el almacenamiento de la app: solo está en memoria hasta que la guardes o la compartas.

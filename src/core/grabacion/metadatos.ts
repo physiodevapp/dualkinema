@@ -1,4 +1,5 @@
 import type { OrientacionVista } from '../geometria/canonico'
+import { leerSensores, type Sensores } from '../sensores/sensores'
 
 /*
  * Datos que la app escribe dentro de cada vídeo que graba (fase 4, D8 de docs/plan-fase-4.md): viajan con el archivo
@@ -29,6 +30,11 @@ export interface MetadatosGrabacion {
    * Opcional: sin calibrar no va.
    */
   readonly camara?: { readonly retrasoMs: number; readonly cotaMs: number }
+  /**
+   * El acelerómetro y el giróscopo resumidos por segundo (fase 6, paso 1; `core/sensores/`): la vertical de la cámara y
+   * si el móvil se movió. Se escribe al cerrar el archivo. Opcional: sin sensores (o anterior a la fase 6) no va.
+   */
+  readonly sensores?: Sensores
 }
 
 /** Lo que añade una grabación doble. Los instantes, en ms del reloj de la sala de ese móvil (`performance.now()`). */
@@ -72,6 +78,7 @@ export function leerMetadatos(texto: string | null | undefined): MetadatosGrabac
   const doble = leerDoble(o.doble)
   const c = o.camara as Record<string, unknown> | null | undefined
   const camara = c && finito(c.retrasoMs) && finito(c.cotaMs) && c.cotaMs >= 0 ? { retrasoMs: c.retrasoMs, cotaMs: c.cotaMs } : null
+  const sensores = leerSensores(o.sensores)
   return {
     app: APP_METADATOS,
     formato: o.formato as number,
@@ -80,6 +87,7 @@ export function leerMetadatos(texto: string | null | undefined): MetadatosGrabac
     pedido: { ancho: p.ancho, alto: p.alto, fps: p.fps },
     ...(doble ? { doble } : {}),
     ...(camara ? { camara } : {}),
+    ...(sensores ? { sensores } : {}),
   }
 }
 

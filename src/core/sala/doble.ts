@@ -19,9 +19,17 @@ export const DURACIONES_S = [10, 20, 30, 60, null] as const
 /** Espacio libre mínimo para aceptar una grabación (un minuto a 1080p son unos 55 MB). */
 export const ESPACIO_MINIMO_MB = 300
 
-/** Una vista de perfil y la otra de frente o de espaldas: la de perfil es la referencia, y la otra mide el FPPA. */
+/**
+ * Una vista de perfil y la otra de frente o de espaldas (la de perfil es la referencia, y la otra mide el FPPA), o, para
+ * el 3D (fase 6, D2 de docs/plan-fase-6.md), un móvil en cada flanco de la persona: los dos «de perfil», con la persona
+ * mirando a un lado en una imagen y al otro en la otra.
+ */
 export const vistasCompatibles = (mia: OrientacionVista | null, otra: OrientacionVista | null): boolean =>
-  mia !== null && otra !== null && mia.plano !== otra.plano
+  mia !== null && otra !== null && (mia.plano !== otra.plano || (mia.plano === 'sagital' && otra.plano === 'sagital' && mia.mira !== otra.mira))
+
+/** Los dos móviles, cada uno en un flanco de la persona (el 3D con dos móviles). */
+export const enFlancos = (a: OrientacionVista | null, b: OrientacionVista | null): boolean =>
+  a?.plano === 'sagital' && b?.plano === 'sagital' && a.mira !== b.mira
 
 /** Un instante del reloj del otro en el mío, con mi estimación de cuánto va por delante el suyo. */
 export const aMiReloj = (instanteDelOtro: number, desfaseOtro: number): number => instanteDelOtro - desfaseOtro

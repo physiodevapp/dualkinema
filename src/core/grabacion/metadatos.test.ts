@@ -25,6 +25,15 @@ describe('metadatos de la grabación', () => {
     expect(leerMetadatos(JSON.stringify({ ...m, camara: { retrasoMs: 'x', cotaMs: 1 } }))).toEqual(m)
   })
 
+  it('con los sensores: ida y vuelta; rotos, se lee el resto sin ellos', () => {
+    const conSensores: MetadatosGrabacion = {
+      ...m,
+      sensores: { pantalla: 0, giroPantalla: false, ventanas: [{ t: -1, n: 60, g: [0.01, 9.8, 0.2], de: 0.02, giroMax: 0.4 }] },
+    }
+    expect(leerMetadatos(textoMetadatos(conSensores))).toEqual(conSensores)
+    expect(leerMetadatos(JSON.stringify({ ...m, sensores: { pantalla: 0, ventanas: [{ t: 0 }] } }))).toEqual(m)
+  })
+
   it('con la grabación doble: ida y vuelta, y si esa parte está rota se lee el resto sin ella', () => {
     const doble = {
       ...m,

@@ -207,6 +207,15 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'sensores',
+    titulo: 'Sensores al grabar (inclinación y movimiento)',
+    texto: [
+      'Mientras graba, la app lee el acelerómetro y el giróscopo del móvil (sin pedir permiso: no salen del móvil) y guarda en el propio vídeo un resumen por segundo. De ahí sale hacia dónde está la vertical vista por la cámara, que el 3D con dos móviles usa para saber dónde está el suelo.',
+      'Al parar se ve cuánto mira la cámara hacia abajo o hacia arriba respecto al horizonte y cuánto está girada la imagen. Lo mejor para el 3D es una cámara casi horizontal (menos de 10° arriba o abajo) y sin girar.',
+      'Si el móvil se mueve durante la toma (una sacudida, un giro de más de 3 °/s o una inclinación que cambia más de 1° entre el principio y el final: se resbaló), la app lo dice. Esa toma sirve para medir en 2D, pero no para el 3D, que necesita cada cámara quieta. Lo de la cuenta atrás (colocar el móvil) no cuenta.',
+    ],
+  },
+  {
     id: 'sin-marcadores',
     titulo: 'Sin marcadores',
     texto: [
