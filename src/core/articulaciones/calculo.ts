@@ -1,4 +1,4 @@
-import { anguloConSigno, centrarVueltas, desenrollar, normalizarGrados } from '../geometria/angulo'
+import { anguloConSigno, centrarVueltasPorTrozos, desenrollar, normalizarGrados } from '../geometria/angulo'
 import { aCanonico, NORMAL_CANONICA, type OrientacionVista } from '../geometria/canonico'
 import { segmento, vec3, type Vec3 } from '../geometria/vector'
 import type { IdMarcador, Muestra2D } from '../modelo/tipos'
@@ -50,7 +50,8 @@ export const CALIDAD_MINIMA = 0.5
  * de la misma tabla de frames, así que se emparejan por `t` exacto. Un instante
  * en el que falta algún marcador o su calidad es baja queda como hueco (NaN),
  * nunca interpolado. La serie se desenrolla para que no salte ±360° y se
- * centra (su mediana en (−180°, 180°]): es la serie de referencia del ángulo,
+ * centra (su mediana en (−180°, 180°]; por trozos si salta más de 45° de un frame
+ * al siguiente, como con un esqueleto mal detectado): es la serie de referencia del ángulo,
  * y la gráfica, la fila de valores, el cero y el CSV leen todos de ella.
  */
 export function serieAngular(
@@ -90,6 +91,6 @@ export function serieAngular(
     return valor
   })
 
-  const continuos = centrarVueltas(desenrollar(crudos))
+  const continuos = centrarVueltasPorTrozos(desenrollar(crudos))
   return ordenados.map((t, i) => ({ t, valor: continuos[i] ?? NaN, interpolado: interpolados[i]! }))
 }

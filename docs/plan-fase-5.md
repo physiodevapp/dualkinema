@@ -1,6 +1,6 @@
 # Fase 5: sin marcadores en 2D (con gomets opcionales)
 
-Estado: **plan aceptado** (2026-10-27; D1–D8 aceptadas por el usuario tal como se proponen). En curso: pasos 1, 2, 3a y 3b hechos (ver «Hecho»).
+Estado: **plan aceptado** (2026-10-27; D1–D8 aceptadas por el usuario tal como se proponen). En curso: pasos 1 a 4 hechos (ver «Hecho»).
 
 ## Cambio de rumbo (27-10-2026)
 
@@ -174,7 +174,18 @@ Lo que necesito del usuario para el paso 1: abrir con `?pose` en la previsualiza
 - **A pelo:** diferencia media +7,5° (sin marcadores por encima), DE 3,5°, correlación 1,00; recorrido 95,6° con gomets y 97,2° sin marcadores. Lo mismo que en el paso 1.
 - **Relativo al cero, en un valle entre repeticiones (7,75–8,15 s):** diferencia media −1,8°, DE 3,5°; **flexión máxima respecto a estar de pie 94,8° con gomets y 95,2° sin marcadores (0,4° de diferencia)**, mínimo −0,8° y −2,0°. El recorrido coincide; frame a frame quedan unos ±3,5°, sobre todo en la zona intermedia de la bajada y la subida (no en los extremos): puede ser el gomet que se desplaza sobre la piel al flexionar, el centro articular que estima el modelo, o las dos cosas.
 - **El cero importa:** con «Primeros 2 s» la relativa daba −3,8°. Al empezar la persona estaba algo más flexionada que entre repeticiones (las dos fuentes lo ven), y en ese tramo, recuperado por la pasada hacia atrás, las curvas se separan algo más (unos 11° frente a unos 8°). El cero va en un tramo quieto y representativo; el aviso de «no parece quieto» ayuda (un tramo de 8 a 12 s, con una repetición dentro, dio ±37,6°).
-- **Pendiente para el paso 5:** más vídeos (otra persona, ropa ancha, un gesto rápido) y la vista de frente. Una forma más directa de marcar un tramo corto del cero (hoy: «Inicio aquí» conserva el final y «Fin aquí» el principio; los 2 s solo se ponen sin el otro extremo).
+- **Pendiente para el paso 5:** más vídeos (otra persona, ropa ancha, un gesto rápido) y la vista de frente. Una forma más directa de marcar un tramo corto del cero: hecho después del paso 4, «Aquí ± 0,2 s» (0,4 s centrados en el frame que se ve, `tramoAlrededor`).
+
+**Paso 4 — la vista de frente sin marcadores.**
+
+- **Fuente de la segunda vista:** al añadirla también se elige con gomets o sin marcadores (`ElegirOrientacion` pide la fuente siempre; antes la segunda iba con gomets).
+- **Qué mide** una vista de frente sin marcadores (`articulacionesPoseFrontales`, ya en el núcleo desde el paso 2): el FPPA de las dos rodillas (primero la pierna de la referencia), la cadera de cada lado respecto a la pelvis, la oblicuidad pélvica y la inclinación lateral del tronco. `conPose` las añade al modelo de la sesión con los puntos medios (una sesión guardada en el paso 3 las gana al abrirla, sin cambiar lo que tenía).
+- **Puntos medios** (el tronco va del medio de las caderas al de los hombros): la vista los sigue (`marcadoresSinMarcadores`), pero el almacén los rehace de los dos lados con cada cambio y al abrir (`recalcularMedios`): una corrección a mano de una cadera llega al medio. No se marcan (con el tronco se corrigen las caderas y los hombros de los dos lados: `puntosDe`) ni se guardan (van vacíos).
+- **Lados:** al detectar de frente cada cadera va a su lado de la imagen (`asignarLadosFrontal`), desde un 2 % del alto de separación (de perfil sigue el 5 % del salto).
+- «Detectar el cuerpo» ya no es solo de perfil. Con gomets de frente (FPPA) y detección, la comparación del paso 3b vale igual (`rodilla_frontal` tiene su equivalente).
+- **Glosario:** «Pelvis y cadera de frente» y la inclinación lateral del tronco en «Inclinación del tronco».
+- **e2e:** perfil con gomets y la segunda vista de frente sin marcadores, con un worker falso: la pierna derecha en los gomets del vídeo «frontal», la izquierda en espejo con la cadera 10 px más alta, los hombros ladeados y tres frames con los lados al revés. Las seis medidas coinciden con lo que deben dar (también en los frames corregidos) y la rodilla derecha con el FPPA de la verdad del vídeo.
+- **Falta validar con un vídeo real de frente** (paso 5): sobre todo el FPPA, sensible a pocos píxeles, y lo que hace el modelo con la cámara detrás de la persona.
 
 ## Riesgos
 

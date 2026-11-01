@@ -24,7 +24,7 @@
 import { articulacionesFrontales, articulacionesSagitales, type Lado } from '../articulaciones/catalogo'
 import { marcadoresDeArticulacion, type DefinicionArticulacion } from '../articulaciones/definicion'
 import type { OrientacionVista } from '../geometria/canonico'
-import type { Marcador, ModeloMarcadores } from '../modelo/tipos'
+import type { IdMarcador, Marcador, ModeloMarcadores } from '../modelo/tipos'
 import { esIdPose, idMedio, idPose, PUNTOS_MEDIOS, PUNTOS_POSE, type ParteCuerpo, type ParteMedia } from './puntos'
 
 const otroLado = (l: Lado): Lado => (l === 'der' ? 'izq' : 'der')
@@ -145,15 +145,17 @@ export function modeloPose(orientacion: OrientacionVista, l: Lado): ModeloMarcad
 }
 
 /**
- * El modelo de la sesión con lo sin marcadores de perfil añadido (como `conRodillaFrontal`: un único modelo por sesión con
- * todos los marcadores, fijado al abrir; cada vista sigue los suyos): los 12 puntos del modelo y las articulaciones de la
- * pierna `l`. Lo que ya tenía no cambia (ni de orden: las trayectorias guardadas van por id) y no se repite.
+ * El modelo de la sesión con lo sin marcadores añadido (como `conRodillaFrontal`: un único modelo por sesión con todos los
+ * marcadores, fijado al abrir; cada vista sigue los suyos): los 12 puntos del modelo y los puntos medios, las
+ * articulaciones de perfil de la pierna `l` (la que ve la cámara de la vista de referencia) y las de frente, de las dos
+ * piernas (primero la `l`), la pelvis y el tronco (paso 4). Lo que ya tenía no cambia (ni de orden: las trayectorias
+ * guardadas van por id) y no se repite: una sesión guardada en el paso 3, con lo de perfil, gana lo de frente al abrirla.
  */
 export function conPose(modelo: ModeloMarcadores, l: Lado): ModeloMarcadores {
   const ids = new Set(modelo.marcadores.map((mk) => mk.id))
   const articulaciones = new Set(modelo.articulaciones.map((a) => a.id))
-  const nuevos = marcadoresPose(false).filter((mk) => !ids.has(mk.id))
-  const nuevas = articulacionesPoseSagitales(l).filter((a) => !articulaciones.has(a.id))
+  const nuevos = marcadoresPose(true).filter((mk) => !ids.has(mk.id))
+  const nuevas = [...articulacionesPoseSagitales(l), ...articulacionesPoseFrontales(l)].filter((a) => !articulaciones.has(a.id))
   if (nuevos.length === 0 && nuevas.length === 0) return modelo
   return { marcadores: [...modelo.marcadores, ...nuevos], articulaciones: [...modelo.articulaciones, ...nuevas] }
 }
@@ -183,4 +185,12 @@ export function parejaDeFuente(def: DefinicionArticulacion, articulaciones: read
     return (id && articulaciones.find((a) => a.id === id)) || null
   }
   return articulaciones.find((a) => equivalenteGomets(a.id) === def.id) ?? null
+}
+
+/**
+ * Los marcadores que sigue una vista sin marcadores: los 12 puntos del modelo (siempre los dos lados: el esqueleto entero)
+ * y, de frente, los puntos medios del tronco. Lo mismo que se añade a una vista con gomets al detectar en ella.
+ */
+export function marcadoresSinMarcadores(orientacion: OrientacionVista): IdMarcador[] {
+  return [...PUNTOS_POSE.map((p) => p.id), ...(orientacion.plano === 'frontal' ? PUNTOS_MEDIOS.map((p) => p.id) : [])]
 }

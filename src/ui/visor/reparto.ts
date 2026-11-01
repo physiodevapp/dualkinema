@@ -79,12 +79,6 @@ export function repartoVecino(r: Reparto, paso: 1 | -1): Reparto {
   return ORDEN[Math.min(ORDEN.length - 1, Math.max(0, ORDEN.indexOf(r) + paso))]!
 }
 
-/**
- * Reparto con el que se vuelve de una vista ampliada: el extremo del que se viene (se entró tirando más allá de él), para
- * seguir viendo en grande lo que se estaba mirando. Solo vale para esa vuelta: no cambia el reparto guardado.
- */
-export const repartoAlVolver = (desde: 'video' | 'graficas'): Reparto => (desde === 'video' ? 'video' : 'grafica')
-
 export const esReparto = (v: unknown): v is Reparto => typeof v === 'string' && (ORDEN as readonly string[]).includes(v)
 
 export const CLAVE_REPARTO = 'dualkinema.repartoVideo'

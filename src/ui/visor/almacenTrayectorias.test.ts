@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { idPose, PUNTOS_POSE } from '../../core/pose/puntos'
+import { idMedio, idPose, PUNTOS_POSE } from '../../core/pose/puntos'
 import { AlmacenTrayectorias } from './almacenTrayectorias'
 
 const tiempos = [0, 0.1, 0.2, 0.3, 0.4]
@@ -101,5 +101,15 @@ describe('almacén de trayectorias', () => {
     expect(al.leer().version).toBe(v + 1)
     expect(al.leer().series.get(id)!.map((m) => m?.x)).toEqual([1, 50, NaN, undefined, undefined])
     expect(al.leer().series.get('a')).toHaveLength(tiempos.length)
+  })
+
+  it('los puntos medios salen de los dos lados con cada cambio (también al recuperar) y siguen a una corrección a mano', () => {
+    const [izq, der, medio] = [idPose('cadera', 'izq'), idPose('cadera', 'der'), idMedio('cadera')]
+    const m = (x: number) => ({ t: 0, x, y: 10, calidad: 0.9, editadoManual: false })
+    const al = new AlmacenTrayectorias([izq, der, medio], tiempos, new Map([[izq, [m(100)]], [der, [m(200)]]]))
+    expect(al.leer().series.get(medio)![0]).toMatchObject({ x: 150, y: 10, calidad: 0.9 })
+    al.poner(der, 0, 300, 10)
+    expect(al.leer().series.get(medio)![0]).toMatchObject({ x: 200 })
+    expect(al.leer().series.get(medio)![1]).toBeUndefined()
   })
 })

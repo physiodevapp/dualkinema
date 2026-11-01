@@ -70,3 +70,18 @@ export function tramoInicial(tiempos: ArrayLike<number>, segundos = 2): TramoEst
   if (t0 === undefined || tn === undefined || !(tn > t0)) return null
   return { desde: t0, hasta: Math.min(tn, t0 + segundos) }
 }
+
+/** Medio ancho del tramo corto del cero (s): 0,4 s en total, unos 12 frames a 30 fps, cabe en el valle entre dos repeticiones. */
+export const SEMI_TRAMO_CORTO_S = 0.2
+
+/**
+ * Tramo corto centrado en `t` (± `semi` s): para poner el cero de un toque en una pausa breve (de pie entre dos
+ * sentadillas). Junto a un extremo del vídeo se desplaza hacia dentro para conservar el ancho, sin pasar de `t0` ni de
+ * `tn`. null si el vídeo tiene un solo instante.
+ */
+export function tramoAlrededor(t: number, t0: number, tn: number, semi = SEMI_TRAMO_CORTO_S): TramoEstatico | null {
+  if (!(tn > t0) || !Number.isFinite(t)) return null
+  const ancho = Math.min(2 * semi, tn - t0)
+  const desde = Math.min(Math.max(t0, t - semi), tn - ancho)
+  return { desde, hasta: desde + ancho }
+}

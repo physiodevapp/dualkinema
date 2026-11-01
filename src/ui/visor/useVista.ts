@@ -14,7 +14,7 @@ import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { DeteccionPose, IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
-import { esIdPose } from '../../core/pose/puntos'
+import { esIdPose, puntosDe } from '../../core/pose/puntos'
 import { framesConMarcaManual } from '../../core/seguimiento/manuales'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
 import { estadisticas, indiceMasCercano } from '../../core/tiempo/tablaFrames'
@@ -100,7 +100,8 @@ export function useVista({
   // demás puntos del modelo (la pierna lejana, casi siempre dudosa) se dibujan en el esqueleto, pero no se eligen.
   const idsGomets = useMemo(() => ids.filter((id) => !esIdPose(id)), [ids])
   const marcables = useMemo(() => {
-    const deLaArticulacion = new Set(marcadoresDeArticulacion(articulacion))
+    // Un punto medio (el tronco de frente) no se marca: se corrigen los dos puntos de los que sale.
+    const deLaArticulacion = new Set(marcadoresDeArticulacion(articulacion).flatMap(puntosDe))
     return modelo.marcadores.filter((mk) => !esIdPose(mk.id) || deLaArticulacion.has(mk.id))
   }, [modelo, articulacion])
   const idsMarcables = useMemo(() => marcables.map((mk) => mk.id), [marcables])

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { Fuente } from '../core/pose/catalogo'
 import { ArrowLeftIcon, ArrowPathIcon, BookOpenIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { codigoDeBusqueda } from '../core/sala/codigo'
@@ -312,12 +313,12 @@ function Aplicacion() {
 
   // Segunda vista de la sesión abierta: el vídeo ya está leído y se sabe cómo se ve a la persona. Las dos se reparten
   // la memoria de la caché de frames.
-  const anadirVista = (video: VideoAbierto, orientacion: OrientacionVista) => {
+  const anadirVista = (video: VideoAbierto, orientacion: OrientacionVista, fuente: Fuente) => {
     if (estado.fase !== 'visor' || estado.vistas.length >= 2) {
       void video.cerrar()
       return
     }
-    const vistas = [...estado.vistas, { id: 'v2', video, orientacion, desfase: 0, sincronia: { metodo: 'ninguna' as const } }]
+    const vistas = [...estado.vistas, { id: 'v2', video, orientacion, desfase: 0, sincronia: { metodo: 'ninguna' as const }, fuente }]
     for (const v of vistas) v.video.repartirMemoria(vistas.length)
     setEstado({ ...estado, vistas })
   }

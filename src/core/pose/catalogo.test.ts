@@ -298,13 +298,38 @@ describe('catálogo sin marcadores', () => {
 describe('conPose: el modelo de la sesión con lo sin marcadores', () => {
   const base = conRodillaFrontal(modeloRodilla3('der'), 'der')
 
-  it('añade los 12 puntos y las articulaciones de perfil de la pierna de la cámara, sin tocar lo que había', () => {
+  it('añade los 12 puntos y los medios, lo de perfil de la pierna de la cámara y lo de frente, sin tocar lo que había', () => {
     const m = conPose(base, 'der')
     expect(m.marcadores.slice(0, base.marcadores.length)).toEqual(base.marcadores)
     expect(m.articulaciones.slice(0, base.articulaciones.length)).toEqual(base.articulaciones)
-    expect(m.marcadores).toHaveLength(base.marcadores.length + 12)
-    expect(m.articulaciones.map((a) => a.id).slice(base.articulaciones.length)).toEqual(articulacionesPoseSagitales('der').map((a) => a.id))
+    expect(m.marcadores).toHaveLength(base.marcadores.length + 14)
+    expect(m.articulaciones.map((a) => a.id).slice(base.articulaciones.length)).toEqual(
+      [...articulacionesPoseSagitales('der'), ...articulacionesPoseFrontales('der')].map((a) => a.id),
+    )
     expect(conPose(m, 'der')).toBe(m)
+  })
+
+  it('una sesión del paso 3 (con lo de perfil) gana lo de frente sin cambiar lo que tenía', () => {
+    const paso3 = {
+      marcadores: [...base.marcadores, ...marcadoresPose(false)],
+      articulaciones: [...base.articulaciones, ...articulacionesPoseSagitales('der')],
+    }
+    const m = conPose(paso3, 'der')
+    expect(m.marcadores.slice(0, paso3.marcadores.length)).toEqual(paso3.marcadores)
+    expect(m.marcadores.slice(paso3.marcadores.length).map((mk) => mk.id)).toEqual([idMedio('hombro'), idMedio('cadera')])
+    expect(m.articulaciones.slice(paso3.articulaciones.length).map((a) => a.id)).toEqual(articulacionesPoseFrontales('der').map((a) => a.id))
+  })
+
+  it('una vista de frente sin marcadores mide las dos rodillas, la cadera de cada lado, la pelvis y el tronco', () => {
+    const m = conPose(base, 'der')
+    const o: OrientacionVista = { plano: 'frontal', ve: 'delante' }
+    const sin = marcadoresParaVista(m, o, (a) => fuenteDe(a) === 'sinMarcadores')
+    expect(sin).toContain(idMedio('hombro'))
+    const vista = modeloDeVista(m, [...PUNTOS_POSE.map((p) => p.id), idMedio('hombro'), idMedio('cadera')], o)
+    expect(vista.articulaciones.filter((a) => a.plano === 'frontal').map((a) => a.id)).toEqual(articulacionesPoseFrontales('der').map((a) => a.id))
+    // La de frente con gomets sigue los suyos y mide con ellos el FPPA.
+    const gomets = marcadoresParaVista(m, o, (a) => fuenteDe(a) === 'gomets')
+    expect(modeloDeVista(m, gomets, o).articulaciones.map((a) => a.id)).toEqual(['rodilla_frontal_der'])
   })
 
   it('una vista con gomets sigue los suyos y mide con gomets; una sin marcadores, los puntos del modelo', () => {

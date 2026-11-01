@@ -141,6 +141,12 @@ export const PUNTOS_MEDIOS: readonly { readonly id: IdMarcador; readonly parte: 
 
 export const esPuntoMedio = (id: IdMarcador): boolean => PUNTOS_MEDIOS.some((p) => p.id === id)
 
+/** De un punto medio, los dos puntos de los que sale (de cualquier otro marcador, él mismo): lo que se corrige a mano. */
+export const puntosDe = (id: IdMarcador): IdMarcador[] => {
+  const medio = PUNTOS_MEDIOS.find((p) => p.id === id)
+  return medio ? [idPose(medio.parte, 'izq'), idPose(medio.parte, 'der')] : [id]
+}
+
 /**
  * El punto medio de dos muestras del mismo frame: sin muestra si falta alguna; perdido (NaN, calidad 0) si alguna lo
  * está; si no, la media de las posiciones con la peor de las dos calidades, e interpolado si lo es alguna.

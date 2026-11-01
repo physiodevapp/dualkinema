@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { copyFile, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { after, before, describe, it } from 'node:test'
+import { after, before, beforeEach, describe, it } from 'node:test'
 import { asegurarVideos } from './videos.mjs'
 import {
   abrirApp,
@@ -19,6 +19,8 @@ import {
   centrarLibre,
   elegirArchivoDesde,
   errores,
+  prueba,
+  vigilarErrores,
   esperarFiltroGuardado,
   esperarGuardado,
   esperarQuieto,
@@ -51,6 +53,11 @@ const velReal = (t) => 45 * (Math.PI / 2) * Math.sin((Math.PI * t) / 2)
 let videos
 let navegador
 let pararServidor
+
+// Cada error de consola dice en qué prueba salió (ver `vigilarErrores`).
+beforeEach((t) => {
+  prueba.actual = t.fullName ?? t.name
+})
 
 before(async () => {
   videos = await asegurarVideos()
@@ -1272,6 +1279,15 @@ describe('cero de referencia: tramo estático guardado con la sesión', () => {
       assert.ok(Math.abs(sinCero - verdad[60].flexion) < TOLERANCIA_GRADOS)
       assert.ok(Math.abs((await leerNumero(p, 'angulo-relativo')) - (sinCero - (await leerNumero(p, 'cero-media')))) < 0.11)
       assert.equal(await leerNumero(p, 'rapida-relativo'), await leerNumero(p, 'angulo-relativo'))
+
+      // «Aquí ± 0,2 s»: 0,4 s centrados en el frame 61 (una pausa corta entre dos repeticiones).
+      await irAFrame(p, 60)
+      await abrirPestana(p, 'analisis')
+      await p.getByTestId('cero-aqui').click()
+      const corto = { desde: verdad[60].t - 0.2, hasta: verdad[60].t + 0.2 }
+      assert.match(await textoDe(p, 'cero-tramo'), new RegExp(`^${corto.desde.toFixed(2).replace('.', ',')}–${corto.hasta.toFixed(2).replace('.', ',')} s`))
+      const m3 = media(corto.desde, corto.hasta)
+      assert.ok(Math.abs((await leerNumero(p, 'cero-media')) - m3) < 0.5, `media ${await textoDe(p, 'cero-media')}, real ${m3.toFixed(2)}`)
 
       // Inicio en el frame 11 y fin en el 31 (tiempos del vídeo).
       await irAFrame(p, 10)
@@ -2683,6 +2699,10 @@ describe('dos vistas: añadir la segunda, cursor común, A / B y recuperarlas', 
   it('al añadir el otro vídeo y decir cómo se ve la persona, entra como vista B y la A sigue siendo la activa', async () => {
     await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.numerado25.ruta)
     await p.getByTestId('anadir-vista-orientacion').waitFor({ timeout: 20000 })
+    // Las cuatro figuras (perfil a un lado y a otro, de frente y de espaldas), una por botón y sin texto alternativo propio.
+    const figuras = p.getByTestId('anadir-vista-orientacion').locator('button svg[viewBox="0 0 100 196"]')
+    assert.equal(await figuras.count(), 4)
+    assert.equal(await figuras.evaluateAll((l) => l.every((el) => el.getAttribute('aria-hidden') === 'true')), true)
     await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
     await p.getByTestId('conmutador-vista').waitFor()
     assert.equal(await p.getByTestId('vista-A').getAttribute('aria-pressed'), 'true')
@@ -2703,6 +2723,37 @@ describe('dos vistas: añadir la segunda, cursor común, A / B y recuperarlas', 
     assert.ok(pintado > 0.5, `el lienzo de A quedó en blanco al añadir la segunda vista (píxeles con imagen: ${pintado})`)
     await irAFrame(p, 60)
     assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+  })
+
+  it('en pantalla ancha las dos vistas van lado a lado, del mismo ancho y siempre A a la izquierda; en el móvil en vertical, B en pequeño', async () => {
+    const caja = (loc) => loc.evaluate((el) => el.getBoundingClientRect().toJSON())
+    const otra = p.getByTestId('miniatura-vista')
+    const activa = p.locator('[data-activa=true]')
+    assert.equal(await otra.getAttribute('data-lado'), 'true')
+    let a = await caja(activa)
+    let o = await caja(otra)
+    assert.ok(o.left > a.right, 'B a la derecha de A')
+    assert.ok(Math.abs(a.width - o.width) <= 2, `mismo ancho: ${a.width} y ${o.width}`)
+    // Activar B tocándola: A pasa a ser la de al lado, a la izquierda (no se intercambian de sitio).
+    await otra.click()
+    await esperarQuieto(p)
+    assert.equal(await p.getByTestId('vista-B').getAttribute('aria-pressed'), 'true')
+    a = await caja(activa)
+    o = await caja(otra)
+    assert.ok(o.right < a.left, 'A a la izquierda de B')
+    assert.match(await otra.innerText(), /^A/)
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    // Móvil en vertical: la otra vista, en pequeño sobre el vídeo.
+    const antes = p.viewportSize()
+    await p.setViewportSize({ width: 390, height: 844 })
+    try {
+      await p.waitForFunction(() => !document.querySelector('[data-testid=miniatura-vista]')?.hasAttribute('data-lado'))
+      assert.ok((await caja(otra)).width < 120)
+    } finally {
+      await p.setViewportSize(antes)
+      await esperarVideoAsentado(p)
+    }
   })
 
   it('el cursor común lleva B al frame que toca por tiempo (25 y 30 fps), no al mismo número', async () => {
@@ -3249,14 +3300,42 @@ describe('glosario', () => {
       await boton.click()
       const dialogo = p.getByRole('dialog', { name: 'Glosario' })
       await dialogo.waitFor()
-      assert.ok((await p.locator('[data-testid^=glosario-]').count()) >= 12, 'el listado tiene las entradas')
-      // Ninguna está abierta si no se pidió una concreta.
-      assert.equal(await dialogo.locator('details[open]').count(), 0)
-      await p.getByText('Filtro y frecuencia de corte').click()
+      // En pantalla ancha, a dos columnas: la lista a la izquierda y, sin pedir ninguna, la primera entrada a la derecha.
+      const total = await p.locator('[data-testid^=glosario-entrada-]').count()
+      assert.ok(total >= 12, 'el listado tiene las entradas')
+      assert.equal(await p.locator('[data-testid^=glosario-entrada-][aria-current=true]').count(), 1)
+      await p.getByTestId('glosario-entrada-filtro').click()
       assert.match(await p.getByTestId('glosario-filtro').innerText(), /Butterworth/)
+      assert.equal(await p.locator('[data-abierta=true]').count(), 1, 'se ve una entrada cada vez')
+      // Las flechas recorren la lista.
+      await p.keyboard.press('ArrowDown')
+      assert.equal(await p.getByTestId('glosario-filtro').count(), 0)
+      assert.equal(await p.locator('[data-testid^=glosario-entrada-][aria-current=true]').count(), 1)
+      // El buscador, sin tildes: «angulo» encuentra «Ángulo: sin cero y relativo».
+      await p.getByTestId('buscar-glosario').fill('angulo')
+      assert.ok(await p.getByTestId('glosario-entrada-angulo').isVisible())
+      assert.ok((await p.locator('[data-testid^=glosario-entrada-]').count()) < total, 'la búsqueda deja menos entradas')
       await p.keyboard.press('Escape')
       await dialogo.waitFor({ state: 'detached' })
       assert.equal(await boton.evaluate((el) => document.activeElement === el), true, 'el foco vuelve al botón')
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('en el móvil, las entradas son desplegables: ninguna abierta si no se pide una', async () => {
+    const p = await abrirApp(navegador, { ancho: 390 })
+    try {
+      await p.getByTestId('abrir-glosario').click()
+      const dialogo = p.getByRole('dialog', { name: 'Glosario' })
+      await dialogo.waitFor()
+      assert.equal(await dialogo.locator('details[open]').count(), 0)
+      await p.getByText('Filtro y frecuencia de corte').click()
+      await p.locator('[data-testid=glosario-filtro][data-abierta=true]').waitFor()
+      assert.match(await p.getByTestId('glosario-filtro').innerText(), /Butterworth/)
+      await p.getByTestId('buscar-glosario').fill('reenganche')
+      assert.ok(await p.getByTestId('glosario-anclas').isVisible())
+      assert.equal(await p.getByTestId('glosario-filtro').count(), 0)
     } finally {
       await p.close()
     }
@@ -3269,8 +3348,8 @@ describe('glosario', () => {
       await abrirPestana(p, 'analisis')
       await p.getByTestId('info-filtro').click()
       await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
-      assert.equal(await p.getByTestId('glosario-filtro').evaluate((el) => el.open), true, 'la entrada pedida está abierta')
-      assert.equal(await p.getByTestId('glosario-cero').evaluate((el) => el.open), false)
+      assert.equal(await p.getByTestId('glosario-filtro').getAttribute('data-abierta'), 'true', 'la entrada pedida está abierta')
+      assert.equal(await p.getByTestId('glosario-cero').count(), 0)
       assert.equal(await p.evaluate(() => document.body.style.overflow), 'hidden')
       // Las flechas son del glosario: el vídeo no avanza.
       const antes = (await leerPosicion(p)).frame
@@ -3299,7 +3378,7 @@ describe('glosario', () => {
         assert.ok((await p.getByTestId(`info-${id}`).count()) > 0, `no hay icono de «${id}»`)
         await icono.evaluate((el) => el.click())
         await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
-        assert.equal(await p.getByTestId(`glosario-${id}`).evaluate((el) => el.open), true, `«${id}» abierta`)
+        assert.equal(await p.getByTestId(`glosario-${id}`).getAttribute('data-abierta'), 'true', `«${id}» abierta`)
         assert.match(await p.getByTestId(`glosario-${id}`).innerText(), new RegExp(titulo))
         await p.keyboard.press('Escape')
         await p.getByRole('dialog', { name: 'Glosario' }).waitFor({ state: 'detached' })
@@ -3315,7 +3394,7 @@ describe('glosario', () => {
       // Con un hueco por rellenar, el resumen dice «sin valor» y lo explica el glosario.
       await p.getByTestId('resumen-grafica').getByTestId('info-huecos').click()
       await p.getByRole('dialog', { name: 'Glosario' }).waitFor()
-      assert.equal(await p.getByTestId('glosario-huecos').evaluate((el) => el.open), true)
+      assert.equal(await p.getByTestId('glosario-huecos').getAttribute('data-abierta'), 'true')
       await p.keyboard.press('Escape')
       await p.getByRole('button', { name: /Rellenar \d+ hueco/ }).click()
       await p.getByTestId('resumen-grafica').getByTestId('info-interpolado').click()
@@ -3411,7 +3490,8 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
     })
     assert.deepEqual(c.vistas[0].marcadores, ['trocanter_der', 'epicondilo_femoral_der', 'maleolo_der'])
     assert.deepEqual(c.vistas[1].marcadores, ['muslo_proximal_der', 'centro_rodilla_der', 'centro_tobillo_der'])
-    // El modelo de la sesión lleva también lo sin marcadores de perfil (fase 5), aunque estas vistas solo siguen gomets.
+    // El modelo de la sesión lleva también lo sin marcadores de perfil y de frente (fase 5), aunque estas vistas solo
+    // siguen gomets.
     assert.deepEqual(c.modelo.articulaciones.map((a) => a.id), [
       'rodilla_sagital_der',
       'rodilla_frontal_der',
@@ -3419,6 +3499,12 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
       'pose_cadera_sagital_der',
       'pose_tobillo_sagital_der',
       'pose_tronco_sagital_der',
+      'pose_rodilla_frontal_der',
+      'pose_rodilla_frontal_izq',
+      'pose_cadera_frontal_der',
+      'pose_cadera_frontal_izq',
+      'pose_pelvis_frontal',
+      'pose_tronco_frontal',
     ])
     await p.reload()
     await p.setInputFiles('input[type=file]', videos.frontal.ruta)
@@ -3513,6 +3599,14 @@ describe('dos vistas: gráficas en el tiempo común y CSV con tiempo común', ()
     } finally {
       await solo.close()
     }
+  })
+
+  it('en escritorio la columna de gráficas no alarga la fila: acaba con la de herramientas y se desplaza por dentro', async () => {
+    const caja = (id) => p.getByTestId(id).evaluate((el) => el.getBoundingClientRect().toJSON())
+    const graficas = await caja('vista-graficas')
+    const herramientas = await caja('columna-herramientas')
+    assert.ok(Math.abs(graficas.bottom - herramientas.bottom) <= 1, `gráficas hasta ${graficas.bottom}, herramientas hasta ${herramientas.bottom}`)
+    assert.ok(await p.getByTestId('vista-graficas').evaluate((el) => el.scrollHeight > el.clientHeight + 20), 'las gráficas deberían desplazarse')
   })
 
   it('cambiar de frame no redibuja las gráficas de la comparación (el cursor va en su capa), alineadas ni superpuestas', async () => {
@@ -3695,8 +3789,7 @@ function deteccionFalsa(verdad, { intercambiados = [], sinPersona = [] } = {}) {
 /** Abre la app con el worker sin marcadores sustituido por uno falso que manda `frames` (y cuenta las detecciones). */
 async function abrirConPoseFalsa(nav, frames, { ancho = 1280, ritmoMs = 20 } = {}) {
   const p = await nav.newPage({ locale: 'es-ES', viewport: { width: ancho, height: ancho >= 800 ? 900 : 844 }, hasTouch: ancho < 800 })
-  p.on('pageerror', (e) => errores.push(`pageerror: ${e.message}`))
-  p.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()}`))
+  await vigilarErrores(p)
   await p.addInitScript(({ frames, ritmoMs }) => {
     const Original = window.Worker
     window.__detecciones = 0
@@ -3915,6 +4008,96 @@ describe('la navegación se pausa mientras se detecta el cuerpo', () => {
   })
 })
 
+/**
+ * De frente (fase 5, paso 4): la persona de frente a la cámara (su derecha a la izquierda de la imagen). La pierna derecha
+ * cae en los gomets del vídeo «frontal»; la izquierda es su espejo respecto a x = 360, con la cadera 10 px más alta (pelvis
+ * inclinada: la izquierda más alta); los hombros, 120 px sobre las caderas y 12 px hacia la izquierda de la persona
+ * (tronco inclinado a la izquierda). En `intercambiados`, el modelo da los lados al revés.
+ */
+function frenteFalso(verdad, { intercambiados = [] } = {}) {
+  const PARTES = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta']
+  return verdad.map((v, indice) => {
+    const [cadera, rodilla, tobillo] = v.ps
+    const espejo = (q, dy = 0) => ({ x: 720 - q.x, y: q.y + dy })
+    const der = { cadera, rodilla, tobillo, hombro: { x: cadera.x + 12, y: cadera.y - 120 }, talon: { x: tobillo.x, y: tobillo.y + 10 }, punta: { x: tobillo.x - 5, y: tobillo.y + 20 } }
+    const izq = {
+      cadera: espejo(cadera, -10), rodilla: espejo(rodilla), tobillo: espejo(tobillo),
+      hombro: { x: 720 - cadera.x + 12, y: cadera.y - 130 }, talon: espejo(der.talon), punta: espejo(der.punta),
+    }
+    const al = intercambiados.includes(indice)
+    const puntos = PARTES.flatMap((parte) => ['izq', 'der'].flatMap((lado) => {
+      const q = ((lado === 'izq') !== al ? izq : der)[parte]
+      return [q.x, q.y, 0.95]
+    }))
+    return { indice, t: v.t, puntos, der, izq }
+  })
+}
+
+/** Lo que debe dar cada medida de frente con los puntos de `frenteFalso` (cámara delante: marco canónico (x, −y)). */
+function verdadFrente({ der, izq }) {
+  const vec = (a, b) => ({ x: b.x - a.x, y: -(b.y - a.y) })
+  const entre = (u, w) => (Math.atan2(u.x * w.y - u.y * w.x, u.x * w.x + u.y * w.y) * 180) / Math.PI
+  const norm = (g) => ((((g + 180) % 360) + 360) % 360) - 180
+  const medio = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+  return {
+    'Rodilla derecha': norm(-entre(vec(der.cadera, der.rodilla), vec(der.rodilla, der.tobillo))),
+    'Rodilla izquierda': norm(entre(vec(izq.cadera, izq.rodilla), vec(izq.rodilla, izq.tobillo))),
+    'Cadera derecha': norm(-entre(vec(izq.cadera, der.cadera), vec(der.cadera, der.rodilla)) + 90),
+    'Cadera izquierda': norm(entre(vec(der.cadera, izq.cadera), vec(izq.cadera, izq.rodilla)) + 90),
+    Pelvis: norm(entre({ x: 1, y: 0 }, vec(der.cadera, izq.cadera))),
+    Tronco: norm(-entre({ x: 0, y: 1 }, vec(medio(der.cadera, izq.cadera), medio(der.hombro, izq.hombro)))),
+  }
+}
+
+describe('sin marcadores de frente (fase 5, paso 4)', () => {
+  const INTERCAMBIADOS = [50, 51, 52]
+  let p
+  let frames
+  before(async () => {
+    frames = frenteFalso(videos.frontal.verdad, { intercambiados: INTERCAMBIADOS })
+    p = await abrirConPoseFalsa(navegador, frames.map(({ indice, t, puntos }) => ({ indice, t, puntos })))
+    await cargarVideo(p, videos.verde.ruta)
+    await abrirPestana(p, 'video')
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.frontal.ruta)
+    await p.getByTestId('anadir-vista-orientacion').getByRole('radio', { name: /Sin marcadores/ }).click()
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'marcar')
+  })
+  after(() => p?.close())
+
+  it('la vista de frente sin marcadores detecta, pone cada cadera en su lado y mide las dos piernas, la pelvis y el tronco', async () => {
+    assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).count(), 0)
+    await detectarCuerpo(p)
+    assert.match(await p.getByTestId('aviso').innerText(), new RegExp(`piernas intercambiadas corregidas en ${INTERCAMBIADOS.length} frames`))
+    await abrirPestana(p, 'analisis')
+    const selector = p.getByRole('radiogroup', { name: 'Articulación' })
+    assert.deepEqual(await selector.getByRole('radio').allInnerTexts(), ['Rodilla derecha', 'Rodilla izquierda', 'Cadera derecha', 'Cadera izquierda', 'Pelvis', 'Tronco'])
+    for (const nombre of ['Rodilla derecha', 'Rodilla izquierda', 'Cadera derecha', 'Cadera izquierda', 'Pelvis', 'Tronco']) {
+      await abrirPestana(p, 'analisis')
+      await selector.getByRole('radio', { name: nombre }).click()
+      for (const i of [20, 51, 100]) {
+        await irAFrame(p, i)
+        const esperado = verdadFrente(frames[i])[nombre]
+        assert.ok(Math.abs((await leerAngulo(p)) - esperado) < TOLERANCIA_GRADOS, `${nombre}, frame ${i + 1}: ${await leerAngulo(p)} frente a ${esperado}`)
+      }
+    }
+    // La rodilla derecha sin marcadores es el FPPA de la verdad del vídeo (los puntos caen en los gomets).
+    await selector.getByRole('radio', { name: 'Rodilla derecha' }).click()
+    await irAFrame(p, 60)
+    assert.ok(Math.abs((await leerAngulo(p)) - videos.frontal.verdad[60].fppa) < TOLERANCIA_GRADOS)
+    // Con el tronco se corrigen la cadera y el hombro de los dos lados (el punto medio no se marca).
+    await selector.getByRole('radio', { name: 'Tronco' }).click()
+    await abrirPestana(p, 'marcar')
+    const marcables = await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText()
+    assert.match(marcables, /Hombro izquierdo/)
+    assert.match(marcables, /Cadera derecha/)
+    assert.doesNotMatch(marcables, /Punto medio/)
+  })
+})
+
 describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
   it('detectar no cambia lo que se marca y se mide (mandan los gomets) y no toca lo seguido', async () => {
     const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad))
@@ -3971,6 +4154,42 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
     }
   })
 
+  it('una vista que empezó sin marcadores puede añadir los gomets, seguirlos y compararlos', async () => {
+    const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad))
+    try {
+      await cargarSinMarcadores(p, videos.verde.ruta)
+      await abrirPestana(p, 'marcar')
+      await detectarCuerpo(p)
+      assert.equal(await p.getByRole('button', { name: 'Seguir desde aquí' }).count(), 0)
+      await p.getByTestId('anadir-gomets').click()
+      // Ya sigue los gomets: aparecen en el selector y «Seguir desde aquí»; el botón de añadir se va.
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).waitFor()
+      assert.equal(await p.getByTestId('anadir-gomets').count(), 0)
+      const ps = videos.verde.verdad[0].ps
+      await irAFrame(p, 0)
+      // Se elige el primero; al colocar uno se pasa al siguiente.
+      await p.getByRole('radio', { name: /Trocánter/ }).click()
+      await marcarTres(p, ps)
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).click()
+      await p.getByTestId('aviso').filter({ hasText: /Seguimiento completado/ }).waitFor({ timeout: 90000 })
+      // Las dos medidas de la rodilla: la comparación sale en «Análisis» (aquí los puntos caen en los gomets).
+      await abrirPestana(p, 'analisis')
+      const directa = await p.getByTestId('comparacion-fuentes').getByTestId('comparacion-directa').innerText()
+      assert.match(directa, /correlación 1,00/)
+      // Se guarda con la vista: al recuperar, sigue con los gomets.
+      await esperarGuardado(p)
+      await p.reload()
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+      await esperarQuieto(p)
+      await abrirPestana(p, 'marcar')
+      await p.getByRole('button', { name: 'Seguir desde aquí' }).waitFor()
+      assert.match(await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText(), /Trocánter/)
+    } finally {
+      await p.close()
+    }
+  })
+
   it('en el móvil, «Detectar el cuerpo» está en el vídeo grande («Marcar»)', async () => {
     const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad), { ancho: 390 })
     try {
@@ -3979,6 +4198,10 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
       const tira = p.getByTestId('marcado-compacto')
       await tira.getByRole('button', { name: 'Detectar el cuerpo' }).click()
       await tira.getByRole('button', { name: 'Volver a detectar' }).waitFor({ timeout: 20000 })
+      // «Añadir los gomets» también está en la tira (en el móvil «Marcar» abre el vídeo grande, no la tarjeta).
+      await tira.getByTestId('anadir-gomets-compacto').click()
+      await tira.getByRole('button', { name: 'Seguir desde aquí' }).waitFor()
+      assert.equal(await tira.getByTestId('anadir-gomets-compacto').count(), 0)
     } finally {
       await p.close()
     }
@@ -4631,6 +4854,8 @@ describe('móvil: vídeo y gráfica, y una fila de botones que abre cada herrami
       const tarjetas = await caja('panel-herramientas')
       const tira = await p.getByRole('tablist').locator('..').boundingBox()
       assert.ok(tarjetas.y + tarjetas.height <= tira.y + 1, 'las tarjetas pasan por debajo de la fila de botones')
+      // El botón lo pone la app en un efecto, después del render que muestra la herramienta: se espera a que salga.
+      await p.locator('header').getByTestId('volver-cabecera').waitFor({ timeout: 5000 })
       assert.equal(await p.locator('header').getByTestId('volver-cabecera').count(), 1, 'el botón de volver va en la cabecera')
       // Con el texto más largo, el glosario y «Cambiar vídeo» siguen en su fila, no debajo.
       const volverCab = await p.getByTestId('volver-cabecera').boundingBox()
@@ -4832,7 +5057,10 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
   })
 
-  it('tirar más allá de un extremo y soltar pasa a la vista ampliada y al volver se aterriza en ese extremo', async () => {
+  it('tirar más allá de un extremo y soltar pasa a la vista ampliada y al volver queda el reparto de antes', async () => {
+    await asentar()
+    // Desde el reparto de siempre (ni un extremo ni el otro), para que se note si se vuelve a un extremo.
+    await asa().dblclick()
     await asentar()
     const antes = await asa().getAttribute('data-reparto')
     // Hacia abajo, mucho más allá de «vídeo grande»: aviso mientras se tira y, al soltar, el vídeo ampliado.
@@ -4851,18 +5079,21 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await p.getByTestId('reducir-video').waitFor({ state: 'visible' })
     await p.getByTestId('reducir-video').click()
     await asentar()
-    // Se vuelve al extremo del que se viene (vídeo grande), sin tocar el reparto guardado.
-    assert.equal(await asa().getAttribute('data-reparto'), 'video')
+    // Se vuelve al reparto de antes de ampliar, sin tocar el guardado.
+    assert.equal(await asa().getAttribute('data-reparto'), antes)
     assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoVideo')), antes)
     // Hacia arriba, más allá de «gráfica grande»: solo las gráficas.
     await arrastrar(-500)
     await p.getByTestId('vista-graficas').waitFor({ state: 'visible' })
     await p.getByTestId('reducir-graficas').click()
     await asentar()
-    assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
+    assert.equal(await asa().getAttribute('data-reparto'), antes)
   })
 
-  it('las vistas ampliadas no llevan asa para volver: se vuelve con el botón y el reparto aterriza en el extremo del que se viene', async () => {
+  it('las vistas ampliadas no llevan asa para volver: se vuelve con el botón al reparto de antes', async () => {
+    await asentar()
+    // Desde el reparto de siempre (ni un extremo ni el otro), para que se note si se vuelve a un extremo.
+    await asa().dblclick()
     await asentar()
     const antes = await asa().getAttribute('data-reparto')
     // Vídeo grande: se entra tirando hacia abajo.
@@ -4872,7 +5103,7 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await p.getByTestId('reducir-video').click()
     await p.getByTestId('reducir-video').waitFor({ state: 'detached' })
     await asentar()
-    assert.equal(await asa().getAttribute('data-reparto'), 'video')
+    assert.equal(await asa().getAttribute('data-reparto'), antes)
     assert.equal(await p.evaluate(() => localStorage.getItem('dualkinema.repartoVideo')), antes)
     // Solo gráficas: se entra tirando hacia arriba.
     await arrastrar(-500)
@@ -4881,7 +5112,7 @@ describe('asa entre el vídeo y la gráfica pequeña (móvil)', () => {
     await p.getByTestId('reducir-graficas').click()
     await p.getByTestId('reducir-graficas').waitFor({ state: 'detached' })
     await asentar()
-    assert.equal(await asa().getAttribute('data-reparto'), 'grafica')
+    assert.equal(await asa().getAttribute('data-reparto'), antes)
   })
 
   it('pasado el margen, volver atrás sin soltar no amplía: encaja como siempre', async () => {

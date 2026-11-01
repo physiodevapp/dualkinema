@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Fuente } from '../../core/pose/catalogo'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
-import type { ModeloMarcadores } from '../../core/modelo/tipos'
+import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
+import { esPuntoMedio } from '../../core/pose/puntos'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { Sincronia } from '../../core/modelo/tipos'
 import type { VideoAbierto } from '../../media/video'
@@ -48,8 +50,14 @@ import { incertidumbreEvento, pasoTipico } from '../../core/sincronia/evento'
 import type { VistaViva } from './vistas'
 import BotonDetectar from './BotonDetectar'
 
+/** Las series de una vista sin los puntos medios del modelo (salen de los dos lados: no se guardan). */
+const sinMedios = (series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>) =>
+  new Map([...series].filter(([id]) => !esPuntoMedio(id)))
+
 /** Letra de cada vista, en el orden de la sesión. */
 const LETRAS = ['A', 'B'] as const
+/** Tope de alto del vídeo en pantalla ancha (también el de la otra vista, al lado). */
+const TOPE_LG = 'lg:max-h-[max(14rem,calc(100dvh-25rem))]'
 
 interface Props {
   /** Todas las vistas de la sesión (la de referencia primero). */
@@ -84,7 +92,7 @@ interface Props {
   onCambiarAjustes: (a: AjustesFiltro) => void
   revAjustes: number
   onElegirVista: (id: string) => void
-  onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista) => void
+  onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista, fuente: Fuente) => void
 }
 
 export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, ajustes, onCambiarAjustes: cambiarAjustes, revAjustes, onElegirVista, onAnadirVista }: Props) {
@@ -193,7 +201,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       id: w.id,
       huella: w.huella,
       orientacion: w.orientacion,
-      series: w.series,
+      // Los puntos medios salen siempre de los dos lados: no se guardan (van vacíos).
+      series: sinMedios(w.series),
       ceros: w.ceros,
       calibracion: w.calibracion,
       desfase: w.desfaseS,
@@ -228,19 +237,16 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       : otraDetecta
         ? { texto: 'Se está detectando el cuerpo en la otra vista: espera a que acabe para seguir o detectar en esta.' }
         : null)
-  // «Detectar el cuerpo», de momento solo de perfil (de frente, el paso 4 de la fase 5).
-  const panelDeteccion =
-    orientacion.plano === 'sagital'
-      ? {
-          progreso: progresoDeteccion,
-          deshabilitado: siguiendo || otraSiguiendo,
-          hecha: deteccion,
-          modelo: modeloPose,
-          onModelo: setModeloPose,
-          onDetectar: detectar,
-          onParar: pararDeteccion,
-        }
-      : null
+  // «Detectar el cuerpo», de perfil y de frente.
+  const panelDeteccion = {
+    progreso: progresoDeteccion,
+    deshabilitado: siguiendo || otraSiguiendo,
+    hecha: deteccion,
+    modelo: modeloPose,
+    onModelo: setModeloPose,
+    onDetectar: detectar,
+    onParar: pararDeteccion,
+  }
   // Sincronizar por un evento visual: mientras se marca, el cursor está desenlazado (cada vista se mueve sola) y el botón de
   // marcar va también sobre el vídeo (en el móvil el panel de la pestaña queda fuera de pantalla al recorrerlo).
   const [marcandoEvento, setMarcandoEvento] = useState(false)
@@ -373,8 +379,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     alAtras.current = () => {
       if (movilVertical && abierta) setAbierta(false)
       else if (enVideo && volverEn) volverAHerramienta()
-      else if (enVideo) volverDe('video')
-      else if (enGraficas) volverDe('graficas')
+      else if (enVideo) volverDe()
+      else if (enGraficas) volverDe()
     }
   })
   // Se revisa en cada cambio: tras volver a una herramienta desde el vídeo grande, el gesto se ha llevado la entrada y hay
@@ -445,6 +451,19 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // Vista de vídeo grande: lo mínimo para marcar y seguir sin salir de ella.
   // Móvil girado con el vídeo grande: dos columnas (el vídeo con todo el alto; a su lado, aviso, marcado y barra fija).
   const dosColumnas = enVideo && apaisado
+  // Las dos vistas lado a lado (pantalla ancha, o móvil girado en la vista mixta), con el mismo tope de alto que el vídeo.
+  const ladoALado = vistas.length > 1 && (anchoLg || mixtaApaisada)
+  const topeMovilVideo = activo ? `${altoVideoMovil}px` : undefined
+  const otraAlLado = (w: VistaViva, i: number) => (
+    <MiniaturaVista
+      key={w.id}
+      vista={w}
+      etiqueta={LETRAS[i]!}
+      fuera={fuera.has(w.id)}
+      onElegir={() => onElegirVista(w.id)}
+      lado={{ topeLg: TOPE_LG, topeMovil: topeMovilVideo }}
+    />
+  )
 
   // Calibrar la escala o marcar el evento de la sincronía se hace sobre el vídeo: esta tira dice qué falta (volver a la
   // herramienta es el botón de la cabecera).
@@ -482,6 +501,19 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     botonDetectar
   )
   const detectarAparte = conGomets && botonDetectar
+  // Sin gomets, en la tira del vídeo grande (en el móvil «Marcar» abre el vídeo grande, no la tarjeta): añadir los gomets
+  // de su plano para seguirlos también y compararlos con el modelo. Secundario, debajo de «Detectar el cuerpo».
+  const anadirGomets = !conGomets && (
+    <button
+      type="button"
+      disabled={ocupada || !!progresoDeteccion}
+      onClick={activaViva.anadirGomets}
+      className="rounded-md border border-borde px-3 py-2 text-sm disabled:opacity-50"
+      data-testid="anadir-gomets-compacto"
+    >
+      Añadir los gomets
+    </button>
+  )
   const tiraMarcado = (
     <div className="flex flex-col gap-2" data-testid="marcado-compacto">
       <SelectorMarcadores marcadores={marcables} estados={estadosMarcadores} seleccionado={seleccionado} siguiendo={ocupada} onElegir={setSeleccionado} compacto />
@@ -494,6 +526,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             {botonSeguir}
             {detectarAparte}
           </div>
+          {anadirGomets}
         </>
       ) : (
         <>
@@ -501,6 +534,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           {avisoAnclas}
           {botonSeguir}
           {detectarAparte}
+          {anadirGomets}
         </>
       )}
       {extrasCompactos}
@@ -539,13 +573,23 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                   `max-lg:order-1 max-lg:shrink-0 max-lg:overflow-hidden ${mixtaApaisada ? 'max-lg:col-start-1 max-lg:row-span-3 max-lg:row-start-1' : ''}`
             } ${enGraficas || (movilVertical && abierta) ? 'max-lg:hidden' : ''}`}
           >
-          <div className={dosColumnas ? 'relative min-w-0 flex-1' : 'relative'}>
+          {/* Dos vistas en pantalla ancha o con el móvil girado (vista mixta): lado a lado y del mismo tamaño, siempre A a la
+              izquierda; la activa con un anillo ámbar y la otra se toca para activarla. En el móvil en vertical y en el vídeo
+              grande (donde se marca), la otra va en pequeño sobre el vídeo. */}
+          <div className={ladoALado ? 'grid grid-cols-2 items-start gap-3' : 'contents'} data-testid={ladoALado ? 'vistas-lado' : undefined}>
+          {ladoALado && vistas.slice(0, activa).map((w, i) => otraAlLado(w, i))}
+          <div
+            className={
+              ladoALado ? 'relative min-w-0 rounded-2xl ring-2 ring-acento' : dosColumnas ? 'relative min-w-0 flex-1' : 'relative'
+            }
+            data-activa={ladoALado ? 'true' : undefined}
+          >
             <LienzoVideo
               key={activaViva.id}
               llenar={enVideo}
               apaisado={dosColumnas}
-              topeLg="lg:max-h-[max(14rem,calc(100dvh-25rem))]"
-              topeMovil={activo ? `${altoVideoMovil}px` : undefined}
+              topeLg={TOPE_LG}
+              topeMovil={topeMovilVideo}
               ancho={info.ancho}
               alto={info.alto}
               lienzo={lienzo}
@@ -588,10 +632,11 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                   activa={activaViva.id}
                   onElegir={onElegirVista}
                 />
-                {vistas.map(
-                  (w, i) =>
-                    i !== activa && <MiniaturaVista key={w.id} vista={w} etiqueta={LETRAS[i]!} fuera={fuera.has(w.id)} onElegir={() => onElegirVista(w.id)} />,
-                )}
+                {!ladoALado &&
+                  vistas.map(
+                    (w, i) =>
+                      i !== activa && <MiniaturaVista key={w.id} vista={w} etiqueta={LETRAS[i]!} fuera={fuera.has(w.id)} onElegir={() => onElegirVista(w.id)} />,
+                  )}
               </div>
             )}
             {marcandoEvento && (
@@ -609,7 +654,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             {!anchoLg && (
               <button
                 type="button"
-                onClick={() => (enVideo ? volverDe('video') : setVista('video'))}
+                onClick={() => (enVideo ? volverDe() : setVista('video'))}
                 aria-label={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
                 title={enVideo ? 'Volver a la vista con gráfica' : 'Ampliar el vídeo para marcar'}
                 data-testid={enVideo ? 'reducir-video' : 'ampliar-video'}
@@ -631,6 +676,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                 <ArrowTrendingUpIcon className="size-5" />
               </button>
             )}
+          </div>
+          {ladoALado && vistas.slice(activa + 1).map((w, i) => otraAlLado(w, activa + 1 + i))}
           </div>
           {!anchoLg && vista === 'mixta' && (
             <SeparadorVideo
@@ -713,10 +760,12 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
 
         {/* La gráfica completa: en pantalla ancha, debajo del vídeo; en el móvil solo en la vista «Solo gráficas»
             (oculta pero montada en las demás, para no perder qué series se ven) y en la mixta se ve la pequeña. */}
+        {/* Con dos vistas hay más gráficas de las que caben en la altura de la ventana: la columna se desplaza por dentro y, como
+            la de herramientas, va en una caja absoluta para no alargar la fila (con su alto, la rejilla crecía igual). */}
+        <div className={dosVistas ? 'max-lg:contents lg:relative lg:min-h-0' : 'contents'}>
         <div
           data-testid="vista-graficas"
-          // Con dos vistas hay más gráficas de las que caben en la altura de la ventana: la columna se desplaza por dentro.
-          className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0${dosVistas ? ' lg:overflow-y-auto' : ''} ${
+          className={`flex flex-col gap-3 max-lg:order-7 lg:min-h-0${dosVistas ? ' lg:absolute lg:inset-0 lg:overflow-y-auto' : ''} ${
             enGraficas ? `aparece max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-(--alto-barra) max-lg:z-30 max-lg:overflow-y-auto max-lg:bg-fondo ${apaisado ? 'max-lg:p-2' : 'max-lg:p-4'}` : ''
           } ${enGraficas ? '' : 'max-lg:hidden'}`}
         >
@@ -725,7 +774,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               <span className="font-mono text-xs tracking-wider text-texto-2 uppercase">Solo gráficas</span>
               <button
                 type="button"
-                onClick={() => volverDe('graficas')}
+                onClick={() => volverDe()}
                 aria-label="Volver a la vista con vídeo"
                 title="Volver a la vista con vídeo"
                 data-testid="reducir-graficas"
@@ -768,7 +817,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               enGraficas && apaisado ? (
                 <button
                   type="button"
-                  onClick={() => volverDe('graficas')}
+                  onClick={() => volverDe()}
                   aria-label="Volver a la vista con vídeo"
                   title="Volver a la vista con vídeo"
                   data-testid="reducir-graficas"
@@ -781,6 +830,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
           />
 
           {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
+        </div>
         </div>
       </div>
 
@@ -834,6 +884,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               listoParaSeguir={listoParaSeguir}
               conGomets={conGomets}
               deteccion={panelDeteccion}
+              onAnadirGomets={activaViva.anadirGomets}
               marcasManualesAqui={marcasManualesAqui}
               mostrado={mostrado}
               onQuitarManual={quitarManual}

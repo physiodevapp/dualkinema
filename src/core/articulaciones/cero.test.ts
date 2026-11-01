@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MuestraAngulo } from './calculo'
-import { ceroDeReferencia, esTramoEstatico, relativoAlCero, tramoInicial } from './cero'
+import { ceroDeReferencia, esTramoEstatico, relativoAlCero, tramoAlrededor, tramoInicial } from './cero'
 
 const serie = (pares: readonly [number, number][]): MuestraAngulo[] => pares.map(([t, valor]) => ({ t, valor, interpolado: false }))
 
@@ -51,6 +51,20 @@ describe('cero de referencia (toma estática)', () => {
     expect(tramoInicial([0.1, 0.2, 3, 5])).toEqual({ desde: 0.1, hasta: 2.1 })
     expect(tramoInicial([0, 0.5, 1.2])).toEqual({ desde: 0, hasta: 1.2 })
     expect(tramoInicial([0])).toBeNull()
+  })
+
+  it('tramo corto de 0,4 s centrado en el frame; junto a un extremo, desplazado hacia dentro', () => {
+    const cerca = (r: { desde: number; hasta: number } | null, desde: number, hasta: number) => {
+      expect(r!.desde).toBeCloseTo(desde, 12)
+      expect(r!.hasta).toBeCloseTo(hasta, 12)
+    }
+    cerca(tramoAlrededor(7.945, 0, 20), 7.745, 8.145)
+    cerca(tramoAlrededor(0.1, 0, 20), 0, 0.4)
+    cerca(tramoAlrededor(19.95, 0, 20), 19.6, 20)
+    // Un vídeo más corto que el tramo: el vídeo entero.
+    cerca(tramoAlrededor(0.1, 0, 0.3), 0, 0.3)
+    expect(tramoAlrededor(1, 0, 0)).toBeNull()
+    expect(tramoAlrededor(NaN, 0, 5)).toBeNull()
   })
 
   it('valida el tramo guardado', () => {

@@ -42,4 +42,6 @@ export type VistaViva = ReturnType<typeof useVista> & Pick<EntradaVista, 'id' | 
   readonly desfaseS: number
   /** Los marcadores que sigue (los de la entrada o, en una vista nueva, los de su plano). */
   readonly marcadores: readonly IdMarcador[]
+  /** Una vista sin marcadores pasa a seguir también los gomets de su plano (fase 5). */
+  readonly anadirGomets: () => void
 }
