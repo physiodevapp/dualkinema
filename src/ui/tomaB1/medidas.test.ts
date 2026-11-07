@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anguloPorDistancias, fueraDeRango, leerNumero, leerProgreso, MEDIDAS_VACIAS, PROGRESO_INICIAL, textoMedidas } from './medidas'
+import { anguloPorDistancias, CASILLAS_GRABACION, CASILLAS_POR_PASO, desmarcar, fueraDeRango, hechasDelPaso, leerNumero, leerProgreso, MEDIDAS_VACIAS, PROGRESO_INICIAL, textoMedidas } from './medidas'
 
 describe('medidas de la toma B1', () => {
   it('lee números con coma o punto; vacío o ilegible, null', () => {
@@ -34,5 +34,19 @@ describe('medidas de la toma B1', () => {
     expect(t).toMatch(/Distancia entre los móviles: 4,2 m/)
     expect(t).toMatch(/Estatura: 1,75 m/)
     expect(t).toMatch(/Ángulo entre los móviles: —/)
+  })
+})
+
+describe('rehacer sin empezar de nuevo', () => {
+  it('rehacer un paso o repetir una grabación quita solo sus casillas y deja las medidas', () => {
+    const p = { paso: 4, hechos: ['cinta', 't1-pasos', 't2-derecha', 'no-movido'], medidas: { ...MEDIDAS_VACIAS, estatura: 1.7 } }
+    expect(desmarcar(p, CASILLAS_GRABACION[2])).toEqual({ ...p, hechos: ['cinta', 't1-pasos'] })
+    expect(desmarcar(p, CASILLAS_POR_PASO[0]!).hechos).toEqual(['t1-pasos', 't2-derecha', 'no-movido'])
+    expect(hechasDelPaso(p, 4)).toEqual({ hechas: 3, total: 10 })
+  })
+
+  it('cada casilla está en un solo paso', () => {
+    const todas = CASILLAS_POR_PASO.flat()
+    expect(new Set(todas).size).toBe(todas.length)
   })
 })

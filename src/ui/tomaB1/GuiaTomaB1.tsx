@@ -12,6 +12,10 @@ import {
   PASOS_B1,
   PROGRESO_INICIAL,
   RANGOS,
+  CASILLAS_GRABACION,
+  CASILLAS_POR_PASO,
+  desmarcar,
+  hechasDelPaso,
   textoMedidas,
   type MedidasB1,
   type ProgresoB1,
@@ -49,6 +53,9 @@ export default function GuiaTomaB1({ alSalir, alEmparejar }: { alSalir: () => vo
   const irA = (paso: number) => cambiar({ ...p, paso: Math.max(0, Math.min(PASOS_B1 - 1, paso)) })
   const marcar = (id: string) => cambiar({ ...p, hechos: p.hechos.includes(id) ? p.hechos.filter((h) => h !== id) : [...p.hechos, id] })
   const medir = (m: Partial<MedidasB1>) => cambiar({ ...p, medidas: { ...p.medidas, ...m } })
+  // «Empezar de nuevo» pide un segundo toque.
+  const [confirmarReinicio, setConfirmarReinicio] = useState(false)
+  const { hechas, total } = hechasDelPaso(p, p.paso)
   const casilla = (id: string, texto: ReactNode) => <Casilla id={id} hecho={p.hechos.includes(id)} alMarcar={() => marcar(id)}>{texto}</Casilla>
 
   return (
@@ -83,8 +90,21 @@ export default function GuiaTomaB1({ alSalir, alEmparejar }: { alSalir: () => vo
       </ol>
 
       <section className="relative flex flex-col gap-3 rounded-2xl border border-borde bg-panel p-4" data-testid={`paso-b1-${p.paso}`}>
-        <p className="font-mono text-xs text-texto-2">
-          Paso {p.paso + 1} de {PASOS_B1}
+        <p className="flex items-center justify-between gap-2 font-mono text-xs text-texto-2">
+          <span>
+            Paso {p.paso + 1} de {PASOS_B1}
+            {total > 0 && ` · ${hechas} de ${total} hechos`}
+          </span>
+          {hechas > 0 && (
+            <button
+              type="button"
+              onClick={() => cambiar(desmarcar(p, CASILLAS_POR_PASO[p.paso] ?? []))}
+              className="min-h-9 rounded-md border border-borde px-2 font-sans text-xs text-texto"
+              data-testid="b1-rehacer-paso"
+            >
+              Rehacer este paso
+            </button>
+          )}
         </p>
         <h3 className="text-lg font-medium">{TITULOS[p.paso]}</h3>
 
@@ -168,11 +188,26 @@ export default function GuiaTomaB1({ alSalir, alEmparejar }: { alSalir: () => vo
         {p.paso === 4 && (
           <>
             <p className="text-sm text-texto-2">
+              Si algo sale mal en una grabación (un móvil se mueve, alguien se cruza, te equivocas de ejercicio), «Parar los dos» en la sala, «Repetir esta
+              grabación» aquí y vuelve a programarla: la otra y todo lo demás se quedan. Las grabaciones sueltas puedes borrarlas después en «Grabaciones de
+              este móvil».
+            </p>
+            <p className="text-sm text-texto-2">
               Dos grabaciones, programadas desde la sala con «Hasta parar» (o 60 s) y una cuenta atrás de 10 s para colocarse. Entre una y otra no muevas los
               móviles.
             </p>
             <div className="flex flex-col gap-2 rounded-md border border-borde p-3">
-              <p className="font-medium">Grabación 1 (~1 min)</p>
+              <p className="flex items-center justify-between gap-2 font-medium">
+                Grabación 1 (~1 min)
+                <button
+                  type="button"
+                  onClick={() => cambiar(desmarcar(p, CASILLAS_GRABACION[1]))}
+                  className="min-h-9 rounded-md border border-borde px-2 text-xs font-normal"
+                  data-testid="b1-repetir-1"
+                >
+                  Repetir esta grabación
+                </button>
+              </p>
               <ul className="flex flex-col gap-2">
                 {casilla('t1-quieta', '10 s de pie y quieta, mirando al frente (entre los dos móviles).')}
                 {casilla('t1-pasos', '15 s de pasos por la zona: adelante, atrás, a los lados y girando un poco (esto es lo que calibra).')}
@@ -181,7 +216,17 @@ export default function GuiaTomaB1({ alSalir, alEmparejar }: { alSalir: () => vo
               </ul>
             </div>
             <div className="flex flex-col gap-2 rounded-md border border-borde p-3">
-              <p className="font-medium">Grabación 2 (~1 min)</p>
+              <p className="flex items-center justify-between gap-2 font-medium">
+                Grabación 2 (~1 min)
+                <button
+                  type="button"
+                  onClick={() => cambiar(desmarcar(p, CASILLAS_GRABACION[2]))}
+                  className="min-h-9 rounded-md border border-borde px-2 text-xs font-normal"
+                  data-testid="b1-repetir-2"
+                >
+                  Repetir esta grabación
+                </button>
+              </p>
               <ul className="flex flex-col gap-2">
                 {casilla('t2-quieta', '5 s de pie y quieta.')}
                 {casilla('t2-derecha', 'Sentadilla a una pierna ×3 sobre la derecha.')}
@@ -217,6 +262,10 @@ export default function GuiaTomaB1({ alSalir, alEmparejar }: { alSalir: () => vo
         )}
       </section>
 
+      <p className="text-xs text-texto-2">
+        Puedes dejarla en cualquier momento y seguir luego (se queda donde estabas), saltar a cualquier paso tocando la barra de arriba y cambiar una medida
+        cuando quieras.
+      </p>
       <div className="flex gap-2">
         <button
           type="button"
@@ -239,6 +288,19 @@ export default function GuiaTomaB1({ alSalir, alEmparejar }: { alSalir: () => vo
           <ArrowRightIcon className="size-5" />
         </button>
       </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (!confirmarReinicio) return setConfirmarReinicio(true)
+          setConfirmarReinicio(false)
+          cambiar(PROGRESO_INICIAL)
+        }}
+        onBlur={() => setConfirmarReinicio(false)}
+        className={`min-h-11 rounded-md border px-3 text-sm ${confirmarReinicio ? 'border-red-400 text-red-300' : 'border-borde text-texto-2'}`}
+        data-testid="b1-reiniciar"
+      >
+        {confirmarReinicio ? 'Toca otra vez para borrar las casillas y las medidas' : 'Empezar de nuevo (otra toma)'}
+      </button>
     </div>
   )
 }

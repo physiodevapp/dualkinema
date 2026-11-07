@@ -122,3 +122,29 @@ export function anguloPorDistancias(m: MedidasB1): number | null {
   if (cos < -1 || cos > 1) return null
   return (Math.acos(cos) * 180) / Math.PI
 }
+
+/** Las casillas de cada paso de la guía (en el orden de los pasos). */
+export const CASILLAS_POR_PASO: readonly (readonly string[])[] = [
+  ['moviles', 'apoyos', 'cinta', 'ropa', 'espacio'],
+  ['produccion', 'retraso', 'fps', 'auriculares', 'wifi', 'giro'],
+  ['flancos', 'distancia', 'altura', 'encuadre', 'firme'],
+  ['sala', 'vista-der', 'vista-izq', 'reloj'],
+  ['t1-quieta', 't1-pasos', 't1-sentadilla', 't1-marcha', 't2-quieta', 't2-derecha', 't2-izquierda', 'no-movido', 'pitidos', 'fps-ok'],
+  [],
+  ['compartir', 'guardar', 'copiar'],
+]
+
+/** Las casillas de cada grabación del paso «Grabar», con las de revisar al parar (se repiten al repetirla). */
+export const CASILLAS_GRABACION: Readonly<Record<1 | 2, readonly string[]>> = {
+  1: ['t1-quieta', 't1-pasos', 't1-sentadilla', 't1-marcha', 'no-movido', 'pitidos', 'fps-ok'],
+  2: ['t2-quieta', 't2-derecha', 't2-izquierda', 'no-movido', 'pitidos', 'fps-ok'],
+}
+
+/** Quita las casillas dadas (rehacer un paso o repetir una grabación); lo demás, también las medidas, se queda. */
+export const desmarcar = (p: ProgresoB1, ids: readonly string[]): ProgresoB1 => ({ ...p, hechos: p.hechos.filter((h) => !ids.includes(h)) })
+
+/** Cuántas casillas de un paso están marcadas, de cuántas. */
+export const hechasDelPaso = (p: ProgresoB1, paso: number): { readonly hechas: number; readonly total: number } => {
+  const ids = CASILLAS_POR_PASO[paso] ?? []
+  return { hechas: ids.filter((id) => p.hechos.includes(id)).length, total: ids.length }
+}
