@@ -193,6 +193,10 @@ export default function GuiaTomaB1({ alSalir, alEmparejar }: { alSalir: () => vo
               este móvil».
             </p>
             <p className="text-sm text-texto-2">
+              <strong className="text-texto">Guía por voz:</strong> en la sala, antes de «Grabar con los dos», elige en «Guía por voz» la grabación 1 o la 2:
+              el móvil que programa dirá cada gesto en voz alta a su hora (y pone la duración). Sube su volumen multimedia.
+            </p>
+            <p className="text-sm text-texto-2">
               Dos grabaciones, programadas desde la sala con «Hasta parar» (o 60 s) y una cuenta atrás de 10 s para colocarse. Entre una y otra no muevas los
               móviles.
             </p>

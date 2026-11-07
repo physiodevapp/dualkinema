@@ -15,6 +15,8 @@ import type { OrientacionVista } from '../core/geometria/canonico'
 import { revisarFps } from '../core/grabacion/revision'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
 import { RevisionSensores } from './RevisionSensores'
+import { GUIONES, guionPorId, type GuionVoz } from '../core/grabacion/guionVoz'
+import { HAY_VOZ } from '../sala/voz'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil } from '../core/sala/protocolo'
 import { CALIDAD_PITIDO_MINIMA, DURACION_SECUENCIA_S, PITIDO_OTRA_S, VENTANA_DESPUES_S, type Deteccion } from '../core/sincronia/pitido'
@@ -148,6 +150,8 @@ function guardar(archivo: File) {
 function TarjetaGrabar({ doble, puede, alAbrirDoble }: { doble: GrabacionDoble; puede: boolean; alAbrirDoble: (archivo: File) => void }) {
   const [cuenta, setCuenta] = useState<number>(10)
   const [duracion, setDuracion] = useState<number | null>(30)
+  const [guionId, setGuionId] = useState<GuionVoz['id'] | ''>('')
+  const guion = guionPorId(guionId)
   const [, setTic] = useState(0)
   const { fase } = doble
   const enMarcha = fase.f === 'programada' || fase.f === 'grabando' || fase.f === 'esperando'
@@ -195,9 +199,39 @@ function TarjetaGrabar({ doble, puede, alAbrirDoble }: { doble: GrabacionDoble; 
               </select>
             </label>
           </div>
+          {HAY_VOZ && (
+            <label className="flex flex-col gap-1 text-sm text-texto-2">
+              <span className="flex items-center gap-1">
+                Guía por voz (la dice este móvil) <InfoGlosario id="toma-prueba-tres-d" tema="la toma B1 y su guía por voz" className="-my-1.5" />
+              </span>
+              <select
+                value={guionId}
+                onChange={(e) => {
+                  const g = guionPorId(e.target.value)
+                  setGuionId(g?.id ?? '')
+                  // Cada guion tiene su duración.
+                  if (g) setDuracion(g.duracionS)
+                }}
+                data-testid="guion-voz"
+                className="rounded-md border border-borde bg-fondo px-3 py-3 text-texto"
+              >
+                <option value="">Sin voz</option>
+                {GUIONES.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.nombre}
+                  </option>
+                ))}
+              </select>
+              {guion && <span>Sube el volumen multimedia de este móvil. Dura {guion.duracionS} s.</span>}
+            </label>
+          )}
           <button
             type="button"
-            onClick={() => doble.programar(cuenta, duracion)}
+            onClick={() => {
+              doble.programar(cuenta, duracion, guion)
+              // El guion es de una grabación: la siguiente se elige otra vez (la 1 y la 2 son distintas).
+              setGuionId('')
+            }}
             disabled={!puede}
             data-testid="grabar-los-dos"
             className={`${boton} min-h-14 border-acento bg-acento font-medium text-fondo`}

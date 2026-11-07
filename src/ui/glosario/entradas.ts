@@ -221,6 +221,7 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     texto: [
       'La primera grabación real con dos móviles para el 3D: un móvil en cada flanco de la persona, por delante, a unos 90° entre ellos y a unos 3 m. Con ella se comprueba, antes de construir el 3D encima, si el modelo sin marcadores marca el mismo punto del cuerpo visto desde los dos lados (la cadera, por ejemplo, la estima tras la ropa y podría cambiar con el punto de vista).',
       'Lleva unos pasos por la zona (es lo que permite calcular dónde está cada cámara), sentadillas, sentadillas a una pierna y marcha en el sitio. Las medidas con cinta (distancias, alturas de las lentes, estatura) sirven para comparar con lo que calcule la app. Los gomets de delante son opcionales: son el mismo punto para las dos cámaras y separan los errores de la calibración de los del modelo.',
+      'Guía por voz: al programar cada grabación en la sala se puede elegir su guion (grabación 1 o 2 de la toma B1). El móvil que la programa dice en voz alta cada gesto a su hora («Quieta», «Ahora, unos pasos por la zona», «Sentadilla… Una, Dos, Tres»…), con la voz del propio móvil y después de los pitidos de sincronía, para no taparlos. La voz queda grabada en el vídeo, lo que ayuda a encontrar cada gesto. Al parar, se calla.',
     ],
   },
   {

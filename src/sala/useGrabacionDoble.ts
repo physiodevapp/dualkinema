@@ -12,6 +12,8 @@ import type { Tiempos } from '../media/captura'
 import { buscarPitidos, type PitidosGrabados } from '../media/pitido'
 import { ahora } from './config'
 import { emitirSecuencia, pitar } from './sonido'
+import type { GuionVoz } from '../core/grabacion/guionVoz'
+import { callar, hablar } from './voz'
 import type { Sala } from './useSala'
 
 /*
@@ -74,8 +76,11 @@ const ocupado = (f: FaseDoble) => f.f === 'esperando' || f.f === 'programada' ||
 
 export interface GrabacionDoble {
   readonly fase: FaseDoble
-  /** Programa la grabación de los dos. `duracionS` null: hasta que alguien pare. */
-  readonly programar: (cuentaAtrasS: number, duracionS: number | null) => void
+  /**
+   * Programa la grabación de los dos. `duracionS` null: hasta que alguien pare. `guion`: lo que dirá este móvil (solo
+   * el que programa) en cada instante de la grabación (toma B1, fase 6).
+   */
+  readonly programar: (cuentaAtrasS: number, duracionS: number | null, guion?: GuionVoz | null) => void
   /** Para la grabación (las dos) o cancela la cuenta atrás (las dos). */
   readonly parar: () => void
   /** Vuelve a «libre» tras ver el resultado. */
@@ -103,6 +108,8 @@ export function useGrabacionDoble(
   const montado = useRef(true)
   // Cuándo pita cada uno (s desde el inicio) en la grabación en curso, y si este llegó a pitar.
   const pitidos = useRef<{ propio: number; otro: number; pito: boolean } | null>(null)
+  // El guion por voz de la grabación que este móvil ha programado (el otro no habla).
+  const guion = useRef<{ id: string; guion: GuionVoz } | null>(null)
   // Lo que cambia y leen los temporizadores y los mensajes.
   const vivo = useRef({ sala, flujo, vista, otraVista, libreMB, audio, calidad })
   useEffect(() => {
@@ -128,6 +135,7 @@ export function useGrabacionDoble(
     /** `aviso`: por qué se ha parado antes de tiempo (se guarda lo grabado hasta ahí). */
     async (id: string, arranque: number, aviso?: string) => {
       limpiar()
+      callar()
       const g = grabadora.current
       grabadora.current = null
       if (!g) return
@@ -184,6 +192,14 @@ export function useGrabacionDoble(
         const ff = faseRef.current
         if (ff.f === 'grabando' && ff.id === id) plan.pito = emitirSecuencia(vivo.current.audio, instantePropio, ahora())
       })
+      // El guion por voz, si lo ha programado este móvil: cada frase a su hora, solo mientras graba esta grabación.
+      const g0 = guion.current?.id === id ? guion.current.guion : null
+      for (const frase of g0?.frases ?? []) {
+        en(inicio + frase.t * 1000, () => {
+          const ff = faseRef.current
+          if (ff.f === 'grabando' && ff.id === id) hablar(frase.texto)
+        })
+      }
       en(inicio, async () => {
         const p = await preparada.current
         preparada.current = null
@@ -245,6 +261,7 @@ export function useGrabacionDoble(
         } else if (m.tipo === 'cancelar' && 'id' in f && f.id === m.grabacion) {
           if (f.f === 'esperando' || f.f === 'programada') {
             limpiar()
+            callar()
             void descartarPreparada()
             setFase({ f: 'libre', aviso: `No se graba: ${TEXTO_MOTIVO[m.motivo]}.` })
           }
@@ -267,15 +284,19 @@ export function useGrabacionDoble(
     return () => {
       montado.current = false
       limpiar()
+      callar()
       void descartarPreparada()
       void grabadora.current?.cancelar()
     }
   }, [limpiar, descartarPreparada])
 
   const programar = useCallback(
-    (cuentaAtrasS: number, duracionS: number | null) => {
+    (cuentaAtrasS: number, duracionS: number | null, g?: GuionVoz | null) => {
       if (ocupado(faseRef.current)) return
       const id = crypto.randomUUID()
+      guion.current = g ? { id, guion: g } : null
+      // Con el toque de «Grabar» (el navegador solo deja hablar tras un toque), y para saber que se oye.
+      if (g) hablar('Guía por voz preparada.')
       const inicio = ahora() + cuentaAtrasS * 1000
       const fin = duracionS === null ? null : inicio + duracionS * 1000
       if (!vivo.current.sala.enviar({ tipo: 'programar', grabacion: id, inicio, duracion: duracionS })) {
@@ -293,6 +314,7 @@ export function useGrabacionDoble(
   )
 
   const parar = useCallback(() => {
+    callar()
     const f = faseRef.current
     if (f.f === 'grabando') {
       vivo.current.sala.enviar({ tipo: 'parar', grabacion: f.id, fin: ahora() })
