@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DURACION_SECUENCIA_S, PITIDO_OTRA_S } from '../sincronia/pitido'
-import { EMPIEZA_S, GUIONES, guionPorId } from './guionVoz'
+import { EMPIEZA_S, GUIONES, guionPorId, numeroGrabacion, siguienteGuion } from './guionVoz'
 
 describe('guiones por voz de la toma B1', () => {
   it('la voz empieza después de los pitidos de ida y vuelta (no los tapa)', () => {
@@ -22,5 +22,14 @@ describe('guiones por voz de la toma B1', () => {
     expect(textos('b1-1')).toMatch(/pasos.*Sentadilla.*Una.*Dos.*Tres.*Marcha/s)
     expect(textos('b1-2')).toMatch(/derecha.*Una.*Dos.*Tres.*izquierda.*Una.*Dos.*Tres/s)
     expect(guionPorId('otro')).toBeNull()
+  })
+})
+
+describe('de una grabación a la siguiente', () => {
+  it('tras la 1 viene la 2; tras la 2 (o sin guion), ninguna', () => {
+    expect(siguienteGuion('b1-1')?.id).toBe('b1-2')
+    expect(siguienteGuion('b1-2')).toBeNull()
+    expect(siguienteGuion(null)).toBeNull()
+    expect(numeroGrabacion(guionPorId('b1-2')!)).toBe(2)
   })
 })

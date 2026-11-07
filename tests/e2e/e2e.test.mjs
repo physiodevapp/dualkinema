@@ -4752,11 +4752,18 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
     const tras = await a.evaluate(() => window.__voz)
     assert.equal(tras.length, despues, 'tras parar no dice nada más (no llega a «Ahora, unos pasos»)')
     assert.ok(!tras.some((v) => v.texto.startsWith('Ahora')))
+    // Al acabar la grabación 1, el que la programó ofrece la 2 ya elegida, con su duración; el otro, no.
+    assert.equal(await b.getByTestId('grabar-siguiente-guion').count(), 0)
+    assert.match(await a.getByTestId('grabar-siguiente-guion').innerText(), /Siguiente: grabación 2 de la toma B1/)
+    await a.getByTestId('grabar-siguiente-guion').click()
+    await b.getByTestId('grabar-otra-vez').click()
+    assert.equal(await a.getByTestId('guion-voz').inputValue(), 'b1-2')
+    assert.equal(await a.getByTestId('duracion-s').inputValue(), '60')
+    // La siguiente prueba graba sin voz.
+    await a.getByTestId('guion-voz').selectOption('')
   })
 
   it('con la duración fijada (10 s), los dos paran solos; cada uno pita a su hora (paso 6)', async () => {
-    await a.getByTestId('grabar-otra-vez').click()
-    await b.getByTestId('grabar-otra-vez').click()
     // Se anota cada sonido programado con Web Audio (la secuencia de pitidos es el único AudioBufferSourceNode: la
     // cuenta atrás usa osciladores), para comprobar cuándo sonará en el reloj de la página.
     for (const p of [a, b]) {
