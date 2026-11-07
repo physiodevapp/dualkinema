@@ -61,3 +61,12 @@ export const GUIONES: readonly GuionVoz[] = [
 ]
 
 export const guionPorId = (id: string | null | undefined): GuionVoz | null => GUIONES.find((g) => g.id === id) ?? null
+
+/** El guion que va después de este en la toma (de la grabación 1 a la 2); null tras la última. */
+export function siguienteGuion(id: string | null | undefined): GuionVoz | null {
+  const k = GUIONES.findIndex((g) => g.id === id)
+  return k >= 0 ? (GUIONES[k + 1] ?? null) : null
+}
+
+/** El número de la grabación de la toma (1, 2) de un guion. */
+export const numeroGrabacion = (g: GuionVoz): number => GUIONES.indexOf(g) + 1

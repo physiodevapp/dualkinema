@@ -9,13 +9,14 @@ import {
   Square2StackIcon,
   StopIcon,
   VideoCameraIcon,
+  ArrowRightIcon,
 } from '@heroicons/react/24/outline'
 import { encode } from 'uqr'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { revisarFps } from '../core/grabacion/revision'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
 import { RevisionSensores } from './RevisionSensores'
-import { GUIONES, guionPorId, type GuionVoz } from '../core/grabacion/guionVoz'
+import { GUIONES, guionPorId, numeroGrabacion, siguienteGuion, type GuionVoz } from '../core/grabacion/guionVoz'
 import { HAY_VOZ } from '../sala/voz'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil } from '../core/sala/protocolo'
@@ -152,6 +153,14 @@ function TarjetaGrabar({ doble, puede, alAbrirDoble }: { doble: GrabacionDoble; 
   const [duracion, setDuracion] = useState<number | null>(30)
   const [guionId, setGuionId] = useState<GuionVoz['id'] | ''>('')
   const guion = guionPorId(guionId)
+  // El guion de la última grabación que programó este móvil: al acabar, se ofrece la siguiente de la toma.
+  const [ultimoGuion, setUltimoGuion] = useState<GuionVoz['id'] | null>(null)
+  const siguiente = siguienteGuion(ultimoGuion)
+  const elegirGuion = (g: GuionVoz | null) => {
+    setGuionId(g?.id ?? '')
+    // Cada guion tiene su duración.
+    if (g) setDuracion(g.duracionS)
+  }
   const [, setTic] = useState(0)
   const { fase } = doble
   const enMarcha = fase.f === 'programada' || fase.f === 'grabando' || fase.f === 'esperando'
@@ -206,12 +215,7 @@ function TarjetaGrabar({ doble, puede, alAbrirDoble }: { doble: GrabacionDoble; 
               </span>
               <select
                 value={guionId}
-                onChange={(e) => {
-                  const g = guionPorId(e.target.value)
-                  setGuionId(g?.id ?? '')
-                  // Cada guion tiene su duración.
-                  if (g) setDuracion(g.duracionS)
-                }}
+                onChange={(e) => elegirGuion(guionPorId(e.target.value))}
                 data-testid="guion-voz"
                 className="rounded-md border border-borde bg-fondo px-3 py-3 text-texto"
               >
@@ -229,7 +233,8 @@ function TarjetaGrabar({ doble, puede, alAbrirDoble }: { doble: GrabacionDoble; 
             type="button"
             onClick={() => {
               doble.programar(cuenta, duracion, guion)
-              // El guion es de una grabación: la siguiente se elige otra vez (la 1 y la 2 son distintas).
+              // El guion es de una grabación: al acabar se ofrece la siguiente (la 1 y la 2 son distintas).
+              setUltimoGuion(guion?.id ?? null)
               setGuionId('')
             }}
             disabled={!puede}
@@ -264,7 +269,22 @@ function TarjetaGrabar({ doble, puede, alAbrirDoble }: { doble: GrabacionDoble; 
         </button>
       )}
       {fase.f === 'parando' && <p>Terminando el vídeo…</p>}
-      {fase.f === 'hecha' && <ResultadoDoble fase={fase} otraVez={doble.otraVez} alAbrirDoble={alAbrirDoble} />}
+      {fase.f === 'hecha' && (
+        <ResultadoDoble
+          fase={fase}
+          otraVez={doble.otraVez}
+          alAbrirDoble={alAbrirDoble}
+          siguiente={
+            siguiente && {
+              texto: `Siguiente: grabación ${numeroGrabacion(siguiente)} de la toma B1`,
+              ir: () => {
+                elegirGuion(siguiente)
+                doble.otraVez()
+              },
+            }
+          }
+        />
+      )}
     </div>
   )
 }
@@ -301,10 +321,13 @@ function ResultadoDoble({
   fase,
   otraVez,
   alAbrirDoble,
+  siguiente,
 }: {
   fase: Extract<GrabacionDoble['fase'], { f: 'hecha' }>
   otraVez: () => void
   alAbrirDoble: (archivo: File) => void
+  /** Con una grabación guiada por voz que tiene siguiente: el botón que la deja elegida (y su duración). */
+  siguiente: { texto: string; ir: () => void } | null
 }) {
   const a = fase.analisis
   const revision = a ? revisarFps(30, a.fpsMediano) : null
@@ -342,6 +365,12 @@ function ResultadoDoble({
         Está en «Grabaciones de este móvil». Para analizar los dos vídeos juntos, pasa el de un móvil al otro con «Compartir» (Quick Share) y, en el que lo
         recibe, «Abrir con el otro vídeo».
       </p>
+      {siguiente && (
+        <button type="button" onClick={siguiente.ir} data-testid="grabar-siguiente-guion" className={`${boton} min-h-14 border-acento bg-acento font-medium text-fondo`}>
+          <ArrowRightIcon className="size-5" />
+          {siguiente.texto}
+        </button>
+      )}
       <div className="flex flex-wrap gap-2">
         {typeof navigator.share === 'function' && (
           <button type="button" onClick={() => void compartir(fase.archivo)} className={boton}>
