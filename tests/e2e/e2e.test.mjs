@@ -4713,6 +4713,47 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
     assert.match(await b.getByTestId('resultado-doble').innerText(), /-frente\.mp4/)
   })
 
+  it('guía por voz de la toma B1: solo habla el que programa, cada frase a su hora y calla al parar', async () => {
+    // La síntesis de voz se sustituye por una que anota qué dice y cuándo (en el reloj de la página).
+    for (const p of [a, b]) {
+      await p.evaluate(() => {
+        window.__voz = []
+        window.speechSynthesis.speak = (u) => window.__voz.push({ texto: u.text, lang: u.lang, ahora: performance.now() })
+        window.speechSynthesis.cancel = () => window.__voz.push({ texto: '(calla)', ahora: performance.now() })
+      })
+    }
+    await a.getByTestId('grabar-otra-vez').click()
+    await b.getByTestId('grabar-otra-vez').click()
+    await a.getByTestId('cuenta-atras-s').selectOption('5')
+    await a.getByTestId('guion-voz').selectOption('b1-1')
+    assert.equal(await a.getByTestId('duracion-s').inputValue(), '60', 'el guion pone su duración')
+    await a.getByTestId('grabar-los-dos').click()
+    await fase(a, 'grabando', 15000)
+    await fase(b, 'grabando', 15000)
+    const inicio = await a.evaluate(() => window.__voz.find((v) => v.texto === 'Guía por voz preparada.')?.ahora)
+    assert.ok(inicio, 'al tocar «Grabar», la voz dice que está preparada')
+    // La primera frase, pasados los pitidos (a unos 3,5 s del inicio).
+    await a.waitForFunction(() => window.__voz.some((v) => v.texto.startsWith('Quieta')), null, { timeout: 15000 })
+    const voz = await a.evaluate(() => window.__voz)
+    const quieta = voz.find((v) => v.texto.startsWith('Quieta'))
+    assert.equal(quieta.lang.slice(0, 2), 'es')
+    // Entre el toque (cuenta atrás de 5 s) y la primera frase: 5 s + 3,5 s.
+    assert.ok(Math.abs(quieta.ahora - inicio - 8500) < 700, `«Quieta» a ${((quieta.ahora - inicio) / 1000).toFixed(2)} s del toque`)
+    assert.deepEqual(
+      (await b.evaluate(() => window.__voz)).filter((v) => v.texto !== '(calla)'),
+      [],
+      'el otro móvil no habla',
+    )
+    await a.getByTestId('parar-doble').click()
+    await fase(a, 'hecha', 30000)
+    await fase(b, 'hecha', 30000)
+    const despues = await a.evaluate(() => window.__voz.length)
+    await a.waitForTimeout(6000)
+    const tras = await a.evaluate(() => window.__voz)
+    assert.equal(tras.length, despues, 'tras parar no dice nada más (no llega a «Ahora, unos pasos»)')
+    assert.ok(!tras.some((v) => v.texto.startsWith('Ahora')))
+  })
+
   it('con la duración fijada (10 s), los dos paran solos; cada uno pita a su hora (paso 6)', async () => {
     await a.getByTestId('grabar-otra-vez').click()
     await b.getByTestId('grabar-otra-vez').click()
