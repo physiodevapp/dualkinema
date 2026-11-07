@@ -4847,6 +4847,74 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
   })
 })
 
+describe('guía de la toma B1 (fase 6)', () => {
+  let nav
+  let p
+  before(async () => {
+    nav = await lanzarNavegadorConCamaraFalsa()
+    p = await abrirApp(nav, { ancho: 390, alto: 844 })
+  })
+  after(async () => {
+    await p?.close()
+    await nav?.close()
+  })
+
+  it('se recorre paso a paso, enseña la inclinación del móvil, apunta las medidas y lo recuerda al volver', async () => {
+    await p.getByTestId('ir-guia-b1').click()
+    await p.getByTestId('paso-b1-0').waitFor()
+    // Los gomets son opcionales: se dice dónde van y se apunta si se llevan.
+    assert.match(await p.getByTestId('paso-b1-0').innerText(), /centro de la rótula/)
+    await p.getByTestId('b1-gomets').check()
+    await p.getByTestId('b1-casilla-cinta').click()
+    assert.equal(await p.getByTestId('b1-casilla-cinta').getAttribute('data-hecho'), 'true')
+    await p.getByTestId('b1-siguiente').click()
+    await p.getByTestId('b1-siguiente').click()
+    // Colocación: la inclinación de este móvil en directo (acelerómetro falso: 8° hacia abajo, sin girar).
+    await p.getByTestId('paso-b1-2').waitFor()
+    await p.evaluate(() => {
+      const a = (8 * Math.PI) / 180
+      window.__inclinacion = setInterval(
+        () =>
+          window.dispatchEvent(
+            new DeviceMotionEvent('devicemotion', { accelerationIncludingGravity: { x: 0, y: 9.81 * Math.cos(a), z: 9.81 * Math.sin(a) }, interval: 16 }),
+          ),
+        16,
+      )
+    })
+    const inc = p.getByTestId('b1-inclinacion')
+    await inc.waitFor()
+    await p.waitForFunction(() => Math.abs(Number(document.querySelector('[data-testid=b1-inclinacion]')?.dataset.cabeceo) - 8) < 0.5)
+    assert.ok(Math.abs(Number(await inc.getAttribute('data-alabeo'))) < 0.5)
+    assert.match(await inc.innerText(), /Mira hacia abajo 8° ✓/)
+    await p.evaluate(() => clearInterval(window.__inclinacion))
+    // Medidas: con las tres distancias sale el ángulo; las que faltan van con «—».
+    for (let k = 0; k < 3; k++) await p.getByTestId('b1-siguiente').click()
+    await p.getByTestId('paso-b1-5').waitFor()
+    await p.getByTestId('b1-medida-distanciaMoviles').fill('4,24')
+    await p.getByTestId('b1-medida-distanciaDerecho').fill('3')
+    await p.getByTestId('b1-medida-distanciaIzquierdo').fill('3')
+    await p.getByTestId('b1-medida-estatura').fill('175')
+    assert.match(await p.getByTestId('paso-b1-5').innerText(), /¿Seguro\? Se espera entre 1 y 2,3 m/)
+    await p.getByTestId('b1-medida-estatura').fill('1,75')
+    assert.match(await p.getByTestId('b1-angulo-calculado').innerText(), /sale de 90°/)
+    const texto = await p.getByTestId('b1-texto-medidas').innerText()
+    assert.match(texto, /Distancia entre los móviles: 4,24 m/)
+    assert.match(texto, /Estatura: 1,75 m/)
+    assert.match(texto, /Gomets de delante: sí/)
+    assert.match(texto, /lente a — del suelo/)
+    // Ir a la sala y volver: sigue en el mismo paso, con lo apuntado.
+    await p.getByTestId('b1-siguiente').click()
+    await p.reload()
+    await p.getByTestId('ir-guia-b1').click()
+    await p.getByTestId('paso-b1-6').waitFor()
+    assert.match(await p.getByTestId('b1-texto-medidas').innerText(), /Estatura: 1,75 m/)
+    await p.getByTestId('b1-anterior').click()
+    assert.equal(await p.getByTestId('b1-medida-distanciaMoviles').inputValue(), '4,24')
+    await p.getByTestId('salir-guia-b1').click()
+    await p.getByTestId('ir-guia-b1').waitFor()
+  })
+})
+
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })

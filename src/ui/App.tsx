@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Fuente } from '../core/pose/catalogo'
-import { ArrowLeftIcon, ArrowPathIcon, BookOpenIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, ArrowPathIcon, BookOpenIcon, ClipboardDocumentListIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { codigoDeBusqueda } from '../core/sala/codigo'
 import type { AjustesFiltro } from '../core/filtros/tramos'
@@ -31,6 +31,7 @@ const HAY_LABORATORIO = new URLSearchParams(location.search).has('laboratorio')
 const Grabar = lazy(() => import('./Grabar'))
 // Grabar con dos móviles (fase 4, paso 4): emparejar por código o QR. Un QR lleva `?sala=CÓDIGO` y abre la app ya en la sala.
 const Emparejar = lazy(() => import('./Emparejar'))
+const GuiaTomaB1 = lazy(() => import('./tomaB1/GuiaTomaB1'))
 const PUEDE_GRABAR =
   typeof navigator.mediaDevices?.getUserMedia === 'function' &&
   typeof globalThis.VideoEncoder === 'function' &&
@@ -44,6 +45,7 @@ type Estado =
   | { fase: 'grabar' }
   /** Grabar con dos móviles: la sala (con su código si ya se ha creado o se llega por el QR). */
   | { fase: 'emparejar'; codigo: string | null }
+  | { fase: 'guia-b1' }
   | { fase: 'cargando'; nombre: string }
   /** Abrir una grabación doble (fase 4): ya hay un vídeo de la pareja; falta elegir el otro. */
   | { fase: 'doble'; primero: File; error?: string }
@@ -527,6 +529,18 @@ function Aplicacion() {
               Grabar con dos móviles
             </button>
           )}
+          {PUEDE_GRABAR && (
+            <button
+              type="button"
+              onClick={() => setEstado({ fase: 'guia-b1' })}
+              disabled={estado.fase === 'cargando'}
+              data-testid="ir-guia-b1"
+              className="flex items-center justify-center gap-2 rounded-md border border-borde px-4 py-3 text-texto disabled:opacity-40"
+            >
+              <ClipboardDocumentListIcon className="size-5" />
+              Guía de la toma B1 (3D)
+            </button>
+          )}
           {HAY_AUDIO && <Claqueta />}
           {estado.fase === 'cargando' && <p className="text-texto-2">Leyendo «{estado.nombre}»…</p>}
           {estado.fase === 'inicio' && estado.error && (
@@ -566,6 +580,12 @@ function Aplicacion() {
             Cancelar
           </button>
         </div>
+      )}
+
+      {estado.fase === 'guia-b1' && (
+        <Suspense fallback={<p className="text-texto-2">Cargando…</p>}>
+          <GuiaTomaB1 alSalir={() => setEstado({ fase: 'inicio' })} alEmparejar={() => setEstado({ fase: 'emparejar', codigo: null })} />
+        </Suspense>
       )}
 
       {estado.fase === 'emparejar' && (
