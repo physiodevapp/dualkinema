@@ -1,3 +1,4 @@
+import type { OrientacionVista } from '../geometria/canonico'
 import { fft, siguientePotencia2 } from './fft'
 
 /*
@@ -324,3 +325,14 @@ export function combinarIdaVuelta(d: DeteccionesIdaVuelta): IdaVuelta {
 
 /** Cuándo pita cada móvil (s desde el inicio): primero el de la vista de referencia (perfil), luego el otro. */
 export const instantePitido = (esReferencia: boolean): number => (esReferencia ? PITIDO_REFERENCIA_S : PITIDO_OTRA_S)
+
+/**
+ * ¿Pita primero este móvil? El de perfil, si el otro no lo es; con los dos de perfil (uno en cada flanco, para el 3D), el
+ * que ve a la persona mirando a la derecha. Los dos móviles lo deciden igual con las dos vistas, así que nunca pitan a la vez
+ * (antes, con dos perfiles, los dos se creían el primero y sus secuencias se pisaban: ninguno oía la del otro).
+ */
+export function pitaPrimero(propia: OrientacionVista, otra: OrientacionVista | null): boolean {
+  if (propia.plano !== 'sagital') return false
+  if (!otra || otra.plano !== 'sagital') return true
+  return propia.mira === 'derecha'
+}
