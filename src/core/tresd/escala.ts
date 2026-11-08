@@ -10,8 +10,13 @@ import { PROPORCIONES } from './sintetico'
 /** Fracción de la estatura entre el tobillo y el hombro, de pie. */
 export const TOBILLO_HOMBRO = PROPORCIONES.hombro - PROPORCIONES.tobillo
 
-/** Diferencia relativa a partir de la cual la distancia entre los móviles no casa con la escala (aviso). */
-export const DISCREPANCIA_DISTANCIA = 0.1
+/**
+ * Diferencia (m) a partir de la cual la distancia entre los móviles no casa con la del pitido (aviso). La del pitido es el
+ * tiempo de vuelo del sonido de un altavoz al micrófono del otro, con la latencia de salida que declara cada móvil: cada
+ * milisegundo de error son 34 cm. En la primera toma real (08-11) dio 1,68 m con 1,91 m de cinta y 1,94 m por la estatura;
+ * con un 10 % de margen avisaba sin motivo. Para la sincronía no importa: ahí esos errores se cancelan entre ida y vuelta.
+ */
+export const DISCREPANCIA_DISTANCIA_M = 0.5
 
 /**
  * Metros por unidad del mundo calibrado a partir de la estatura (m) y, por instante, el hombro y el tobillo de cada lado
@@ -29,7 +34,7 @@ export function escalaPorEstatura(estatura: number, pares: readonly { readonly h
 /** Si la distancia entre los móviles de la calibración (m) casa con la medida (pitido o cinta): diferencia relativa y aviso. */
 export function compararDistancia(calibrada: number, medida: number): { readonly diferencia: number; readonly casa: boolean } {
   const diferencia = (calibrada - medida) / medida
-  return { diferencia, casa: Math.abs(diferencia) <= DISCREPANCIA_DISTANCIA }
+  return { diferencia, casa: Math.abs(calibrada - medida) <= DISCREPANCIA_DISTANCIA_M }
 }
 
 /**

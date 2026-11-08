@@ -283,7 +283,7 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     titulo: 'Escala por la estatura',
     texto: [
       'La calibración con la persona da las posiciones a escala desconocida (como un plano sin escala). Los ángulos no la necesitan; los metros sí. Se sacan de la estatura: de pie, del tobillo al hombro hay un 77,9 % de la estatura (proporciones de Winter), con un 2 o 3 % de variación entre personas. Si se escribe la distancia entre los móviles medida con cinta, manda ella.',
-      'Con la grabación doble, la distancia entre los móviles que mide el pitido de ida y vuelta sirve de comprobación: si no casa con la de la calibración en más de un 10 %, se avisa.',
+      'Con la grabación doble, la distancia entre los móviles que mide el pitido de ida y vuelta sirve de comprobación: si no casa con la de la calibración en más de medio metro, se avisa. Es una comprobación gruesa: cada milisegundo de error en la latencia de salida de un móvil son 34 cm de distancia (en la primera toma real, el pitido dio 1,68 m con 1,91 m de cinta). Para medir la distancia, mejor la cinta.',
     ],
   },
   {
