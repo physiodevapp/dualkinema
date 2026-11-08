@@ -109,7 +109,7 @@ describe('esquema de la sesión', () => {
   it('cabecera de la versión actual con los huecos de los pasos siguientes vacíos', () => {
     const { cabecera } = prepararGuardado(entrada())
     expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL)
-    expect(ESQUEMA_ACTUAL).toBe(5)
+    expect(ESQUEMA_ACTUAL).toBe(6)
     expect(cabecera.filtro).toBeNull()
     // Sin decir nada: la vista sigue todos los marcadores del modelo, sin sincronizar, y es la referencia.
     expect(cabecera.vistas[0]).toMatchObject({ desfase: 0, calibracion: null, ceros: {}, marcadores: [cadera, rodilla, tobillo], sincronia: { metodo: 'ninguna' }, deteccion: null })
@@ -379,6 +379,57 @@ describe('varias vistas (esquema 3)', () => {
     expect(c).toEqual({ ok: true, valor: cabecera })
     if (!c.ok) return
     expect(leerDatos(comoIDB({ ...datos, esquema: 4 }), c.valor)).toEqual({ ok: true, valor: comoIDB(datos) })
+  })
+
+  it('una sesión guardada con el esquema 5 se lee igual, sin calibración 3D, estatura ni sensores (migración 5 → 6)', () => {
+    const { cabecera, datos } = prepararGuardado(entradaDos())
+    const sin = (o: object, k: string) => Object.fromEntries(Object.entries(o).filter(([c]) => c !== k))
+    const comoV5 = { ...sin(sin(cabecera, 'calibracion3d'), 'estatura'), esquema: 5, vistas: cabecera.vistas.map((v) => sin(v, 'sensores')) }
+    const c = leerCabecera(comoIDB(comoV5))
+    expect(c).toEqual({ ok: true, valor: cabecera })
+    if (!c.ok) return
+    expect(c.valor.calibracion3d).toBeNull()
+    expect(c.valor.vistas.every((v) => v.sensores === null)).toBe(true)
+    expect(leerDatos(comoIDB({ ...datos, esquema: 5 }), c.valor)).toEqual({ ok: true, valor: comoIDB(datos) })
+  })
+
+  it('guarda y lee la calibración 3D, la estatura y los sensores de cada vista (esquema 6)', () => {
+    const e = entradaDos()
+    const camara = { f: 1500, cx: 540, cy: 960, R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] as [number, number, number] }
+    const calibracion3d = {
+      fecha: '2026-11-08T10:00:00.000Z',
+      vistas: [e.vistas[0]!.id, e.vistas[1]!.id] as [string, string],
+      tramo: { desde: 0, hasta: 6 },
+      instantes: 120,
+      correspondencias: 1400,
+      camaras: [camara, { ...camara, t: [-1, 0, 0] as [number, number, number] }] as const,
+      metrosPorUnidad: 4.2,
+      escalaDe: 'estatura' as const,
+      suelo: -0.24,
+      errorMediano: 1.3,
+      errorPorPunto: { pose_cadera_izq: 2.1 },
+      fraccionBuenas: 0.9,
+      sinVertical: [false, false] as const,
+      correccionVertical: [0.3, 0.5] as const,
+    }
+    const sensores = { pantalla: 0 as const, giroPantalla: false, ventanas: [{ t: 0, n: 60, g: [0, 9.8, 0.1] as const, de: 0.02, giroMax: 0.5 }] }
+    const { cabecera } = prepararGuardado({ ...e, calibracion3d, estatura: 1.75, vistas: [{ ...e.vistas[0]!, sensores }, e.vistas[1]!] })
+    const c = leerCabecera(comoIDB(cabecera))
+    expect(c).toEqual({ ok: true, valor: cabecera })
+    if (!c.ok) return
+    expect(c.valor.calibracion3d).toEqual(calibracion3d)
+    expect(c.valor.estatura).toBe(1.75)
+    expect(c.valor.vistas[0]!.sensores).toEqual(sensores)
+    const casos: [Record<string, unknown>, RegExp][] = [
+      [{ ...cabecera, estatura: 17 }, /estatura no válida/],
+      [{ ...cabecera, calibracion3d: { ...calibracion3d, errorMediano: NaN } }, /calibración 3D no válida/],
+      [{ ...cabecera, calibracion3d: { ...calibracion3d, vistas: ['x', 'y'] } }, /vistas que no están en la sesión/],
+      [{ ...cabecera, vistas: [{ ...cabecera.vistas[0]!, sensores: { pantalla: 45, ventanas: [] } }, cabecera.vistas[1]] }, /sensores no válidos/],
+    ]
+    for (const [registro, motivo] of casos) {
+      const r = leerCabecera(registro)
+      expect(!r.ok && r.detalle).toMatch(motivo)
+    }
   })
 
   it('guarda y lee la detección sin marcadores y un modelo con ángulos absolutos (esquema 5)', () => {

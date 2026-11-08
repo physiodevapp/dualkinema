@@ -225,6 +225,31 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'tres-d',
+    titulo: '3D calibrado con la persona',
+    texto: [
+      'Con dos vídeos de la misma toma desde dos sitios (lo mejor, un móvil en cada flanco por delante de la persona, a unos 90° entre ellos), cada punto del cuerpo visto por los dos se puede situar en el espacio. Para eso hay que saber dónde está un móvil respecto al otro y la focal de cada uno: «Calibrar en 3D» lo calcula con los propios puntos del cuerpo, sin ningún objeto de calibración, y con la vertical del acelerómetro de cada móvil (la app lo guarda al grabar).',
+      'Hace falta el cuerpo detectado en las dos vistas y las dos sincronizadas (mejor por el pitido de la grabación doble). Calibra mejor si la persona da unos pasos por la zona al principio: con ella siempre en el mismo sitio, la focal queda mal determinada. Se dice el ángulo entre los dos móviles visto desde la persona, su distancia, la altura de cada uno sobre el suelo y el campo de visión de cada cámara (en un móvil, de unos 60 a 80° sobre el lado largo).',
+      'Las dos vistas no ven exactamente el mismo punto: el modelo estima el centro de cada articulación desde lo que ve, y desde un lado la cadera puede caer en otro sitio que desde el otro. El error por punto del cuerpo lo dice, pero solo en parte (ver «Error de reproyección»). Los puntos 3D no se guardan: se recalculan de los puntos de cada vista, así que corregir uno a mano cambia su 3D.',
+    ],
+  },
+  {
+    id: 'reproyeccion',
+    titulo: 'Error de reproyección',
+    texto: [
+      'Con las dos cámaras calibradas, cada punto del cuerpo se sitúa en el espacio y se vuelve a proyectar en cada vídeo: la distancia en píxeles entre donde cae y donde lo marcó el modelo es el error de reproyección. Se da la mediana de todos y la de cada punto del cuerpo. Con puntos bien detectados y las vistas bien sincronizadas, unos pocos píxeles; más de un 0,4 % del lado largo de la imagen (unos 8 px en 1080p) es alto: suele ser la sincronía, un móvil que se movió o puntos mal detectados.',
+      'Lo que no ve: un error del modelo a lo largo de la línea que une las dos cámaras vista en cada imagen (casi horizontal con los móviles a la misma altura) no cambia la reproyección, solo la profundidad del punto. Por eso un error por punto bajo no garantiza que las dos vistas marquen el mismo sitio: lo dirán las longitudes de los segmentos en 3D, que deben ser constantes.',
+    ],
+  },
+  {
+    id: 'escala-estatura',
+    titulo: 'Escala por la estatura',
+    texto: [
+      'La calibración con la persona da las posiciones a escala desconocida (como un plano sin escala). Los ángulos no la necesitan; los metros sí. Se sacan de la estatura: de pie, del tobillo al hombro hay un 77,9 % de la estatura (proporciones de Winter), con un 2 o 3 % de variación entre personas. Si se escribe la distancia entre los móviles medida con cinta, manda ella.',
+      'Con la grabación doble, la distancia entre los móviles que mide el pitido de ida y vuelta sirve de comprobación: si no casa con la de la calibración en más de un 10 %, se avisa.',
+    ],
+  },
+  {
     id: 'sin-marcadores',
     titulo: 'Sin marcadores',
     texto: [

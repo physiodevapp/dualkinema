@@ -1,6 +1,7 @@
 import type { IdMarcador, TamanoModeloPose } from '../core/modelo/tipos'
 import type { Hueco } from '../core/seguimiento/huecos'
 import type { ResultadoAudio } from '../core/sincronia/audio'
+import type { Calibracion3D, EntradaCalibrar3D } from '../core/tresd/calibracion3d'
 
 export type { Hueco }
 
@@ -108,4 +109,15 @@ export type DelWorkerPose =
       readonly recuperados: number
       readonly msAtras: number
     }
+  | { readonly tipo: 'error'; readonly mensaje: string }
+
+/** Calibrar en 3D (fase 6, paso 3; `workers/calibracion3d.worker.ts`): las correspondencias ya emparejadas, y el resultado. */
+export interface AlWorkerCalibracion3D {
+  readonly tipo: 'calibrar'
+  readonly entrada: EntradaCalibrar3D
+}
+
+export type DelWorkerCalibracion3D =
+  /** null: no había instantes bastantes con las dos vistas. */
+  | { readonly tipo: 'hecho'; readonly calibracion: Calibracion3D | null; readonly ms: number }
   | { readonly tipo: 'error'; readonly mensaje: string }

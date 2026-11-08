@@ -5,6 +5,7 @@ import { conPose, fuenteDe, marcadoresSinMarcadores, type Fuente } from '../core
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores, Sincronia } from '../core/modelo/tipos'
+import type { Calibracion3D } from '../core/tresd/calibracion3d'
 import type { VideoAbierto } from '../media/video'
 import { ladoDeVista } from './marcadores'
 import AnfitrionVista from './visor/AnfitrionVista'
@@ -27,6 +28,9 @@ interface Props {
   onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista, fuente: Fuente) => void
   /** La pestaña con que empezar (al abrir una grabación doble, «Vídeo», donde está la sincronía propuesta). */
   pestanaInicial?: string
+  /** Al recuperar: la calibración 3D y la estatura guardadas (fase 6). */
+  calibracion3d?: Calibracion3D | null
+  estatura?: number | null
 }
 
 interface PropsAnfitriones {
@@ -80,7 +84,7 @@ function Anfitriones({ entradas, acumuladas, modelo, filtro, avisoInicial, activ
  * vista activa con el cursor común y la pestaña abierta. `CuerpoVisor` pinta la vista activa y se ocupa de lo común
  * (reparto de la pantalla y guardado).
  */
-export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, avisoInicial, onAnadirVista, pestanaInicial }: Props) {
+export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, avisoInicial, onAnadirVista, pestanaInicial, calibracion3d: calibracionGuardada, estatura: estaturaGuardada }: Props) {
   // Un único modelo por sesión con todos los marcadores (D4): la rodilla con 3 gomets en la pierna que ve la cámara de la
   // vista de referencia (lateral) y, para una vista de frente, sus 3 marcadores y el FPPA de esa rodilla. Cada vista sigue
   // los suyos (`modeloDeVista`). Una sesión recuperada parte del que se guardó con ella. Se fija al abrir, ya con lo de la
@@ -128,6 +132,13 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
     setAjustes(a)
     setRevAjustes((n) => n + 1)
   }, [])
+  // La calibración 3D de las dos vistas y la estatura (fase 6): de la sesión, como el filtro.
+  const [tresd, setTresd] = useState<{ calibracion: Calibracion3D | null; estatura: number | null }>({ calibracion: calibracionGuardada ?? null, estatura: estaturaGuardada ?? null })
+  const [rev3d, setRev3d] = useState(0)
+  const fijarTresd = useCallback((calibracion: Calibracion3D | null, estatura: number | null) => {
+    setTresd({ calibracion, estatura })
+    setRev3d((n) => n + 1)
+  }, [])
   // Pestañas de herramientas. Con un vídeo nuevo (nada marcado todavía) se empieza en «Marcar»; al recuperar un trabajo,
   // en la pestaña que se usó. Viven aquí (no en el cuerpo) para no perderse al abrir otra vista.
   const [pestana, setPestanaAbierta] = useState<string>(() => pestanaInicial ?? (recuperada ? leerPestana() : PESTANA_DEFECTO))
@@ -167,6 +178,10 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
           ajustes={ajustes}
           onCambiarAjustes={cambiarAjustes}
           revAjustes={revAjustes}
+          calibracion3d={tresd.calibracion}
+          estatura={tresd.estatura}
+          onCalibracion3d={fijarTresd}
+          rev3d={rev3d}
           onElegirVista={cursor.elegirActiva}
           onAnadirVista={onAnadirVista}
         />
