@@ -120,6 +120,7 @@ describe('puntos 3D de la sesión: triangular, marco del laboratorio y filtro', 
     estatura: H,
     distanciaCinta: null,
     fecha: '2026-11-08T10:00:00.000Z',
+    desfases: [0, 0],
   })!
 
   it('los ángulos de la sentadilla a través de las cámaras calibradas caen en la verdad', () => {

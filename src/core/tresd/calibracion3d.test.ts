@@ -5,6 +5,7 @@ import { idPose } from '../pose/puntos'
 import { crearTablaFrames } from '../tiempo/tablaFrames'
 import { calibrar3D, campoDeVision, esCalibracion3D, informe3D, nombrePunto, resumir3D, textoAviso } from './calibracion3d'
 import { aplicar, camaraMirando, centro, focalPrevia, proyectar, type Camara } from './camara'
+import { estaturaEnMetros } from './escala'
 import { correspondencias, instantesConCorrespondencias, posicionEn, type VistaParaEmparejar } from './correspondencias'
 import { estadoEn, puntosDe } from './sintetico'
 
@@ -84,7 +85,7 @@ describe('calibrar3D con la persona sintética', () => {
   const B = camaraMirando(vec3(-3 * Math.SQRT1_2, 3 * Math.SQRT1_2, 0.8), vec3(0, 0, 0.85), ARRIBA, f * 1.05, IMG.ancho, IMG.alto)
   const tA = Array.from({ length: 180 }, (_, k) => k / 30)
   const c = correspondencias(vista(A, tA, 0), vista(B, tA, 0), IDS)
-  const base = { vistas: ['a', 'b'] as const, correspondencias: c, imagenes: [IMG, IMG] as const, verticales: [abajoEn(A), abajoEn(B)] as const, tramo: null, fecha: '2026-11-08T10:00:00.000Z' }
+  const base = { vistas: ['a', 'b'] as const, correspondencias: c, imagenes: [IMG, IMG] as const, verticales: [abajoEn(A), abajoEn(B)] as const, tramo: null, fecha: '2026-11-08T10:00:00.000Z', desfases: [0, 0] as const }
   const dist = (p: Vec3, q: Vec3) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z)
   const DISTANCIA = dist(centro(A), centro(B))
 
@@ -143,6 +144,18 @@ describe('calibrar3D con la persona sintética', () => {
     const malas = c.map((k) => (k.id === idPose('cadera', 'der') ? { ...k, b: { u: k.b.u + 25, v: k.b.v } } : k))
     const cal = calibrar3D({ ...base, correspondencias: malas, estatura: H, distanciaCinta: null })!
     expect(cal.errorPorPunto[idPose('cadera', 'der')]).toBeLessThan(1)
+  })
+
+  it('una calibración degenerada (nada triangulable) no se devuelve: guardada, la sesión no se abriría', () => {
+    // B ve todo a la vez en el mismo píxel: ningún punto se puede triangular.
+    const rotas = c.map((k) => ({ ...k, b: { u: 540, v: 960 } }))
+    expect(calibrar3D({ ...base, correspondencias: rotas, estatura: H, distanciaCinta: null })).toBeNull()
+  })
+
+  it('la estatura escrita: en cm o en m, y nada si no es razonable', () => {
+    expect(estaturaEnMetros(175)).toBe(1.75)
+    expect(estaturaEnMetros(1.62)).toBe(1.62)
+    for (const raro of [3, 350, 1755, 0.5, NaN]) expect(estaturaEnMetros(raro)).toBeNull()
   })
 
   it('con pocos instantes no calibra', () => {

@@ -4,7 +4,8 @@ import { marcadoresSinMarcadores } from '../../core/pose/catalogo'
 import { esPuntoMedio } from '../../core/pose/puntos'
 import { movimiento, verticalCamara, type Sensores } from '../../core/sensores/sensores'
 import { pasoTipico } from '../../core/sincronia/evento'
-import { INSTANTES_MINIMOS, informe3D, nombrePunto, resumir3D, textoAviso, type Calibracion3D } from '../../core/tresd/calibracion3d'
+import { CAMBIO_DESFASE_S, INSTANTES_MINIMOS, informe3D, nombrePunto, resumir3D, textoAviso, type Calibracion3D } from '../../core/tresd/calibracion3d'
+import { estaturaEnMetros } from '../../core/tresd/escala'
 import { correspondencias, instantesConCorrespondencias, type VistaParaEmparejar } from '../../core/tresd/correspondencias'
 import type { AlWorkerCalibracion3D, DelWorkerCalibracion3D } from '../../workers/protocolo'
 import { InfoGlosario } from '../glosario/Glosario'
@@ -82,7 +83,11 @@ export default function Calibrar3D({ a, b, calibracion, estatura, onCalibracion,
 
   const calibrar = async () => {
     const alt = leerNumero(textoEstatura)
-    const estaturaM = alt === null ? null : alt > 3 ? alt / 100 : alt
+    const estaturaM = estaturaEnMetros(alt)
+    if (alt !== null && estaturaM === null) {
+      setEstado({ fase: 'error', mensaje: 'la estatura no parece bien escrita (en cm, entre 100 y 250).' })
+      return
+    }
     const cinta = leerNumero(textoCinta)
     if (instantes < INSTANTES_MINIMOS) {
       setEstado({ fase: 'pocos' })
@@ -106,7 +111,7 @@ export default function Calibrar3D({ a, b, calibracion, estatura, onCalibracion,
         if (m.calibracion) {
           onCalibracion(m.calibracion, estaturaM)
           setEstado({ fase: 'parado' })
-        } else setEstado({ fase: 'pocos' })
+        } else setEstado({ fase: 'error', mensaje: 'con estos datos el cálculo no converge (pocos instantes buenos o las dos vistas no casan: revisa la sincronía).' })
       } else setEstado({ fase: 'error', mensaje: m.mensaje })
       w.terminate()
       worker.current = null
@@ -128,6 +133,7 @@ export default function Calibrar3D({ a, b, calibracion, estatura, onCalibracion,
         estatura: estaturaM,
         distanciaCinta: cinta,
         fecha: new Date().toISOString(),
+        desfases: [a.desfaseS, b.desfaseS],
       },
     } satisfies AlWorkerCalibracion3D)
   }
@@ -217,6 +223,11 @@ export default function Calibrar3D({ a, b, calibracion, estatura, onCalibracion,
       {estado.fase === 'pocos' && <p className="text-sm text-acento">No hay bastantes instantes con el cuerpo en las dos vistas para calibrar.</p>}
       {estado.fase === 'error' && <p className="text-sm text-acento">No se ha podido calibrar: {estado.mensaje}</p>}
 
+      {vigente?.desfases && (Math.abs(vigente.desfases[0] - a.desfaseS) > CAMBIO_DESFASE_S || Math.abs(vigente.desfases[1] - b.desfaseS) > CAMBIO_DESFASE_S) && (
+        <p className="flex gap-2 text-sm text-acento" data-testid="aviso-sinc-3d">
+          <ExclamationTriangleIcon className="size-5 shrink-0" /> La sincronía ha cambiado desde la calibración: vuelve a calibrar.
+        </p>
+      )}
       {vigente && resumen && (
         <div className="flex flex-col gap-2 rounded-md border border-borde p-3" data-testid="resultado-3d">
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-sm">

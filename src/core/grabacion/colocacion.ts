@@ -12,7 +12,7 @@ export const ALABEO_MAX = 3
 export interface Inclinacion {
   /** + mirando hacia abajo (°). */
   readonly cabeceo: number
-  /** + con el horizonte subiendo hacia la derecha de la imagen (°). */
+  /** + con la gravedad inclinada hacia la derecha de la imagen: el móvil girado en sentido horario (°); se endereza al revés. */
   readonly alabeo: number
 }
 
@@ -34,7 +34,7 @@ export function revisarInclinacion(i: Inclinacion): RevisionInclinacion {
   const bienAlabeo = Math.abs(i.alabeo) <= ALABEO_MAX
   const consejos: string[] = []
   if (!bienCabeceo) consejos.push(i.cabeceo > 0 ? 'levanta la cámara: mira demasiado hacia abajo (súbelo o apóyalo más bajo, a la altura de la cadera)' : 'baja la cámara: mira demasiado hacia arriba')
-  if (!bienAlabeo) consejos.push(`endereza el móvil: la imagen está girada (gíralo un poco en sentido ${i.alabeo > 0 ? 'horario' : 'antihorario'})`)
+  if (!bienAlabeo) consejos.push(`endereza el móvil: la imagen está girada (gíralo un poco en sentido ${i.alabeo > 0 ? 'antihorario' : 'horario'})`)
   return {
     bienCabeceo,
     bienAlabeo,

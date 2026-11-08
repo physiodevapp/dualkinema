@@ -11,8 +11,8 @@ describe('colocación de un móvil por su inclinación', () => {
     const r = revisarInclinacion({ cabeceo: 18, alabeo: 5 })
     expect(r.bienCabeceo).toBe(false)
     expect(r.bienAlabeo).toBe(false)
-    expect(r.consejo).toMatch(/^Levanta la cámara.*; endereza el móvil.*horario\)\.$/)
-    expect(revisarInclinacion({ cabeceo: -12, alabeo: -4 }).consejo).toMatch(/^Baja la cámara.*antihorario/)
+    expect(r.consejo).toMatch(/^Levanta la cámara.*; endereza el móvil.*antihorario\)\.$/)
+    expect(revisarInclinacion({ cabeceo: -12, alabeo: -4 }).consejo).toMatch(/^Baja la cámara.*sentido horario/)
     expect(revisarInclinacion({ cabeceo: -12, alabeo: 0 }).cabeceo).toBe('mira hacia arriba 12°')
   })
 

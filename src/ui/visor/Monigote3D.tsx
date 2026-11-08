@@ -46,10 +46,13 @@ export default function Monigote3D({ tr, calibracion, imagenes, indice }: Props)
     const todos: Vec3[] = []
     for (const s of tr.series.values()) for (const p of s) if (p && p.calidad > 0) todos.push(vec3(p.x, p.y, p.z))
     const camaras = calibracion.camaras.map((g, i) => aristasCamara(camaraDe(g), imagenes[i]!.ancho, imagenes[i]!.alto, tr.enMetros ? 0.3 : 0.07, aMundo))
-    const xs = [...todos, ...camaras.flat(2)].map((p) => [p.x, p.y])
-    const ext = xs.length ? xs.reduce((m, [x, y]) => Math.max(m, Math.abs(x!), Math.abs(y!)), 0) : 1
+    // La extensión del suelo: el percentil 98 de la persona (un punto mal triangulado muy lejos no la dispara) y las cámaras.
+    const absolutos = todos.map((p) => Math.max(Math.abs(p.x), Math.abs(p.y))).sort((x, y) => x - y)
+    const persona = absolutos.length ? absolutos[Math.floor(0.98 * (absolutos.length - 1))]! : 1
+    const ext = Math.max(persona, ...camaras.flat(2).map((p) => Math.max(Math.abs(p.x), Math.abs(p.y))))
     const paso = tr.enMetros ? 0.5 : 0.1
-    const lado = Math.ceil(ext / paso) * paso
+    // Como mucho 40 líneas por lado.
+    const lado = Math.min(Math.ceil(ext / paso), 20) * paso
     const rejilla: (readonly [Vec3, Vec3])[] = []
     for (let k = -lado; k <= lado + 1e-9; k += paso) {
       rejilla.push([vec3(k, -lado, 0), vec3(k, lado, 0)], [vec3(-lado, k, 0), vec3(lado, k, 0)])
@@ -66,7 +69,7 @@ export default function Monigote3D({ tr, calibracion, imagenes, indice }: Props)
     c.height = Math.round(alto * dpr)
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, ancho, alto)
-    const e = encuadre([...escena.todos, ...escena.camaras.flat(2), ...escena.rejilla.flat()], vista, ancho, alto, 12)
+    const e = encuadre([...escena.camaras.flat(2), ...escena.rejilla.flat()], vista, ancho, alto, 12)
     const px = (p: Vec3) => aLienzo(proyectarOrto(p, vista), e, ancho, alto)
     const linea = (a: Vec3, b: Vec3) => {
       const p = px(a)

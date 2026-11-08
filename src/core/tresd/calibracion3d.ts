@@ -46,7 +46,12 @@ export interface Calibracion3D {
   readonly sinVertical: readonly [boolean, boolean]
   /** Corrección del ajuste a la vertical del acelerómetro de cada móvil (°). */
   readonly correccionVertical: readonly [number, number]
+  /** El desfase de cada vista al calibrar (s). Opcional: sin él, no se comprueba. */
+  readonly desfases?: readonly [number, number]
 }
+
+/** Diferencia de desfase (s) a partir de la cual la sincronía ha cambiado desde la calibración. */
+export const CAMBIO_DESFASE_S = 0.001
 
 export interface EntradaCalibrar3D {
   readonly vistas: readonly [string, string]
@@ -58,6 +63,8 @@ export interface EntradaCalibrar3D {
   readonly estatura: number | null
   readonly distanciaCinta: number | null
   readonly fecha: string
+  /** El desfase de cada vista con que se emparejó (s): si la sincronía cambia después, la calibración ya no vale. */
+  readonly desfases: readonly [number, number]
 }
 
 /** Instantes mínimos para intentar calibrar (con menos, el ajuste no tiene de dónde sacar la focal ni el giro). */
@@ -108,7 +115,7 @@ export function calibrar3D(e: EntradaCalibrar3D): Calibracion3D | null {
     metrosPorUnidad = escalaDeEstatura(e.estatura, e.correspondencias, r)
     escalaDe = metrosPorUnidad ? 'estatura' : null
   }
-  return {
+  const resultado: Calibracion3D = {
     fecha: e.fecha,
     vistas: e.vistas,
     tramo: e.tramo,
@@ -123,7 +130,10 @@ export function calibrar3D(e: EntradaCalibrar3D): Calibracion3D | null {
     fraccionBuenas: r.fraccionBuenas,
     sinVertical: r.sinVertical,
     correccionVertical: r.correccionVertical,
+    desfases: e.desfases,
   }
+  // Una calibración degenerada (todo sin triangular, el ajuste divergió) no se devuelve: guardada, la sesión no se abriría.
+  return esCalibracion3D(resultado) ? resultado : null
 }
 
 const distancia = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
@@ -340,7 +350,9 @@ export function esCalibracion3D(v: unknown): v is Calibracion3D {
     Object.values(c.errorPorPunto).every(finito) &&
     finito(c.fraccionBuenas) &&
     par(c.sinVertical, (x) => typeof x === 'boolean') &&
-    par(c.correccionVertical, finito)
+    par(c.correccionVertical, finito) &&
+    (c.desfases === undefined || par(c.desfases, finito)) &&
+    ((c.camaras as unknown[]) ?? []).every((k) => (k as { f: number }).f > 0)
   )
 }
 

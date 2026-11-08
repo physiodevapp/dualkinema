@@ -204,7 +204,8 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     resumen: { frames: e.vistas.reduce((s, v) => s + v.huella.frames, 0), conDatos, aMano, interpolados },
     claves: e.vistas.map((v) => claveHuella(v.huella)),
     calibracion3d: e.calibracion3d ?? null,
-    estatura: e.estatura ?? null,
+    // Una estatura fuera de lo que se lee no se guarda (si no, la sesión no se volvería a abrir).
+    estatura: e.estatura && e.estatura > 0 && e.estatura < 3 ? e.estatura : null,
   }
   return { cabecera, datos: { esquema: ESQUEMA_ACTUAL, id: e.id, trayectorias } }
 }
