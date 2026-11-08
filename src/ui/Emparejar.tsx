@@ -19,7 +19,9 @@ import { useInclinacion } from './useInclinacion'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
 import { RevisionSensores } from './RevisionSensores'
 import { GUIONES, guionPorId, numeroGrabacion, siguienteGuion, type GuionVoz } from '../core/grabacion/guionVoz'
-import { HAY_VOZ } from '../sala/voz'
+import { callar, HAY_VOZ, hablar } from '../sala/voz'
+import { enteraEn, fraseEncuadre, type Encuadre } from '../core/grabacion/encuadre'
+import { useEncuadre } from './useEncuadre'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil } from '../core/sala/protocolo'
 import { CALIDAD_PITIDO_MINIMA, DURACION_SECUENCIA_S, PITIDO_OTRA_S, VENTANA_DESPUES_S, type Deteccion } from '../core/sincronia/pitido'
@@ -91,6 +93,8 @@ function useMiEstado(
   microExterno: boolean,
   fpsGrabacion: number | null,
   inclinacion: Inclinacion | null,
+  encuadre: Encuadre | null,
+  pideEncuadre: boolean,
 ): EstadoMovil {
   const [libreMB, setLibreMB] = useState<number | null>(null)
   const [bateria, setBateria] = useState<number | null>(null)
@@ -117,8 +121,10 @@ function useMiEstado(
       microExterno,
       fpsGrabacion: fpsGrabacion === null ? null : Math.round(fpsGrabacion * 10) / 10,
       inclinacion,
+      encuadre,
+      pideEncuadre,
     }
-  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion])
+  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre])
 }
 
 /**
@@ -136,6 +142,22 @@ function Colocacion({ inclinacion, testid, otro = false }: { inclinacion: Inclin
       </p>
       {r.consejo && <Aviso testid={`${testid}-aviso`}>{otro ? `El otro móvil: ${r.consejo.charAt(0).toLowerCase()}${r.consejo.slice(1)}` : r.consejo}</Aviso>}
     </div>
+  )
+}
+
+/** Lo que ve una cámara de la persona («te ve entero ✓», «no se te ven los pies»…); nada si no se está comprobando. */
+function TextoEncuadre({ encuadre, activo, testid, quien }: { encuadre: Encuadre | null; activo: boolean; testid: string; quien: string }) {
+  if (!activo) return null
+  const bien = enteraEn(encuadre)
+  const texto = !encuadre
+    ? 'mirando…'
+    : bien
+      ? 'te ve entero ✓'
+      : fraseEncuadre(encuadre, encuadre).split(';')[0]!.replace(/^En este móvil /, '').replace(/\.$/, '')
+  return (
+    <p className={`font-mono text-sm ${encuadre && !bien ? 'text-acento' : ''}`} data-testid={testid} data-entera={encuadre ? String(bien) : ''}>
+      {quien}: {texto}
+    </p>
   )
 }
 
@@ -441,8 +463,15 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   const incCabeceo = incCruda ? redondearInclinacion(incCruda).cabeceo : null
   const incAlabeo = incCruda ? redondearInclinacion(incCruda).alabeo : null
   const miInclinacion = useMemo(() => (incCabeceo === null || incAlabeo === null ? null : { cabeceo: incCabeceo, alabeo: incAlabeo }), [incCabeceo, incAlabeo])
-  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion)
+  // Comprobar el encuadre (asistente de colocación): lo pide este móvil (y lo dice por voz) o lo pide el otro. Nunca
+  // mientras se graba (el detector competiría con el codificador).
+  const [comprobarEncuadre, setComprobarEncuadre] = useState(false)
+  const [pideOtro, setPideOtro] = useState(false)
+  const { encuadre: miEncuadre, error: errorEncuadre } = useEncuadre(video, (comprobarEncuadre || pideOtro) && !!flujo && !enMarcha)
+  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre)
   const sala: Sala = useSala(codigo, vista, miEstado)
+  const pideAhora = sala.conexion === 'emparejado' && !!sala.otro?.estado?.pideEncuadre
+  if (pideAhora !== pideOtro) setPideOtro(pideAhora)
   const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio, calidad)
   const ocupado = doble.fase.f === 'esperando' || doble.fase.f === 'programada' || doble.fase.f === 'grabando' || doble.fase.f === 'parando'
   if (grabando !== (doble.fase.f === 'grabando')) setGrabando(doble.fase.f === 'grabando')
@@ -451,6 +480,28 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   useEffect(() => {
     if (video.current) video.current.srcObject = flujo
   }, [flujo])
+
+  // Lo que se dice del encuadre de los dos: al cambiar y, mientras algo falle, cada 10 s (quien se coloca no ve la pantalla).
+  const encuadreOtro = sala.conexion === 'emparejado' ? (sala.otro?.estado?.encuadre ?? null) : null
+  const frase = comprobarEncuadre && !enMarcha && miEncuadre ? fraseEncuadre(miEncuadre, encuadreOtro) : null
+  const todoBien = enteraEn(miEncuadre) && enteraEn(encuadreOtro)
+  useEffect(() => {
+    if (!frase) return
+    hablar(frase)
+    if (todoBien) return
+    const id = setInterval(() => hablar(frase), 10_000)
+    return () => clearInterval(id)
+  }, [frase, todoBien])
+  const alternarEncuadre = () => {
+    if (comprobarEncuadre) {
+      setComprobarEncuadre(false)
+      callar()
+      return
+    }
+    setComprobarEncuadre(true)
+    // El navegador solo deja hablar tras un toque: se dice algo ya, que además comprueba que se oye.
+    hablar('Comprobando el encuadre. Colócate en tu sitio.')
+  }
 
   const url = urlDeSala(location.origin, codigo)
   const { otro, reloj, deriva } = sala
@@ -522,6 +573,24 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
         {!prevision && codificador === 'software' && <Aviso testid="aviso-codificador">{AVISO_SOFTWARE}</Aviso>}
         {microExterno && <Aviso testid="aviso-micro">{AVISO_MICRO_EXTERNO}</Aviso>}
         <Colocacion inclinacion={miInclinacion} testid="inclinacion-este" />
+        <div className="flex flex-col gap-2 rounded-md border border-borde p-3" data-testid="encuadre">
+          <button
+            type="button"
+            onClick={alternarEncuadre}
+            aria-pressed={comprobarEncuadre}
+            disabled={!flujo || enMarcha}
+            className={`${boton} text-sm ${comprobarEncuadre ? 'border-acento bg-acento/15' : ''}`}
+            data-testid="comprobar-encuadre"
+          >
+            {comprobarEncuadre ? 'Dejar de comprobar el encuadre' : `Comprobar que se me ve entero${HAY_VOZ ? ' (por voz)' : ''}`}
+          </button>
+          <p className="flex items-center gap-1 text-xs text-texto-2">
+            Los dos móviles miran si te ven de la cabeza a los pies y este te lo dice en voz alta mientras te colocas.
+            <InfoGlosario id="encuadre" tema="la comprobación del encuadre" className="-my-1.5" />
+          </p>
+          <TextoEncuadre encuadre={miEncuadre} activo={comprobarEncuadre || pideOtro} testid="encuadre-este" quien="Esta cámara" />
+          {errorEncuadre && <p className="text-sm text-acento">No se puede comprobar: {errorEncuadre}</p>}
+        </div>
       </div>
 
       {emparejado && (
@@ -544,6 +613,7 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
             <Aviso testid="aviso-codificador-otro">El otro móvil codifica el vídeo por software: puede grabar a menos de 30 fps.</Aviso>
           )}
           <Colocacion inclinacion={otro?.estado?.inclinacion ?? null} testid="inclinacion-otro" otro />
+          <TextoEncuadre encuadre={otro?.estado?.encuadre ?? null} activo={comprobarEncuadre || !!otro?.estado?.pideEncuadre} testid="encuadre-otro" quien="Su cámara" />
           {otro?.estado?.microExterno && (
             <Aviso testid="aviso-micro-otro">El otro móvil tiene unos auriculares o un micrófono externo conectados: que los desconecte, o no se oirá su pitido.</Aviso>
           )}

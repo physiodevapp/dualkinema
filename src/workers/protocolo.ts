@@ -140,3 +140,11 @@ export type DelWorkerEsqueleto =
   /** null: no hay bastantes puntos 3D para medir a la persona. */
   | { readonly tipo: 'hecho'; readonly resultado: ResultadoEsqueleto | null; readonly ms: number }
   | { readonly tipo: 'error'; readonly mensaje: string }
+
+/** Comprobar el encuadre de la vista previa (fase 6, asistente de colocación; `workers/encuadre.worker.ts`). */
+export type AlWorkerEncuadre = { readonly tipo: 'imagen'; readonly imagen: ImageBitmap }
+export type DelWorkerEncuadre =
+  | { readonly tipo: 'listo' }
+  /** Los 33 puntos normalizados de MediaPipe, o null si no hay nadie. */
+  | { readonly tipo: 'puntos'; readonly puntos: readonly { readonly x: number; readonly y: number; readonly visibility?: number }[] | null }
+  | { readonly tipo: 'error'; readonly mensaje: string }

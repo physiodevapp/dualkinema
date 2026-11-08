@@ -1,3 +1,4 @@
+import { leerEncuadre, type Encuadre } from '../grabacion/encuadre'
 import type { OrientacionVista } from '../geometria/canonico'
 
 /*
@@ -37,6 +38,10 @@ export interface EstadoMovil {
   readonly fpsGrabacion: number | null
   /** Su inclinación en directo (fase 6, paso 6; `core/grabacion/colocacion.ts`). null si no se sabe (o el otro es anterior). */
   readonly inclinacion: { readonly cabeceo: number; readonly alabeo: number } | null
+  /** Si su cámara ve a la persona entera (`core/grabacion/encuadre.ts`); null si no lo está comprobando. */
+  readonly encuadre: Encuadre | null
+  /** Pide al otro que compruebe también el encuadre (lo activó en él). */
+  readonly pideEncuadre: boolean
 }
 
 export type Mensaje =
@@ -87,7 +92,10 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
   // Añadido en la fase 6, igual de opcional.
   const i = o.inclinacion as Record<string, unknown> | null | undefined
   const inclinacion = i && typeof i === 'object' && finito(i.cabeceo) && finito(i.alabeo) && Math.abs(i.cabeceo) <= 90 && Math.abs(i.alabeo) <= 180 ? { cabeceo: i.cabeceo, alabeo: i.alabeo } : null
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion }
+  // Añadidos con la comprobación del encuadre, igual de opcionales.
+  const encuadre = leerEncuadre(o.encuadre)
+  const pideEncuadre = o.pideEncuadre === true
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */

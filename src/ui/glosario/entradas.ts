@@ -263,6 +263,14 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'encuadre',
+    titulo: 'Comprobar el encuadre',
+    texto: [
+      'En «Grabar con dos móviles», «Comprobar que se me ve entero» pone a los dos móviles a mirar su vista previa con el detector del cuerpo (unas dos veces por segundo, en el propio móvil: la imagen no sale de él) y a decir si se ve a la persona de la cabeza a los pies, con algo de margen, y sin que la corte un lado de la imagen. Basta con activarlo en uno: el otro también mira y se lo cuenta.',
+      'El móvil donde se activa lo dice en voz alta, porque quien se coloca no ve las pantallas: «Se te ve entero en los dos móviles», o qué falta y en cuál («En el otro móvil no se te ven los pies»). Mientras algo falle, lo repite cada 10 segundos; al moverse, lo dice en cuanto cambia. Se para solo al grabar.',
+    ],
+  },
+  {
     id: 'reproyeccion',
     titulo: 'Error de reproyección',
     texto: [
