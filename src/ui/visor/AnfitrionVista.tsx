@@ -56,5 +56,5 @@ export default function AnfitrionVista({ entrada, modelo, filtro, avisoInicial, 
     articulacionGuardada: entrada.articulacion,
     alUsarPose: usarPose,
   })
-  return children({ id: entrada.id, orientacion: entrada.orientacion, desfaseS: entrada.desfase, sincronia: entrada.sincronia, propuesta: entrada.propuesta, marcadores, anadirGomets, ...vista })
+  return children({ id: entrada.id, orientacion: entrada.orientacion, desfaseS: entrada.desfase, sincronia: entrada.sincronia, propuesta: entrada.propuesta, sensores: entrada.sensores ?? null, marcadores, anadirGomets, ...vista })
 }

@@ -44,6 +44,9 @@ import ConmutadorVista from './ConmutadorVista'
 import MiniaturaVista from './MiniaturaVista'
 import PanelComparacion, { useVistaComparada } from './PanelComparacion'
 import SincronizarVistas, { type MarcaEvento } from './SincronizarVistas'
+import Calibrar3D from './Calibrar3D'
+import Panel3D from './Panel3D'
+import type { Calibracion3D } from '../../core/tresd/calibracion3d'
 import { rangoSesion } from '../../core/tiempo/comun'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
 import { incertidumbreEvento, pasoTipico } from '../../core/sincronia/evento'
@@ -91,11 +94,16 @@ interface Props {
   ajustes: AjustesFiltro
   onCambiarAjustes: (a: AjustesFiltro) => void
   revAjustes: number
+  /** La calibración 3D de la sesión y la estatura (fase 6), su cambio y su contador para el guardado. */
+  calibracion3d: Calibracion3D | null
+  estatura: number | null
+  onCalibracion3d: (c: Calibracion3D | null, estatura: number | null) => void
+  rev3d: number
   onElegirVista: (id: string) => void
   onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista, fuente: Fuente) => void
 }
 
-export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, ajustes, onCambiarAjustes: cambiarAjustes, revAjustes, onElegirVista, onAnadirVista }: Props) {
+export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, ajustes, onCambiarAjustes: cambiarAjustes, revAjustes, calibracion3d, estatura, onCalibracion3d, rev3d, onElegirVista, onAnadirVista }: Props) {
   const activaViva = vistas[activa]!
   const orientacion = activaViva.orientacion
   // La articulación que se mira en la vista activa (fase 5: la elegida en «Análisis»).
@@ -210,9 +218,12 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       marcadores: w.marcadores,
       deteccion: w.deteccion,
       articulacion: w.articulacion.id,
+      sensores: w.sensores,
     })),
+    calibracion3d,
+    estatura,
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: revSinc + revAjustes + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion, 0),
+    version: revSinc + revAjustes + rev3d + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion, 0),
     recuperada,
     sinGuardar,
   })
@@ -934,6 +945,18 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               tiemposGrafica={tiemposGrafica}
               onBuscar={buscarEnComun}
             />
+            {vistas.length === 2 && calibracion3d && calibracion3d.vistas[0] === vistas[0]!.id && calibracion3d.vistas[1] === vistas[1]!.id && rangoComun && (
+              <Panel3D
+                a={vistas[0]!}
+                b={vistas[1]!}
+                calibracion={calibracion3d}
+                ajustes={ajustes}
+                instante={deseado < total ? tabla.tiempos[deseado]! + desfaseActiva : null}
+                desde={rangoComun.desde}
+                hasta={rangoComun.hasta}
+                onBuscar={buscarEnComun}
+              />
+            )}
           </PanelPestana>
 
           <PanelPestana id="escala" activa={pestana === 'escala'}>
@@ -972,6 +995,16 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                 onEmpezar={empezarEvento}
                 onTerminar={terminarEvento}
                 onMarcar={marcarEvento}
+              />
+            )}
+            {vistas.length === 2 && (
+              <Calibrar3D
+                a={vistas[0]!}
+                b={vistas[1]!}
+                calibracion={calibracion3d}
+                estatura={estatura}
+                onCalibracion={onCalibracion3d}
+                deshabilitado={vistas.some((w) => w.siguiendo || w.detectando)}
               />
             )}
             <DatosVideo info={info} total={total} est={est} orientacion={orientacion} msDecodificar={msDecodificar} lectura={lectura} />

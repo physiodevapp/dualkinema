@@ -35,6 +35,8 @@ export interface EstadoMovil {
   readonly microExterno: boolean | null
   /** A cuántos fps grabaría, medido con una prueba antes de grabar (paso 9; `media/pruebaFps.ts`). null si no se sabe. */
   readonly fpsGrabacion: number | null
+  /** Su inclinación en directo (fase 6, paso 6; `core/grabacion/colocacion.ts`). null si no se sabe (o el otro es anterior). */
+  readonly inclinacion: { readonly cabeceo: number; readonly alabeo: number } | null
 }
 
 export type Mensaje =
@@ -82,7 +84,10 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
   const microExterno = typeof o.microExterno === 'boolean' ? o.microExterno : null
   // Añadido en el paso 9, igual de opcional.
   const fpsGrabacion = finito(o.fpsGrabacion) && o.fpsGrabacion > 0 && o.fpsGrabacion <= 240 ? o.fpsGrabacion : null
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion }
+  // Añadido en la fase 6, igual de opcional.
+  const i = o.inclinacion as Record<string, unknown> | null | undefined
+  const inclinacion = i && typeof i === 'object' && finito(i.cabeceo) && finito(i.alabeo) && Math.abs(i.cabeceo) <= 90 && Math.abs(i.alabeo) <= 180 ? { cabeceo: i.cabeceo, alabeo: i.alabeo } : null
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */

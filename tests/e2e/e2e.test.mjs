@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { copyFile, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { after, before, beforeEach, describe, it } from 'node:test'
 import { asegurarVideos } from './videos.mjs'
 import {
@@ -3786,22 +3787,28 @@ function deteccionFalsa(verdad, { intercambiados = [], sinPersona = [] } = {}) {
   })
 }
 
-/** Abre la app con el worker sin marcadores sustituido por uno falso que manda `frames` (y cuenta las detecciones). */
+/**
+ * Abre la app con el worker sin marcadores sustituido por uno falso que manda `frames` (y cuenta las detecciones). Con una
+ * lista de listas, la detección k-ésima manda la k-ésima.
+ */
 async function abrirConPoseFalsa(nav, frames, { ancho = 1280, ritmoMs = 20 } = {}) {
   const p = await nav.newPage({ locale: 'es-ES', viewport: { width: ancho, height: ancho >= 800 ? 900 : 844 }, hasTouch: ancho < 800 })
   await vigilarErrores(p)
-  await p.addInitScript(({ frames, ritmoMs }) => {
+  await p.addInitScript(({ frames: todos, ritmoMs }) => {
     const Original = window.Worker
     window.__detecciones = 0
     window.Worker = function (url, opciones) {
       if (!String(url).includes('pose.worker')) return new Original(url, opciones)
       window.__detecciones++
+      // Con una lista de listas, cada detección manda la suya (la de cada vista, en el orden en que se detecta).
+      const lista = Array.isArray(todos[0]) ? todos[Math.min(window.__detecciones, todos.length) - 1] : todos
       const w = { onmessage: null, onerror: null, cancelado: false, terminate() {} }
       const enviar = (data, ms) => setTimeout(() => w.onmessage?.({ data }), ms)
       w.postMessage = (m) => {
         if (m.tipo === 'cancelar') w.cancelado = true
         if (m.tipo !== 'detectar') return
         enviar({ tipo: 'listo', delegado: 'GPU', msCarga: 1 }, 10)
+        const frames = lista
         const lotes = []
         for (let k = 0; k < frames.length; k += 20) lotes.push(frames.slice(k, k + 20))
         lotes.forEach((lote, k) => enviar({ tipo: 'frames', lote, progreso: (k + 1) / lotes.length }, 20 + ritmoMs * k))
@@ -4586,6 +4593,41 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     await a.getByTestId('aviso-flancos').waitFor({ state: 'detached' })
   })
 
+  it('cada móvil ve su inclinación y la del otro, con qué hacer si mira hacia abajo o está torcido (fase 6, paso 6)', async () => {
+    // Sin acelerómetro (un ordenador), nada.
+    assert.equal(await a.getByTestId('inclinacion-este').count(), 0)
+    // El acelerómetro falso de A: la cámara 15° hacia abajo y la imagen girada 5°.
+    await a.evaluate(() => {
+      const c = (15 * Math.PI) / 180
+      const r = (5 * Math.PI) / 180
+      window.__inclinacion = setInterval(
+        () =>
+          window.dispatchEvent(
+            new DeviceMotionEvent('devicemotion', {
+              accelerationIncludingGravity: { x: 9.81 * Math.cos(c) * Math.sin(r), y: 9.81 * Math.cos(c) * Math.cos(r), z: 9.81 * Math.sin(c) },
+              interval: 16,
+            }),
+          ),
+        16,
+      )
+    })
+    try {
+      const este = a.getByTestId('inclinacion-este')
+      await este.waitFor()
+      await a.waitForFunction(() => Math.abs(Number(document.querySelector('[data-testid=inclinacion-este]')?.dataset.cabeceo) - 15) <= 0.5)
+      assert.ok(Math.abs(Math.abs(Number(await este.getAttribute('data-alabeo'))) - 5) <= 0.5)
+      assert.match(await este.innerText(), /mira hacia abajo 15° ✗ · imagen girada 5° ✗/)
+      assert.match(await a.getByTestId('inclinacion-este-aviso').innerText(), /^Levanta la cámara.*endereza el móvil/)
+      // B la recibe con el estado (cada 2 s).
+      const otro = b.getByTestId('inclinacion-otro')
+      await otro.waitFor({ timeout: 10000 })
+      assert.match(await otro.innerText(), /Su cámara: mira hacia abajo 15°/)
+      assert.match(await b.getByTestId('inclinacion-otro-aviso').innerText(), /^El otro móvil: levanta la cámara/)
+    } finally {
+      await a.evaluate(() => clearInterval(window.__inclinacion))
+    }
+  })
+
   it('un tercer móvil no entra: «la sala está llena»', async () => {
     const c = await abrirApp(navB, { consulta: `?sala=${codigo}&senal=${URL_RELE}` })
     try {
@@ -4978,6 +5020,181 @@ describe('guía de la toma B1 (fase 6)', () => {
     assert.equal(await p.getByTestId('b1-gomets').isChecked(), false)
     await p.getByTestId('salir-guia-b1').click()
     await p.getByTestId('ir-guia-b1').waitFor()
+  })
+})
+
+describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
+  let p
+  let verdad
+  let angulos
+  before(async () => {
+    // El TypeScript del núcleo, empaquetado para Node: la persona sintética proyectada en dos móviles virtuales.
+    const { build } = await import('esbuild')
+    const salida = join(tmpdir(), 'dualkinema-persona3d.mjs')
+    await build({ entryPoints: [new URL('./persona3d.ts', import.meta.url).pathname], bundle: true, format: 'esm', platform: 'node', outfile: salida, logLevel: 'silent' })
+    const { persona3d } = await import(pathToFileURL(salida).href)
+    const tiempos = (v) => v.verdad.map((x) => x.t)
+    const r = persona3d(tiempos(videos.verde), tiempos(videos.frontal25), 640, 360)
+    verdad = r.verdad
+    angulos = r.angulos
+    p = await abrirConPoseFalsa(navegador, [r.framesA, r.framesB])
+    await cargarSinMarcadores(p, videos.verde.ruta)
+    await abrirPestana(p, 'marcar')
+    await detectarCuerpo(p)
+    await abrirPestana(p, 'video')
+    // Sin las dos vistas, no hay calibración.
+    assert.equal(await p.getByTestId('calibrar-3d').count(), 0)
+    await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.frontal25.ruta)
+    await p.getByTestId('anadir-vista-orientacion').getByRole('radio', { name: /Sin marcadores/ }).click()
+    await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+    await p.getByTestId('conmutador-vista').waitFor()
+    await p.getByTestId('vista-B').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'marcar')
+    await detectarCuerpo(p)
+    await abrirPestana(p, 'video')
+  })
+  after(() => p?.close())
+
+  it('calibra con la estatura: ángulo entre los móviles, distancia y alturas como las de los móviles virtuales', async () => {
+    const tarjeta = p.getByTestId('calibrar-3d')
+    const instantes = Number((await tarjeta.getByTestId('instantes-3d').innerText()).match(/^(\d+)/)[1])
+    assert.ok(instantes >= 60, `${instantes} instantes`)
+    await tarjeta.getByRole('textbox', { name: 'Estatura (cm)' }).fill('175')
+    await tarjeta.getByRole('button', { name: 'Calibrar en 3D' }).click()
+    await tarjeta.getByTestId('resultado-3d').waitFor({ timeout: 60000 })
+    const num = async (id) => Number((await tarjeta.getByTestId(id).innerText()).replace(',', '.').match(/[\d.]+/)[0])
+    assert.ok((await num('error-reproyeccion')) < 1, `error ${await num('error-reproyeccion')}`)
+    assert.ok(Math.abs((await num('angulo-camaras')) - verdad.angulo) <= 3, `ángulo ${await num('angulo-camaras')}`)
+    // La escala por la estatura toma el percentil 90 de tobillo → hombro, con un 2–3 % de error y los pasos de la persona.
+    const distancia = await num('distancia-camaras')
+    assert.ok(Math.abs(distancia / verdad.distancia - 1) < 0.07, `distancia ${distancia} frente a ${verdad.distancia}`)
+    for (const [n, h] of [['A', verdad.alturas[0]], ['B', verdad.alturas[1]]]) {
+      const texto = await tarjeta.getByTestId(`camara-${n}`).innerText()
+      const altura = Number(texto.match(/a ([\d,]+) m del suelo/)[1].replace(',', '.'))
+      assert.ok(Math.abs(altura - h) < 0.12, `altura de ${n}: ${altura} frente a ${h}`)
+      assert.match(texto, /sin acelerómetro/)
+    }
+    const avisos = await tarjeta.getByTestId('avisos-3d').innerText()
+    assert.match(avisos, /Sin el acelerómetro de A y B/)
+    assert.match(avisos, /no están sincronizadas/)
+  })
+
+  it('los ángulos en 3D de las dos piernas, en «Análisis», con el cursor común, el cero y el CSV', async () => {
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'analisis')
+    const panel = p.getByTestId('panel-3d')
+    await panel.waitFor()
+    const leer = async () => Number((await panel.getByTestId('valor-3d').innerText()).replace('°', '').replace(',', '.').replace('−', '-'))
+    for (const [id, clave] of [['3d_rodilla_sagital_der', 'rodillaDer'], ['3d_rodilla_sagital_izq', 'rodillaIzq'], ['3d_tronco_sagital', 'tronco']]) {
+      await panel.getByTestId('articulacion-3d').selectOption(id)
+      for (const i of [30, 60, 95]) {
+        await irAFrame(p, i)
+        await abrirPestana(p, 'analisis')
+        const esperado = angulos(videos.verde.verdad[i].t)[clave]
+        assert.ok(Math.abs((await leer()) - esperado) < 2.5, `${id}, frame ${i + 1}: ${await leer()} frente a ${esperado}`)
+      }
+    }
+    // El monigote 3D: dibujado (hay píxeles de la pierna derecha, en ámbar) y se gira arrastrando.
+    const monigote = panel.getByTestId('monigote-3d')
+    const ambar = () =>
+      monigote.evaluate((c) => {
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data
+        let n = 0
+        for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 242) < 20 && Math.abs(d[i + 1] - 166) < 20 && Math.abs(d[i + 2] - 90) < 20) n++
+        return n
+      })
+    assert.ok((await ambar()) > 20, `píxeles ámbar: ${await ambar()}`)
+    const antes = Number(await monigote.getAttribute('data-azimut'))
+    await monigote.scrollIntoViewIfNeeded()
+    const caja = await monigote.boundingBox()
+    await p.mouse.move(caja.x + caja.width / 2, caja.y + caja.height / 2)
+    await p.mouse.down()
+    await p.mouse.move(caja.x + caja.width / 2 + 60, caja.y + caja.height / 2, { steps: 4 })
+    await p.mouse.up()
+    assert.equal(Number(await monigote.getAttribute('data-azimut')), antes - 30)
+    // El cero de los primeros 2 s: el relativo es la resta directa.
+    await panel.getByRole('button', { name: 'Primeros 2 s' }).click()
+    const cero = Number((await panel.getByTestId('cero-3d').innerText()).match(/cero (−?[\d,]+)°/)[1].replace(',', '.').replace('−', '-'))
+    const rel = Number((await panel.getByTestId('relativo-3d').innerText()).replace('°', '').replace(',', '.').replace('−', '-'))
+    assert.ok(Math.abs(rel - ((await leer()) - cero)) < 0.11)
+    // El CSV: una fila por frame de A, con los ángulos y las coordenadas en metros.
+    const descarga = p.waitForEvent('download')
+    await panel.getByTestId('descargar-csv').click()
+    const texto = await readFile(await (await descarga).path(), 'utf8')
+    const lineas = texto.replace(/^\uFEFF/, '').trim().split('\r\n')
+    const columnas = lineas.find((l) => l.startsWith('t_comun_s')).split(';')
+    assert.ok(columnas.includes('3d_rodilla_sagital_der_grados'))
+    assert.ok(columnas.includes('3d_tronco_sagital_relativo_grados'))
+    assert.ok(columnas.includes('pose_cadera_izq_z_m'))
+    assert.equal(lineas.filter((l) => /^\d/.test(l)).length, videos.verde.verdad.length)
+  })
+
+  it('el esqueleto ajustado (fase 7): las dos rodillas como las de verdad, el monigote y el CSV con sus columnas', async () => {
+    await abrirPestana(p, 'analisis')
+    const panel = p.getByTestId('panel-3d')
+    await panel.getByTestId('fuente-esqueleto').check()
+    await panel.getByRole('button', { name: 'Ajustar el esqueleto' }).click()
+    await panel.getByTestId('resumen-esqueleto').waitFor({ timeout: 120000 })
+    assert.match(await panel.getByTestId('resumen-esqueleto').innerText(), /(\d+) de \1 frames ajustados/)
+    const leer = async () => Number((await panel.getByTestId('valor-3d').innerText()).replace(/°.*/s, '').replace(',', '.').replace('−', '-'))
+    for (const [id, clave] of [['esq_rodilla_der', 'rodillaDer'], ['esq_rodilla_izq', 'rodillaIzq']]) {
+      await panel.getByTestId('articulacion-3d').selectOption(id)
+      for (const i of [30, 60, 95]) {
+        await irAFrame(p, i)
+        await abrirPestana(p, 'analisis')
+        const esperado = angulos(videos.verde.verdad[i].t)[clave]
+        assert.ok(Math.abs((await leer()) - esperado) < 3, `${id}, frame ${i + 1}: ${await leer()} frente a ${esperado}`)
+      }
+    }
+    const descarga = p.waitForEvent('download')
+    await panel.getByTestId('descargar-csv').click()
+    const texto = await readFile(await (await descarga).path(), 'utf8')
+    const columnas = texto.split('\r\n').find((l) => l.startsWith('t_comun_s')).split(';')
+    assert.ok(columnas.includes('esq_cadera_rot_der_grados') && columnas.includes('esq_cadera_rot_der_fiable'))
+    await panel.getByRole('radio', { name: 'Puntos' }).check()
+  })
+
+  it('el informe se copia y la calibración se guarda con la sesión (esquema 6)', async () => {
+    await abrirPestana(p, 'video')
+    const tarjeta = p.getByTestId('calibrar-3d')
+    await p.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await tarjeta.getByRole('button', { name: 'Copiar el informe' }).click()
+    const informe = await p.evaluate(() => navigator.clipboard.readText())
+    assert.match(informe, /calibración 3D con la persona/)
+    assert.match(informe, /estatura 1,75 m/)
+    assert.match(informe, /cadera izquierda: \d+,\d\d/)
+    assert.doesNotMatch(informe, /\.webm/)
+    const leer = () =>
+      p.evaluate(async () => {
+        const bd = await new Promise((ok) => {
+          const r = indexedDB.open('dualkinema')
+          r.onsuccess = () => ok(r.result)
+        })
+        try {
+          if (!bd.objectStoreNames.contains('sesiones')) return null
+          const todas = await new Promise((ok) => {
+            const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+            r.onsuccess = () => ok(r.result)
+          })
+          return JSON.parse(JSON.stringify(todas.find((c) => c.calibracion3d) ?? null))
+        } finally {
+          bd.close()
+        }
+      })
+    let cabecera = null
+    for (let k = 0; k < 60 && !cabecera; k++) {
+      cabecera = await leer()
+      if (!cabecera) await p.waitForTimeout(300)
+    }
+    assert.equal(cabecera.esquema, 6)
+    assert.equal(cabecera.estatura, 1.75)
+    assert.deepEqual(cabecera.calibracion3d.vistas, ['v1', 'v2'])
+    assert.equal(cabecera.calibracion3d.escalaDe, 'estatura')
+    // Quitarla también se guarda.
+    await tarjeta.getByRole('button', { name: 'Quitar la calibración' }).click()
+    assert.equal(await tarjeta.getByTestId('resultado-3d').count(), 0)
   })
 })
 

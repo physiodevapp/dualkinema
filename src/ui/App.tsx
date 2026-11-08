@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { Calibracion3D } from '../core/tresd/calibracion3d'
 import type { Fuente } from '../core/pose/catalogo'
 import { ArrowLeftIcon, ArrowPathIcon, BookOpenIcon, ClipboardDocumentListIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
@@ -62,6 +63,9 @@ type Estado =
       /** Solo al recuperar: el modelo y el filtro guardados. */
       modelo?: ModeloMarcadores
       filtro?: AjustesFiltro | null
+      /** Solo al recuperar: la calibración 3D y la estatura guardadas (fase 6). */
+      calibracion3d?: Calibracion3D | null
+      estatura?: number | null
       aviso?: string
       /** Pestaña con que empezar (una grabación doble abre en «Vídeo», con la sincronía propuesta). */
       pestana?: string
@@ -294,8 +298,8 @@ function Aplicacion() {
         sesion: sesionNueva(ref),
         pestana: 'video',
         vistas: [
-          { id: ID_VISTA_REFERENCIA, video: ref, orientacion: dRef.vista, desfase: 0, sincronia: { metodo: 'ninguna' } },
-          { id: 'v2', video: otra, orientacion: dVista.vista, desfase: 0, sincronia: { metodo: 'ninguna' }, propuesta },
+          { id: ID_VISTA_REFERENCIA, video: ref, orientacion: dRef.vista, desfase: 0, sincronia: { metodo: 'ninguna' }, sensores: metas[iRef]?.sensores ?? null },
+          { id: 'v2', video: otra, orientacion: dVista.vista, desfase: 0, sincronia: { metodo: 'ninguna' }, propuesta, sensores: metas[iVista]?.sensores ?? null },
         ],
       })
     } catch (e) {
@@ -649,6 +653,8 @@ function Aplicacion() {
             avisoInicial={estado.aviso}
             onAnadirVista={anadirVista}
             pestanaInicial={estado.pestana}
+            calibracion3d={estado.calibracion3d}
+            estatura={estado.estatura}
           />
         </Suspense>
       )}

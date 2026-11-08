@@ -4,6 +4,7 @@ import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { DeteccionPose, IdMarcador, Muestra2D, Sincronia } from '../../core/modelo/tipos'
 import type { Fuente } from '../../core/pose/catalogo'
 import type { PropuestaDoble } from '../../core/sincronia/doble'
+import type { Sensores } from '../../core/sensores/sensores'
 import type { VideoAbierto } from '../../media/video'
 import type { useVista } from './useVista'
 
@@ -34,10 +35,13 @@ export interface EntradaVista {
   readonly deteccion?: DeteccionPose | null
   /** Al recuperar: la articulación que se miraba (fase 5, paso 3b). */
   readonly articulacion?: string
+  /** El acelerómetro y el giróscopo de su MP4 (fase 6), leídos al abrirlo o guardados con la sesión; null sin ellos. */
+  readonly sensores?: Sensores | null
 }
 
 /** Una vista con todo su estado (lo que devuelve `useVista`) y los datos de su entrada que necesita la sesión. */
 export type VistaViva = ReturnType<typeof useVista> & Pick<EntradaVista, 'id' | 'orientacion' | 'sincronia' | 'propuesta'> & {
+  readonly sensores: Sensores | null
   /** Su desfase respecto a la referencia, en s (`desfase` a secas es el de la escala). */
   readonly desfaseS: number
   /** Los marcadores que sigue (los de la entrada o, en una vista nueva, los de su plano). */

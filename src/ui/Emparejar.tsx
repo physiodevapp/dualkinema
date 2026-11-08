@@ -14,6 +14,8 @@ import {
 import { encode } from 'uqr'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { revisarFps } from '../core/grabacion/revision'
+import { redondearInclinacion, revisarInclinacion, type Inclinacion } from '../core/grabacion/colocacion'
+import { useInclinacion } from './useInclinacion'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
 import { RevisionSensores } from './RevisionSensores'
 import { GUIONES, guionPorId, numeroGrabacion, siguienteGuion, type GuionVoz } from '../core/grabacion/guionVoz'
@@ -88,6 +90,7 @@ function useMiEstado(
   codificador: EstadoMovil['codificador'],
   microExterno: boolean,
   fpsGrabacion: number | null,
+  inclinacion: Inclinacion | null,
 ): EstadoMovil {
   const [libreMB, setLibreMB] = useState<number | null>(null)
   const [bateria, setBateria] = useState<number | null>(null)
@@ -113,8 +116,27 @@ function useMiEstado(
       codificador,
       microExterno,
       fpsGrabacion: fpsGrabacion === null ? null : Math.round(fpsGrabacion * 10) / 10,
+      inclinacion,
     }
-  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion])
+  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion])
+}
+
+/**
+ * La inclinación de un móvil (este, en directo; o el otro, la que manda) y qué hacer si no mira casi en horizontal o está
+ * torcido (fase 6, paso 6: el asistente de colocación). Nada si no se sabe (un ordenador no tiene acelerómetro).
+ */
+function Colocacion({ inclinacion, testid, otro = false }: { inclinacion: Inclinacion | null; testid: string; otro?: boolean }) {
+  if (!inclinacion) return null
+  const r = revisarInclinacion(inclinacion)
+  return (
+    <div className="flex flex-col gap-1" data-testid={testid} data-cabeceo={inclinacion.cabeceo} data-alabeo={inclinacion.alabeo}>
+      <p className="flex items-center gap-1 font-mono text-xs text-texto-2">
+        {otro ? 'Su cámara' : 'Esta cámara'}: {r.cabeceo} {r.bienCabeceo ? '✓' : '✗'} · {r.alabeo} {r.bienAlabeo ? '✓' : '✗'}
+        <InfoGlosario id="colocacion" tema="cómo colocar los móviles" className="-my-1.5" />
+      </p>
+      {r.consejo && <Aviso testid={`${testid}-aviso`}>{otro ? `El otro móvil: ${r.consejo.charAt(0).toLowerCase()}${r.consejo.slice(1)}` : r.consejo}</Aviso>}
+    </div>
+  )
 }
 
 function Aviso({ children, testid }: { children: React.ReactNode; testid: string }) {
@@ -414,7 +436,12 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   // A cuántos fps grabaría (paso 9): se mide sin nada en marcha y se le cuenta al otro.
   const [enMarcha, setEnMarcha] = useState(false)
   const prevision = usePrevisionFps(flujo, calidad, !enMarcha)
-  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null)
+  const incCruda = useInclinacion()
+  // Al otro, a medio grado: el objeto solo cambia cuando cambia lo que se manda.
+  const incCabeceo = incCruda ? redondearInclinacion(incCruda).cabeceo : null
+  const incAlabeo = incCruda ? redondearInclinacion(incCruda).alabeo : null
+  const miInclinacion = useMemo(() => (incCabeceo === null || incAlabeo === null ? null : { cabeceo: incCabeceo, alabeo: incAlabeo }), [incCabeceo, incAlabeo])
+  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion)
   const sala: Sala = useSala(codigo, vista, miEstado)
   const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio, calidad)
   const ocupado = doble.fase.f === 'esperando' || doble.fase.f === 'programada' || doble.fase.f === 'grabando' || doble.fase.f === 'parando'
@@ -494,6 +521,7 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
         {textoPrevision(prevision, calidad) && <Aviso testid="aviso-fps-previsto">{textoPrevision(prevision, calidad)}</Aviso>}
         {!prevision && codificador === 'software' && <Aviso testid="aviso-codificador">{AVISO_SOFTWARE}</Aviso>}
         {microExterno && <Aviso testid="aviso-micro">{AVISO_MICRO_EXTERNO}</Aviso>}
+        <Colocacion inclinacion={miInclinacion} testid="inclinacion-este" />
       </div>
 
       {emparejado && (
@@ -515,6 +543,7 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
           {otro?.estado?.fpsGrabacion == null && otro?.estado?.codificador === 'software' && (
             <Aviso testid="aviso-codificador-otro">El otro móvil codifica el vídeo por software: puede grabar a menos de 30 fps.</Aviso>
           )}
+          <Colocacion inclinacion={otro?.estado?.inclinacion ?? null} testid="inclinacion-otro" otro />
           {otro?.estado?.microExterno && (
             <Aviso testid="aviso-micro-otro">El otro móvil tiene unos auriculares o un micrófono externo conectados: que los desconecte, o no se oirá su pitido.</Aviso>
           )}

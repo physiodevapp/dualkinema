@@ -32,7 +32,7 @@ export function armarSesion(cabecera: CabeceraSesion, datos: DatosSesion, abiert
     const total = video.tabla.tiempos.length
     const inicial = new Map<IdMarcador, (Muestra2D | undefined)[]>()
     for (const mk of cabecera.modelo.marcadores) inicial.set(mk.id, desempaquetarTrayectoria(datos.trayectorias[v.id]![mk.id]!, total))
-    return { id: v.id, video, orientacion: v.orientacion, desfase: v.desfase, sincronia: v.sincronia, inicial, ceros: v.ceros, calibracion: v.calibracion, marcadores: v.marcadores, deteccion: v.deteccion, articulacion: v.articulacion }
+    return { id: v.id, video, orientacion: v.orientacion, desfase: v.desfase, sincronia: v.sincronia, inicial, ceros: v.ceros, calibracion: v.calibracion, marcadores: v.marcadores, deteccion: v.deteccion, articulacion: v.articulacion, sensores: v.sensores }
   })
   const sesion: SesionAbierta = { id: cabecera.id, nombre: cabecera.nombre, creada: cabecera.creada, referencia: cabecera.referencia }
   return {
@@ -40,6 +40,8 @@ export function armarSesion(cabecera: CabeceraSesion, datos: DatosSesion, abiert
     sesion,
     modelo: cabecera.modelo,
     filtro: cabecera.filtro,
+    calibracion3d: cabecera.calibracion3d,
+    estatura: cabecera.estatura,
     aviso: `Trabajo recuperado tal como se guardó el ${fechaCorta(cabecera.actualizada)}: ${textoResumen(cabecera)}.`,
   }
 }

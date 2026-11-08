@@ -41,3 +41,10 @@ export function alturaSuelo(pies: readonly Vec3[]): number {
   const z = pies.map((p) => p.z).filter(Number.isFinite).sort((a, b) => a - b)
   return z.length ? z[Math.floor(0.05 * (z.length - 1))]! : NaN
 }
+
+/** La estatura escrita (en cm, o en m) en metros; null si no es razonable (de 1 a 2,5 m). */
+export function estaturaEnMetros(n: number | null): number | null {
+  if (n === null || !Number.isFinite(n)) return null
+  const m = n > 3 ? n / 100 : n
+  return m >= 1 && m <= 2.5 ? m : null
+}

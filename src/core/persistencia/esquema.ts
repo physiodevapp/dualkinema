@@ -5,6 +5,8 @@ import type { OrientacionVista } from '../geometria/canonico'
 import type { DeteccionPose, IdMarcador, MetodoSincronia, ModeloMarcadores, Sincronia, TamanoModeloPose } from '../modelo/tipos'
 import { esAjustesFiltro, type AjustesFiltro } from '../filtros/tramos'
 import { claveHuella, esHuella, type HuellaArchivo } from './huella'
+import { leerSensores, type Sensores } from '../sensores/sensores'
+import { esCalibracion3D, type Calibracion3D } from '../tresd/calibracion3d'
 import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, type TrayectoriaGuardada } from './trayectorias'
 
 /*
@@ -50,9 +52,17 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  * marcadores más (`pose_…`), con sus trayectorias como las de los gomets. Lo
  * guardado antes vale tal cual (la migración 4 → 5 pone `deteccion: null`),
  * pero una app de esquema 4 rechazaría la referencia como inválida.
+ *
+ * Esquema 6 (fase 6, 3D): la sesión guarda su calibración 3D (`calibracion3d`:
+ * las dos cámaras, la escala y de dónde sale, el error de reproyección; null sin
+ * calibrar) y la estatura escrita (`estatura`, m; null sin ella), y cada vista
+ * los sensores que leyó de su MP4 (`sensores`, null sin ellos), para no tener
+ * que volver a leer el archivo. Los puntos 3D no se guardan: se recalculan de
+ * las trayectorias y las cámaras. La migración 5 → 6 pone los tres a null; una
+ * app de esquema 5 no abre una sesión calibrada (al guardar la perdería).
  */
 
-export const ESQUEMA_ACTUAL = 5
+export const ESQUEMA_ACTUAL = 6
 
 export interface VistaCabecera {
   readonly id: string
@@ -75,6 +85,8 @@ export interface VistaCabecera {
    * plano. No sube la versión: una app de esquema 5 anterior la ignora (solo pierde lo elegido).
    */
   readonly articulacion?: string
+  /** El acelerómetro y el giróscopo leídos del MP4 (esquema 6); null sin ellos. */
+  readonly sensores: Sensores | null
 }
 
 export interface CabeceraSesion {
@@ -94,6 +106,10 @@ export interface CabeceraSesion {
   readonly resumen: { readonly frames: number; readonly conDatos: number; readonly aMano: number; readonly interpolados: number }
   /** claveHuella de cada vista: índice para buscar las sesiones de un vídeo. */
   readonly claves: readonly string[]
+  /** La calibración 3D de las dos vistas (esquema 6); null sin calibrar. */
+  readonly calibracion3d: Calibracion3D | null
+  /** Estatura de la persona (m), para la escala del 3D (esquema 6); null sin ella. */
+  readonly estatura: number | null
 }
 
 export interface DatosSesion {
@@ -136,9 +152,15 @@ export interface EntradaGuardado {
     readonly deteccion?: DeteccionPose | null
     /** La articulación que se mira; sin ella, la primera de su plano. */
     readonly articulacion?: string
+    /** Los sensores leídos del MP4; sin ellos (o null), ninguno. */
+    readonly sensores?: Sensores | null
   }[]
   /** Id de la vista de referencia; sin él, la primera. */
   readonly referencia?: string
+  /** La calibración 3D; sin ella (o null), sin calibrar. */
+  readonly calibracion3d?: Calibracion3D | null
+  /** Estatura (m); sin ella (o null), ninguna. */
+  readonly estatura?: number | null
 }
 
 const SIN_SINCRONIA: Sincronia = { metodo: 'ninguna' }
@@ -175,11 +197,15 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
       sincronia: v.sincronia ?? SIN_SINCRONIA,
       deteccion: v.deteccion ?? null,
       ...(v.articulacion ? { articulacion: v.articulacion } : {}),
+      sensores: v.sensores ?? null,
     })),
     referencia: e.referencia ?? e.vistas[0]!.id,
     filtro: e.filtro ?? null,
     resumen: { frames: e.vistas.reduce((s, v) => s + v.huella.frames, 0), conDatos, aMano, interpolados },
     claves: e.vistas.map((v) => claveHuella(v.huella)),
+    calibracion3d: e.calibracion3d ?? null,
+    // Una estatura fuera de lo que se lee no se guarda (si no, la sesión no se volvería a abrir).
+    estatura: e.estatura && e.estatura > 0 && e.estatura < 3 ? e.estatura : null,
   }
   return { cabecera, datos: { esquema: ESQUEMA_ACTUAL, id: e.id, trayectorias } }
 }
@@ -214,6 +240,13 @@ export const MIGRACIONES_CABECERA: Migraciones = {
   3: (r) => r,
   // 4 → 5 (fase 5): ninguna vista se había detectado sin marcadores.
   4: (r) => (Array.isArray(r.vistas) ? { ...r, vistas: (r.vistas as unknown[]).map((v) => (esObjeto(v) ? { ...v, deteccion: null } : v)) } : r),
+  // 5 → 6 (fase 6): sin calibración 3D, sin estatura y sin sensores leídos.
+  5: (r) => ({
+    ...r,
+    calibracion3d: null,
+    estatura: null,
+    ...(Array.isArray(r.vistas) ? { vistas: (r.vistas as unknown[]).map((v) => (esObjeto(v) ? { ...v, sensores: null } : v)) } : {}),
+  }),
 }
 export const MIGRACIONES_DATOS: Migraciones = {
   1: (r) => {
@@ -238,6 +271,8 @@ export const MIGRACIONES_DATOS: Migraciones = {
   3: (r) => r,
   // 4 → 5: tampoco (los puntos sin marcadores son trayectorias como las de los gomets).
   4: (r) => r,
+  // 5 → 6: tampoco (los puntos 3D no se guardan).
+  5: (r) => r,
 }
 
 /**
@@ -343,6 +378,7 @@ function errorVista(v: unknown): string | null {
   if (s) return `${s} en la vista ${v.id}`
   if (v.deteccion !== null && !esDeteccion(v.deteccion)) return `detección sin marcadores no válida en la vista ${v.id}`
   if (v.articulacion !== undefined && !esTexto(v.articulacion)) return `articulación elegida no válida en la vista ${v.id}`
+  if (v.sensores !== null && !leerSensores(v.sensores)) return `sensores no válidos en la vista ${v.id}`
   return null
 }
 
@@ -384,6 +420,12 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
   const guardadas = c.claves
   if (!Array.isArray(guardadas) || guardadas.length !== claves.length || claves.some((k, i) => guardadas[i] !== k)) {
     return mal('claves de huella que no corresponden a las vistas')
+  }
+  if (c.estatura !== null && !(typeof c.estatura === 'number' && c.estatura > 0 && c.estatura < 3)) return mal('estatura no válida')
+  if (c.calibracion3d !== null) {
+    if (!esCalibracion3D(c.calibracion3d)) return mal('calibración 3D no válida')
+    const ids = new Set(vistas.map((x) => x.id))
+    if (!c.calibracion3d.vistas.every((id) => ids.has(id))) return mal('la calibración 3D es de vistas que no están en la sesión')
   }
   return { ok: true, valor: c as unknown as CabeceraSesion }
 }

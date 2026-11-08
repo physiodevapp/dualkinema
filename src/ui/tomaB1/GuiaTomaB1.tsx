@@ -399,7 +399,7 @@ function InclinacionEnDirecto() {
         {inc.cabeceo >= 0 ? 'Mira hacia abajo' : 'Mira hacia arriba'} {g(inc.cabeceo)} {bienCabeceo ? '✓' : '· mejor menos de 10°'}
       </p>
       <p className="font-mono text-sm">
-        Imagen girada {g(inc.alabeo)} {bienAlabeo ? '✓' : `· gíralo un poco ${inc.alabeo > 0 ? 'en sentido horario' : 'en sentido antihorario'}`}
+        Imagen girada {g(inc.alabeo)} {bienAlabeo ? '✓' : `· gíralo un poco ${inc.alabeo > 0 ? 'en sentido antihorario' : 'en sentido horario'}`}
       </p>
       <p className="text-xs text-texto-2">Ábrela también en el otro móvil para colocarlo, o míralo al parar la grabación.</p>
     </div>

@@ -225,6 +225,60 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'tres-d',
+    titulo: '3D calibrado con la persona',
+    texto: [
+      'Con dos vídeos de la misma toma desde dos sitios (lo mejor, un móvil en cada flanco por delante de la persona, a unos 90° entre ellos), cada punto del cuerpo visto por los dos se puede situar en el espacio. Para eso hay que saber dónde está un móvil respecto al otro y la focal de cada uno: «Calibrar en 3D» lo calcula con los propios puntos del cuerpo, sin ningún objeto de calibración, y con la vertical del acelerómetro de cada móvil (la app lo guarda al grabar).',
+      'Hace falta el cuerpo detectado en las dos vistas y las dos sincronizadas (mejor por el pitido de la grabación doble). Calibra mejor si la persona da unos pasos por la zona al principio: con ella siempre en el mismo sitio, la focal queda mal determinada. Se dice el ángulo entre los dos móviles visto desde la persona, su distancia, la altura de cada uno sobre el suelo y el campo de visión de cada cámara (en un móvil, de unos 60 a 80° sobre el lado largo).',
+      'Las dos vistas no ven exactamente el mismo punto: el modelo estima el centro de cada articulación desde lo que ve, y desde un lado la cadera puede caer en otro sitio que desde el otro. El error por punto del cuerpo lo dice, pero solo en parte (ver «Error de reproyección»). Los puntos 3D no se guardan: se recalculan de los puntos de cada vista, así que corregir uno a mano cambia su 3D.',
+    ],
+  },
+  {
+    id: 'angulos-tres-d',
+    titulo: 'Ángulos en 3D y marco de la pelvis',
+    texto: [
+      'Con la sesión calibrada en 3D, en «Análisis» salen los ángulos de las dos piernas a la vez en los tres planos. Se miden respecto a la pelvis de cada instante: la vertical es la gravedad, el eje de lado a lado es la línea de las caderas en horizontal y el de delante atrás, hacia donde mira la persona. Los sagitales (flexión de cadera, rodilla y tobillo, inclinación del tronco) y los frontales (valgo-varo de rodilla, abducción-aducción de cadera, oblicuidad de la pelvis, inclinación lateral del tronco) son los mismos que en 2D sin marcadores, con su signo, pero en el plano de la persona y no en el de la imagen: ya no dependen de dónde estuviera cada móvil.',
+      'Los transversales: la rotación de la pelvis respecto al principio de la toma (+ hacia la izquierda), la del tronco respecto a la pelvis y el ángulo de progresión de cada pie (+ con la punta hacia fuera).',
+      'Por qué no hay rotación de cadera ni de rodilla: con dos puntos por segmento (los centros de las articulaciones) no se sabe cuánto gira el muslo o la pierna sobre su eje. Hará falta el esqueleto con articulaciones (fase 7). Tampoco la anteversión de la pelvis (haría falta otro punto de la pelvis).',
+      'Encima, el monigote: el cuerpo en 3D en el instante del cursor, sobre una rejilla del suelo (cuadros de 50 cm con escala) y con las dos cámaras dibujadas en su sitio como pirámides. Se gira arrastrando con el dedo; el botón de la esquina lo devuelve a la vista de partida.',
+      'Un punto solo tiene 3D en los frames en que lo ven las dos vistas; si su error de reproyección pasa del 1 % del lado largo de la imagen, tampoco. Las coordenadas se filtran en 3D con el filtro de la sesión, por tramos, sin cruzar huecos.',
+    ],
+  },
+  {
+    id: 'colocacion',
+    titulo: 'Colocar los móviles',
+    texto: [
+      'En la sala, cada móvil dice cómo está inclinado su cámara, con su acelerómetro, y se lo cuenta al otro: cuánto mira hacia abajo o hacia arriba (mejor menos de 10°) y cuánto está girada la imagen (mejor menos de 3°). Con la cámara inclinada, la persona se ve deformada por la perspectiva (de perfil, una cámara que mira hacia abajo acorta los segmentos), y para el 3D la calibración parte de la vertical de cada móvil.',
+      'Para el 3D, un móvil en cada flanco por delante de la persona, a unos 90° entre ellos, a unos 3 m y a la altura de la cadera, apoyados y quietos durante toda la toma, con la persona entera en las dos imágenes. Al principio de la toma, unos pasos por la zona ayudan a calibrar.',
+    ],
+  },
+  {
+    id: 'esqueleto',
+    titulo: 'Esqueleto ajustado',
+    texto: [
+      'Con la sesión calibrada en 3D, «Ajustar el esqueleto» (en los ángulos en 3D, fuente «Esqueleto») coloca en cada frame un esqueleto con articulaciones como las de verdad —la cadera gira en todas las direcciones, la rodilla se dobla como una bisagra, el tobillo en dos ejes y el tronco sobre la pelvis— de forma que lo que vería cada cámara caiga donde el modelo vio los puntos del cuerpo. Las medidas de la persona (muslo, pierna, pie, caderas, tronco) salen de la propia toma.',
+      'Lo que la articulación no deja hacer no aparece, y lo que no se ve directamente se deduce de cómo se mueven los segmentos unidos: así sale la rotación de la cadera, que con puntos sueltos no se puede medir. Un punto que ve una sola cámara también cuenta. Los ángulos siguen el sistema de coordenadas articulares (el de la Sociedad Internacional de Biomecánica): primero la flexión, después la abducción y por último la rotación.',
+      'Por qué la rotación de la cadera solo con la rodilla doblada: con la pierna recta, girar el muslo sobre sí mismo no mueve ningún punto que se vea (salvo el pie, que también puede girar en el tobillo). Con la rodilla por debajo de 20°, la rotación se sujeta a la de antes y se marca como poco fiable (a trazos en la gráfica, 0 en la columna «fiable» del CSV).',
+      'La anteversión de la pelvis no se separa de la flexión del tronco con estos puntos (gira alrededor de la línea de las caderas, que no cambia): queda fija en 0, así que la flexión de la cadera y la del tronco «respecto a la pelvis» son en la práctica respecto a la vertical. Un ángulo cuyos puntos no ve ninguna cámara en un frame no tiene valor (no se inventa). El ajuste no se guarda: se rehace a petición (unos 20–30 ms por frame).',
+    ],
+  },
+  {
+    id: 'reproyeccion',
+    titulo: 'Error de reproyección',
+    texto: [
+      'Con las dos cámaras calibradas, cada punto del cuerpo se sitúa en el espacio y se vuelve a proyectar en cada vídeo: la distancia en píxeles entre donde cae y donde lo marcó el modelo es el error de reproyección. Se da la mediana de todos y la de cada punto del cuerpo. Con puntos bien detectados y las vistas bien sincronizadas, unos pocos píxeles; más de un 0,4 % del lado largo de la imagen (unos 8 px en 1080p) es alto: suele ser la sincronía, un móvil que se movió o puntos mal detectados.',
+      'Lo que no ve: un error del modelo a lo largo de la línea que une las dos cámaras vista en cada imagen (casi horizontal con los móviles a la misma altura) no cambia la reproyección, solo la profundidad del punto. Por eso un error por punto bajo no garantiza que las dos vistas marquen el mismo sitio: lo dirán las longitudes de los segmentos en 3D, que deben ser constantes.',
+    ],
+  },
+  {
+    id: 'escala-estatura',
+    titulo: 'Escala por la estatura',
+    texto: [
+      'La calibración con la persona da las posiciones a escala desconocida (como un plano sin escala). Los ángulos no la necesitan; los metros sí. Se sacan de la estatura: de pie, del tobillo al hombro hay un 77,9 % de la estatura (proporciones de Winter), con un 2 o 3 % de variación entre personas. Si se escribe la distancia entre los móviles medida con cinta, manda ella.',
+      'Con la grabación doble, la distancia entre los móviles que mide el pitido de ida y vuelta sirve de comprobación: si no casa con la de la calibración en más de un 10 %, se avisa.',
+    ],
+  },
+  {
     id: 'sin-marcadores',
     titulo: 'Sin marcadores',
     texto: [
