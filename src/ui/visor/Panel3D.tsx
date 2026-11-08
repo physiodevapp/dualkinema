@@ -13,6 +13,7 @@ import { aLaboratorio, filtrar3D, triangularSesion } from '../../core/tresd/punt
 import { InfoGlosario } from '../glosario/Glosario'
 import { fmt } from './formato'
 import GraficaTiempo from './GraficaTiempo'
+import Monigote3D from './Monigote3D'
 import PanelExportar from './PanelExportar'
 import type { VistaViva } from './vistas'
 
@@ -54,6 +55,14 @@ export default function Panel3D({ a, b, calibracion, ajustes, instante, desde, h
     // eslint-disable-next-line react-hooks/exhaustive-deps -- las series se modifican en sitio; la versión de cada vista lo dice.
     [calibracion, va, vb, a.desfaseS, b.desfaseS, ajustes, a.series, b.series, a.tabla, b.tabla],
   )
+  const imagenes = useMemo(
+    () =>
+      [
+        { ancho: a.info.ancho, alto: a.info.alto },
+        { ancho: b.info.ancho, alto: b.info.alto },
+      ] as const,
+    [a.info, b.info],
+  )
   const art = ARTICULACIONES_3D.find((x) => x.id === elegida)!
   const serie = useMemo(() => serieAngular3D(elegida, tr), [elegida, tr])
   const tramo = ceros[elegida] ?? null
@@ -80,6 +89,12 @@ export default function Panel3D({ a, b, calibracion, ajustes, instante, desde, h
       <h2 className="flex items-center gap-1 text-xs tracking-wider text-texto-2 uppercase">
         Ángulos en 3D <InfoGlosario id="angulos-tres-d" tema="los ángulos en 3D y el marco de la pelvis" className="-my-1.5" />
       </h2>
+      <Monigote3D
+        tr={tr}
+        calibracion={calibracion}
+        imagenes={imagenes}
+        indice={indice}
+      />
       <label className="flex flex-col gap-1 text-xs text-texto-2">
         Articulación
         <select

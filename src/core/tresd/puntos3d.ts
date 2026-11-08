@@ -31,6 +31,8 @@ export interface Trayectorias3D {
   readonly series: ReadonlyMap<IdMarcador, readonly (Muestra3D | undefined)[]>
   /** Si las coordenadas están en metros (la calibración tiene escala). */
   readonly enMetros: boolean
+  /** El marco del laboratorio aplicado (`aLaboratorio`), para llevar a él otras cosas del mundo calibrado (las cámaras). */
+  readonly marco?: { readonly origen: Vec3; readonly rumbo: number } | null
 }
 
 const utilizable = (m: Muestra2D | undefined): m is Muestra2D => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x) && Number.isFinite(m.y)
@@ -105,7 +107,7 @@ export function marcoLaboratorio(series: Trayectorias3D['series']): { readonly o
 /** Pasa las trayectorias al marco del laboratorio (sin él, tal cual). */
 export function aLaboratorio(tr: Trayectorias3D): Trayectorias3D {
   const m = marcoLaboratorio(tr.series)
-  if (!m) return tr
+  if (!m) return { ...tr, marco: null }
   const c = Math.cos(-m.rumbo)
   const s = Math.sin(-m.rumbo)
   const series = new Map<IdMarcador, (Muestra3D | undefined)[]>()
@@ -120,7 +122,22 @@ export function aLaboratorio(tr: Trayectorias3D): Trayectorias3D {
       }),
     )
   }
-  return { ...tr, series }
+  return { ...tr, series, marco: m }
+}
+
+/**
+ * Un punto del mundo de la calibración (p. ej. el centro de una cámara) en el marco de las trayectorias: con la escala, el
+ * suelo y, si se aplicó, el marco del laboratorio.
+ */
+export function enMarco(cal: Calibracion3D, marco: Trayectorias3D['marco'], X: Vec3): Vec3 {
+  const k = cal.metrosPorUnidad ?? 1
+  const p = vec3(X.x * k, X.y * k, (X.z - (cal.suelo ?? 0)) * k)
+  if (!marco) return p
+  const c = Math.cos(-marco.rumbo)
+  const s = Math.sin(-marco.rumbo)
+  const x = p.x - marco.origen.x
+  const y = p.y - marco.origen.y
+  return vec3(c * x - s * y, s * x + c * y, p.z)
 }
 
 /**

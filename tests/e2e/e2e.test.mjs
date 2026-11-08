@@ -5061,6 +5061,24 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
         assert.ok(Math.abs((await leer()) - esperado) < 2.5, `${id}, frame ${i + 1}: ${await leer()} frente a ${esperado}`)
       }
     }
+    // El monigote 3D: dibujado (hay píxeles de la pierna derecha, en ámbar) y se gira arrastrando.
+    const monigote = panel.getByTestId('monigote-3d')
+    const ambar = () =>
+      monigote.evaluate((c) => {
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data
+        let n = 0
+        for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 242) < 20 && Math.abs(d[i + 1] - 166) < 20 && Math.abs(d[i + 2] - 90) < 20) n++
+        return n
+      })
+    assert.ok((await ambar()) > 20, `píxeles ámbar: ${await ambar()}`)
+    const antes = Number(await monigote.getAttribute('data-azimut'))
+    await monigote.scrollIntoViewIfNeeded()
+    const caja = await monigote.boundingBox()
+    await p.mouse.move(caja.x + caja.width / 2, caja.y + caja.height / 2)
+    await p.mouse.down()
+    await p.mouse.move(caja.x + caja.width / 2 + 60, caja.y + caja.height / 2, { steps: 4 })
+    await p.mouse.up()
+    assert.equal(Number(await monigote.getAttribute('data-azimut')), antes - 30)
     // El cero de los primeros 2 s: el relativo es la resta directa.
     await panel.getByRole('button', { name: 'Primeros 2 s' }).click()
     const cero = Number((await panel.getByTestId('cero-3d').innerText()).match(/cero (−?[\d,]+)°/)[1].replace(',', '.').replace('−', '-'))
