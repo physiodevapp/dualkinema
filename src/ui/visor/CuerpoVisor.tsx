@@ -45,6 +45,7 @@ import MiniaturaVista from './MiniaturaVista'
 import PanelComparacion, { useVistaComparada } from './PanelComparacion'
 import SincronizarVistas, { type MarcaEvento } from './SincronizarVistas'
 import Calibrar3D from './Calibrar3D'
+import Panel3D from './Panel3D'
 import type { Calibracion3D } from '../../core/tresd/calibracion3d'
 import { rangoSesion } from '../../core/tiempo/comun'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
@@ -944,6 +945,18 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               tiemposGrafica={tiemposGrafica}
               onBuscar={buscarEnComun}
             />
+            {vistas.length === 2 && calibracion3d && calibracion3d.vistas[0] === vistas[0]!.id && calibracion3d.vistas[1] === vistas[1]!.id && rangoComun && (
+              <Panel3D
+                a={vistas[0]!}
+                b={vistas[1]!}
+                calibracion={calibracion3d}
+                ajustes={ajustes}
+                instante={deseado < total ? tabla.tiempos[deseado]! + desfaseActiva : null}
+                desde={rangoComun.desde}
+                hasta={rangoComun.hasta}
+                onBuscar={buscarEnComun}
+              />
+            )}
           </PanelPestana>
 
           <PanelPestana id="escala" activa={pestana === 'escala'}>

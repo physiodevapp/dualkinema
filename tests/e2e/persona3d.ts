@@ -29,7 +29,14 @@ export function persona3d(tiemposA: readonly number[], tiemposB: readonly number
       return { indice, t, puntos }
     })
   const [cA, cB] = [centro(A), centro(B)]
+  /** Los ángulos de verdad en un instante del vídeo (°): la flexión de cada rodilla y la del tronco. */
+  const angulos = (t: number) => {
+    const e = estadoEn(t * RITMO, ESTATURA)
+    const g = (r: number) => (r * 180) / Math.PI
+    return { rodillaDer: g(e.rodillaFlex.der), rodillaIzq: g(e.rodillaFlex.izq), tronco: g(e.troncoFlex) }
+  }
   return {
+    angulos,
     framesA: frames(A, tiemposA),
     framesB: frames(B, tiemposB),
     verdad: { distancia: Math.hypot(cA.x - cB.x, cA.y - cB.y, cA.z - cB.z), alturas: [1.0, 0.8], angulo: 90 },

@@ -4991,6 +4991,7 @@ describe('guía de la toma B1 (fase 6)', () => {
 describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
   let p
   let verdad
+  let angulos
   before(async () => {
     // El TypeScript del núcleo, empaquetado para Node: la persona sintética proyectada en dos móviles virtuales.
     const { build } = await import('esbuild')
@@ -5000,6 +5001,7 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     const tiempos = (v) => v.verdad.map((x) => x.t)
     const r = persona3d(tiempos(videos.verde), tiempos(videos.frontal25), 640, 360)
     verdad = r.verdad
+    angulos = r.angulos
     p = await abrirConPoseFalsa(navegador, [r.framesA, r.framesB])
     await cargarSinMarcadores(p, videos.verde.ruta)
     await abrirPestana(p, 'marcar')
@@ -5043,7 +5045,41 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     assert.match(avisos, /no están sincronizadas/)
   })
 
+  it('los ángulos en 3D de las dos piernas, en «Análisis», con el cursor común, el cero y el CSV', async () => {
+    await p.getByTestId('vista-A').click()
+    await esperarQuieto(p)
+    await abrirPestana(p, 'analisis')
+    const panel = p.getByTestId('panel-3d')
+    await panel.waitFor()
+    const leer = async () => Number((await panel.getByTestId('valor-3d').innerText()).replace('°', '').replace(',', '.').replace('−', '-'))
+    for (const [id, clave] of [['3d_rodilla_sagital_der', 'rodillaDer'], ['3d_rodilla_sagital_izq', 'rodillaIzq'], ['3d_tronco_sagital', 'tronco']]) {
+      await panel.getByTestId('articulacion-3d').selectOption(id)
+      for (const i of [30, 60, 95]) {
+        await irAFrame(p, i)
+        await abrirPestana(p, 'analisis')
+        const esperado = angulos(videos.verde.verdad[i].t)[clave]
+        assert.ok(Math.abs((await leer()) - esperado) < 2.5, `${id}, frame ${i + 1}: ${await leer()} frente a ${esperado}`)
+      }
+    }
+    // El cero de los primeros 2 s: el relativo es la resta directa.
+    await panel.getByRole('button', { name: 'Primeros 2 s' }).click()
+    const cero = Number((await panel.getByTestId('cero-3d').innerText()).match(/cero (−?[\d,]+)°/)[1].replace(',', '.').replace('−', '-'))
+    const rel = Number((await panel.getByTestId('relativo-3d').innerText()).replace('°', '').replace(',', '.').replace('−', '-'))
+    assert.ok(Math.abs(rel - ((await leer()) - cero)) < 0.11)
+    // El CSV: una fila por frame de A, con los ángulos y las coordenadas en metros.
+    const descarga = p.waitForEvent('download')
+    await panel.getByTestId('descargar-csv').click()
+    const texto = await readFile(await (await descarga).path(), 'utf8')
+    const lineas = texto.replace(/^\uFEFF/, '').trim().split('\r\n')
+    const columnas = lineas.find((l) => l.startsWith('t_comun_s')).split(';')
+    assert.ok(columnas.includes('3d_rodilla_sagital_der_grados'))
+    assert.ok(columnas.includes('3d_tronco_sagital_relativo_grados'))
+    assert.ok(columnas.includes('pose_cadera_izq_z_m'))
+    assert.equal(lineas.filter((l) => /^\d/.test(l)).length, videos.verde.verdad.length)
+  })
+
   it('el informe se copia y la calibración se guarda con la sesión (esquema 6)', async () => {
+    await abrirPestana(p, 'video')
     const tarjeta = p.getByTestId('calibrar-3d')
     await p.context().grantPermissions(['clipboard-read', 'clipboard-write'])
     await tarjeta.getByRole('button', { name: 'Copiar el informe' }).click()

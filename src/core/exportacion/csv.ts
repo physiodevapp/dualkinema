@@ -24,7 +24,7 @@ import { ajusteManual, desfaseDeEvento } from '../sincronia/evento'
  * formato `es` (el de Excel): en el internacional, pensado para scripts (pandas, R…),
  * pegada a la primera línea «# …» le quitaría el «#» y no la tomarían por comentario.
  */
-const BOM = String.fromCharCode(0xfeff)
+export const BOM = String.fromCharCode(0xfeff)
 
 export type FormatoCsv = 'es' | 'internacional'
 
@@ -161,17 +161,17 @@ export function angulosPorFrame(serie: readonly MuestraAngulo[], tiempos: ArrayL
   return r
 }
 
-interface Estilo {
+export interface Estilo {
   readonly sep: string
   readonly decimal: string
 }
 
-const ESTILOS: Record<FormatoCsv, Estilo> = {
+export const ESTILOS: Record<FormatoCsv, Estilo> = {
   es: { sep: ';', decimal: ',' },
   internacional: { sep: ',', decimal: '.' },
 }
 
-function numero(v: number | undefined, decimales: number, e: Estilo): string {
+export function numero(v: number | undefined, decimales: number, e: Estilo): string {
   if (v === undefined || !Number.isFinite(v)) return ''
   const s = v.toFixed(decimales)
   // Un −0,000 no aporta nada.
@@ -179,7 +179,7 @@ function numero(v: number | undefined, decimales: number, e: Estilo): string {
   return e.decimal === '.' ? limpio : limpio.replace('.', e.decimal)
 }
 
-function celda(texto: string, e: Estilo): string {
+export function celda(texto: string, e: Estilo): string {
   return /["\r\n]/.test(texto) || texto.includes(e.sep) ? `"${texto.replaceAll('"', '""')}"` : texto
 }
 

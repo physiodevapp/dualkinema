@@ -234,6 +234,16 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'angulos-tres-d',
+    titulo: 'Ángulos en 3D y marco de la pelvis',
+    texto: [
+      'Con la sesión calibrada en 3D, en «Análisis» salen los ángulos de las dos piernas a la vez en los tres planos. Se miden respecto a la pelvis de cada instante: la vertical es la gravedad, el eje de lado a lado es la línea de las caderas en horizontal y el de delante atrás, hacia donde mira la persona. Los sagitales (flexión de cadera, rodilla y tobillo, inclinación del tronco) y los frontales (valgo-varo de rodilla, abducción-aducción de cadera, oblicuidad de la pelvis, inclinación lateral del tronco) son los mismos que en 2D sin marcadores, con su signo, pero en el plano de la persona y no en el de la imagen: ya no dependen de dónde estuviera cada móvil.',
+      'Los transversales: la rotación de la pelvis respecto al principio de la toma (+ hacia la izquierda), la del tronco respecto a la pelvis y el ángulo de progresión de cada pie (+ con la punta hacia fuera).',
+      'Por qué no hay rotación de cadera ni de rodilla: con dos puntos por segmento (los centros de las articulaciones) no se sabe cuánto gira el muslo o la pierna sobre su eje. Hará falta el esqueleto con articulaciones (fase 7). Tampoco la anteversión de la pelvis (haría falta otro punto de la pelvis).',
+      'Un punto solo tiene 3D en los frames en que lo ven las dos vistas; si su error de reproyección pasa del 1 % del lado largo de la imagen, tampoco. Las coordenadas se filtran en 3D con el filtro de la sesión, por tramos, sin cruzar huecos.',
+    ],
+  },
+  {
     id: 'reproyeccion',
     titulo: 'Error de reproyección',
     texto: [
