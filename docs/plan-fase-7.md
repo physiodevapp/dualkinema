@@ -44,6 +44,18 @@ Con dos móviles calibrados (fase 6), los ángulos 3D salen de puntos sueltos: c
 | 3 | **Integración**: worker, «Ajustar el esqueleto», fuente en el panel 3D, monigote, CSV, glosario, esquema 7. e2e con la persona sintética | Opus |
 | 4 | Cierre: revisión de código, documentación y limitaciones | Opus |
 
+## Hecho
+
+**Pasos 1 a 3 (08-11):**
+
+- `core/esqueleto/modelo.ts`: los 21 grados de libertad y la cinemática directa (`puntosDePostura`), con los giros de cada articulación en la secuencia del sistema de coordenadas articulares: los ángulos clínicos son los propios parámetros. `modelo.test.ts` fija cada signo (flexión, abducción y rotación interna de las dos caderas, rodilla, tobillo, progresión del pie, oblicuidad y rumbo de la pelvis, tronco) y comprueba que **la persona sintética de la fase 6 es exactamente una postura del esqueleto** (mismas convenciones en los dos núcleos).
+- `core/esqueleto/sintetico.ts` (D6): la persona sintética con rotación y abducción de cadera, oblicuidad, progresión de los pies y rotación e inclinación del tronco, generada con el propio esqueleto.
+- `core/esqueleto/ajuste.ts`: las medidas de la toma (`medidasDeLaToma`, con la asimetría de cada segmento) y la cinemática inversa sobre las dos vistas (`ajustarFrame`: Levenberg–Marquardt con jacobiano numérico, Huber a 3 px, límites articulares, continuidad con el frame anterior, la anteversión fija y la rotación de cadera sujeta con la rodilla por debajo de 20°). Con la persona sintética, sin ruido sale la postura de verdad; con 2 px de ruido, frame a frame y sin filtrar, los sagitales y frontales con un error cuadrático medio por debajo de 1,6° y la rotación de cadera por debajo de 3° con la rodilla doblada más de 35°; una rodilla que una cámara no ve sigue saliendo (cuenta lo que ve la otra). Converge despacio con el jacobiano numérico (hasta 150 iteraciones, unos 20–30 ms por frame).
+- `core/esqueleto/sesion.ts`: toda la toma (`ajustarSesion`, con B en el instante común sin cruzar huecos, arrancando de nuevo tras un hueco), del marco del laboratorio al de la calibración (`deMarco`, el contrario de `enMarco`), las articulaciones del esqueleto (`ARTICULACIONES_ESQUELETO`) y su serie filtrada por tramos (`serieEsqueleto`, con `fiable` para la rotación de cadera). Test de la cadena entera con la persona sintética con rotaciones: calibrar con la propia persona, triangular, ajustar y filtrar da las rodillas y las caderas a menos de 2,5° y la rotación de cadera a menos de 4° con la rodilla doblada.
+- Interfaz: el worker `workers/esqueleto.worker.ts`; en el panel 3D, la fuente «Puntos» / «Esqueleto», «Ajustar el esqueleto» con progreso y «Parar», el resumen (frames ajustados, error mediano, la longitud del muslo y un aviso si las piernas miden distinto), las articulaciones del esqueleto en el selector, lo poco fiable tenue y a trazos en la gráfica y dicho junto al valor, el monigote con el esqueleto ajustado y el CSV con sus columnas (y `_fiable` para la rotación de cadera). Glosario: «Esqueleto ajustado» (con por qué la rotación de cadera solo con la rodilla doblada). e2e con la persona sintética de la fase 6.
+- **D10 cambia:** el ajuste no se guarda ni se rehace solo al abrir (tardaría decenas de segundos con unos minutos de vídeo): se pide con el botón. Sin esquema 7.
+- **Pendiente:** los gomets como puntos del modelo (D9) y los ceros de los ángulos del esqueleto guardados con la sesión.
+
 ## Riesgos
 
 - **El ruido real de MediaPipe** (≈ 3,5° frame a frame en 2D) con el esqueleto: el ajuste lo reparte entre las articulaciones y la continuidad lo suaviza, pero un punto mal detectado de forma sistemática (la cadera) desplaza la pelvis entera. Se mira con la validación final.

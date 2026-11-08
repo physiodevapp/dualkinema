@@ -13,6 +13,8 @@ interface Props {
   readonly imagenes: readonly [{ readonly ancho: number; readonly alto: number }, { readonly ancho: number; readonly alto: number }]
   /** Frame de A que se dibuja (el del cursor común), o null. */
   readonly indice: number | null
+  /** Los puntos del esqueleto ajustado en un frame (fase 7): si se dan, se dibujan ellos en lugar de los triangulados. */
+  readonly puntos?: (indice: number) => ReadonlyMap<string, Vec3> | null
 }
 
 /** Grados de giro por px de arrastre. */
@@ -25,7 +27,7 @@ const color = (nombre: string, defecto: string) => getComputedStyle(document.doc
  * Pierna derecha de la persona en ámbar, izquierda en gris (como el esqueleto sobre el vídeo). El encuadre es el de toda la
  * toma: el monigote no cambia de tamaño al moverse.
  */
-export default function Monigote3D({ tr, calibracion, imagenes, indice }: Props) {
+export default function Monigote3D({ tr, calibracion, imagenes, indice, puntos }: Props) {
   const lienzo = useRef<HTMLCanvasElement>(null)
   const [vista, setVista] = useState<PuntoDeVista>(VISTA_INICIAL)
   const [ancho, setAncho] = useState(320)
@@ -89,7 +91,9 @@ export default function Monigote3D({ tr, calibracion, imagenes, indice }: Props)
     for (const aristas of escena.camaras) for (const [a, b] of aristas) linea(a, b)
     ctx.stroke()
     if (indice === null) return
+    const delEsqueleto = puntos?.(indice) ?? null
     const en = (id: string) => {
+      if (puntos) return delEsqueleto?.get(id) ?? null
       const p = tr.series.get(id)?.[indice]
       return p && p.calidad > 0 && Number.isFinite(p.x) ? vec3(p.x, p.y, p.z) : null
     }
@@ -109,7 +113,7 @@ export default function Monigote3D({ tr, calibracion, imagenes, indice }: Props)
       linea(s.a, s.b)
       ctx.stroke()
     }
-  }, [ancho, alto, escena, vista, indice, tr])
+  }, [ancho, alto, escena, vista, indice, tr, puntos])
 
   const empezar = (e: React.PointerEvent) => {
     arrastre.current = { x: e.clientX, y: e.clientY, vista }

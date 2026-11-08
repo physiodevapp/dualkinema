@@ -253,6 +253,16 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'esqueleto',
+    titulo: 'Esqueleto ajustado',
+    texto: [
+      'Con la sesión calibrada en 3D, «Ajustar el esqueleto» (en los ángulos en 3D, fuente «Esqueleto») coloca en cada frame un esqueleto con articulaciones como las de verdad —la cadera gira en todas las direcciones, la rodilla se dobla como una bisagra, el tobillo en dos ejes y el tronco sobre la pelvis— de forma que lo que vería cada cámara caiga donde el modelo vio los puntos del cuerpo. Las medidas de la persona (muslo, pierna, pie, caderas, tronco) salen de la propia toma.',
+      'Lo que la articulación no deja hacer no aparece, y lo que no se ve directamente se deduce de cómo se mueven los segmentos unidos: así sale la rotación de la cadera, que con puntos sueltos no se puede medir. Un punto que ve una sola cámara también cuenta. Los ángulos siguen el sistema de coordenadas articulares (el de la Sociedad Internacional de Biomecánica): primero la flexión, después la abducción y por último la rotación.',
+      'Por qué la rotación de la cadera solo con la rodilla doblada: con la pierna recta, girar el muslo sobre sí mismo no mueve ningún punto que se vea (salvo el pie, que también puede girar en el tobillo). Con la rodilla por debajo de 20°, la rotación se sujeta a la de antes y se marca como poco fiable (a trazos en la gráfica, 0 en la columna «fiable» del CSV).',
+      'La anteversión de la pelvis no se separa de la flexión del tronco con estos puntos: queda fija y el tronco se mide respecto a la pelvis. El ajuste no se guarda: se rehace a petición (unos 20–30 ms por frame).',
+    ],
+  },
+  {
     id: 'reproyeccion',
     titulo: 'Error de reproyección',
     texto: [

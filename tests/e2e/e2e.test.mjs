@@ -5131,6 +5131,31 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     assert.equal(lineas.filter((l) => /^\d/.test(l)).length, videos.verde.verdad.length)
   })
 
+  it('el esqueleto ajustado (fase 7): las dos rodillas como las de verdad, el monigote y el CSV con sus columnas', async () => {
+    await abrirPestana(p, 'analisis')
+    const panel = p.getByTestId('panel-3d')
+    await panel.getByTestId('fuente-esqueleto').check()
+    await panel.getByRole('button', { name: 'Ajustar el esqueleto' }).click()
+    await panel.getByTestId('resumen-esqueleto').waitFor({ timeout: 120000 })
+    assert.match(await panel.getByTestId('resumen-esqueleto').innerText(), /(\d+) de \1 frames ajustados/)
+    const leer = async () => Number((await panel.getByTestId('valor-3d').innerText()).replace(/°.*/s, '').replace(',', '.').replace('−', '-'))
+    for (const [id, clave] of [['esq_rodilla_der', 'rodillaDer'], ['esq_rodilla_izq', 'rodillaIzq']]) {
+      await panel.getByTestId('articulacion-3d').selectOption(id)
+      for (const i of [30, 60, 95]) {
+        await irAFrame(p, i)
+        await abrirPestana(p, 'analisis')
+        const esperado = angulos(videos.verde.verdad[i].t)[clave]
+        assert.ok(Math.abs((await leer()) - esperado) < 3, `${id}, frame ${i + 1}: ${await leer()} frente a ${esperado}`)
+      }
+    }
+    const descarga = p.waitForEvent('download')
+    await panel.getByTestId('descargar-csv').click()
+    const texto = await readFile(await (await descarga).path(), 'utf8')
+    const columnas = texto.split('\r\n').find((l) => l.startsWith('t_comun_s')).split(';')
+    assert.ok(columnas.includes('esq_cadera_rot_der_grados') && columnas.includes('esq_cadera_rot_der_fiable'))
+    await panel.getByRole('radio', { name: 'Puntos' }).check()
+  })
+
   it('el informe se copia y la calibración se guarda con la sesión (esquema 6)', async () => {
     await abrirPestana(p, 'video')
     const tarjeta = p.getByTestId('calibrar-3d')

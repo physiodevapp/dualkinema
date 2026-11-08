@@ -2,6 +2,9 @@ import type { IdMarcador, TamanoModeloPose } from '../core/modelo/tipos'
 import type { Hueco } from '../core/seguimiento/huecos'
 import type { ResultadoAudio } from '../core/sincronia/audio'
 import type { Calibracion3D, EntradaCalibrar3D } from '../core/tresd/calibracion3d'
+import type { VistaParaEmparejar } from '../core/tresd/correspondencias'
+import type { Trayectorias3D } from '../core/tresd/puntos3d'
+import type { ResultadoEsqueleto } from '../core/esqueleto/sesion'
 
 export type { Hueco }
 
@@ -120,4 +123,20 @@ export interface AlWorkerCalibracion3D {
 export type DelWorkerCalibracion3D =
   /** null: no había instantes bastantes con las dos vistas. */
   | { readonly tipo: 'hecho'; readonly calibracion: Calibracion3D | null; readonly ms: number }
+  | { readonly tipo: 'error'; readonly mensaje: string }
+
+/** Ajustar el esqueleto (fase 7, paso 3; `workers/esqueleto.worker.ts`). */
+export interface AlWorkerEsqueleto {
+  readonly tipo: 'ajustar'
+  readonly calibracion: Calibracion3D
+  readonly a: VistaParaEmparejar
+  readonly b: VistaParaEmparejar
+  readonly tr: Trayectorias3D
+  readonly ids: readonly IdMarcador[]
+}
+
+export type DelWorkerEsqueleto =
+  | { readonly tipo: 'progreso'; readonly fraccion: number }
+  /** null: no hay bastantes puntos 3D para medir a la persona. */
+  | { readonly tipo: 'hecho'; readonly resultado: ResultadoEsqueleto | null; readonly ms: number }
   | { readonly tipo: 'error'; readonly mensaje: string }
