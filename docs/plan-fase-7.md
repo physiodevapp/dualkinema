@@ -1,6 +1,6 @@
 # Fase 7: todas las articulaciones en los tres planos (esqueleto ajustado)
 
-Estado: **plan propuesto** (08-11-2026), con las decisiones D1–D10 escritas y seguido con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
+Estado: **cerrada** (08-11-2026; ver «Cierre de la fase 7»). Plan propuesto el 08-11-2026, con las decisiones D1–D10 escritas y seguido con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
 
 ## Qué se quiere
 
@@ -55,6 +55,31 @@ Con dos móviles calibrados (fase 6), los ángulos 3D salen de puntos sueltos: c
 - Interfaz: el worker `workers/esqueleto.worker.ts`; en el panel 3D, la fuente «Puntos» / «Esqueleto», «Ajustar el esqueleto» con progreso y «Parar», el resumen (frames ajustados, error mediano, la longitud del muslo y un aviso si las piernas miden distinto), las articulaciones del esqueleto en el selector, lo poco fiable tenue y a trazos en la gráfica y dicho junto al valor, el monigote con el esqueleto ajustado y el CSV con sus columnas (y `_fiable` para la rotación de cadera). Glosario: «Esqueleto ajustado» (con por qué la rotación de cadera solo con la rodilla doblada). e2e con la persona sintética de la fase 6.
 - **D10 cambia:** el ajuste no se guarda ni se rehace solo al abrir (tardaría decenas de segundos con unos minutos de vídeo): se pide con el botón. Sin esquema 7.
 - **Pendiente:** los gomets como puntos del modelo (D9) y los ceros de los ángulos del esqueleto guardados con la sesión.
+
+## Cierre de la fase 7 (paso 4, 08-11-2026)
+
+### Revisión de código
+
+Una lectura independiente de lo que añade la fase 7 (`git diff 4c4265d..`), con cada hallazgo comprobado antes de arreglarlo.
+
+**Corregido:**
+
+1. **Un segmento que no se veía recibía ángulos inventados.** El ajuste solo rechazaba un frame con menos de 6 puntos en total; un grado de libertad sin sus puntos a la vista se quedaba en el valor de partida (0 tras un hueco, o el del frame anterior por la continuidad) y salía como un ángulo de verdad, en la gráfica y en el CSV (comprobado: la pierna izquierda oculta en las dos vistas daba rodilla y cadera izquierdas a 0° con error de reproyección 0). Ahora cada frame guarda en cuántas vistas se vio cada punto y un ángulo solo tiene valor si todos sus puntos se ven al menos en una y alguno en las dos (`necesita` de cada articulación); si no, NaN. Test nuevo.
+2. **La anteversión estaba fija en 0, no «sujeta a lo anterior»** como decía el comentario: es lo que se quiere (gira alrededor de la línea de las caderas, no se ve), pero quiere decir que la flexión de la cadera y la del tronco son en la práctica respecto a la vertical. Dicho en el código, el glosario y aquí.
+3. **Cambiar el corte del filtro tiraba un ajuste** que puede costar minutos (el ajuste dependía del objeto de los puntos ya filtrados). Ahora depende de los puntos sin filtrar; los ángulos se vuelven a filtrar con el corte nuevo.
+4. **La pérdida de Huber no era la de Huber** (por encima del umbral el coste era H·n en lugar de 2·H·n − H²: la pendiente saltaba a la mitad). Corregida.
+5. El comentario del modelo decía que todas las articulaciones siguen la secuencia flexión–abducción–rotación: el tobillo gira primero alrededor de la pierna. Corregido el comentario.
+6. Con la fuente «Esqueleto», un frame sin ajuste dejaba el monigote vacío: ahora enseña los puntos triangulados.
+
+**Revisado sin fallos:** los signos del modelo (Rodrigues a derechas: pelvis, caderas de los dos lados, rodilla, tobillo, tronco), que cadera y tronco son Y–X–Z intrínsecos (como Grood y Suntay), `deMarco` como inversa exacta de `enMarco` (numéricamente, con y sin escala ni marco), el rumbo de arranque, las unidades del previo de continuidad, el bucle de Levenberg–Marquardt, el reinicio tras un hueco y el filtrado por tramos sin cruzar huecos, el ciclo de vida del worker y las columnas del CSV.
+
+### Limitaciones conocidas
+
+1. **Probado solo con datos sintéticos** (el acuerdo del proyecto): la validación con la toma de dos móviles queda para el final.
+2. **La anteversión de la pelvis no se mide** (fija en 0) y la rotación de cadera solo con la rodilla doblada (por debajo de 20°, sujeta a la anterior y marcada como poco fiable).
+3. **Converge despacio** (jacobiano numérico, hasta 150 iteraciones: 20–30 ms por frame): unos minutos de vídeo son decenas de segundos en el worker. Un jacobiano analítico lo aceleraría.
+4. **El ajuste no se guarda** con la sesión (se pide con el botón al abrirla) ni sus ceros; los gomets todavía no entran como puntos del modelo (D9).
+5. **Las medidas de la persona** salen de la mediana de los puntos 3D de la toma: si el detector pone la cadera desplazada desde un lado, el muslo medido lo arrastra.
 
 ## Riesgos
 

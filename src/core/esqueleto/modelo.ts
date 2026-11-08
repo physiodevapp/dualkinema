@@ -7,7 +7,8 @@
  * articulación son una secuencia de Cardan que coincide con el sistema de coordenadas articulares de Grood y Suntay (ISB):
  * primero alrededor del eje mediolateral del segmento proximal (flexión), después del eje flotante anteroposterior
  * (abducción), por último del eje largo del segmento distal (rotación). Así los ángulos clínicos son los propios
- * parámetros, con sus signos fijados por `modelo.test.ts`:
+ * parámetros, con sus signos fijados por `modelo.test.ts`. El tobillo es la excepción: primero el giro del pie alrededor
+ * del eje largo de la pierna (progresión) y después la flexión dorsal, para que la flexión dorsal sea la del plano del pie:
  *
  * - Pelvis respecto al laboratorio: rumbo (alrededor de z, + hacia la izquierda), anteversión (+ la pelvis se inclina
  *   hacia delante) y oblicuidad (+ cadera izquierda más alta, como en 2D).

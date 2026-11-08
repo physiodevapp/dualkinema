@@ -91,9 +91,10 @@ export default function Monigote3D({ tr, calibracion, imagenes, indice, puntos }
     for (const aristas of escena.camaras) for (const [a, b] of aristas) linea(a, b)
     ctx.stroke()
     if (indice === null) return
+    // Un frame sin esqueleto ajustado enseña los puntos triangulados.
     const delEsqueleto = puntos?.(indice) ?? null
     const en = (id: string) => {
-      if (puntos) return delEsqueleto?.get(id) ?? null
+      if (delEsqueleto) return delEsqueleto.get(id) ?? null
       const p = tr.series.get(id)?.[indice]
       return p && p.calidad > 0 && Number.isFinite(p.x) ? vec3(p.x, p.y, p.z) : null
     }

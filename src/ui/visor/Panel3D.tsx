@@ -56,15 +56,17 @@ export default function Panel3D({ a, b, calibracion, ajustes, instante, desde, h
   const ocupado = a.siguiendo || a.detectando || b.siguiendo || b.detectando
   const va = ocupado ? -1 : a.version
   const vb = ocupado ? -1 : b.version
-  const tr = useMemo(
+  // Sin filtrar (de él depende si el esqueleto ajustado sigue valiendo: cambiar el corte del filtro no lo invalida) y filtrado.
+  const bruto = useMemo(
     () => {
       const ladoLargo = Math.max(a.info.ancho, a.info.alto, b.info.ancho, b.info.alto)
       const vista = (w: VistaViva) => ({ series: w.series, tabla: w.tabla, desfase: w.desfaseS, paso: pasoTipico(w.tabla) })
-      return filtrar3D(aLaboratorio(triangularSesion(calibracion, vista(a), vista(b), IDS, ladoLargo)), fpsMediano(a.tabla), ajustes)
+      return aLaboratorio(triangularSesion(calibracion, vista(a), vista(b), IDS, ladoLargo))
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- las series se modifican en sitio; la versión de cada vista lo dice.
-    [calibracion, va, vb, a.desfaseS, b.desfaseS, ajustes, a.series, b.series, a.tabla, b.tabla],
+    [calibracion, va, vb, a.desfaseS, b.desfaseS, a.series, b.series, a.tabla, b.tabla],
   )
+  const tr = useMemo(() => filtrar3D(bruto, fpsMediano(a.tabla), ajustes), [bruto, a.tabla, ajustes])
   const imagenes = useMemo(
     () =>
       [
@@ -75,11 +77,11 @@ export default function Panel3D({ a, b, calibracion, ajustes, instante, desde, h
   )
   // El esqueleto (fase 7): se ajusta a petición en un worker y vale mientras no cambien los puntos 3D de los que sale.
   const [fuente, setFuente] = useState<'puntos' | 'esqueleto'>('puntos')
-  const [ajuste, setAjuste] = useState<{ tr: typeof tr; resultado: ResultadoEsqueleto | null; ms: number } | null>(null)
+  const [ajuste, setAjuste] = useState<{ bruto: typeof bruto; resultado: ResultadoEsqueleto | null; ms: number } | null>(null)
   const [estadoEsq, setEstadoEsq] = useState<{ fase: 'parado' } | { fase: 'ajustando'; fraccion: number } | { fase: 'error'; mensaje: string }>({ fase: 'parado' })
   const worker = useRef<Worker | null>(null)
   useEffect(() => () => worker.current?.terminate(), [])
-  const esqueleto = ajuste && ajuste.tr === tr ? ajuste.resultado : null
+  const esqueleto = ajuste && ajuste.bruto === bruto ? ajuste.resultado : null
   const conEsqueleto = fuente === 'esqueleto' && !!esqueleto
   const lista = fuente === 'esqueleto' ? ARTICULACIONES_ESQUELETO : ARTICULACIONES_3D
   const elegidaVigente = lista.some((x) => x.id === elegida) ? elegida : lista[0]!.id
@@ -101,14 +103,14 @@ export default function Panel3D({ a, b, calibracion, ajustes, instante, desde, h
     worker.current?.terminate()
     const w = new Worker(new URL('../../workers/esqueleto.worker.ts', import.meta.url), { type: 'module' })
     worker.current = w
-    const desde = tr
+    const desde = bruto
     setEstadoEsq({ fase: 'ajustando', fraccion: 0 })
     w.onmessage = (e: MessageEvent<DelWorkerEsqueleto>) => {
       if (worker.current !== w) return
       const m = e.data
       if (m.tipo === 'progreso') return setEstadoEsq({ fase: 'ajustando', fraccion: m.fraccion })
       if (m.tipo === 'hecho') {
-        setAjuste({ tr: desde, resultado: m.resultado, ms: m.ms })
+        setAjuste({ bruto: desde, resultado: m.resultado, ms: m.ms })
         setEstadoEsq(m.resultado ? { fase: 'parado' } : { fase: 'error', mensaje: 'no hay bastantes puntos 3D para medir a la persona.' })
       } else setEstadoEsq({ fase: 'error', mensaje: m.mensaje })
       w.terminate()
@@ -196,7 +198,7 @@ export default function Panel3D({ a, b, calibracion, ajustes, instante, desde, h
             </button>
           )}
           {estadoEsq.fase === 'error' && <p className="text-sm text-acento">No se ha podido ajustar: {estadoEsq.mensaje}</p>}
-          {ajuste && ajuste.tr !== tr && !esqueleto && <p className="text-xs text-texto-2">Los puntos han cambiado desde el último ajuste: vuelve a ajustarlo.</p>}
+          {ajuste && ajuste.bruto !== bruto && !esqueleto && <p className="text-xs text-texto-2">Los puntos han cambiado desde el último ajuste: vuelve a ajustarlo.</p>}
           {esqueleto && (
             <p className="font-mono text-xs text-texto-2" data-testid="resumen-esqueleto">
               {esqueleto.posturas.filter(Boolean).length} de {esqueleto.posturas.length} frames ajustados · error mediano{' '}

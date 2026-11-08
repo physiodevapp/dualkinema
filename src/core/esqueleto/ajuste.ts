@@ -111,7 +111,7 @@ const SIGMA_LIMITE = 1 * deg
 /** Continuidad con el frame anterior (por frame a ~30 fps): débil, solo desempata. */
 const SIGMA_CONTINUIDAD_ANGULO = 15 * deg
 const SIGMA_CONTINUIDAD_POSICION = 0.1
-/** Lo que no se ve se sujeta a lo anterior (D4): la anteversión siempre, la rotación de cadera con la rodilla recta. */
+/** Lo que no se ve se sujeta (D4): la anteversión, fija en la de partida (0); la rotación de cadera con la rodilla recta, a la anterior. */
 const SIGMA_SUJETO = 1 * deg
 export const RODILLA_ROTACION_VISIBLE = 20 * deg
 const HUBER_PX = 3
@@ -134,6 +134,8 @@ export interface ResultadoAjuste {
   /** Error de reproyección (px, raíz de la media de los cuadrados) de los puntos observados. */
   readonly error: number
   readonly observados: number
+  /** En cuántas vistas se ve cada punto (con calidad suficiente) en este frame: lo que no se ve no tiene ángulo. */
+  readonly vistas: Readonly<Record<IdMarcador, number>>
   /** La rotación de cada cadera, ¿la determina lo que se ve? (la rodilla doblada). */
   readonly rotacionVisible: Readonly<Record<Lado, boolean>>
 }
@@ -153,8 +155,8 @@ function residuos(q: readonly number[], e: EntradaAjuste, anteversion: number): 
       const dv = p.v - o.v
       const n = Math.hypot(du, dv)
       reproy.push(n)
-      // Huber: por encima de HUBER_PX, el residuo crece como la raíz (el peso baja).
-      const w = Math.sqrt(o.calidad) * (n > HUBER_PX ? Math.sqrt(HUBER_PX / n) : 1)
+      // Huber: por encima de HUBER_PX, el coste crece en línea recta (2·H·n − H²) en lugar de al cuadrado.
+      const w = Math.sqrt(o.calidad) * (n > HUBER_PX ? Math.sqrt((2 * HUBER_PX) / n - (HUBER_PX * HUBER_PX) / (n * n)) : 1)
       r.push(du * w, dv * w)
     }
   })
@@ -174,6 +176,13 @@ function residuos(q: readonly number[], e: EntradaAjuste, anteversion: number): 
     }
   }
   return { r, reproy }
+}
+
+/** En cuántas vistas se ve cada punto (calidad ≥ `CALIDAD_MINIMA`). */
+function vistasDe(e: EntradaAjuste): Record<IdMarcador, number> {
+  const r: Record<IdMarcador, number> = {}
+  for (const o of e.observaciones) for (const [id, x] of o) if (x.calidad >= CALIDAD_MINIMA) r[id] = (r[id] ?? 0) + 1
+  return r
 }
 
 const suma2 = (r: readonly number[]) => r.reduce((s, x) => s + x * x, 0)
@@ -237,6 +246,7 @@ export function ajustarFrame(e: EntradaAjuste, { iteraciones = 150, anteversion 
     q,
     error,
     observados: reproy.length,
+    vistas: vistasDe(e),
     rotacionVisible: { der: Math.abs(q[indiceGrado('rodillaDer')]!) >= RODILLA_ROTACION_VISIBLE, izq: Math.abs(q[indiceGrado('rodillaIzq')]!) >= RODILLA_ROTACION_VISIBLE },
   }
 }

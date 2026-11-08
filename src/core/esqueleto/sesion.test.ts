@@ -34,7 +34,7 @@ const vista = (c: Camara, px: number): VistaParaEmparejar => {
 const deg = (r: number) => (r * 180) / Math.PI
 
 describe('el esqueleto en toda la toma', () => {
-  it('calibrado con la persona, ajustado y filtrado: las rodillas, las caderas (también su rotación con la rodilla doblada) y el tronco', { timeout: 60000 }, () => {
+  it('calibrado con la persona, ajustado y filtrado: las rodillas, las caderas (también su rotación con la rodilla doblada) y el tronco', { timeout: 120000 }, () => {
     const [va, vb] = [vista(A, 1.5), vista(B, 1.5)]
     const ids = [...va.series.keys()]
     const cal = calibrar3D({
@@ -70,6 +70,16 @@ describe('el esqueleto en toda la toma', () => {
     // En la sentadilla (6–11 s) con la rodilla por encima de 35°: la rotación interna de cadera.
     const doblada = (k: number) => tiempos[k]! > 6 && posturaEn(tiempos[k]!, H)[indiceGrado('rodillaDer')]! > (35 * Math.PI) / 180
     const rot = comprobar('esq_cadera_rot_der', 4, doblada)
+    // Una pierna que no ve ninguna cámara durante un rato no tiene ángulos (nunca se inventan), y la otra sigue.
+    const oculto = (k: number) => k >= 240 && k < 260
+    const quitar = (v: typeof va) => ({ ...v, series: new Map([...v.series].map(([id, s]) => [id, /_izq$/.test(id) && !/cadera|hombro/.test(id) ? s.map((m, k) => (oculto(k) ? undefined : m)) : s])) })
+    const r2 = ajustarSesion(cal, quitar(va), quitar(vb), tr, ids)!
+    const izq = serieEsqueleto(ARTICULACIONES_ESQUELETO.find((x) => x.id === 'esq_rodilla_izq')!, r2, FPS, { corteHz: 6 })
+    const der = serieEsqueleto(ARTICULACIONES_ESQUELETO.find((x) => x.id === 'esq_rodilla_der')!, r2, FPS, { corteHz: 6 })
+    for (let k = 240; k < 260; k++) {
+      expect(izq[k]!.valor).toBeNaN()
+      expect(der[k]!.valor).not.toBeNaN()
+    }
     // Con la rodilla recta, la rotación se marca como poco fiable.
     const recta = tiempos.findIndex((t) => t > 6 && posturaEn(t, H)[indiceGrado('rodillaDer')]! < (10 * Math.PI) / 180)
     expect(rot[recta]!.fiable).toBe(false)

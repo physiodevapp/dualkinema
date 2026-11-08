@@ -14,6 +14,7 @@ import { posicionEn, type VistaParaEmparejar } from '../tresd/correspondencias'
 import type { Trayectorias3D } from '../tresd/puntos3d'
 import { ajustarFrame, arranqueDe, medidasDeLaToma, RODILLA_ROTACION_VISIBLE, type Observaciones } from './ajuste'
 import { indiceGrado, type Grado, type Medidas } from './modelo'
+import { idPose } from '../pose/puntos'
 
 /** Del marco del laboratorio (el de las trayectorias 3D) al mundo de la calibración: lo contrario de `enMarco`. */
 export function deMarco(cal: Calibracion3D, marco: Trayectorias3D['marco']): (p: Vec3) => Vec3 {
@@ -38,6 +39,8 @@ export interface ResultadoEsqueleto {
   readonly errores: readonly number[]
   /** Si la rotación de cada cadera se ve en cada frame (la rodilla doblada, D4). */
   readonly rotacionVisible: readonly Readonly<Record<Lado, boolean>>[]
+  /** En cuántas vistas se vio cada punto en cada frame (un ángulo sin sus puntos a la vista no tiene valor). */
+  readonly vistas: readonly Readonly<Record<IdMarcador, number>>[]
 }
 
 /** Lo que ve una vista en el instante común `tc` (B interpolada sin cruzar huecos). */
@@ -77,6 +80,7 @@ export function ajustarSesion(
   const posturas: (number[] | null)[] = []
   const errores: number[] = []
   const rotacionVisible: Record<Lado, boolean>[] = []
+  const vistas: Readonly<Record<IdMarcador, number>>[] = []
   let anterior: number[] | null = null
   let tAnterior = NaN
   const paso = a.paso
@@ -90,6 +94,7 @@ export function ajustarSesion(
       posturas.push(null)
       errores.push(NaN)
       rotacionVisible.push({ der: false, izq: false })
+      vistas.push({})
       continue
     }
     const r = ajustarFrame({ camaras, aMundo, medidas: m.medidas, observaciones: [observacionesEn(a, tc, ids), observacionesEn(b, tc, ids)], anterior, arranque, unidad })
@@ -97,12 +102,14 @@ export function ajustarSesion(
       posturas.push(null)
       errores.push(NaN)
       rotacionVisible.push({ der: false, izq: false })
+      vistas.push({})
       anterior = null
       continue
     }
     posturas.push(r.q)
     errores.push(r.error)
     rotacionVisible.push({ ...r.rotacionVisible })
+    vistas.push(r.vistas)
     anterior = r.q
     tAnterior = tc
   }
@@ -110,8 +117,9 @@ export function ajustarSesion(
     posturas.push(null)
     errores.push(NaN)
     rotacionVisible.push({ der: false, izq: false })
+    vistas.push({})
   }
-  return { tiempos: tr.tiempos, medidas: m.medidas, asimetria: m.asimetria, posturas, errores, rotacionVisible }
+  return { tiempos: tr.tiempos, medidas: m.medidas, asimetria: m.asimetria, posturas, errores, rotacionVisible, vistas }
 }
 
 export interface ArticulacionEsqueleto {
@@ -123,10 +131,26 @@ export interface ArticulacionEsqueleto {
   readonly negativo: string
   /** La rotación de cadera solo se ve con la rodilla doblada (D4). */
   readonly ladoRotacion?: Lado
+  /** Los puntos que tienen que verse para que el ángulo tenga valor (todos en una vista al menos, alguno en las dos). */
+  readonly necesita: readonly IdMarcador[]
+}
+
+const CADERAS = [idPose('cadera', 'der'), idPose('cadera', 'izq')]
+const HOMBROS = [idPose('hombro', 'der'), idPose('hombro', 'izq')]
+/** Lo que necesita ver cada grado de libertad para tener valor. */
+function necesita(g: Grado): IdMarcador[] {
+  const l: Lado = g.endsWith('Izq') ? 'izq' : 'der'
+  if (g.startsWith('caderaRot')) return [...CADERAS, idPose('rodilla', l), idPose('tobillo', l)]
+  if (g.startsWith('cadera')) return [...CADERAS, idPose('rodilla', l)]
+  if (g.startsWith('rodilla')) return [idPose('cadera', l), idPose('rodilla', l), idPose('tobillo', l)]
+  if (g.startsWith('tobillo')) return [idPose('rodilla', l), idPose('tobillo', l), idPose('talon', l), idPose('punta', l)]
+  if (g.startsWith('tronco')) return [...CADERAS, ...HOMBROS]
+  return CADERAS
 }
 
 const art = (id: string, nombre: string, plano: ArticulacionEsqueleto['plano'], grado: Grado, positivo: string, negativo: string, ladoRotacion?: Lado): ArticulacionEsqueleto => ({
   id: `esq_${id}`,
+  necesita: necesita(grado),
   nombre: `${nombre} (esqueleto)`,
   plano,
   grado,
@@ -164,7 +188,12 @@ const grados = (r: number) => (r * 180) / Math.PI
  */
 export function serieEsqueleto(a: ArticulacionEsqueleto, r: ResultadoEsqueleto, fs: number, ajustes: AjustesFiltro): (MuestraAngulo & { readonly fiable: boolean })[] {
   const ig = indiceGrado(a.grado)
-  const crudos = r.posturas.map((q) => (q ? grados(q[ig]!) : NaN))
+  // Sin sus puntos a la vista, el ángulo no tiene valor: el ajuste lo dejaría en lo de antes o en 0, inventado.
+  const visto = (k: number) => {
+    const v = r.vistas[k] ?? {}
+    return a.necesita.every((id) => (v[id] ?? 0) >= 1) && a.necesita.some((id) => (v[id] ?? 0) >= 2)
+  }
+  const crudos = r.posturas.map((q, k) => (q && visto(k) ? grados(q[ig]!) : NaN))
   // La pelvis respecto al principio: el rumbo menos el del primer frame ajustado.
   const primero = crudos.find(Number.isFinite)
   const base = a.grado === 'pelvisRumbo' && primero !== undefined ? primero : 0
