@@ -17,6 +17,8 @@ const UMBRAL_LADO = 0.05
  * persona de frente están a un 5–15 % del alto de la imagen; por debajo (de lado, muy lejos) no se toca nada.
  */
 const UMBRAL_LADO_FRENTE = 0.02
+
+export const esRtmpose = (m: TamanoModeloPose) => m === 'rtmpose-s' || m === 'rtmpose-m'
 /** Tiempo que se espera a que el worker conteste a «cancelar» antes de cerrarlo sin más (ms): un frame tarda < 0,1 s. */
 const ESPERA_CANCELAR_MS = 5000
 
@@ -66,11 +68,15 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
     alEmpezar()
     const { tabla, info } = video
     const total = tabla.tiempos.length
-    const w = new Worker(new URL('../../workers/pose.worker.ts', import.meta.url), { type: 'module' })
+    // RTMPose (experimento `?rtmpose`, fase 6) habla el mismo protocolo que MediaPipe, en su propio worker.
+    const w = esRtmpose(modeloPose)
+      ? new Worker(new URL('../../workers/rtmpose.worker.ts', import.meta.url), { type: 'module' })
+      : new Worker(new URL('../../workers/pose.worker.ts', import.meta.url), { type: 'module' })
     worker.current = w
     const frames = new Map<number, FramePose>()
     let delegado: 'GPU' | 'CPU' = 'GPU'
     let avisoDelegado: string | undefined
+    let libreria = __MEDIAPIPE__
     const modelo = modeloPose
     setProgreso({ fase: 'cargando' })
     setAviso(null)
@@ -95,6 +101,7 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
       if (m.tipo === 'listo') {
         delegado = m.delegado
         avisoDelegado = m.avisoDelegado
+        if (m.libreria) libreria = m.libreria
         setProgreso({ fase: 'delante', fraccion: 0 })
       } else if (m.tipo === 'frames') {
         // El tiempo de cada frame es el de la tabla del visor (por su índice): todas las trayectorias de la vista llevan los
@@ -111,7 +118,7 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
         const conPersona = [...frames.values()].filter((f) => f.puntos).length
         const intercambiados = cuenta(correccion.intercambiados)
         const dudosos = cuenta(correccion.dudosos)
-        setDeteccion({ modelo, libreria: __MEDIAPIPE__, delegado, fecha: new Date().toISOString(), conPersona, intercambiados, dudosos })
+        setDeteccion({ modelo, libreria, delegado, fecha: new Date().toISOString(), conPersona, intercambiados, dudosos })
         setRevDeteccion((n) => n + 1)
         const partes = [
           `${m.motivo === 'final' ? 'Cuerpo detectado' : 'Detección parada'}: persona en ${conPersona} de ${total} frames`,

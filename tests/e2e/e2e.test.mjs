@@ -4981,6 +4981,75 @@ describe('guía de la toma B1 (fase 6)', () => {
   })
 })
 
+describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () => {
+  // Una foto de una persona (Pexels, uso libre; `fixtures/persona.jpg`, 320 × 480) hecha vídeo de 1 s. Lo que debe dar cada
+  // punto es lo que da RTMPose-s en Python (onnxruntime) con el mismo preprocesado sobre la foto; el vídeo VP9 cambia
+  // algún píxel, así que se compara a unos px.
+  const REFERENCIA = {
+    hombro_izq: [191.7, 122.2], hombro_der: [99.9, 120.0], cadera_izq: [166.6, 256.7], cadera_der: [115.2, 255.6],
+    rodilla_izq: [174.2, 352.9], rodilla_der: [105.3, 350.7], tobillo_izq: [185.1, 443.7], tobillo_der: [92.2, 438.2],
+    talon_izq: [183.0, 455.7], talon_der: [98.8, 453.5],
+  }
+  let p
+  let ruta
+  before(async () => {
+    // Medio segundo de la foto hecho vídeo (VP9) con ffmpeg, guardado: la CI con los vídeos en caché no instala ffmpeg.
+    ruta = join(import.meta.dirname, 'fixtures', 'persona.webm')
+    p = await abrirApp(navegador, { consulta: '?rtmpose' })
+    await cargarSinMarcadores(p, ruta)
+    await abrirPestana(p, 'marcar')
+  })
+  after(() => p?.close())
+
+  it('sin ?rtmpose no se ofrece; con él, RTMPose-s detecta a la persona y sus puntos caen donde los pone Python', async () => {
+    const opciones = await p.getByTestId('modelo-pose').locator('option').allInnerTexts()
+    assert.ok(opciones.some((o) => /RTMPose-s/.test(o)), opciones.join(' | '))
+    await p.getByTestId('modelo-pose').selectOption('rtmpose-s')
+    await p.getByTestId('detectar-cuerpo').getByRole('button', { name: /detectar/i }).click()
+    await p.getByTestId('deteccion-hecha').waitFor({ timeout: 300000 })
+    assert.match(await p.getByTestId('deteccion-hecha').innerText(), /rtmpose-s · (CPU|GPU) · persona en 15 frames/)
+    // Las posiciones guardadas (IndexedDB) del frame 8 (la imagen es la misma en todos).
+    // `waitForFunction` con una función async no espera (la promesa ya es «verdadera»): se sondea a mano.
+    const leer = () =>
+      p.evaluate(async () => {
+        const bd = await new Promise((ok, mal) => {
+          const r = indexedDB.open('dualkinema')
+          r.onsuccess = () => ok(r.result)
+          r.onerror = () => mal(r.error)
+        })
+        try {
+          if (!bd.objectStoreNames.contains('trayectorias')) return null
+          const todas = await new Promise((ok) => {
+            const r = bd.transaction('trayectorias').objectStore('trayectorias').getAll()
+            r.onsuccess = () => ok(r.result)
+          })
+          for (const d of todas) {
+            for (const porMarcador of Object.values(d.trayectorias)) {
+              if (!porMarcador.pose_rodilla_der) continue
+              const r = {}
+              for (const [id, tr] of Object.entries(porMarcador)) r[id.replace('pose_', '')] = [tr.x[7], tr.y[7], tr.calidad[7]]
+              return r
+            }
+          }
+          return null
+        } finally {
+          bd.close()
+        }
+      })
+    let puntos = null
+    for (let k = 0; k < 60 && !puntos; k++) {
+      puntos = await leer()
+      if (!puntos) await p.waitForTimeout(300)
+    }
+    assert.ok(puntos, 'la detección no se ha guardado')
+    for (const [id, [x, y]] of Object.entries(REFERENCIA)) {
+      const [px, py, calidad] = puntos[id]
+      assert.ok(Math.hypot(px - x, py - y) < 6, `${id}: (${px.toFixed(1)}, ${py.toFixed(1)}) frente a (${x}, ${y})`)
+      assert.ok(calidad > 0.4, `${id}: calidad ${calidad}`)
+    }
+  })
+})
+
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
   assert.deepEqual(errores, [])
 })

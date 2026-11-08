@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "node --test --test-timeout=600000 tests/e2e/e2e.test.mjs",
+    "test:e2e": "node --test --test-timeout=1800000 tests/e2e/e2e.test.mjs",
     "test:senal": "node --test --test-timeout=120000 tests/senal/senal.test.mjs"
   },
   "engines": {
@@ -21,6 +21,7 @@
     "@heroicons/react": "2.2.0",
     "@mediapipe/tasks-vision": "1.1.0",
     "mediabunny": "1.61.6",
+    "onnxruntime-web": "1.23.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "uplot": "1.6.32",

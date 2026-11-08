@@ -30,9 +30,18 @@ export interface DeteccionPanel {
   readonly onParar: () => void
 }
 
+/** RTMPose (fase 6) solo con `?rtmpose` en la dirección, mientras es un experimento. */
+const HAY_RTMPOSE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('rtmpose')
+
 const MODELOS: readonly { id: TamanoModeloPose; nombre: string }[] = [
   { id: 'full', nombre: 'Normal (full)' },
   { id: 'heavy', nombre: 'Preciso y lento (heavy, se descarga 30 MB)' },
+  ...(HAY_RTMPOSE
+    ? [
+        { id: 'rtmpose-s' as const, nombre: 'RTMPose-s (experimental, 27 MB)' },
+        { id: 'rtmpose-m' as const, nombre: 'RTMPose-m (experimental, 60 MB)' },
+      ]
+    : []),
 ]
 
 interface Props {
@@ -183,6 +192,7 @@ export default function PanelMarcar({
                       disabled={ocupado}
                       onChange={(e) => deteccion.onModelo(e.target.value as TamanoModeloPose)}
                       className="min-w-0 flex-1 rounded-md border border-borde bg-fondo px-2 py-1"
+                      data-testid="modelo-pose"
                     >
                       {MODELOS.map((m) => (
                         <option key={m.id} value={m.id}>

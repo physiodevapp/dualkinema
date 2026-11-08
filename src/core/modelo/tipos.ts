@@ -76,7 +76,8 @@ export interface Sincronia {
 }
 
 /** Tamaño del modelo de MediaPipe Pose Landmarker (fase 5). */
-export type TamanoModeloPose = 'lite' | 'full' | 'heavy'
+/** Modelo sin marcadores: MediaPipe Pose (lite, full, heavy) o, desde la fase 6 (experimento `?rtmpose`), RTMPose s o m. */
+export type TamanoModeloPose = 'lite' | 'full' | 'heavy' | 'rtmpose-s' | 'rtmpose-m'
 
 /**
  * Cómo se detectaron los puntos sin marcadores de una vista (fase 5, D7), para saber de dónde salen y poder repetir el
