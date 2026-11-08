@@ -502,7 +502,7 @@ function Aplicacion() {
       />
 
       {(estado.fase === 'inicio' || estado.fase === 'cargando') && (
-        <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-6 lg:gap-4">
           <p className="text-texto-2">
             Análisis cinemático diferido a partir de vídeo con marcadores. Todo se procesa en este dispositivo: los
             vídeos nunca salen de él.
@@ -660,7 +660,11 @@ function Aplicacion() {
       )}
 
       {/* En el visor del móvil la página no se desplaza: el pie va en la pestaña «Vídeo» (`pie-visor`). */}
-      <footer className={`mt-auto font-mono text-xs text-texto-2 ${estado.fase === 'visor' ? 'max-lg:hidden' : ''}`} data-testid="pie">
+      {/* En la portada del escritorio, el pie va en la esquina sin ocupar sitio: si no, la portada no cabía en la ventana. */}
+      <footer
+        className={`mt-auto font-mono text-xs text-texto-2 ${estado.fase === 'visor' ? 'max-lg:hidden' : 'lg:pointer-events-none lg:fixed lg:bottom-2 lg:left-4'}`}
+        data-testid="pie"
+      >
         {__RAMA__} · {__COMMIT__}
       </footer>
     </main>
