@@ -1,6 +1,6 @@
 # Fase 6: 3D con dos móviles calibrado con la propia persona
 
-Estado: **plan propuesto** (01-11-2026; paso 1 hecho, ver «Hecho»), con las decisiones D1–D10 escritas y seguido con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**; la única toma que se pide antes es la **B1** (ver «La toma B1»).
+Estado: **cerrada** (08-11-2026; ver «Cierre de la fase 6»). Plan propuesto el 01-11-2026, con las decisiones D1–D10 escritas y seguido con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**; la única toma que se pide antes es la **B1** (ver «La toma B1»).
 
 Parte del anticipo escrito al final de `docs/plan-fase-5.md` (lo hablado el 27-10) y lo concreta.
 
@@ -185,6 +185,36 @@ Si la B1 dice que MediaPipe no marca el mismo punto desde los dos flancos (resid
 **Paso 6, el asistente de colocación (08-11), en parte:** `core/grabacion/colocacion.ts` (`revisarInclinacion`: bien si la cámara mira a menos de 10° de la horizontal y la imagen está girada menos de 3°, y qué hacer si no; a medio grado para mandarla) y, en la sala, la inclinación de este móvil en directo y la del otro (nuevo campo opcional `estado.inclinacion`: el protocolo sigue en la versión 1, un móvil anterior lo ignora y su falta es «no se sabe»), con su aviso; glosario «Colocar los móviles». e2e con un acelerómetro falso en un móvil: los dos ven su inclinación y el consejo. **Queda para después** (no se puede comprobar sin vídeos reales y pide trabajo de más para lo que aporta ahora): la persona entera en las dos imágenes con el detector sobre la vista previa, medir la distancia por el pitido antes de grabar, la altura de cada cámara por el horizonte y el ángulo entre los móviles (la guía de la B1 ya lo calcula por el coseno con las distancias de cinta).
 
 **Pendiente para el paso 3:** seguir los gomets de delante en las dos vistas de una pareja en flancos (hoy cada vista de perfil sigue los gomets laterales de la pierna de la referencia) para usarlos en la calibración y como verdad.
+
+## Cierre de la fase 6 (paso 7, 08-11-2026)
+
+### Revisión de código
+
+Revisado todo lo que añade la fase 6 desde la guía por voz (`git diff c5df271..`): núcleo 3D (correspondencias, calibración, puntos y ángulos 3D, vista del monigote, CSV 3D), esquema 6, colocación, protocolo, RTMPose y su worker, el worker de la calibración y la interfaz (`Calibrar3D`, `Panel3D`, `Monigote3D` y lo que los conecta). Una lectura independiente del código, con cada hallazgo comprobado antes de arreglarlo.
+
+**Corregido:**
+
+1. **Una estatura mal escrita dejaba la sesión sin poder abrirse:** «3», «350» o «1755» se guardaban como 3, 3,5 o 17,55 m y la lectura rechazaba la cabecera entera. Ahora la estatura se lee en cm o en m y solo vale de 1 a 2,5 m (si no, se dice y no se calcula: `estaturaEnMetros`), y `prepararGuardado` no guarda una fuera de lo que se lee.
+2. **Una calibración degenerada** (nada triangulable, el ajuste divergió) se guardaba con el error NaN y tampoco dejaba abrir la sesión. Ahora `calibrar3D` solo devuelve una calibración que pasa su propia validación; si no, «no converge» con qué revisar.
+3. **El consejo para enderezar el móvil iba al revés** (en la sala y en la guía de la B1): con la gravedad inclinada hacia la derecha de la imagen el móvil está girado en sentido horario y se endereza en el contrario. Test cambiado a propósito.
+4. **La rejilla del suelo del monigote** se medía con todos los puntos de la toma: un punto mal triangulado muy lejos la disparaba a miles de líneas por frame. Ahora sale del percentil 98 de la persona y de las cámaras, con 40 líneas por lado como mucho.
+5. **La calibración no se enteraba de un cambio de sincronía** (las correspondencias dependen del desfase): ahora guarda el desfase de cada vista y, si cambia, «La sincronía ha cambiado desde la calibración: vuelve a calibrar».
+6. En la CI, la suite e2e entera tiene el límite de `--test-timeout` (era de 10 min y, con RTMPose en la CPU de la CI, no cabía): sube a 30 min, y el vídeo de RTMPose pasa a medio segundo. Las pruebas que leen IndexedDB sondean a mano (con una función `async`, `waitForFunction` no esperaba).
+
+**Revisado sin fallos:** los signos de las vistas virtuales y de los transversales (rumbo = z × (der − izq), perfil a la derecha y a la izquierda, frente desde delante, todo contra `aCanonico`); el instante de B (t_A + desfase_A − desfase_B) y que nunca se interpola a través de un hueco o un salto; el filtro 3D por tramos; las columnas y celdas vacías del CSV 3D; la proyección del monigote y la pirámide de cada cámara; la migración 5 → 6 y su validación; el campo opcional del protocolo; el preprocesado de RTMPose (relleno, recorte, SimCC, índices de Halpe26); que el 3D no se rehace con cada lote mientras se sigue o se detecta.
+
+### Limitaciones conocidas
+
+1. **Todo el 3D está probado solo con datos sintéticos** (por acuerdo con el usuario): la vertical del acelerómetro de cada móvil, la focal estimada, el error por punto entre flancos, la escala por la estatura y los ángulos 3D frente a un goniómetro quedan **pendientes de validar con vídeos** (la B1 simplificada, al final del proyecto).
+2. **La focal sale mal determinada con la persona sola** si se mueve poco (ver el paso 2): afecta poco a los ángulos y más a las longitudes. Si la B1 lo confirma, fijar la focal de cada móvil una vez.
+3. **Un desvío del detector a lo largo de la línea epipolar no se ve en el error de reproyección** (paso 3): el error por punto solo comprueba la mitad; la otra mitad, la constancia de los segmentos en 3D, no está todavía en la interfaz.
+4. **Los ceros de los ángulos 3D no se guardan** con la sesión (se pierden al recargar o al añadir una vista), ni hay comparación 2D frente a 3D de la misma articulación.
+5. **Los sensores leídos del MP4 al calibrar** (un vídeo abierto con «Cargar vídeo») no se guardan con la vista: se vuelven a leer en cada calibración.
+6. **El tronco sagital en 3D** usa la cadera y el hombro derechos (como el 2D de perfil de la pierna derecha): sin un punto de ese lado no hay valor aunque estén los del otro.
+7. **La triangulación de toda la toma va en el hilo principal** (en el panel 3D): con 5 min de vídeo puede tardar alrededor de un segundo cada vez que cambian las trayectorias.
+8. **El asistente de colocación está a medias** (paso 6): falta la persona entera en las dos imágenes, la distancia por el pitido antes de grabar, la altura de cada cámara y el ángulo entre los móviles.
+9. **RTMPose es un experimento** (`?rtmpose`): sin probar en el móvil (velocidad con WebGPU en el worker, umbral de calidad) ni frente a MediaPipe con vídeos de dos flancos.
+10. **La rotación de cadera y de rodilla y la anteversión de la pelvis no se calculan** (dos puntos por segmento): es la fase 7.
 
 ## RTMPose (experimento, `?rtmpose`)
 
