@@ -45,6 +45,9 @@ export async function probarFps(flujo: MediaStream, calidad: Calidad, senal?: Ab
   const codificados: number[] = []
   let fallo = false
   const parar = () => void lector.cancel().catch(() => {})
+  // Una lectura que perdió la carrera con la espera sigue pendiente: si luego llega un frame, hay que cerrarlo (si no, el
+  // navegador avisa de un VideoFrame recogido sin cerrar y la cámara puede atascarse).
+  let pendiente: Promise<ReadableStreamReadResult<VideoFrame>> | null = null
   senal?.addEventListener('abort', parar)
   try {
     await salida.start()
@@ -52,8 +55,11 @@ export async function probarFps(flujo: MediaStream, calidad: Calidad, senal?: Ab
     for (;;) {
       let espera: ReturnType<typeof setTimeout> | undefined
       const sinFrames = new Promise<{ done: true; value: undefined }>((ok) => (espera = setTimeout(() => ok({ done: true, value: undefined }), SIN_FRAMES_MS)))
-      const { value, done } = await Promise.race([lector.read(), sinFrames])
+      const lectura = lector.read()
+      pendiente = lectura
+      const { value, done } = await Promise.race([lectura, sinFrames])
       clearTimeout(espera)
+      if (value) pendiente = null
       if (done || !value || senal?.aborted || fallo) {
         value?.close()
         break
@@ -85,6 +91,7 @@ export async function probarFps(flujo: MediaStream, calidad: Calidad, senal?: Ab
   } finally {
     senal?.removeEventListener('abort', parar)
     parar()
+    void pendiente?.then((r) => r.value?.close()).catch(() => {})
     pista.stop()
     await Promise.allSettled([...pendientes])
     await salida.cancel().catch(() => {})
