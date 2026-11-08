@@ -4628,6 +4628,47 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     }
   })
 
+  it('comprobar el encuadre: los dos móviles miran si se ve a la persona entera y el que lo pide lo dice en voz alta', async () => {
+    // El detector se sustituye por uno falso que da la persona de pie que diga `window.__pies` (dónde caen los pies, 0–1).
+    const falso = (pies) => {
+      window.__pies = pies
+      window.__voz = []
+      window.speechSynthesis.speak = (u) => window.__voz.push(u.text)
+      window.speechSynthesis.cancel = () => {}
+      const Original = window.Worker
+      window.Worker = function (url, opciones) {
+        if (!String(url).includes('encuadre.worker')) return new Original(url, opciones)
+        const w = { onmessage: null, onerror: null, terminate() {} }
+        setTimeout(() => w.onmessage?.({ data: { tipo: 'listo' } }), 10)
+        w.postMessage = (m) => {
+          m.imagen?.close?.()
+          const y1 = window.__pies
+          const p = Array.from({ length: 33 }, (_, i) => ({ x: 0.5, y: 0.1 + ((y1 - 0.1) * i) / 32, visibility: 0.95 }))
+          for (const i of [0, 2, 5]) p[i] = { x: 0.5, y: 0.1, visibility: 0.95 }
+          for (const i of [29, 30, 31, 32]) p[i] = { x: 0.5, y: y1, visibility: 0.9 }
+          setTimeout(() => w.onmessage?.({ data: { tipo: 'puntos', puntos: p } }), 5)
+        }
+        return w
+      }
+    }
+    await a.evaluate(falso, 0.9)
+    await b.evaluate(falso, 1.05)
+    assert.equal(await a.getByTestId('encuadre-este').count(), 0)
+    await a.getByTestId('comprobar-encuadre').click()
+    // A mira y lo pide a B, que también mira (sin hablar) y se lo cuenta.
+    await a.getByTestId('encuadre-este').filter({ hasText: 'te ve entero ✓' }).waitFor({ timeout: 10000 })
+    await b.getByTestId('encuadre-este').filter({ hasText: 'no se te ven los pies' }).waitFor({ timeout: 10000 })
+    await a.getByTestId('encuadre-otro').filter({ hasText: 'Su cámara: no se te ven los pies' }).waitFor({ timeout: 10000 })
+    const dicho = (p, texto) => p.waitForFunction((t) => window.__voz.includes(t), texto, { timeout: 10000 })
+    await dicho(a, 'En este móvil se te ve entero; en el otro móvil no se te ven los pies.')
+    assert.deepEqual(await b.evaluate(() => window.__voz), [])
+    // Se mueve y ya se le ve entero en B.
+    await b.evaluate(() => (window.__pies = 0.9))
+    await dicho(a, 'Se te ve entero en los dos móviles.')
+    await a.getByTestId('comprobar-encuadre').click()
+    await b.getByTestId('encuadre-este').waitFor({ state: 'detached', timeout: 10000 })
+  })
+
   it('un tercer móvil no entra: «la sala está llena»', async () => {
     const c = await abrirApp(navB, { consulta: `?sala=${codigo}&senal=${URL_RELE}` })
     try {
