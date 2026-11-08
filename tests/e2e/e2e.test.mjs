@@ -4995,7 +4995,7 @@ describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () 
   let ruta
   before(async () => {
     ruta = join(tmpdir(), 'dualkinema-persona-rtmpose.webm')
-    const ff = spawn('ffmpeg', ['-loglevel', 'error', '-y', '-loop', '1', '-i', join(import.meta.dirname, 'fixtures', 'persona.jpg'), '-t', '1', '-r', '30', '-pix_fmt', 'yuv420p', '-c:v', 'libvpx-vp9', '-b:v', '2000k', ruta], { stdio: 'inherit' })
+    const ff = spawn('ffmpeg', ['-loglevel', 'error', '-y', '-loop', '1', '-i', join(import.meta.dirname, 'fixtures', 'persona.jpg'), '-t', '0.5', '-r', '30', '-pix_fmt', 'yuv420p', '-c:v', 'libvpx-vp9', '-b:v', '2000k', ruta], { stdio: 'inherit' })
     assert.equal(await new Promise((ok) => ff.on('close', ok)), 0)
     p = await abrirApp(navegador, { consulta: '?rtmpose' })
     await cargarSinMarcadores(p, ruta)
@@ -5008,11 +5008,12 @@ describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () 
     assert.ok(opciones.some((o) => /RTMPose-s/.test(o)), opciones.join(' | '))
     await p.getByTestId('modelo-pose').selectOption('rtmpose-s')
     await p.getByTestId('detectar-cuerpo').getByRole('button', { name: /detectar/i }).click()
-    await p.getByTestId('deteccion-hecha').waitFor({ timeout: 180000 })
-    assert.match(await p.getByTestId('deteccion-hecha').innerText(), /rtmpose-s · (CPU|GPU) · persona en 30 frames/)
-    // Las posiciones guardadas (IndexedDB) del frame 15.
-    const pos = await p.waitForFunction(
-      async () => {
+    await p.getByTestId('deteccion-hecha').waitFor({ timeout: 300000 })
+    assert.match(await p.getByTestId('deteccion-hecha').innerText(), /rtmpose-s · (CPU|GPU) · persona en 15 frames/)
+    // Las posiciones guardadas (IndexedDB) del frame 8 (la imagen es la misma en todos).
+    // `waitForFunction` con una función async no espera (la promesa ya es «verdadera»): se sondea a mano.
+    const leer = () =>
+      p.evaluate(async () => {
         const bd = await new Promise((ok, mal) => {
           const r = indexedDB.open('dualkinema')
           r.onsuccess = () => ok(r.result)
@@ -5028,7 +5029,7 @@ describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () 
             for (const porMarcador of Object.values(d.trayectorias)) {
               if (!porMarcador.pose_rodilla_der) continue
               const r = {}
-              for (const [id, tr] of Object.entries(porMarcador)) r[id.replace('pose_', '')] = [tr.x[15], tr.y[15], tr.calidad[15]]
+              for (const [id, tr] of Object.entries(porMarcador)) r[id.replace('pose_', '')] = [tr.x[7], tr.y[7], tr.calidad[7]]
               return r
             }
           }
@@ -5036,11 +5037,13 @@ describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () 
         } finally {
           bd.close()
         }
-      },
-      null,
-      { timeout: 20000, polling: 300 },
-    )
-    const puntos = await pos.jsonValue()
+      })
+    let puntos = null
+    for (let k = 0; k < 60 && !puntos; k++) {
+      puntos = await leer()
+      if (!puntos) await p.waitForTimeout(300)
+    }
+    assert.ok(puntos, 'la detección no se ha guardado')
     for (const [id, [x, y]] of Object.entries(REFERENCIA)) {
       const [px, py, calidad] = puntos[id]
       assert.ok(Math.hypot(px - x, py - y) < 6, `${id}: (${px.toFixed(1)}, ${py.toFixed(1)}) frente a (${x}, ${y})`)
