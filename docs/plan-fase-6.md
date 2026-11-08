@@ -114,7 +114,9 @@ Como manda el acuerdo, la verdad se comprueba con **datos sintéticos de verdad 
 
 ## La toma B1
 
-La única excepción del acuerdo: antes de construir el 3D sobre la calibración, comprobar con **una toma real** que MediaPipe marca el mismo punto desde los dos flancos (el riesgo principal). Se graba **después del paso 1** (para que lleve el acelerómetro) y se mira con el paso 3 (el informe de la calibración, por punto del cuerpo).
+**Cambio del 08-11-2026 (decisión del usuario):** la toma B1 resultó demasiado laboriosa (sitio, gomets planos que se pierden, dos grabaciones; además, las dos primeras se grabaron con el mismo móvil y no valen). Se completa el proyecto **sin pedir nada hasta el final**: la B1 pasa a la validación final, simplificada (una grabación de unos 40 s a 720p con los dos móviles en «Para 3D», sin gomets; apuntar solo la estatura y la distancia entre los móviles). El riesgo de que el detector no marque el mismo punto desde los dos flancos se ataca mientras tanto con datos sintéticos (ruido y sesgo por punto según el flanco) y probando **RTMPose** como alternativa a MediaPipe (ver «RTMPose»). La guía de la portada se queda tal cual.
+
+Lo que decía el plan: antes de construir el 3D sobre la calibración, comprobar con **una toma real** que MediaPipe marca el mismo punto desde los dos flancos (el riesgo principal). Se graba **después del paso 1** (para que lleve el acelerómetro) y se mira con el paso 3 (el informe de la calibración, por punto del cuerpo).
 
 **Cómo grabarla:** «Grabar con dos móviles», opción «Para 3D»; un móvil en cada flanco por delante de la persona, a 90° entre ellos (±45° del frente), a unos 3 m de ella y a ~1 m de alto, apoyados y quietos, con la persona entera en las dos imágenes. Seguido, en una sola grabación o en varias: 10 s de pie y unos pasos por la zona; sentadilla ×3; sentadilla a una pierna ×3 con cada pierna; marcha en el sitio 10 s. **Apuntar con cinta:** la distancia entre los dos móviles, la de cada uno a la persona, la altura de cada lente sobre el suelo, el ángulo entre ellos (si se puede) y la estatura.
 
@@ -174,6 +176,16 @@ Si la B1 dice que MediaPipe no marca el mismo punto desde los dos flancos (resid
 
 **Pendiente para el paso 3:** seguir los gomets de delante en las dos vistas de una pareja en flancos (hoy cada vista de perfil sigue los gomets laterales de la pierna de la referencia) para usarlos en la calibración y como verdad.
 
+## RTMPose (experimento, `?rtmpose`)
+
+**Por qué:** MediaPipe Pose estima centros articulares con un modelo pensado para el móvil en directo; la cadera, sobre todo, cambia con el punto de vista. RTMPose (OpenMMLab, Apache 2.0) es «de arriba abajo»: un detector de personas (RTMDet-nano) da la caja y RTMPose busca 26 puntos (Halpe26: cuerpo y pies, con talón y dedo gordo) en un recorte de 192 × 256. En las comparativas públicas es más preciso que MediaPipe en COCO y Halpe, y sigue siendo ligero. RTMW (133 puntos, cuerpo entero con manos y cara) no compensa aquí: más pesado y los puntos de más no se usan.
+
+**Cómo quedó (PR del 08-11):** `core/pose/rtmpose.ts` (con tests: escala del detector, cajas, elegir la persona de frame en frame por solape con la anterior, recorte agrandado un 25 % a 3:4, decodificación SimCC, de Halpe26 a los 12 puntos de la app, tensor CHW en RGB o BGR) y `workers/rtmpose.worker.ts`, con el **mismo protocolo** que el de MediaPipe: el visor no distingue uno de otro. ONNX Runtime Web 1.23.2 (variante sin el cargador empaquetado, `ort.webgpu.min.mjs`, con el WASM «jsep» copiado por Vite con `?url`: la empaquetada fallaba dentro del worker de Vite), WebGPU si el navegador lo da en el worker y si no WASM en CPU con un hilo (sin COOP/COEP no hay hilos). Los modelos se alojan en el sitio (`public/modelos/`, con el hash del original en el nombre): detector 4 MB, RTMPose-s 23 MB y RTMPose-m 56 MB **en tres trozos de 20 MB** por el límite de 25 MiB por archivo de Cloudflare (se juntan en el worker). Los servidores de OpenMMLab no dan CORS, así que no se pueden bajar desde la app. Solo con `?rtmpose`, en el selector del modelo de «Marcar»: «RTMPose-s (experimental, 27 MB)» y «RTMPose-m (experimental, 60 MB)». La detección guarda la librería (`onnxruntime-web 1.23.2`) en lugar de la versión de MediaPipe. Sin cambio de esquema (el tamaño del modelo admite los dos valores nuevos).
+
+**Prueba:** una e2e con una foto real de una persona (Pexels, licencia libre; `tests/e2e/fixtures/persona.jpg`) hecha vídeo de 1 s: RTMPose-s en el navegador pone hombros, caderas, rodillas, tobillos y talones a menos de 6 px de lo que da el mismo modelo en Python (onnxruntime de escritorio, el preprocesado de MMPose), con calidad > 0,4. En Python, sobre la CPU de la nube, RTMPose-s tarda ~15 ms por persona y -m ~45 ms (más el detector, ~10 ms).
+
+**Pendiente de validar con vídeos:** la velocidad en el móvil (WebGPU en el worker de Chrome Android) y que el umbral común de calidad (`CALIDAD_MINIMA`, 0,5) le sirva a su puntuación (no es una probabilidad); y lo importante: si marca el mismo punto desde los dos flancos mejor que MediaPipe (se mira con la B1 final). Si resulta mejor, se quita `?rtmpose` y pasa a ser una opción normal para el 3D.
+
 ## Riesgos
 
 - **MediaPipe no marca el mismo punto desde dos flancos** (sobre todo la cadera, que se estima tras la ropa y cambia con el punto de vista). Es el riesgo principal: lo mira la B1 en el paso 3.
@@ -186,5 +198,4 @@ Si la B1 dice que MediaPipe no marca el mismo punto desde los dos flancos (resid
 ## Qué necesito del usuario
 
 1. Revisar D1–D10 cuando quiera (se sigue con lo propuesto).
-2. **Grabar la toma B1 cuando esté hecho el paso 1** (se avisa entonces).
-3. Mirar el informe de la B1 con el paso 3 y pegármelo.
+2. **Al final del proyecto** (cambio del 08-11): la B1 simplificada y mirar su informe con «Calibrar en 3D», con MediaPipe y con RTMPose.

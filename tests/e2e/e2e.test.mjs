@@ -5,6 +5,7 @@
 //   npm run build && npm run test:e2e
 //
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { copyFile, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -4978,6 +4979,73 @@ describe('guía de la toma B1 (fase 6)', () => {
     assert.equal(await p.getByTestId('b1-gomets').isChecked(), false)
     await p.getByTestId('salir-guia-b1').click()
     await p.getByTestId('ir-guia-b1').waitFor()
+  })
+})
+
+describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () => {
+  // Una foto de una persona (Pexels, uso libre; `fixtures/persona.jpg`, 320 × 480) hecha vídeo de 1 s. Lo que debe dar cada
+  // punto es lo que da RTMPose-s en Python (onnxruntime) con el mismo preprocesado sobre la foto; el vídeo VP9 cambia
+  // algún píxel, así que se compara a unos px.
+  const REFERENCIA = {
+    hombro_izq: [191.7, 122.2], hombro_der: [99.9, 120.0], cadera_izq: [166.6, 256.7], cadera_der: [115.2, 255.6],
+    rodilla_izq: [174.2, 352.9], rodilla_der: [105.3, 350.7], tobillo_izq: [185.1, 443.7], tobillo_der: [92.2, 438.2],
+    talon_izq: [183.0, 455.7], talon_der: [98.8, 453.5],
+  }
+  let p
+  let ruta
+  before(async () => {
+    ruta = join(tmpdir(), 'dualkinema-persona-rtmpose.webm')
+    const ff = spawn('ffmpeg', ['-loglevel', 'error', '-y', '-loop', '1', '-i', join(import.meta.dirname, 'fixtures', 'persona.jpg'), '-t', '1', '-r', '30', '-pix_fmt', 'yuv420p', '-c:v', 'libvpx-vp9', '-b:v', '2000k', ruta], { stdio: 'inherit' })
+    assert.equal(await new Promise((ok) => ff.on('close', ok)), 0)
+    p = await abrirApp(navegador, { consulta: '?rtmpose' })
+    await cargarSinMarcadores(p, ruta)
+    await abrirPestana(p, 'marcar')
+  })
+  after(() => p?.close())
+
+  it('sin ?rtmpose no se ofrece; con él, RTMPose-s detecta a la persona y sus puntos caen donde los pone Python', async () => {
+    const opciones = await p.getByTestId('modelo-pose').locator('option').allInnerTexts()
+    assert.ok(opciones.some((o) => /RTMPose-s/.test(o)), opciones.join(' | '))
+    await p.getByTestId('modelo-pose').selectOption('rtmpose-s')
+    await p.getByTestId('detectar-cuerpo').getByRole('button', { name: /detectar/i }).click()
+    await p.getByTestId('deteccion-hecha').waitFor({ timeout: 180000 })
+    assert.match(await p.getByTestId('deteccion-hecha').innerText(), /rtmpose-s · (CPU|GPU) · persona en 30 frames/)
+    // Las posiciones guardadas (IndexedDB) del frame 15.
+    const pos = await p.waitForFunction(
+      async () => {
+        const bd = await new Promise((ok, mal) => {
+          const r = indexedDB.open('dualkinema')
+          r.onsuccess = () => ok(r.result)
+          r.onerror = () => mal(r.error)
+        })
+        try {
+          if (!bd.objectStoreNames.contains('trayectorias')) return null
+          const todas = await new Promise((ok) => {
+            const r = bd.transaction('trayectorias').objectStore('trayectorias').getAll()
+            r.onsuccess = () => ok(r.result)
+          })
+          for (const d of todas) {
+            for (const porMarcador of Object.values(d.trayectorias)) {
+              if (!porMarcador.pose_rodilla_der) continue
+              const r = {}
+              for (const [id, tr] of Object.entries(porMarcador)) r[id.replace('pose_', '')] = [tr.x[15], tr.y[15], tr.calidad[15]]
+              return r
+            }
+          }
+          return null
+        } finally {
+          bd.close()
+        }
+      },
+      null,
+      { timeout: 20000, polling: 300 },
+    )
+    const puntos = await pos.jsonValue()
+    for (const [id, [x, y]] of Object.entries(REFERENCIA)) {
+      const [px, py, calidad] = puntos[id]
+      assert.ok(Math.hypot(px - x, py - y) < 6, `${id}: (${px.toFixed(1)}, ${py.toFixed(1)}) frente a (${x}, ${y})`)
+      assert.ok(calidad > 0.4, `${id}: calidad ${calidad}`)
+    }
   })
 })
 

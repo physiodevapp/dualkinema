@@ -318,7 +318,7 @@ function errorSincronia(v: unknown): string | null {
   return null
 }
 
-const TAMANOS_POSE: readonly TamanoModeloPose[] = ['lite', 'full', 'heavy']
+const TAMANOS_POSE: readonly TamanoModeloPose[] = ['lite', 'full', 'heavy', 'rtmpose-s', 'rtmpose-m']
 const esRecuento = (n: unknown) => Number.isInteger(n) && (n as number) >= 0
 
 /** ¿Es la detección sin marcadores de una vista (esquema 5)? */
