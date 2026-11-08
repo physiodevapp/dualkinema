@@ -44,8 +44,11 @@ const grados = (v: number) => `${fmt(Math.round(v * 10) / 10 + 0, 1)}°`
 export default function Panel3D({ a, b, calibracion, ajustes, instante, desde, hasta, onBuscar }: Props) {
   const [elegida, setElegida] = useState(ARTICULACIONES_3D[0]!.id)
   const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>({})
-  const { version: va } = a
-  const { version: vb } = b
+  // Mientras se sigue o se detecta en una vista, sus trayectorias cambian con cada lote: no se rehace el 3D de toda la toma
+  // cada vez (se rehace al acabar).
+  const ocupado = a.siguiendo || a.detectando || b.siguiendo || b.detectando
+  const va = ocupado ? -1 : a.version
+  const vb = ocupado ? -1 : b.version
   const tr = useMemo(
     () => {
       const ladoLargo = Math.max(a.info.ancho, a.info.alto, b.info.ancho, b.info.alto)
