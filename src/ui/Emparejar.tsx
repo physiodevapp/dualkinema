@@ -634,8 +634,9 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
       )}
       {emparejado && flancos && (
         <p className="rounded-md border border-borde p-3 text-sm text-texto-2" data-testid="aviso-flancos">
-          Un móvil en cada flanco: así se graba para el 3D. Ponlos por delante de la persona, a unos 90° entre ellos y a unos 3 m, apoyados en algo firme
-          entre la rodilla y la cadera de alto, con la persona entera en las dos imágenes.
+          Un móvil en cada flanco: así se graba para el 3D. Ponlos por delante de la persona, en vertical, a unos 60–90° entre ellos y a 2–3 m,
+          apoyados en algo firme entre la rodilla y la cadera de alto, con la persona entera en las dos imágenes. Pita primero el que la ve mirando a
+          la derecha.
         </p>
       )}
 

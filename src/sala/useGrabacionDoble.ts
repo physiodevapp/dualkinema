@@ -4,7 +4,7 @@ import type { DatosDoble } from '../core/grabacion/metadatos'
 import { nombreGrabacion } from '../core/grabacion/revision'
 import { aMiReloj, ESPERA_CONFIRMACION_MS, MARGEN_PREPARAR_MS, motivoNoPreparado, vistasCompatibles } from '../core/sala/doble'
 import type { Mensaje, MotivoCancelar } from '../core/sala/protocolo'
-import { instantePitido } from '../core/sincronia/pitido'
+import { instantePitido, pitaPrimero } from '../core/sincronia/pitido'
 import { analizarGrabacion, type AnalisisGrabacion } from '../media/grabaciones'
 import { Grabadora, type Calidad } from '../media/grabadora'
 import { desfaseEn } from '../core/reloj/desfase'
@@ -157,14 +157,14 @@ export function useGrabacionDoble(
   /** Lo de este móvil una vez acordado el inicio (en mi reloj). */
   const prepararYArrancar = useCallback(
     (id: string, inicio: number, fin: number | null) => {
-      const { sala: s, flujo: f, vista: v, audio: a, calidad } = vivo.current
+      const { sala: s, flujo: f, vista: v, otraVista: ov, audio: a, calidad } = vivo.current
       if (!f || !v) {
         s.enviar({ tipo: 'cancelar', grabacion: id, motivo: f ? 'sin-vista' : 'sin-camara' })
         setFase({ f: 'libre', aviso: `No se graba: ${f ? 'falta elegir la vista de este móvil' : 'la cámara de este móvil no está abierta'}.` })
         return
       }
       setFase({ f: 'programada', id, inicio, fin })
-      const esReferencia = v.plano === 'sagital'
+      const esReferencia = pitaPrimero(v, ov)
       const plan = { propio: instantePitido(esReferencia), otro: instantePitido(!esReferencia), pito: false }
       pitidos.current = plan
       en(inicio - MARGEN_PREPARAR_MS, () => {

@@ -8,6 +8,7 @@ import {
   barrido,
   combinarIdaVuelta,
   instantePitido,
+  pitaPrimero,
   localizarSecuencia,
   muestrasSecuencia,
   secuencia,
@@ -202,5 +203,17 @@ describe('combinarIdaVuelta', () => {
     expect(instantePitido(true)).toBe(PITIDO_REFERENCIA_S)
     expect(instantePitido(false)).toBe(PITIDO_OTRA_S)
     expect(PITIDO_OTRA_S - PITIDO_REFERENCIA_S).toBeGreaterThan(DURACION_SECUENCIA_S + 0.6)
+  })
+})
+
+describe('quién pita primero', () => {
+  const perfil = (mira: 'derecha' | 'izquierda') => ({ plano: 'sagital', mira }) as const
+  const frente = { plano: 'frontal', ve: 'delante' } as const
+  it('el de perfil frente al de frente; con dos perfiles (uno en cada flanco), el que ve mirar a la derecha: nunca los dos', () => {
+    expect(pitaPrimero(perfil('izquierda'), frente)).toBe(true)
+    expect(pitaPrimero(frente, perfil('izquierda'))).toBe(false)
+    expect(pitaPrimero(perfil('derecha'), perfil('izquierda'))).toBe(true)
+    expect(pitaPrimero(perfil('izquierda'), perfil('derecha'))).toBe(false)
+    expect(instantePitido(pitaPrimero(perfil('derecha'), perfil('izquierda')))).not.toBe(instantePitido(pitaPrimero(perfil('izquierda'), perfil('derecha'))))
   })
 })
