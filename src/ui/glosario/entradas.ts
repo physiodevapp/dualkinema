@@ -245,6 +245,14 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'colocacion',
+    titulo: 'Colocar los móviles',
+    texto: [
+      'En la sala, cada móvil dice cómo está inclinado su cámara, con su acelerómetro, y se lo cuenta al otro: cuánto mira hacia abajo o hacia arriba (mejor menos de 10°) y cuánto está girada la imagen (mejor menos de 3°). Con la cámara inclinada, la persona se ve deformada por la perspectiva (de perfil, una cámara que mira hacia abajo acorta los segmentos), y para el 3D la calibración parte de la vertical de cada móvil.',
+      'Para el 3D, un móvil en cada flanco por delante de la persona, a unos 90° entre ellos, a unos 3 m y a la altura de la cadera, apoyados y quietos durante toda la toma, con la persona entera en las dos imágenes. Al principio de la toma, unos pasos por la zona ayudan a calibrar.',
+    ],
+  },
+  {
     id: 'reproyeccion',
     titulo: 'Error de reproyección',
     texto: [

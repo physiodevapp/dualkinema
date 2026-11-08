@@ -4593,6 +4593,41 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     await a.getByTestId('aviso-flancos').waitFor({ state: 'detached' })
   })
 
+  it('cada móvil ve su inclinación y la del otro, con qué hacer si mira hacia abajo o está torcido (fase 6, paso 6)', async () => {
+    // Sin acelerómetro (un ordenador), nada.
+    assert.equal(await a.getByTestId('inclinacion-este').count(), 0)
+    // El acelerómetro falso de A: la cámara 15° hacia abajo y la imagen girada 5°.
+    await a.evaluate(() => {
+      const c = (15 * Math.PI) / 180
+      const r = (5 * Math.PI) / 180
+      window.__inclinacion = setInterval(
+        () =>
+          window.dispatchEvent(
+            new DeviceMotionEvent('devicemotion', {
+              accelerationIncludingGravity: { x: 9.81 * Math.cos(c) * Math.sin(r), y: 9.81 * Math.cos(c) * Math.cos(r), z: 9.81 * Math.sin(c) },
+              interval: 16,
+            }),
+          ),
+        16,
+      )
+    })
+    try {
+      const este = a.getByTestId('inclinacion-este')
+      await este.waitFor()
+      await a.waitForFunction(() => Math.abs(Number(document.querySelector('[data-testid=inclinacion-este]')?.dataset.cabeceo) - 15) <= 0.5)
+      assert.ok(Math.abs(Math.abs(Number(await este.getAttribute('data-alabeo'))) - 5) <= 0.5)
+      assert.match(await este.innerText(), /mira hacia abajo 15° ✗ · imagen girada 5° ✗/)
+      assert.match(await a.getByTestId('inclinacion-este-aviso').innerText(), /^Levanta la cámara.*endereza el móvil/)
+      // B la recibe con el estado (cada 2 s).
+      const otro = b.getByTestId('inclinacion-otro')
+      await otro.waitFor({ timeout: 10000 })
+      assert.match(await otro.innerText(), /Su cámara: mira hacia abajo 15°/)
+      assert.match(await b.getByTestId('inclinacion-otro-aviso').innerText(), /^El otro móvil: levanta la cámara/)
+    } finally {
+      await a.evaluate(() => clearInterval(window.__inclinacion))
+    }
+  })
+
   it('un tercer móvil no entra: «la sala está llena»', async () => {
     const c = await abrirApp(navB, { consulta: `?sala=${codigo}&senal=${URL_RELE}` })
     try {
