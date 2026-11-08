@@ -23,9 +23,11 @@ describe('escala por la estatura', () => {
     expect(TOBILLO_HOMBRO).toBeCloseTo(0.779, 9)
   })
 
-  it('la distancia entre los móviles: casa hasta un 10 %', () => {
+  it('la distancia entre los móviles casa con la del pitido hasta medio metro (su margen real)', () => {
     expect(compararDistancia(2.1, 2.0)).toMatchObject({ casa: true })
-    expect(compararDistancia(2.5, 2.0).casa).toBe(false)
+    // La primera toma real: 1,94 m por la estatura y 1,68 m por el pitido.
+    expect(compararDistancia(1.94, 1.68).casa).toBe(true)
+    expect(compararDistancia(2.6, 2.0).casa).toBe(false)
   })
 })
 

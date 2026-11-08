@@ -4885,8 +4885,9 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
       const x = pitidos[0]
       const suena = x.ahora + (x.cuando - x.actual + x.latencia) * 1000 + (desplazado ? DESFASE_B : 0)
       assert.ok(Math.abs(suena - (r.inicio + propio * 1000)) < 50, `suena a ${(suena - r.inicio).toFixed(1)} ms del inicio (debía a ${propio * 1000})`)
-      // El micrófono falso no oye los altavoces: se dice que no se oyen bien y qué hacer.
-      await p.getByTestId('aviso-pitidos').waitFor()
+      // El micrófono falso no oye los altavoces: se dice que no se oyen bien y qué hacer. Buscar los pitidos en lo grabado
+      // tarda más en la CI cuando va cargada (pasó de los 30 s de espera por defecto).
+      await p.getByTestId('aviso-pitidos').waitFor({ timeout: 90000 })
     }
     // Para abrir la pareja (paso 7): los dos archivos y la verdad del desfase. Cada vídeo empieza (su tiempo 0) cuando
     // arrancó su grabadora: desfase = t_A − t_B de un mismo instante = arranque de B − arranque de A (hora de verdad).
