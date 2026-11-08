@@ -95,7 +95,10 @@ async function sesiones(
       ort.InferenceSession.create(bytesDetector, { executionProviders: [proveedor] }),
       ort.InferenceSession.create(bytesPose, { executionProviders: [proveedor] }),
     ])
-  if (delegado === 'GPU' && 'gpu' in navigator) {
+  // Sin un adaptador de verdad (o si pedirlo no contesta en 3 s, como en un navegador sin GPU), ni se intenta WebGPU.
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu
+  const adaptador = delegado === 'GPU' && gpu ? await Promise.race([gpu.requestAdapter().catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 3000))]) : null
+  if (adaptador) {
     try {
       return { s: await crear('webgpu'), delegado: 'GPU' }
     } catch (err) {

@@ -5,7 +5,6 @@
 //   npm run build && npm run test:e2e
 //
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { copyFile, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -4994,9 +4993,8 @@ describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () 
   let p
   let ruta
   before(async () => {
-    ruta = join(tmpdir(), 'dualkinema-persona-rtmpose.webm')
-    const ff = spawn('ffmpeg', ['-loglevel', 'error', '-y', '-loop', '1', '-i', join(import.meta.dirname, 'fixtures', 'persona.jpg'), '-t', '0.5', '-r', '30', '-pix_fmt', 'yuv420p', '-c:v', 'libvpx-vp9', '-b:v', '2000k', ruta], { stdio: 'inherit' })
-    assert.equal(await new Promise((ok) => ff.on('close', ok)), 0)
+    // Medio segundo de la foto hecho vídeo (VP9) con ffmpeg, guardado: la CI con los vídeos en caché no instala ffmpeg.
+    ruta = join(import.meta.dirname, 'fixtures', 'persona.webm')
     p = await abrirApp(navegador, { consulta: '?rtmpose' })
     await cargarSinMarcadores(p, ruta)
     await abrirPestana(p, 'marcar')
