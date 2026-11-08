@@ -72,3 +72,32 @@ export function aristasCamara(c: Camara, ancho: number, alto: number, tamano: nu
   const B = base.map(aMundo)
   return [...B.map((b) => [V, b] as const), ...B.map((b, i) => [b, B[(i + 1) % 4]!] as const)]
 }
+
+export type Encuadre2D = ReturnType<typeof encuadre>
+
+/** Lo más cerca que se puede ir: la altura del cuerpo ocupa este número de veces el alto del lienzo. */
+export const ZOOM_MAX_CUERPOS = 2
+/** A partir de cuánto más cerca que el encuadre de la persona la vista sigue del todo a la pelvis. */
+export const SEGUIR_DESDE = 1.5
+
+/**
+ * El encuadre con zoom del monigote. `escala` (px por unidad) va de la de `escena` (las cámaras y el suelo: lo más
+ * alejado) a `escalaMax` (lo más cerca); `persona` es el de la persona en toda la toma (el de partida). Entre la escena y
+ * la persona, el centro pasa de uno al otro; más cerca que la persona, va hacia la pelvis del frame (`pelvis`, ya
+ * proyectada; sin ella, el de la persona) para que no se salga del recuadro al moverse.
+ */
+export function encuadreConZoom(escena: Encuadre2D, persona: Encuadre2D, pelvis: { readonly u: number; readonly v: number } | null, escala: number, escalaMax: number): Encuadre2D {
+  const s = Math.min(Math.max(escala, escena.escala), Math.max(escalaMax, persona.escala, escena.escala))
+  const mezcla = (a: Encuadre2D | { u0: number; v0: number }, b: { u0: number; v0: number }, t: number) => ({ u0: a.u0 + (b.u0 - a.u0) * t, v0: a.v0 + (b.v0 - a.v0) * t })
+  if (s <= persona.escala) {
+    const rango = Math.log(persona.escala / escena.escala)
+    const t = rango > 1e-9 ? Math.log(s / escena.escala) / rango : 1
+    return { escala: s, ...mezcla(escena, persona, Math.min(1, Math.max(0, t))) }
+  }
+  if (!pelvis) return { escala: s, u0: persona.u0, v0: persona.v0 }
+  const t = Math.min(1, (s / persona.escala - 1) / (SEGUIR_DESDE - 1))
+  return { escala: s, ...mezcla(persona, { u0: pelvis.u, v0: pelvis.v }, t) }
+}
+
+/** La escala más cercana: que `alturaCuerpo` (unidades de la escena) ocupe `ZOOM_MAX_CUERPOS` veces `alto` (px). */
+export const escalaMaxima = (alturaCuerpo: number, alto: number): number => (alturaCuerpo > 0 ? (ZOOM_MAX_CUERPOS * alto) / alturaCuerpo : Infinity)
