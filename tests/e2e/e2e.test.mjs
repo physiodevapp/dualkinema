@@ -4203,6 +4203,10 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
       await cargarSinMarcadores(p, videos.verde.ruta)
       await p.getByRole('tab', { name: 'Marcar' }).click()
       const tira = p.getByTestId('marcado-compacto')
+      // El modelo se elige también ahí (la tarjeta de «Marcar» no se ve en el móvil en vertical), y es el mismo que el de la tarjeta.
+      await tira.getByTestId('modelo-pose-compacto').selectOption('heavy')
+      assert.equal(await p.getByTestId('modelo-pose').inputValue(), 'heavy')
+      await tira.getByTestId('modelo-pose-compacto').selectOption('full')
       await tira.getByRole('button', { name: 'Detectar el cuerpo' }).click()
       await tira.getByRole('button', { name: 'Volver a detectar' }).waitFor({ timeout: 20000 })
       // «Añadir los gomets» también está en la tira (en el móvil «Marcar» abre el vídeo grande, no la tarjeta).
