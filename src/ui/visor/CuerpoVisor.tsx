@@ -3,7 +3,7 @@ import type { Fuente } from '../../core/pose/catalogo'
 import { ArrowTrendingUpIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { tramoInicial } from '../../core/articulaciones/cero'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
-import type { IdMarcador, ModeloMarcadores, Muestra2D, TamanoModeloPose } from '../../core/modelo/tipos'
+import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../../core/modelo/tipos'
 import { esPuntoMedio } from '../../core/pose/puntos'
 import type { OrientacionVista } from '../../core/geometria/canonico'
 import type { Sincronia } from '../../core/modelo/tipos'
@@ -52,7 +52,7 @@ import type { SincronizacionExportada } from '../../core/exportacion/csv'
 import { incertidumbreEvento, pasoTipico } from '../../core/sincronia/evento'
 import type { VistaViva } from './vistas'
 import BotonDetectar from './BotonDetectar'
-import { MODELOS_POSE } from './useDeteccionPose'
+import OpcionesDeteccion, { DetalleDeteccion } from './OpcionesDeteccion'
 
 /** Las series de una vista sin los puntos medios del modelo (salen de los dos lados: no se guardan). */
 const sinMedios = (series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>) =>
@@ -148,6 +148,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     deteccion,
     modeloPose,
     setModeloPose,
+    soloAlgunos,
+    setSoloAlgunos,
     detectar,
     pararDeteccion,
     seguirDesdeAqui,
@@ -256,6 +258,8 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     hecha: deteccion,
     modelo: modeloPose,
     onModelo: setModeloPose,
+    soloAlgunos,
+    onSoloAlgunos: setSoloAlgunos,
     onDetectar: detectar,
     onParar: pararDeteccion,
   }
@@ -515,22 +519,18 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   const detectarAparte = conGomets && botonDetectar
   // El modelo también en la tira del vídeo grande: en el móvil en vertical la tarjeta de «Marcar» no se ve.
   const modeloCompacto = panelDeteccion && !dosColumnas && (
-    <label className="flex items-center gap-2 text-xs text-texto-2">
-      Modelo
-      <select
-        value={modeloPose}
-        disabled={ocupada || !!progresoDeteccion}
-        onChange={(e) => setModeloPose(e.target.value as TamanoModeloPose)}
-        className="min-w-0 flex-1 rounded-md border border-borde bg-fondo px-2 py-1 text-texto"
-        data-testid="modelo-pose-compacto"
-      >
-        {MODELOS_POSE.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.nombre}
-          </option>
-        ))}
-      </select>
-    </label>
+    <>
+      <OpcionesDeteccion
+        modelo={modeloPose}
+        onModelo={setModeloPose}
+        soloAlgunos={soloAlgunos}
+        onSoloAlgunos={setSoloAlgunos}
+        deshabilitado={ocupada || !!progresoDeteccion}
+        compacto
+        sufijo="-compacto"
+      />
+      <DetalleDeteccion progreso={progresoDeteccion} />
+    </>
   )
   // Sin gomets, en la tira del vídeo grande (en el móvil «Marcar» abre el vídeo grande, no la tarjeta): añadir los gomets
   // de su plano para seguirlos también y compararlos con el modelo. Secundario, debajo de «Detectar el cuerpo».

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { idPose, PUNTOS_POSE } from './puntos'
 import {
+  cajaDePuntos,
   ALTO_POSE,
   ANCHO_POSE,
   cajasDelDetector,
@@ -73,6 +74,25 @@ describe('recorte y decodificación de RTMPose', () => {
     const kp = decodificarSimcc(sx, sy, 2, r)
     expect(kp.slice(0, 3)).toEqual([10 + 50 * 2, 20 + 150 * 3, expect.closeTo(0.7, 6)])
     expect(kp.slice(3, 6)).toEqual([10, 20 + 255.5 * 3, expect.closeTo(0.2, 6)])
+  })
+})
+
+describe('la caja de la persona por sus puntos', () => {
+  const punto = (x: number, y: number, s = 0.8) => [x, y, s]
+  it('abarca los puntos fiables con un 10 % de su alto a cada lado', () => {
+    const kp = [...Array.from({ length: 10 }, (_, i) => punto(100 + i * 10, 200 + i * 40)).flat(), ...punto(5000, 5000, 0.1)]
+    const c = cajaDePuntos(kp)!
+    // Puntos de x 100–190 e y 200–560 (alto 360): margen 36.
+    expect(c.x1).toBeCloseTo(64)
+    expect(c.x2).toBeCloseTo(226)
+    expect(c.y1).toBeCloseTo(164)
+    expect(c.y2).toBeCloseTo(596)
+    expect(c.puntuacion).toBeCloseTo(0.8)
+  })
+  it('sin bastantes puntos fiables no hay caja (se vuelve al detector)', () => {
+    expect(cajaDePuntos(Array.from({ length: 9 }, (_, i) => punto(i, i * 10)).flat())).toBeNull()
+    expect(cajaDePuntos(Array.from({ length: 26 }, (_, i) => punto(i, i * 10, 0.2)).flat())).toBeNull()
+    expect(cajaDePuntos(Array.from({ length: 26 }, (_, i) => punto(NaN, i * 10)).flat())).toBeNull()
   })
 })
 

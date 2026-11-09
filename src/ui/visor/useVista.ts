@@ -178,7 +178,7 @@ export function useVista({
   })
   // Sin marcadores: «Detectar el cuerpo» con MediaPipe en un worker; lo detectado va al almacén sin pisar lo de a mano.
   const usarPose = useCallback(() => alUsarPose?.(), [alUsarPose])
-  const { detectando, progresoDeteccion, deteccion, revDeteccion, modeloPose, setModeloPose, detectar, pararDeteccion } = useDeteccionPose({
+  const { detectando, progresoDeteccion, deteccion, revDeteccion, modeloPose, setModeloPose, soloAlgunos, setSoloAlgunos, detectar, pararDeteccion } = useDeteccionPose({
     video,
     orientacion,
     inicial: deteccionGuardada,
@@ -417,6 +417,8 @@ export function useVista({
     revDeteccion,
     modeloPose,
     setModeloPose,
+    soloAlgunos,
+    setSoloAlgunos,
     detectar,
     pararDeteccion,
     info,

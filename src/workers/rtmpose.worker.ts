@@ -6,7 +6,11 @@
 //
 // Los modelos se alojan en el propio sitio (`public/modelos/`, con el hash del original en el nombre). El de RTMPose-m
 // (56 MB) va en trozos de 20 MB por el límite de 25 MiB por archivo de Cloudflare, y aquí se juntan. El WASM de ONNX
-// Runtime (la variante «jsep», con WebGPU) lo copia Vite de node_modules con `?url`. Sin COOP/COEP no hay hilos: un hilo.
+// Runtime (la variante «jsep», con WebGPU) lo copia Vite de node_modules con `?url`. En CPU usa varios hilos si la página
+// está aislada (`crossOriginIsolated`, con las cabeceras COOP/COEP de `_headers`); si no, uno.
+//
+// El detector de personas no se pasa en cada frame: entre medias, la caja sale de los puntos del frame anterior
+// (`cajaDePuntos`), y se vuelve a él cada `DETECTOR_CADA` frames o si se pierde a la persona.
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'mediabunny'
 // La variante sin el cargador del WASM dentro: lo carga de `wasmPaths` (la incluida no sobrevive al empaquetado de Vite:
 // «e is not a function»).
@@ -16,10 +20,12 @@ import binarioWasm from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-t
 import {
   ALTO_POSE,
   ANCHO_POSE,
+  cajaDePuntos,
   cajasDelDetector,
   decodificarSimcc,
   DESV_DETECTOR_BGR,
   DESV_POSE_RGB,
+  DETECTOR_CADA,
   elegirPersona,
   escalaDetector,
   GRIS_RELLENO,
@@ -46,6 +52,9 @@ const MODELOS: Partial<Record<TamanoModeloPose, readonly string[]>> = {
   'rtmpose-s': ['/modelos/rtmpose-s-halpe26-7f134165.onnx'],
   'rtmpose-m': [0, 1, 2].map((k) => `/modelos/rtmpose-m-halpe26-4d3e73dd.onnx.parte${k}`),
 }
+
+/** Hilos del WASM en CPU: con la página aislada, los núcleos (hasta 4: más no ayuda con modelos tan pequeños); si no, uno. */
+const HILOS = self.crossOriginIsolated ? Math.max(1, Math.min(4, navigator.hardwareConcurrency || 1)) : 1
 
 let cancelado = false
 const enviar = (m: DelWorkerPose) => self.postMessage(m)
@@ -84,7 +93,7 @@ async function sesiones(
   delegado: 'GPU' | 'CPU',
 ): Promise<{ s: [ort.InferenceSession, ort.InferenceSession]; delegado: 'GPU' | 'CPU'; aviso?: string }> {
   ort.env.wasm.wasmPaths = { mjs: new URL(cargadorWasm, self.location.href).href, wasm: new URL(binarioWasm, self.location.href).href }
-  ort.env.wasm.numThreads = 1
+  ort.env.wasm.numThreads = HILOS
   // Solo errores: el aviso de «CPU desconocida» del WASM sale por console.error en cada carga.
   ort.env.logLevel = 'error'
   const rutas = MODELOS[modelo]
@@ -112,7 +121,15 @@ async function detectar(m: Extract<AlWorkerPose, { tipo: 'detectar' }>) {
   const inicioCarga = performance.now()
   const { s, delegado, aviso } = await sesiones(m.modelo, m.delegado)
   const [detector, pose] = s
-  enviar({ tipo: 'listo', delegado, ...(aviso ? { avisoDelegado: aviso } : {}), msCarga: performance.now() - inicioCarga, libreria: `onnxruntime-web ${ort.env.versions.web ?? ''}`.trim() })
+  enviar({
+    tipo: 'listo',
+    delegado,
+    ...(aviso ? { avisoDelegado: aviso } : {}),
+    msCarga: performance.now() - inicioCarga,
+    libreria: `onnxruntime-web ${ort.env.versions.web ?? ''}`.trim(),
+    ...(delegado === 'CPU' ? { hilos: HILOS } : {}),
+  })
+  const paso = Math.max(1, Math.round(m.paso ?? 1))
 
   const entrada = new Input({ source: new BlobSource(m.archivo), formats: ALL_FORMATS })
   try {
@@ -136,7 +153,26 @@ async function detectar(m: Extract<AlWorkerPose, { tipo: 'detectar' }>) {
     const ctxPose = lienzoPose.getContext('2d', { willReadFrequently: true })!
     const esc = escalaDetector(w, h)
 
+    /** 1. Detector: la imagen reducida sin deformar, arriba a la izquierda, sobre gris; la persona de antes si sigue ahí. */
+    const buscarPersona = async (lienzo: OffscreenCanvas | HTMLCanvasElement): Promise<Caja | null> => {
+      ctxDet.setTransform(1, 0, 0, 1, 0, 0)
+      ctxDet.fillStyle = `rgb(${GRIS_RELLENO},${GRIS_RELLENO},${GRIS_RELLENO})`
+      ctxDet.fillRect(0, 0, LADO_DETECTOR, LADO_DETECTOR)
+      ctxDet.drawImage(lienzo, 0, 0, w * esc, h * esc)
+      const pd = ctxDet.getImageData(0, 0, LADO_DETECTOR, LADO_DETECTOR).data
+      const td = new ort.Tensor('float32', tensorDePixeles(pd, LADO_DETECTOR, LADO_DETECTOR, MEDIA_DETECTOR_BGR, DESV_DETECTOR_BGR, true), [1, 3, LADO_DETECTOR, LADO_DETECTOR])
+      const rd = await detector.run({ input: td })
+      const dets = rd.dets!
+      const cajas = cajasDelDetector(dets.data as Float32Array, dets.dims[1] ?? 0, esc)
+      for (const v of Object.values(rd)) v.dispose()
+      td.dispose()
+      return elegirPersona(cajas, anterior)
+    }
+
     let anterior: Caja | null = null
+    // La caja que sale de los puntos del frame anterior y cuántos frames se han procesado sin pasar el detector.
+    let porPuntos: Caja | null = null
+    let sinDetector = 0
     let lote: FramePoseWorker[] = []
     let ultimoEnvio = performance.now()
     let procesados = 0
@@ -154,25 +190,21 @@ async function detectar(m: Extract<AlWorkerPose, { tipo: 'detectar' }>) {
         enviar({ tipo: 'fin', motivo: 'cancelado', procesados, msProceso: performance.now() - inicio, recuperados: 0, msAtras: 0 })
         return
       }
-      if (indice < 0) continue
+      if (indice < 0 || indice % paso !== 0) continue
       const t = tabla.tiempos[indice]!
 
-      // 1. Detector: la imagen reducida sin deformar, arriba a la izquierda, sobre gris.
-      ctxDet.setTransform(1, 0, 0, 1, 0, 0)
-      ctxDet.fillStyle = `rgb(${GRIS_RELLENO},${GRIS_RELLENO},${GRIS_RELLENO})`
-      ctxDet.fillRect(0, 0, LADO_DETECTOR, LADO_DETECTOR)
-      ctxDet.drawImage(frame.canvas, 0, 0, w * esc, h * esc)
-      const pd = ctxDet.getImageData(0, 0, LADO_DETECTOR, LADO_DETECTOR).data
-      const td = new ort.Tensor('float32', tensorDePixeles(pd, LADO_DETECTOR, LADO_DETECTOR, MEDIA_DETECTOR_BGR, DESV_DETECTOR_BGR, true), [1, 3, LADO_DETECTOR, LADO_DETECTOR])
-      const rd = await detector.run({ input: td })
-      const dets = rd.dets!
-      const cajas = cajasDelDetector(dets.data as Float32Array, dets.dims[1] ?? 0, esc)
-      for (const v of Object.values(rd)) v.dispose()
-      td.dispose()
-      const persona = elegirPersona(cajas, anterior)
-      anterior = persona
+      let persona: Caja | null
+      if (porPuntos && sinDetector < DETECTOR_CADA - 1) {
+        persona = porPuntos
+        sinDetector++
+      } else {
+        persona = await buscarPersona(frame.canvas)
+        sinDetector = 0
+      }
+      anterior = persona ?? anterior
 
       let puntos: number[] | null = null
+      porPuntos = null
       if (persona) {
         // 2. RTMPose: el recorte de la persona (fuera de la imagen, negro), en RGB.
         const r = recorteDeCaja(persona)
@@ -187,7 +219,8 @@ async function detectar(m: Extract<AlWorkerPose, { tipo: 'detectar' }>) {
         const kp = decodificarSimcc(rp.simcc_x!.data as Float32Array, rp.simcc_y!.data as Float32Array, PUNTOS_HALPE26, r)
         for (const v of Object.values(rp)) v.dispose()
         tp.dispose()
-        // De px del lienzo reducido a px del vídeo tal como se ve.
+        // La caja del frame siguiente, en px del lienzo reducido (antes de pasar los puntos a px del vídeo).
+        porPuntos = cajaDePuntos(kp)
         for (let i = 0; i < kp.length; i += 3) {
           kp[i] = kp[i]! / k
           kp[i + 1] = kp[i + 1]! / k
@@ -204,4 +237,5 @@ async function detectar(m: Extract<AlWorkerPose, { tipo: 'detectar' }>) {
     entrada.dispose()
     await Promise.all([detector.release(), pose.release()]).catch(() => {})
   }
+
 }
