@@ -86,6 +86,44 @@ export function elegirPersona(cajas: readonly Caja[], anterior: Caja | null): Ca
   return cajas.reduce((a, b) => (area(b) * b.puntuacion > area(a) * a.puntuacion ? b : a))
 }
 
+/**
+ * Buscar a la persona con el detector solo de vez en cuando (como en el modo de vídeo de RTMPose): entre medias, su caja
+ * sale de los puntos del frame anterior. El detector se vuelve a pasar cada `DETECTOR_CADA` frames procesados, o antes si
+ * el frame anterior no dio bastantes puntos fiables.
+ */
+export const DETECTOR_CADA = 15
+/** Puntos de Halpe26 con puntuación de al menos `UMBRAL_PUNTO_CAJA` que hacen falta para fiarse de la caja de los puntos. */
+export const PUNTOS_MINIMOS_CAJA = 10
+export const UMBRAL_PUNTO_CAJA = 0.3
+/** Margen de la caja de los puntos (fracción de su alto) a cada lado: la del detector abarca la cabeza y la ropa, no solo los puntos. */
+export const MARGEN_CAJA_PUNTOS = 0.1
+
+/**
+ * La caja de la persona a partir de sus puntos `[x, y, puntuación]` (los 26 de Halpe26, en px): la que los abarca, con un
+ * margen de `MARGEN_CAJA_PUNTOS` de su alto a cada lado. null si no hay `PUNTOS_MINIMOS_CAJA` fiables.
+ */
+export function cajaDePuntos(kp: readonly number[]): Caja | null {
+  let x1 = Infinity
+  let y1 = Infinity
+  let x2 = -Infinity
+  let y2 = -Infinity
+  let n = 0
+  let suma = 0
+  for (let i = 0; i + 2 < kp.length; i += 3) {
+    const s = kp[i + 2]!
+    if (!(s >= UMBRAL_PUNTO_CAJA) || !Number.isFinite(kp[i]!) || !Number.isFinite(kp[i + 1]!)) continue
+    x1 = Math.min(x1, kp[i]!)
+    x2 = Math.max(x2, kp[i]!)
+    y1 = Math.min(y1, kp[i + 1]!)
+    y2 = Math.max(y2, kp[i + 1]!)
+    n++
+    suma += s
+  }
+  if (n < PUNTOS_MINIMOS_CAJA || y2 <= y1) return null
+  const m = MARGEN_CAJA_PUNTOS * (y2 - y1)
+  return { x1: x1 - m, y1: y1 - m, x2: x2 + m, y2: y2 + m, puntuacion: suma / n }
+}
+
 /** El recorte de la entrada de RTMPose: el punto (u, v) de la entrada es (x0 + u·ax, y0 + v·ay) de la imagen. */
 export interface Recorte {
   readonly x0: number

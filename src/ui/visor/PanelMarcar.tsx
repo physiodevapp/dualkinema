@@ -14,7 +14,8 @@ import { grados } from './formato'
 import InterruptorAOjo from './InterruptorAOjo'
 import SelectorMarcadores from './SelectorMarcadores'
 import type { Aviso } from './useSeguimiento'
-import { MODELOS_POSE, type ProgresoDeteccion } from './useDeteccionPose'
+import OpcionesDeteccion, { DetalleDeteccion } from './OpcionesDeteccion'
+import type { ProgresoDeteccion } from './useDeteccionPose'
 import { InfoGlosario } from '../glosario/Glosario'
 
 /** «Detectar el cuerpo» (sin marcadores, fase 5): solo en una vista de perfil. */
@@ -26,6 +27,8 @@ export interface DeteccionPanel {
   readonly hecha: DeteccionPose | null
   readonly modelo: TamanoModeloPose
   readonly onModelo: (m: TamanoModeloPose) => void
+  readonly soloAlgunos: boolean
+  readonly onSoloAlgunos: (v: boolean) => void
   readonly onDetectar: () => void
   readonly onParar: () => void
 }
@@ -171,22 +174,13 @@ export default function PanelMarcar({
                     Sin marcadores: el cuerpo se detecta en el propio móvil (el vídeo no sale de él).
                     <InfoGlosario id="sin-marcadores" tema="cómo se detecta el cuerpo sin marcadores" className="-my-1.5" />
                   </p>
-                  <label className="flex items-center gap-2 text-sm">
-                    Modelo
-                    <select
-                      value={deteccion.modelo}
-                      disabled={ocupado}
-                      onChange={(e) => deteccion.onModelo(e.target.value as TamanoModeloPose)}
-                      className="min-w-0 flex-1 rounded-md border border-borde bg-fondo px-2 py-1"
-                      data-testid="modelo-pose"
-                    >
-                      {MODELOS_POSE.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <OpcionesDeteccion
+                    modelo={deteccion.modelo}
+                    onModelo={deteccion.onModelo}
+                    soloAlgunos={deteccion.soloAlgunos}
+                    onSoloAlgunos={deteccion.onSoloAlgunos}
+                    deshabilitado={ocupado}
+                  />
                   <BotonDetectar
                     progreso={deteccion.progreso}
                     deshabilitado={deteccion.deshabilitado}
@@ -195,6 +189,7 @@ export default function PanelMarcar({
                     onDetectar={deteccion.onDetectar}
                     onParar={deteccion.onParar}
                   />
+                  <DetalleDeteccion progreso={deteccion.progreso} />
                   {deteccion.hecha && !deteccion.progreso && (
                     <p className="flex items-center gap-1 font-mono text-xs text-texto-2">
                       <span data-testid="deteccion-hecha">

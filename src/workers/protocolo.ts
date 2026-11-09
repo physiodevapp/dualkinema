@@ -85,6 +85,8 @@ export type AlWorkerPose =
       readonly modelo: TamanoModeloPose
       /** Delegado pedido; si es 'GPU' y no se puede crear, se usa 'CPU' y se dice. */
       readonly delegado: 'GPU' | 'CPU'
+      /** Procesar solo 1 de cada `paso` frames (RTMPose, para comparar deprisa; sin él, todos). */
+      readonly paso?: number
     }
   | { readonly tipo: 'cancelar' }
 
@@ -99,7 +101,7 @@ export interface FramePoseWorker {
 /** Mensajes del worker sin marcadores al hilo principal. */
 export type DelWorkerPose =
   /** `libreria`: la librería del modelo con su versión, si no es MediaPipe (RTMPose: ONNX Runtime Web). */
-  | { readonly tipo: 'listo'; readonly delegado: 'GPU' | 'CPU'; readonly avisoDelegado?: string; readonly msCarga: number; readonly libreria?: string }
+  | { readonly tipo: 'listo'; readonly delegado: 'GPU' | 'CPU'; readonly avisoDelegado?: string; readonly msCarga: number; readonly libreria?: string; readonly hilos?: number }
   /** `atras`: los frames son de la segunda pasada (hacia atrás); `progreso` es entonces el de esa pasada. */
   | { readonly tipo: 'frames'; readonly lote: readonly FramePoseWorker[]; readonly progreso: number; readonly atras?: boolean }
   | {

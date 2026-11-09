@@ -21,8 +21,13 @@ const versionJson: Plugin = {
   },
 }
 
+// Las cabeceras de aislamiento de `public/_headers` (RTMPose con hilos), también al servir con Vite: las e2e prueban la app así.
+const aislada = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' }
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), versionJson],
+  server: { headers: aislada },
+  preview: { headers: aislada },
   define: {
     __COMMIT__: JSON.stringify(commit),
     __RAMA__: JSON.stringify(rama),

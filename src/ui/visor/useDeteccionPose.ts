@@ -8,7 +8,17 @@ import type { AlWorkerPose, DelWorkerPose } from '../../workers/protocolo'
 import type { Aviso } from './useSeguimiento'
 
 /** Lo que se ve mientras se detecta: cargando el modelo, recorriendo el vídeo o la pasada hacia atrás. */
-export type ProgresoDeteccion = { fase: 'cargando' } | { fase: 'delante' | 'atras'; fraccion: number }
+export type ProgresoDeteccion =
+  | { fase: 'cargando' }
+  | {
+      fase: 'delante' | 'atras'
+      fraccion: number
+      /** En qué va (y en CPU, con cuántos hilos), los frames por segundo y lo que queda (s), en cuanto se sabe. */
+      delegado?: 'GPU' | 'CPU'
+      hilos?: number
+      ritmo?: number
+      restanteS?: number
+    }
 
 /** Salto (fracción del alto del vídeo) a partir del cual cambiar de lado de un frame al siguiente cuenta como intercambio. */
 const UMBRAL_LADO = 0.05
@@ -20,7 +30,7 @@ const UMBRAL_LADO_FRENTE = 0.02
 
 
 /** RTMPose (fase 6) solo con `?rtmpose` en la dirección, mientras es un experimento. */
-const HAY_RTMPOSE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('rtmpose')
+export const HAY_RTMPOSE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('rtmpose')
 
 export const MODELOS_POSE: readonly { id: TamanoModeloPose; nombre: string }[] = [
   { id: 'full', nombre: 'Normal (full)' },
@@ -32,6 +42,9 @@ export const MODELOS_POSE: readonly { id: TamanoModeloPose; nombre: string }[] =
       ]
     : []),
 ]
+
+/** «Solo 1 de cada N frames» (RTMPose, para comparar deprisa con «Calibrar en 3D»). */
+export const PASO_COMPARAR = 4
 
 export const esRtmpose = (m: TamanoModeloPose) => m === 'rtmpose-s' || m === 'rtmpose-m'
 /** Tiempo que se espera a que el worker conteste a «cancelar» antes de cerrarlo sin más (ms): un frame tarda < 0,1 s. */
@@ -63,6 +76,7 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
   // Sube con cada detección terminada, para que el guardado se entere.
   const [revDeteccion, setRevDeteccion] = useState(0)
   const [modeloPose, setModeloPose] = useState<TamanoModeloPose>('full')
+  const [soloAlgunos, setSoloAlgunos] = useState(false)
   const worker = useRef<Worker | null>(null)
   useEffect(() => () => worker.current?.terminate(), [])
   // Cerrar el worker en marcha sin esperarle (al parar mientras carga, o si no responde a «cancelar»).
@@ -92,7 +106,11 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
     let delegado: 'GPU' | 'CPU' = 'GPU'
     let avisoDelegado: string | undefined
     let libreria = __MEDIAPIPE__
+    let hilos: number | undefined
+    let inicio = 0
+    let procesados = 0
     const modelo = modeloPose
+    const paso = esRtmpose(modeloPose) && soloAlgunos ? PASO_COMPARAR : 1
     setProgreso({ fase: 'cargando' })
     setAviso(null)
     const cerrar = () => {
@@ -117,14 +135,27 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
         delegado = m.delegado
         avisoDelegado = m.avisoDelegado
         if (m.libreria) libreria = m.libreria
-        setProgreso({ fase: 'delante', fraccion: 0 })
+        hilos = m.hilos
+        inicio = performance.now()
+        setProgreso({ fase: 'delante', fraccion: 0, delegado, ...(hilos ? { hilos } : {}) })
       } else if (m.tipo === 'frames') {
         // El tiempo de cada frame es el de la tabla del visor (por su índice): todas las trayectorias de la vista llevan los
         // mismos instantes y el ángulo se empareja por ellos.
         const lote = m.lote.filter((f) => f.indice >= 0 && f.indice < total).map((f) => ({ indice: f.indice, t: tabla.tiempos[f.indice]!, puntos: f.puntos }))
         for (const f of lote) frames.set(f.indice, f)
         u.aplicarPose(lote)
-        setProgreso({ fase: m.atras ? 'atras' : 'delante', fraccion: m.progreso })
+        procesados += lote.length
+        const s = (performance.now() - inicio) / 1000
+        // Lo que queda, por lo que ha costado lo hecho (solo hacia delante: la pasada hacia atrás es corta).
+        const restanteS = !m.atras && m.progreso > 0.02 && s > 3 ? (s * (1 - m.progreso)) / m.progreso : undefined
+        setProgreso({
+          fase: m.atras ? 'atras' : 'delante',
+          fraccion: m.progreso,
+          delegado,
+          ...(hilos ? { hilos } : {}),
+          ...(s > 1 ? { ritmo: procesados / s } : {}),
+          ...(restanteS !== undefined ? { restanteS } : {}),
+        })
       } else if (m.tipo === 'fin') {
         // Las piernas, en su lado; luego, todo lo detectado sustituye lo de antes (salvo lo marcado a mano).
         const correccion = corregirLados(trayectoriasPose(frames.values(), total), u.orientacion, tabla.tiempos, (u.orientacion.plano === 'frontal' ? UMBRAL_LADO_FRENTE : UMBRAL_LADO) * info.alto)
@@ -154,8 +185,8 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
       ultimo.current.setAviso({ texto: `No se ha podido detectar el cuerpo: ${ev.message || 'no se ha podido cargar el proceso. Recarga la página.'}` })
       cerrar()
     }
-    w.postMessage({ tipo: 'detectar', archivo: video.archivo, modelo, delegado: 'GPU' } satisfies AlWorkerPose)
-  }, [video, modeloPose, alEmpezar, setAviso])
+    w.postMessage({ tipo: 'detectar', archivo: video.archivo, modelo, delegado: 'GPU', ...(paso > 1 ? { paso } : {}) } satisfies AlWorkerPose)
+  }, [video, modeloPose, soloAlgunos, alEmpezar, setAviso])
 
   const pararDeteccion = useCallback(() => {
     const w = worker.current
@@ -171,5 +202,5 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
     }, ESPERA_CANCELAR_MS)
   }, [])
 
-  return { detectando: progreso !== null, progresoDeteccion: progreso, deteccion, revDeteccion, modeloPose, setModeloPose, detectar, pararDeteccion }
+  return { detectando: progreso !== null, progresoDeteccion: progreso, deteccion, revDeteccion, modeloPose, setModeloPose, soloAlgunos, setSoloAlgunos, detectar, pararDeteccion }
 }

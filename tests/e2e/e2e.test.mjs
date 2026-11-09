@@ -5330,6 +5330,16 @@ describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () 
       assert.ok(calidad > 0.4, `${id}: calidad ${calidad}`)
     }
   })
+
+  it('la página está aislada (hilos para la CPU) y «1 de cada 4 frames» solo procesa esos', async () => {
+    assert.equal(await p.evaluate(() => globalThis.crossOriginIsolated), true)
+    await p.getByTestId('solo-algunos').check()
+    await p.getByTestId('detectar-cuerpo').getByRole('button', { name: /detectar/i }).click()
+    // Mientras detecta, en qué va (GPU, o CPU con sus hilos: más de uno con la página aislada).
+    const detalle = await p.getByTestId('detalle-deteccion').first().innerText({ timeout: 300000 })
+    assert.match(detalle, /^(GPU|CPU, [2-4] hilos)/)
+    await p.getByTestId('deteccion-hecha').getByText(/persona en 4 frames/).waitFor({ timeout: 300000 })
+  })
 })
 
 it('no ha habido errores de consola ni de página en ninguna prueba', () => {
