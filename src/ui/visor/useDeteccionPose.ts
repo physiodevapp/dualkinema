@@ -18,6 +18,21 @@ const UMBRAL_LADO = 0.05
  */
 const UMBRAL_LADO_FRENTE = 0.02
 
+
+/** RTMPose (fase 6) solo con `?rtmpose` en la dirección, mientras es un experimento. */
+const HAY_RTMPOSE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('rtmpose')
+
+export const MODELOS_POSE: readonly { id: TamanoModeloPose; nombre: string }[] = [
+  { id: 'full', nombre: 'Normal (full)' },
+  { id: 'heavy', nombre: 'Preciso y lento (heavy, se descarga 30 MB)' },
+  ...(HAY_RTMPOSE
+    ? [
+        { id: 'rtmpose-s' as const, nombre: 'RTMPose-s (experimental, 27 MB)' },
+        { id: 'rtmpose-m' as const, nombre: 'RTMPose-m (experimental, 60 MB)' },
+      ]
+    : []),
+]
+
 export const esRtmpose = (m: TamanoModeloPose) => m === 'rtmpose-s' || m === 'rtmpose-m'
 /** Tiempo que se espera a que el worker conteste a «cancelar» antes de cerrarlo sin más (ms): un frame tarda < 0,1 s. */
 const ESPERA_CANCELAR_MS = 5000
