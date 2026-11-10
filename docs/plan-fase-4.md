@@ -361,6 +361,17 @@ Las de la fase 3 siguen valiendo salvo la 2 (arreglada en el paso 7).
 - **Fase 5 (3D):** calibración DLT con un objeto de puntos conocidos y reconstrucción con las dos vistas ya sincronizadas.
 - Ideas sin fase (protocolos tipo BTS, miembro superior, marcha): en «Ideas apuntadas» de `CLAUDE.md`.
 
+## Después del cierre: el mando desde un ordenador (10-11-2026)
+
+Pedido por el usuario: dejar los dos móviles colocados, la persona en su sitio, y que otra persona lo maneje todo desde un ordenador. Primera parte, **sin imagen** (la vista previa de los móviles en el ordenador queda pendiente: tendría que ir de aparato a aparato por WebRTC, sin servidor, y es una excepción a «por la sala no pasa vídeo» que decide el usuario).
+
+- **Relé** (`core/sala/rele.ts`, `senal/`): dos móviles y **un mando** (`/sala/<código>?rol=mando`; un segundo mando, 4001). El mando no cuenta como móvil: `entra`, `sale` y los `ocupantes` de la bienvenida siguen hablando solo de móviles (un móvil no lo toma por el otro), y su llegada y salida van en un aviso aparte (`{rele: 'mando', presente, ocupantes}`), que un móvil de antes ignora. Lo que manda cada uno llega a todos los demás.
+- **Protocolo** (sigue en la versión 1): cada móvil se presenta con un id aleatorio (`movil`, en `hola` y `estado`) para que el mando los distinga; el estado lleva la cota del reloj común (`reloj`, opcional); y el mensaje nuevo `orden` (`para`: el id; `programar` con cuenta atrás y duración, `parar`, `encuadre` con `activo`). Un móvil de antes ignora las órdenes. El mando no hace pings ni dice «adiós» al salir (`CanalSala` con `despedirse` en falso: un móvil lo tomaría por el otro).
+- **Móvil** (`Emparejar.tsx`, `useSala`): ejecuta las órdenes dirigidas a él como si se pulsara en él (`programar` solo si podría grabar y está libre; `parar` si hay algo en marcha; el encuadre, como su botón). Con un mando conectado lo dice; sin él, «Manejarlo desde un ordenador» (plegado) da el enlace.
+- **Mando** (`ui/Mando.tsx`, `sala/useMando.ts`, `core/sala/mando.ts`): se abre con `?sala=CÓDIGO&mando` (o escribiendo el código en «Grabar con dos móviles» → «Manejar esa sala desde aquí»), sin cámara. Una tarjeta por móvil (vista, cámara, espacio, batería, fps previstos, reloj, inclinación con su consejo, encuadre, «Grabando»), lo que falta para grabar (`faltaParaGrabar`: los dos móviles, las vistas, las cámaras, el reloj, el espacio, la versión) y los botones: comprobar el encuadre, grabar (cuenta atrás y duración) y parar los dos. Las órdenes van al primer móvil que se presentó (`destino`), que programa o pide al otro como siempre. Un móvil sin noticias en 6 s se da por ido (`movilesVivos`).
+- **Pruebas:** núcleo (avisos y roles del relé, órdenes del protocolo, lo que falta para grabar), el relé de verdad con un mando (`test:senal`) y e2e con tres navegadores: el mando ve los dos móviles, pide el encuadre (lo activa uno, el otro mira) y programa y para una grabación doble; un segundo mando no entra.
+- **Pendiente de validar con el usuario:** que el ordenador alcance el relé desde su red y la comodidad de la pantalla.
+
 ## Orden de trabajo (un PR por paso)
 
 | Paso | Contenido | Modelo |

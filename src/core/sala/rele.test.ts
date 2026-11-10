@@ -1,14 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { gastarFicha, leerAviso, origenPermitido, RAFAGA_MAXIMA, RITMO_MAXIMO, textoAviso, type Cubo } from './rele'
+import { cabe, gastarFicha, leerAviso, origenPermitido, RAFAGA_MAXIMA, RITMO_MAXIMO, rolDeUrl, textoAviso, type Cubo } from './rele'
 
 describe('relé de salas', () => {
   it('avisos: ida y vuelta, y un mensaje de la app no es un aviso', () => {
-    for (const a of [{ rele: 'bienvenida', ocupantes: 1 }, { rele: 'entra', ocupantes: 2 }, { rele: 'sale', ocupantes: 1 }] as const) {
+    for (const a of [
+      { rele: 'bienvenida', ocupantes: 1 },
+      { rele: 'bienvenida', ocupantes: 2, mando: true },
+      { rele: 'entra', ocupantes: 2 },
+      { rele: 'sale', ocupantes: 1 },
+      { rele: 'mando', presente: true, ocupantes: 2 },
+      { rele: 'mando', presente: false, ocupantes: 1 },
+    ] as const) {
       expect(leerAviso(textoAviso(a))).toEqual(a)
     }
     expect(leerAviso(JSON.stringify({ tipo: 'ping', id: 1, t1: 0 }))).toBeNull()
     expect(leerAviso(JSON.stringify({ rele: 'entra', ocupantes: -1 }))).toBeNull()
     expect(leerAviso('no')).toBeNull()
+    expect(leerAviso(JSON.stringify({ rele: 'mando', ocupantes: 1 }))).toBeNull()
+  })
+
+  it('roles: dos móviles y un mando como mucho; el rol sale de la dirección', () => {
+    expect(rolDeUrl('https://x.dev/sala/ABC234?rol=mando')).toBe('mando')
+    expect(rolDeUrl('https://x.dev/sala/ABC234')).toBe('movil')
+    expect(rolDeUrl('https://x.dev/sala/ABC234?rol=otro')).toBe('movil')
+    expect(cabe('movil', 1, 1)).toBe(true)
+    expect(cabe('movil', 2, 0)).toBe(false)
+    expect(cabe('mando', 2, 0)).toBe(true)
+    expect(cabe('mando', 0, 1)).toBe(false)
   })
 
   it('ritmo: una ráfaga de 60 pasa, la 61 no; al segundo se han repuesto 30', () => {

@@ -4673,6 +4673,36 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     await b.getByTestId('encuadre-este').waitFor({ state: 'detached', timeout: 10000 })
   })
 
+  it('el mando pide comprobar el encuadre: lo hace un móvil (y se lo pide al otro) y el mando ve lo de los dos', async () => {
+    const m = await abrirApp(navA, { consulta: `?sala=${codigo}&mando&senal=${URL_RELE}` })
+    try {
+      await m.waitForFunction(() => document.querySelectorAll('[data-testid=mando-movil]').length === 2, null, { timeout: 20000 })
+      // El enlace del mando sale en la sala de los móviles mientras no hay ninguno; con él, se dice que lo hay.
+      await a.getByTestId('mando-conectado').waitFor({ timeout: 10000 })
+      await m.getByTestId('mando-encuadre').click()
+      // Uno de los dos (el que primero se presentó al mando) lo activa; el otro mira porque se lo pide.
+      await m.waitForFunction(() => document.querySelector('[data-testid=mando-encuadre]')?.getAttribute('aria-pressed') === 'true', null, { timeout: 10000 })
+      const pulsados = await Promise.all([a, b].map((p) => p.getByTestId('comprobar-encuadre').getAttribute('aria-pressed')))
+      assert.deepEqual(pulsados.toSorted(), ['false', 'true'])
+      await m.getByTestId('mando-encuadre-1').filter({ hasText: 'te ve entero ✓' }).waitFor({ timeout: 10000 })
+      await m.getByTestId('mando-encuadre-2').filter({ hasText: 'te ve entero ✓' }).waitFor({ timeout: 10000 })
+      await m.getByTestId('mando-encuadre').click()
+      for (const p of [a, b]) await p.waitForFunction(() => document.querySelector('[data-testid=comprobar-encuadre]')?.getAttribute('aria-pressed') === 'false', null, { timeout: 10000 })
+      // Un segundo mando no entra.
+      const m2 = await abrirApp(navB, { consulta: `?sala=${codigo}&mando&senal=${URL_RELE}` })
+      try {
+        await m2.waitForFunction(() => document.querySelector('[data-testid=mando-conexion]')?.dataset.conexion === 'llena', null, { timeout: 20000 })
+      } finally {
+        await m2.close()
+      }
+    } finally {
+      await m.close()
+    }
+    await a.getByTestId('enlace-mando').waitFor({ timeout: 10000 })
+    assert.equal(await a.getByTestId('conexion').getAttribute('data-conexion'), 'emparejado')
+    assert.match(await a.getByTestId('url-mando').textContent(), new RegExp(`\\?sala=${codigo}&mando$`))
+  })
+
   it('un tercer móvil no entra: «la sala está llena»', async () => {
     const c = await abrirApp(navB, { consulta: `?sala=${codigo}&senal=${URL_RELE}` })
     try {
@@ -4923,6 +4953,47 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
     assert.match(await a.getByTestId('aviso-grabacion').innerText(), /cancel/i)
   })
 
+  it('el mando (un ordenador en la sala): ve los dos móviles, programa la grabación de los dos y la para', async () => {
+    const codigo = new URL(a.url()).searchParams.get('sala')
+    const m = await abrirApp(navA, { consulta: `?sala=${codigo}&mando&senal=${URL_RELE}` })
+    try {
+      await m.waitForFunction(() => document.querySelector('[data-testid=mando-conexion]')?.dataset.conexion === 'abierto', null, { timeout: 20000 })
+      // Los dos móviles se presentan al mando y siguen emparejados entre ellos (el mando no cuenta como el otro móvil).
+      await m.waitForFunction(() => document.querySelectorAll('[data-testid=mando-movil]').length === 2, null, { timeout: 20000 })
+      for (const p of [a, b]) {
+        await p.getByTestId('mando-conectado').waitFor({ timeout: 10000 })
+        assert.equal(await p.getByTestId('conexion').getAttribute('data-conexion'), 'emparejado')
+      }
+      const textos = await m.getByTestId('mando-movil').allInnerTexts()
+      assert.ok(textos.some((t) => /de perfil, mira a la derecha/.test(t)) && textos.some((t) => /de frente/.test(t)), textos.join(' | '))
+      assert.match(textos.join(' '), /reloj común ± /)
+      // Con todo listo se puede grabar: 5 s de cuenta atrás, hasta parar.
+      await m.waitForFunction(() => !document.querySelector('[data-testid=mando-grabar]')?.disabled, null, { timeout: 20000 })
+      await m.getByTestId('mando-cuenta').selectOption('5')
+      await m.getByTestId('mando-duracion').selectOption('parar')
+      await m.getByTestId('mando-grabar').click()
+      await fase(a, 'programada')
+      await fase(b, 'programada')
+      await fase(a, 'grabando', 10000)
+      await fase(b, 'grabando', 10000)
+      // El mando lo ve grabando (por el estado de cada móvil, cada 2 s).
+      await m.waitForFunction(() => [...document.querySelectorAll('[data-testid=mando-movil]')].every((x) => x.dataset.grabando === 'true'), null, { timeout: 10000 })
+      await m.getByTestId('mando-parar').click()
+      await fase(a, 'hecha', 30000)
+      await fase(b, 'hecha', 30000)
+      const [ra, rb] = [await resultado(a), await resultado(b)]
+      assert.ok(ra.id && ra.id === rb.id, 'la misma grabación doble en los dos')
+    } finally {
+      await m.close()
+    }
+    // Al irse el mando, los móviles siguen emparejados y vuelven a ofrecer su enlace.
+    for (const p of [a, b]) {
+      await p.getByTestId('enlace-mando').waitFor({ timeout: 10000 })
+      assert.equal(await p.getByTestId('conexion').getAttribute('data-conexion'), 'emparejado')
+      await p.getByTestId('grabar-otra-vez').click()
+    }
+  })
+
   it('sin una vista de perfil y otra de frente (o una en cada flanco) no se ofrece grabar', async () => {
     await b.getByTestId('vista-perfil-derecha').click()
     await a.getByTestId('grabar-doble').waitFor({ state: 'detached' })
@@ -4976,7 +5047,9 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
     // En A (su almacenamiento tiene su vídeo): sale de la sala, abre su lista y elige el otro vídeo.
     await a.getByTestId('salir-sala').click()
     await a.getByTestId('ir-grabar').click()
-    await a.getByTestId('grabacion-abrir-doble').first().click()
+    // La de la pareja (la de 10 s; puede haber otras, como la del mando): la del mismo tamaño que el MP4 descargado.
+    const tamano = (await stat(pareja.perfil)).size
+    await a.locator(`[data-testid=grabacion][data-bytes="${tamano}"]`).getByTestId('grabacion-abrir-doble').click()
     await a.getByTestId('falta-doble').waitFor()
     await a.setInputFiles('[data-testid=selector-doble]', pareja.frente)
     assert.equal((await comprobarPareja(a)).metodo, 'reloj')

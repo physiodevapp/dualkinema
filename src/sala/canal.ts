@@ -25,6 +25,8 @@ export class CanalSala {
   constructor(
     private readonly url: string,
     private readonly alEvento: (e: EventoCanal) => void,
+    /** Al cerrar, decir «adiós» (un móvil al otro; el mando no: un móvil lo tomaría por el otro móvil que se va). */
+    private readonly despedirse = true,
   ) {
     this.conectar()
   }
@@ -68,7 +70,7 @@ export class CanalSala {
   cerrar() {
     this.cerrado = true
     if (this.temporizador) clearTimeout(this.temporizador)
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(escribirMensaje({ tipo: 'adios' }))
+    if (this.despedirse && this.ws?.readyState === WebSocket.OPEN) this.ws.send(escribirMensaje({ tipo: 'adios' }))
     this.ws?.close(1000, 'adiós')
     this.ws = null
     this.alEvento({ tipo: 'estado', estado: 'cerrado' })
