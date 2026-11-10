@@ -12,7 +12,7 @@ import { prepararGuardado } from '../../core/persistencia/esquema'
 import type { Sensores } from '../../core/sensores/sensores'
 import type { Calibracion3D } from '../../core/tresd/calibracion3d'
 import type { HuellaArchivo } from '../../core/persistencia/huella'
-import { guardarSesion, pedirPersistencia } from '../../persistencia/almacen'
+import { fijarSesionAbierta, guardarSesion, pedirPersistencia } from '../../persistencia/almacen'
 
 /** Espera tras el último cambio antes de guardar. */
 const ESPERA_MS = 1000
@@ -141,6 +141,13 @@ export function useGuardado({ sesion, modelo, filtro, vistas, calibracion3d, est
       },
     )
   }, [])
+
+  // Mientras el visor tiene la sesión abierta, la limpieza de lo guardado (caducidad y máximo) no la borra.
+  const id = sesion.id
+  useEffect(() => {
+    fijarSesionAbierta(id)
+    return () => fijarSesionAbierta(null)
+  }, [id])
 
   // Cada cambio programa un guardado.
   useEffect(() => {

@@ -7,6 +7,7 @@ import { esAjustesFiltro, type AjustesFiltro } from '../filtros/tramos'
 import { claveHuella, esHuella, type HuellaArchivo } from './huella'
 import { leerSensores, type Sensores } from '../sensores/sensores'
 import { esCalibracion3D, type Calibracion3D } from '../tresd/calibracion3d'
+import { caducaEn } from './retencion'
 import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, type TrayectoriaGuardada } from './trayectorias'
 
 /*
@@ -60,9 +61,16 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  * que volver a leer el archivo. Los puntos 3D no se guardan: se recalculan de
  * las trayectorias y las cámaras. La migración 5 → 6 pone los tres a null; una
  * app de esquema 5 no abre una sesión calibrada (al guardar la perdería).
+ *
+ * Esquema 7 (límites de lo guardado, ver retencion.ts): la cabecera guarda
+ * cuándo caduca (`expiraEn`, ms: último guardado + 30 días) y, si se conoce,
+ * lo que ocupa (`bytes`, opcional). La migración 6 → 7 da a lo ya guardado 30
+ * días desde su último guardado (`actualizada`); si esa fecha no se pudiera
+ * leer, desde el momento de la migración. Una app de esquema 6 no abre una
+ * sesión de la 7 (al guardar perdería `expiraEn` y la sesión no caducaría).
  */
 
-export const ESQUEMA_ACTUAL = 6
+export const ESQUEMA_ACTUAL = 7
 
 export interface VistaCabecera {
   readonly id: string
@@ -110,6 +118,10 @@ export interface CabeceraSesion {
   readonly calibracion3d: Calibracion3D | null
   /** Estatura de la persona (m), para la escala del 3D (esquema 6); null sin ella. */
   readonly estatura: number | null
+  /** Cuándo caduca (ms desde 1970): su último guardado + DIAS_CADUCIDAD días (esquema 7). Cada guardado la renueva. */
+  readonly expiraEn: number
+  /** Lo que ocupa guardada, aproximadamente (bytes); se calcula al guardar, así que las migradas no lo tienen. */
+  readonly bytes?: number
 }
 
 export interface DatosSesion {
@@ -179,7 +191,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     aMano += r.aMano
     interpolados += r.interpolados
   }
-  const cabecera: CabeceraSesion = {
+  const cabecera: Omit<CabeceraSesion, 'expiraEn' | 'bytes'> = {
     esquema: ESQUEMA_ACTUAL,
     id: e.id,
     nombre: e.nombre,
@@ -207,7 +219,23 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     // Una estatura fuera de lo que se lee no se guarda (si no, la sesión no se volvería a abrir).
     estatura: e.estatura && e.estatura > 0 && e.estatura < 3 ? e.estatura : null,
   }
-  return { cabecera, datos: { esquema: ESQUEMA_ACTUAL, id: e.id, trayectorias } }
+  const datos: DatosSesion = { esquema: ESQUEMA_ACTUAL, id: e.id, trayectorias }
+  const ahora = Date.parse(e.ahora)
+  return {
+    cabecera: { ...cabecera, expiraEn: caducaEn(Number.isNaN(ahora) ? Date.now() : ahora), bytes: bytesAproximados(cabecera, datos) },
+    datos,
+  }
+}
+
+/** Lo que ocupa guardada: los arrays tipados de las trayectorias y el texto de la cabecera (aproximado). */
+export function bytesAproximados(cabecera: Omit<CabeceraSesion, 'expiraEn' | 'bytes'>, datos: DatosSesion): number {
+  let n = JSON.stringify(cabecera).length
+  for (const porMarcador of Object.values(datos.trayectorias)) {
+    for (const t of Object.values(porMarcador)) {
+      for (const v of Object.values(t)) if (ArrayBuffer.isView(v)) n += v.byteLength
+    }
+  }
+  return n
 }
 
 // ---- Migrar ----
@@ -247,6 +275,11 @@ export const MIGRACIONES_CABECERA: Migraciones = {
     estatura: null,
     ...(Array.isArray(r.vistas) ? { vistas: (r.vistas as unknown[]).map((v) => (esObjeto(v) ? { ...v, sensores: null } : v)) } : {}),
   }),
+  // 6 → 7 (límites de lo guardado): 30 días desde el último guardado; sin esa fecha, desde ahora. `bytes` no se inventa.
+  6: (r) => {
+    const guardado = esTexto(r.actualizada) ? Date.parse(r.actualizada) : Number.NaN
+    return { ...r, expiraEn: caducaEn(Number.isNaN(guardado) ? Date.now() : guardado) }
+  },
 }
 export const MIGRACIONES_DATOS: Migraciones = {
   1: (r) => {
@@ -273,6 +306,8 @@ export const MIGRACIONES_DATOS: Migraciones = {
   4: (r) => r,
   // 5 → 6: tampoco (los puntos 3D no se guardan).
   5: (r) => r,
+  // 6 → 7: tampoco (la caducidad vive en la cabecera).
+  6: (r) => r,
 }
 
 /**
@@ -421,6 +456,8 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
   if (!Array.isArray(guardadas) || guardadas.length !== claves.length || claves.some((k, i) => guardadas[i] !== k)) {
     return mal('claves de huella que no corresponden a las vistas')
   }
+  if (!esNumero(c.expiraEn)) return mal('caducidad no válida')
+  if (c.bytes !== undefined && !(esNumero(c.bytes) && c.bytes >= 0)) return mal('tamaño no válido')
   if (c.estatura !== null && !(typeof c.estatura === 'number' && c.estatura > 0 && c.estatura < 3)) return mal('estatura no válida')
   if (c.calibracion3d !== null) {
     if (!esCalibracion3D(c.calibracion3d)) return mal('calibración 3D no válida')

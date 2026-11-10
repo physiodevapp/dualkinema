@@ -371,3 +371,90 @@ export async function esperarFiltroGuardado(p, corteHz) {
     { timeout: 20000, polling: 200 },
   )
 }
+
+/**
+ * Lo que hay en los dos almacenes de IndexedDB: cabeceras (id, esquema, actualizada, expiraEn, bytes) y los ids de las
+ * trayectorias. Para comprobar que se borran las dos partes.
+ */
+export async function leerAlmacenes(p) {
+  return p.evaluate(async () => {
+    const bd = await new Promise((ok, mal) => {
+      const r = indexedDB.open('dualkinema')
+      r.onsuccess = () => ok(r.result)
+      r.onerror = () => mal(r.error)
+    })
+    try {
+      const todo = (nombre, clave) =>
+        new Promise((ok) => {
+          const r = bd.transaction(nombre).objectStore(nombre)[clave]()
+          r.onsuccess = () => ok(r.result)
+        })
+      const sesiones = (await todo('sesiones', 'getAll')).map((c) => ({
+        id: c.id,
+        esquema: c.esquema,
+        actualizada: c.actualizada,
+        expiraEn: c.expiraEn,
+        bytes: c.bytes,
+      }))
+      return { sesiones, trayectorias: (await todo('trayectorias', 'getAllKeys')).map(String) }
+    } finally {
+      bd.close()
+    }
+  })
+}
+
+/** Espera (sondeando) a que `condicion(await leerAlmacenes(p))` se cumpla. Devuelve el último estado. */
+export async function esperarAlmacenes(p, condicion, { ms = 15000 } = {}) {
+  const limite = Date.now() + ms
+  let estado
+  for (;;) {
+    estado = await leerAlmacenes(p)
+    if (condicion(estado)) return estado
+    if (Date.now() > limite) throw new Error(`Los almacenes no llegaron al estado esperado: ${JSON.stringify(estado)}`)
+    await new Promise((r) => setTimeout(r, 100))
+  }
+}
+
+/**
+ * Siembra en IndexedDB copias de una sesión ya guardada, como si hubieran sido guardadas hace `edadesDias` días
+ * (`actualizada` y `expiraEn` acordes, con la hora real de la página), escritas directamente (sin pasar por la limpieza
+ * de la app). `ilegible`: añade además una sesión de un esquema más nuevo, que esta app no sabe leer.
+ */
+export async function sembrarSesiones(p, idOrigen, edadesDias, { ilegible = false } = {}) {
+  await p.evaluate(
+    async ({ idOrigen, edadesDias, ilegible }) => {
+      const bd = await new Promise((ok, mal) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+        r.onerror = () => mal(r.error)
+      })
+      try {
+        const leer = (nombre) =>
+          new Promise((ok) => {
+            const r = bd.transaction(nombre).objectStore(nombre).get(idOrigen)
+            r.onsuccess = () => ok(r.result)
+          })
+        const [cabecera, datos] = [await leer('sesiones'), await leer('trayectorias')]
+        const dia = 24 * 60 * 60 * 1000
+        const tx = bd.transaction(['sesiones', 'trayectorias'], 'readwrite')
+        edadesDias.forEach((edad, i) => {
+          const id = `sembrada-${i + 1}`
+          const guardada = Date.now() - edad * dia
+          tx.objectStore('sesiones').put({ ...cabecera, id, actualizada: new Date(guardada).toISOString(), expiraEn: guardada + 30 * dia })
+          tx.objectStore('trayectorias').put({ ...datos, id })
+        })
+        if (ilegible) {
+          tx.objectStore('sesiones').put({ id: 'futura', nombre: 'de otra versión', esquema: 99, claves: [] })
+          tx.objectStore('trayectorias').put({ id: 'futura', esquema: 99 })
+        }
+        await new Promise((ok, mal) => {
+          tx.oncomplete = ok
+          tx.onerror = () => mal(tx.error)
+        })
+      } finally {
+        bd.close()
+      }
+    },
+    { idOrigen, edadesDias, ilegible },
+  )
+}

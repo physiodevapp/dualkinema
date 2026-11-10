@@ -1,9 +1,11 @@
 import {
+  ESQUEMA_ACTUAL,
   leerCabecera,
   leerDatos,
   type CabeceraSesion,
   type DatosSesion,
 } from '../core/persistencia/esquema'
+import { sesionesABorrar } from '../core/persistencia/retencion'
 import { claveHuella, compararHuella, type Coincidencia, type HuellaArchivo } from '../core/persistencia/huella'
 
 /*
@@ -93,8 +95,50 @@ export interface SesionIlegible {
   readonly nueva: boolean
 }
 
+/**
+ * La sesión que está abierta en el visor de esta pestaña: nunca se borra sola (ni por caducidad ni por el máximo). La
+ * pone el visor al guardar, y la quita al cerrarse.
+ */
+let sesionAbierta: string | null = null
+export function fijarSesionAbierta(id: string | null): void {
+  sesionAbierta = id
+}
+export const idSesionAbierta = (): string | null => sesionAbierta
+
+/**
+ * Borra las sesiones caducadas y las que pasan del máximo, con sus trayectorias (qué se borra lo decide
+ * `core/persistencia/retencion.ts`; aquí solo se lee y se borra). Las de un esquema más nuevo o ilegibles no se
+ * pasan a la función: no se borran solas (ver retencion.ts). `protegidas`: además de la abierta, la que se guarda.
+ * Devuelve los ids borrados.
+ */
+export async function depurarSesiones(protegidas: readonly string[] = []): Promise<string[]> {
+  return conBase(async (bd) => {
+    const registros = (await resultado(bd.transaction(SESIONES).objectStore(SESIONES).getAll())) as unknown[]
+    const cabeceras: CabeceraSesion[] = []
+    for (const registro of registros) {
+      const r = leerCabecera(registro)
+      if (r.ok) cabeceras.push(r.valor)
+    }
+    const ids = sesionesABorrar({ cabeceras, ahora: Date.now(), protegidas: [...protegidas, sesionAbierta], esquemaActual: ESQUEMA_ACTUAL })
+    if (ids.length === 0) return ids
+    const tx = bd.transaction([SESIONES, TRAYECTORIAS], 'readwrite')
+    for (const id of ids) {
+      tx.objectStore(SESIONES).delete(id)
+      tx.objectStore(TRAYECTORIAS).delete(id)
+    }
+    await terminada(tx)
+    return ids
+  })
+}
+
+/** Al abrir la app, sin esperar a que se pida la lista. Un fallo aquí no debe impedir usar la app. */
+export function depurarAlAbrir(): void {
+  depurarSesiones().catch(() => undefined)
+}
+
 /** Todas las sesiones, la más reciente primero. Las que no se pueden leer van aparte, para poder borrarlas. */
 export async function listarSesiones(): Promise<{ sesiones: CabeceraSesion[]; ilegibles: SesionIlegible[] }> {
+  await depurarSesiones().catch(() => undefined)
   const todas = await conBase((bd) => resultado(bd.transaction(SESIONES).objectStore(SESIONES).getAll()))
   const sesiones: CabeceraSesion[] = []
   const ilegibles: SesionIlegible[] = []
@@ -117,6 +161,8 @@ export async function listarSesiones(): Promise<{ sesiones: CabeceraSesion[]; il
 
 /** Sesiones con alguna vista de este vídeo, la más reciente primero. */
 export async function buscarPorHuella(h: HuellaArchivo): Promise<{ cabecera: CabeceraSesion; coincidencia: Exclude<Coincidencia, 'distinta'> }[]> {
+  // Una sesión caducada no se ofrece aunque la lista no se haya pedido antes.
+  await depurarSesiones().catch(() => undefined)
   const registros = (await conBase((bd) =>
     resultado(bd.transaction(SESIONES).objectStore(SESIONES).index(POR_CLAVE).getAll(claveHuella(h))),
   )) as unknown[]
@@ -158,6 +204,14 @@ export async function leerSesion(id: string): Promise<{ cabecera: CabeceraSesion
  * almacenes en el orden en que se crean, así que queda el último.
  */
 export function guardarSesion(cabecera: CabeceraSesion, datos: DatosSesion): Promise<void> {
+  return guardarSinDepurar(cabecera, datos).then(() =>
+    // Ya guardada (y renovada su caducidad): se borran las caducadas y las que pasan del máximo, nunca esta. Si la
+    // limpieza falla, el guardado ya está hecho y la siguiente la repite.
+    depurarSesiones([cabecera.id]).then(() => undefined, () => undefined),
+  )
+}
+
+function guardarSinDepurar(cabecera: CabeceraSesion, datos: DatosSesion): Promise<void> {
   const escribir = (bd: IDBDatabase) => {
     try {
       const tx = bd.transaction([SESIONES, TRAYECTORIAS], 'readwrite')
@@ -176,6 +230,16 @@ export function guardarSesion(cabecera: CabeceraSesion, datos: DatosSesion): Pro
     if (!esConexionCerrada(e)) throw e
     olvidar()
     return abrir().then(escribir)
+  })
+}
+
+/** «Borrar todo lo guardado»: vacía los dos almacenes (también lo ilegible o de una versión más nueva). */
+export function borrarTodo(): Promise<void> {
+  return conBase((bd) => {
+    const tx = bd.transaction([SESIONES, TRAYECTORIAS], 'readwrite')
+    tx.objectStore(SESIONES).clear()
+    tx.objectStore(TRAYECTORIAS).clear()
+    return terminada(tx)
   })
 }
 

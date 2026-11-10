@@ -22,7 +22,10 @@ import {
   errores,
   prueba,
   vigilarErrores,
+  esperarAlmacenes,
   esperarFiltroGuardado,
+  leerAlmacenes,
+  sembrarSesiones,
   esperarGuardado,
   esperarQuieto,
   esperarVideoAsentado,
@@ -738,6 +741,131 @@ describe('persistencia: marcar, seguir, recargar y recuperar', () => {
     await p.getByTestId('sesion-guardada').getByRole('button', { name: /^Borrar/ }).click()
     await p.getByRole('button', { name: 'Sí, borrar' }).click()
     await p.getByRole('heading', { name: 'Sesiones guardadas' }).waitFor({ state: 'detached' })
+  })
+})
+
+describe('persistencia: máximo, caducidad y borrar todo', () => {
+  const DIA = 24 * 60 * 60 * 1000
+  /** El número y los días del aviso salen de las constantes: aquí se comparan con las decididas (5 y 30). */
+  const AVISO = 'Se guardan solo en este móvil, sin el vídeo. Se conservan 5 y se borran solas a los 30 días.'
+
+  /** Marca el trocánter del primer frame (una sesión real, guardada) y espera a que se guarde. */
+  async function conUnaSesion() {
+    const p = await abrirApp(navegador)
+    await cargarVideo(p, videos.verde.ruta)
+    const [cadera] = videos.verde.verdad[0].ps
+    await tocarVideo(p, cadera.x, cadera.y)
+    const { sesiones } = await esperarAlmacenes(p, (a) => a.sesiones.length === 1)
+    return { p, id: sesiones[0].id }
+  }
+
+  it('cada sesión guarda cuándo caduca (30 días tras el guardado) y lo que ocupa, y la lista lo dice con el aviso', async () => {
+    const { p, id } = await conUnaSesion()
+    try {
+      const { sesiones } = await leerAlmacenes(p)
+      assert.equal(sesiones[0].id, id)
+      assert.ok(Math.abs(sesiones[0].expiraEn - (Date.parse(sesiones[0].actualizada) + 30 * DIA)) < 1000)
+      assert.ok(sesiones[0].bytes > 0)
+      await p.reload()
+      await p.getByTestId('sesion-guardada').waitFor()
+      assert.equal(await p.getByTestId('aviso-retencion').innerText(), AVISO)
+      const dia = new Date(sesiones[0].expiraEn).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+      assert.match(await p.getByTestId('caducidad').innerText(), new RegExp(`^Se borra el ${dia} · ocupa \\d+(,\\d)? (KB|MB)$`))
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('al guardar la sexta sesión quedan cinco: se va la más antigua con sus trayectorias, y la que se guarda se queda', async () => {
+    const { p, id } = await conUnaSesion()
+    try {
+      // 1 real + 4 sembradas (guardadas hace 1–4 días) + una de una versión más nueva, que no cuenta.
+      await sembrarSesiones(p, id, [1, 2, 3, 4], { ilegible: true })
+      await p.reload()
+      await p.getByTestId('sesion-guardada').first().waitFor()
+      assert.equal(await p.getByTestId('sesion-guardada').count(), 5)
+      assert.equal(await p.getByTestId('sesion-ilegible').count(), 1)
+      // La sexta: el mismo vídeo, «Empezar de cero» y un gomet marcado.
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      await p.getByRole('button', { name: 'Empezar de cero' }).click({ timeout: 20000 })
+      await p.getByRole('button', { name: 'Mira a la derecha' }).click()
+      await esperarQuieto(p)
+      const [cadera] = videos.verde.verdad[0].ps
+      await tocarVideo(p, cadera.x, cadera.y)
+      const antes = new Set([id, 'sembrada-1', 'sembrada-2', 'sembrada-3', 'sembrada-4'])
+      const estado = await esperarAlmacenes(p, (a) => a.sesiones.some((c) => c.esquema === 7 && !antes.has(c.id)) && a.sesiones.length === 6)
+      // 5 legibles + la ilegible: la más antigua (sembrada-4, de hace 4 días) se ha ido; la nueva y la ilegible están.
+      const ids = estado.sesiones.map((c) => c.id)
+      assert.equal(estado.sesiones.filter((c) => c.esquema === 7).length, 5)
+      assert.ok(!ids.includes('sembrada-4'), 'se borra la más antigua')
+      assert.ok(ids.includes(id) && ids.includes('futura'))
+      // Y sus trayectorias con ella: los dos almacenes tienen las mismas claves.
+      assert.deepEqual([...estado.trayectorias].sort(), [...ids].sort())
+      await p.reload()
+      await p.getByTestId('sesion-guardada').first().waitFor()
+      assert.equal(await p.getByTestId('sesion-guardada').count(), 5)
+      assert.equal(await p.getByTestId('sesion-ilegible').count(), 1)
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('con el reloj adelantado, las sesiones caducan al abrir la app; guardar renueva; lo ilegible no caduca', async () => {
+    const { p, id } = await conUnaSesion()
+    try {
+      await sembrarSesiones(p, id, [1, 2, 3, 4], { ilegible: true })
+      const ahora = Date.now()
+      // A los 28,5 días: caducaron las guardadas hace 2, 3 y 4 días (caducaban a los 28, 27 y 26 días); siguen la de hace 1 día y la real.
+      await p.clock.setFixedTime(ahora + 28.5 * DIA)
+      await p.reload()
+      await p.getByTestId('sesion-guardada').first().waitFor()
+      assert.equal(await p.getByTestId('sesion-guardada').count(), 2)
+      const quedan = (await leerAlmacenes(p)).sesiones.map((c) => c.id).sort()
+      assert.deepEqual(quedan, [...[id, 'futura', 'sembrada-1']].sort())
+      // Guardar renueva: se recupera la real a los 28,5 días, se marca otro gomet y su caducidad pasa a ser 30 días después de ESE momento.
+      await p.setInputFiles('input[type=file]', videos.verde.ruta)
+      const candidata = p.getByTestId('candidata').first()
+      await candidata.waitFor({ timeout: 20000 })
+      await p.getByRole('button', { name: 'Recuperar el trabajo' }).first().click()
+      await esperarQuieto(p)
+      await irAFrame(p, 5)
+      await p.getByRole('radio', { name: /Trocánter/ }).click()
+      await tocarVideo(p, videos.verde.verdad[5].ps[0].x + 1, videos.verde.verdad[5].ps[0].y - 1)
+      const renovado = await esperarAlmacenes(p, (a) => a.sesiones.some((c) => c.expiraEn > ahora + 55 * DIA))
+      assert.ok(renovado.sesiones.some((c) => c.expiraEn > ahora + 55 * DIA && c.expiraEn < ahora + 60 * DIA))
+      // La que está abierta ni la renovada caducan: a los 31 días solo queda lo que se guardó a los 28,5 y la ilegible.
+      await p.clock.setFixedTime(ahora + 31 * DIA)
+      await p.reload()
+      await p.getByTestId('sesion-guardada').first().waitFor()
+      const final = (await leerAlmacenes(p)).sesiones.map((c) => c.id)
+      assert.ok(final.includes('futura'), 'una sesión de una versión más nueva no se borra por tiempo')
+      assert.ok(!final.includes('sembrada-1'))
+      assert.ok(final.includes(id))
+    } finally {
+      await p.close()
+    }
+  })
+
+  it('«Borrar todo lo guardado» pide confirmación y vacía los dos almacenes, también lo ilegible', async () => {
+    const { p, id } = await conUnaSesion()
+    try {
+      await sembrarSesiones(p, id, [1, 2], { ilegible: true })
+      await p.reload()
+      await p.getByTestId('sesion-guardada').first().waitFor()
+      assert.equal((await leerAlmacenes(p)).sesiones.length, 4)
+      // Sin confirmar, no se borra nada.
+      await p.getByTestId('borrar-todo').click()
+      await p.getByRole('button', { name: 'No' }).click()
+      assert.equal((await leerAlmacenes(p)).sesiones.length, 4)
+      assert.equal(await p.getByTestId('sesion-guardada').count(), 3)
+      // Confirmado, sí.
+      await p.getByTestId('borrar-todo').click()
+      await p.getByTestId('confirmar-borrar-todo').click()
+      await p.getByRole('heading', { name: 'Sesiones guardadas' }).waitFor({ state: 'detached' })
+      assert.deepEqual(await leerAlmacenes(p), { sesiones: [], trayectorias: [] })
+    } finally {
+      await p.close()
+    }
   })
 })
 

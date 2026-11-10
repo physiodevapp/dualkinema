@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { modeloRodilla3 } from '../articulaciones/catalogo'
 import type { Muestra2D } from '../modelo/tipos'
 import { modeloPose } from '../pose/catalogo'
-import { ESQUEMA_ACTUAL, leerCabecera, leerDatos, migrar, prepararGuardado, type EntradaGuardado, type VistaCabecera } from './esquema'
+import { DIAS_CADUCIDAD, MS_POR_DIA } from './retencion'
+import { ESQUEMA_ACTUAL, MIGRACIONES_CABECERA, leerCabecera, leerDatos, migrar, prepararGuardado, type EntradaGuardado, type VistaCabecera } from './esquema'
 import type { HuellaArchivo } from './huella'
 import { desempaquetarTrayectoria, empaquetarTrayectoria, errorTrayectoria } from './trayectorias'
 
@@ -105,11 +106,13 @@ describe('trayectorias guardadas', () => {
   })
 })
 
+afterEach(() => vi.useRealTimers())
+
 describe('esquema de la sesión', () => {
   it('cabecera de la versión actual con los huecos de los pasos siguientes vacíos', () => {
     const { cabecera } = prepararGuardado(entrada())
     expect(cabecera.esquema).toBe(ESQUEMA_ACTUAL)
-    expect(ESQUEMA_ACTUAL).toBe(6)
+    expect(ESQUEMA_ACTUAL).toBe(7)
     expect(cabecera.filtro).toBeNull()
     // Sin decir nada: la vista sigue todos los marcadores del modelo, sin sincronizar, y es la referencia.
     expect(cabecera.vistas[0]).toMatchObject({ desfase: 0, calibracion: null, ceros: {}, marcadores: [cadera, rodilla, tobillo], sincronia: { metodo: 'ninguna' }, deteccion: null })
@@ -391,6 +394,42 @@ describe('varias vistas (esquema 3)', () => {
     expect(c.valor.calibracion3d).toBeNull()
     expect(c.valor.vistas.every((v) => v.sensores === null)).toBe(true)
     expect(leerDatos(comoIDB({ ...datos, esquema: 5 }), c.valor)).toEqual({ ok: true, valor: comoIDB(datos) })
+  })
+
+  it('una sesión del esquema 6 recibe 30 días desde su último guardado (migración 6 → 7)', () => {
+    const { cabecera, datos } = prepararGuardado(entradaDos())
+    const sin = (o: object, ks: string[]) => Object.fromEntries(Object.entries(o).filter(([c]) => !ks.includes(c)))
+    const comoV6 = { ...sin(cabecera, ['expiraEn', 'bytes']), esquema: 6 }
+    const c = leerCabecera(comoIDB(comoV6))
+    expect(c.ok).toBe(true)
+    if (!c.ok) return
+    expect(c.valor.esquema).toBe(ESQUEMA_ACTUAL)
+    expect(c.valor.expiraEn).toBe(Date.parse(cabecera.actualizada) + DIAS_CADUCIDAD * MS_POR_DIA)
+    expect(c.valor.bytes).toBeUndefined() // no se inventa lo que ocupa
+    expect(leerDatos(comoIDB({ ...datos, esquema: 6 }), c.valor)).toEqual({ ok: true, valor: comoIDB(datos) })
+  })
+
+  it('migración 6 → 7 sin fecha legible: 30 días desde ahora', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-12-01T00:00:00.000Z'))
+    const migrada = MIGRACIONES_CABECERA[6]!({ esquema: 6, actualizada: 'ayer' })
+    expect(migrada.expiraEn).toBe(Date.parse('2026-12-01T00:00:00.000Z') + DIAS_CADUCIDAD * MS_POR_DIA)
+    expect(MIGRACIONES_CABECERA[6]!({ esquema: 6 }).expiraEn).toBe(migrada.expiraEn)
+  })
+
+  it('cada guardado fija la caducidad en 30 días desde ese guardado, y guarda lo que ocupa', () => {
+    const { cabecera } = prepararGuardado(entrada())
+    expect(cabecera.expiraEn).toBe(Date.parse('2026-10-17T10:05:00.000Z') + 30 * 24 * 60 * 60 * 1000)
+    const otra = prepararGuardado({ ...entrada(), ahora: '2026-11-01T08:00:00.000Z' }).cabecera
+    expect(otra.expiraEn - cabecera.expiraEn).toBe(Date.parse('2026-11-01T08:00:00.000Z') - Date.parse('2026-10-17T10:05:00.000Z'))
+    expect(cabecera.bytes).toBeGreaterThan(0)
+  })
+
+  it('una caducidad o un tamaño que no son números se rechazan', () => {
+    const { cabecera } = prepararGuardado(entrada())
+    expect(leerCabecera(comoIDB({ ...cabecera, expiraEn: 'mañana' }))).toMatchObject({ ok: false, detalle: /caducidad/ })
+    expect(leerCabecera(comoIDB({ ...cabecera, bytes: -1 }))).toMatchObject({ ok: false, detalle: /tamaño/ })
+    expect(leerCabecera(comoIDB({ ...cabecera, bytes: undefined })).ok).toBe(true)
   })
 
   it('guarda y lee la calibración 3D, la estatura y los sensores de cada vista (esquema 6)', () => {
