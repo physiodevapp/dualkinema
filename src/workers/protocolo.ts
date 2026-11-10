@@ -101,6 +101,8 @@ export interface FramePoseWorker {
 /** Mensajes del worker sin marcadores al hilo principal. */
 export type DelWorkerPose =
   /** `libreria`: la librería del modelo con su versión, si no es MediaPipe (RTMPose: ONNX Runtime Web). */
+  /** Mientras se prepara (RTMPose): en qué paso va, para saber dónde se para si tarda. */
+  | { readonly tipo: 'cargando'; readonly texto: string }
   | { readonly tipo: 'listo'; readonly delegado: 'GPU' | 'CPU'; readonly avisoDelegado?: string; readonly msCarga: number; readonly libreria?: string; readonly hilos?: number }
   /** `atras`: los frames son de la segunda pasada (hacia atrás); `progreso` es entonces el de esa pasada. */
   | { readonly tipo: 'frames'; readonly lote: readonly FramePoseWorker[]; readonly progreso: number; readonly atras?: boolean }

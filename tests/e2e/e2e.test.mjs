@@ -5336,8 +5336,8 @@ describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () 
     await p.getByTestId('solo-algunos').check()
     await p.getByTestId('detectar-cuerpo').getByRole('button', { name: /detectar/i }).click()
     // Mientras detecta, en qué va (GPU, o CPU con sus hilos: más de uno con la página aislada).
-    const detalle = await p.getByTestId('detalle-deteccion').first().innerText({ timeout: 300000 })
-    assert.match(detalle, /^(GPU|CPU, [2-4] hilos)/)
+    // Mientras carga, el paso en que va (aquí, sin GPU: la CPU con más de un hilo, por la página aislada).
+    await p.getByTestId('detalle-deteccion').filter({ hasText: /preparando la CPU \([2-4] hilos\)|^GPU|^CPU, [2-4] hilos/ }).first().waitFor({ timeout: 300000 })
     await p.getByTestId('deteccion-hecha').getByText(/persona en 4 frames/).waitFor({ timeout: 300000 })
   })
 })

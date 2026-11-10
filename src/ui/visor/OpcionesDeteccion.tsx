@@ -48,7 +48,13 @@ const minutos = (s: number) => (s < 90 ? `${Math.max(1, Math.round(s))} s` : `${
 
 /** Mientras se detecta: en qué va (GPU o CPU con sus hilos), a qué ritmo y cuánto queda. */
 export function DetalleDeteccion({ progreso }: { progreso: ProgresoDeteccion | null }) {
-  if (!progreso || progreso.fase === 'cargando' || !progreso.delegado) return null
+  if (progreso?.fase === 'cargando')
+    return progreso.texto ? (
+      <p className="font-mono text-xs text-texto-2" data-testid="detalle-deteccion">
+        {progreso.texto}…
+      </p>
+    ) : null
+  if (!progreso || !progreso.delegado) return null
   const partes = [
     progreso.delegado === 'CPU' && progreso.hilos ? `CPU, ${progreso.hilos} ${progreso.hilos === 1 ? 'hilo' : 'hilos'}` : progreso.delegado,
     ...(progreso.ritmo ? [`${progreso.ritmo.toLocaleString('es-ES', { maximumFractionDigits: progreso.ritmo < 10 ? 1 : 0 })} frames/s`] : []),

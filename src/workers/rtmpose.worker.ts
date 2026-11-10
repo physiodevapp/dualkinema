@@ -88,16 +88,19 @@ async function bajar(rutas: readonly string[]): Promise<Uint8Array> {
   return r
 }
 
+/** Lo más que se espera a que se prepare cada modelo en la GPU antes de pasar a la CPU (ms). */
+const ESPERA_GPU_MS = 30000
+
 async function sesiones(
   modelo: TamanoModeloPose,
   delegado: 'GPU' | 'CPU',
-): Promise<{ s: [ort.InferenceSession, ort.InferenceSession]; delegado: 'GPU' | 'CPU'; aviso?: string }> {
+): Promise<{ s: [ort.InferenceSession, ort.InferenceSession]; delegado: 'GPU' | 'CPU'; hilos: number; aviso?: string }> {
   ort.env.wasm.wasmPaths = { mjs: new URL(cargadorWasm, self.location.href).href, wasm: new URL(binarioWasm, self.location.href).href }
-  ort.env.wasm.numThreads = HILOS
   // Solo errores: el aviso de «CPU desconocida» del WASM sale por console.error en cada carga.
   ort.env.logLevel = 'error'
   const rutas = MODELOS[modelo]
   if (!rutas) throw new Error(`Modelo desconocido: ${modelo}`)
+  enviar({ tipo: 'cargando', texto: 'descargando los modelos' })
   const [bytesDetector, bytesPose] = await Promise.all([bajar([DETECTOR]), bajar(rutas)])
   const crear = (proveedor: 'webgpu' | 'wasm') =>
     Promise.all([
@@ -107,19 +110,35 @@ async function sesiones(
   // Sin un adaptador de verdad (o si pedirlo no contesta en 3 s, como en un navegador sin GPU), ni se intenta WebGPU.
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu
   const adaptador = delegado === 'GPU' && gpu ? await Promise.race([gpu.requestAdapter().catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 3000))]) : null
+  // Los hilos se fijan antes de arrancar el WASM y no se pueden cambiar después. Con la GPU, uno: WebGPU con varios hilos
+  // se quedaba colgado al prepararse en Chrome Android (09-11); si la GPU falla, la CPU va con ese hilo.
+  const hilos = adaptador ? 1 : HILOS
+  ort.env.wasm.numThreads = hilos
   if (adaptador) {
+    enviar({ tipo: 'cargando', texto: 'preparando la GPU' })
     try {
-      return { s: await crear('webgpu'), delegado: 'GPU' }
+      const s = await Promise.race([
+        crear('webgpu'),
+        new Promise<never>((_, mal) => setTimeout(() => mal(new Error(`no se ha preparado en ${ESPERA_GPU_MS / 1000} s`)), ESPERA_GPU_MS)),
+      ])
+      return { s, delegado: 'GPU', hilos }
     } catch (err) {
-      return { s: await crear('wasm'), delegado: 'CPU', aviso: `GPU no disponible: ${mensaje(err)}` }
+      enviar({ tipo: 'cargando', texto: 'la GPU no responde: preparando la CPU' })
+      return { s: await crear('wasm'), delegado: 'CPU', hilos, aviso: `GPU no disponible: ${mensaje(err)}` }
     }
   }
-  return { s: await crear('wasm'), delegado: 'CPU', ...(delegado === 'GPU' ? { aviso: 'Este navegador no da WebGPU en un worker: va en CPU.' } : {}) }
+  enviar({ tipo: 'cargando', texto: `preparando la CPU (${hilos} ${hilos === 1 ? 'hilo' : 'hilos'})` })
+  return {
+    s: await crear('wasm'),
+    delegado: 'CPU',
+    hilos,
+    ...(delegado === 'GPU' ? { aviso: 'Este navegador no da WebGPU en un worker: va en CPU.' } : {}),
+  }
 }
 
 async function detectar(m: Extract<AlWorkerPose, { tipo: 'detectar' }>) {
   const inicioCarga = performance.now()
-  const { s, delegado, aviso } = await sesiones(m.modelo, m.delegado)
+  const { s, delegado, hilos, aviso } = await sesiones(m.modelo, m.delegado)
   const [detector, pose] = s
   enviar({
     tipo: 'listo',
@@ -127,7 +146,7 @@ async function detectar(m: Extract<AlWorkerPose, { tipo: 'detectar' }>) {
     ...(aviso ? { avisoDelegado: aviso } : {}),
     msCarga: performance.now() - inicioCarga,
     libreria: `onnxruntime-web ${ort.env.versions.web ?? ''}`.trim(),
-    ...(delegado === 'CPU' ? { hilos: HILOS } : {}),
+    ...(delegado === 'CPU' ? { hilos } : {}),
   })
   const paso = Math.max(1, Math.round(m.paso ?? 1))
 
