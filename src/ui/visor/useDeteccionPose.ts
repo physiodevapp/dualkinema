@@ -29,20 +29,19 @@ const UMBRAL_LADO = 0.05
 const UMBRAL_LADO_FRENTE = 0.02
 
 
-/** RTMPose (fase 6) solo con `?rtmpose` en la dirección, mientras es un experimento. */
 /** `?rtmpose=cpu`: RTMPose en la CPU (con sus hilos) aunque haya GPU, para comparar la velocidad de las dos. */
 const RTMPOSE_EN_CPU = typeof location !== 'undefined' && new URLSearchParams(location.search).get('rtmpose') === 'cpu'
-export const HAY_RTMPOSE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('rtmpose')
 
+/**
+ * Los modelos del selector. RTMPose (fase 6) va siempre, al final y como experimental (desde el 10-11; antes, solo con
+ * `?rtmpose`): con la primera toma real no mejoró a MediaPipe con claridad y es bastante más lento (ver «RTMPose» en
+ * docs/plan-fase-6.md).
+ */
 export const MODELOS_POSE: readonly { id: TamanoModeloPose; nombre: string }[] = [
   { id: 'full', nombre: 'Normal (full)' },
   { id: 'heavy', nombre: 'Preciso y lento (heavy, se descarga 30 MB)' },
-  ...(HAY_RTMPOSE
-    ? [
-        { id: 'rtmpose-s' as const, nombre: 'RTMPose-s (experimental, 27 MB)' },
-        { id: 'rtmpose-m' as const, nombre: 'RTMPose-m (experimental, 60 MB)' },
-      ]
-    : []),
+  { id: 'rtmpose-s', nombre: 'RTMPose-s (experimental, lento, 27 MB)' },
+  { id: 'rtmpose-m', nombre: 'RTMPose-m (experimental, muy lento, 60 MB)' },
 ]
 
 /** «Solo 1 de cada N frames» (RTMPose, para comparar deprisa con «Calibrar en 3D»). */

@@ -1,5 +1,5 @@
 import type { TamanoModeloPose } from '../../core/modelo/tipos'
-import { esRtmpose, HAY_RTMPOSE, MODELOS_POSE, PASO_COMPARAR, type ProgresoDeteccion } from './useDeteccionPose'
+import { esRtmpose, MODELOS_POSE, PASO_COMPARAR, type ProgresoDeteccion } from './useDeteccionPose'
 
 interface Props {
   modelo: TamanoModeloPose
@@ -14,7 +14,7 @@ interface Props {
   sufijo?: string
 }
 
-/** El modelo con que se detecta el cuerpo y, con RTMPose, «1 de cada 4 frames». En la tarjeta de «Marcar» y en el vídeo grande. */
+/** El modelo con que se detecta el cuerpo y, con RTMPose, lo que tarda y «1 de cada 4 frames». En la tarjeta de «Marcar» y en el vídeo grande. */
 export default function OpcionesDeteccion({ modelo, onModelo, soloAlgunos, onSoloAlgunos, deshabilitado, compacto, sufijo = '' }: Props) {
   return (
     <>
@@ -34,7 +34,13 @@ export default function OpcionesDeteccion({ modelo, onModelo, soloAlgunos, onSol
           ))}
         </select>
       </label>
-      {HAY_RTMPOSE && esRtmpose(modelo) && (
+      {esRtmpose(modelo) && (
+        <p className={`${compacto ? 'text-xs' : 'text-sm'} text-texto-2`} data-testid={`aviso-rtmpose${sufijo}`}>
+          Experimental: con la primera toma real no mejoró al modelo normal. Tarda mucho más: en un ordenador con tarjeta gráfica, unos 2–3 min por cada
+          minuto de vídeo; en el móvil, puede pasar de 15.
+        </p>
+      )}
+      {esRtmpose(modelo) && (
         <label className={`flex items-center gap-2 ${compacto ? 'text-xs' : 'text-sm'} text-texto-2`}>
           <input type="checkbox" checked={soloAlgunos} disabled={deshabilitado} onChange={(e) => onSoloAlgunos(e.target.checked)} data-testid={`solo-algunos${sufijo}`} />
           Solo 1 de cada {PASO_COMPARAR} frames (para comparar con «Calibrar en 3D»: el esqueleto y los ángulos 3D necesitan todos)
