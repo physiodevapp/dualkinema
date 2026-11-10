@@ -9,3 +9,6 @@ declare const __MEDIAPIPE__: string
 declare module '*/onnxruntime-web/dist/ort.webgpu.min.mjs' {
   export * from 'onnxruntime-web'
 }
+declare module '*/onnxruntime-web/dist/ort.wasm.min.mjs' {
+  export * from 'onnxruntime-web'
+}

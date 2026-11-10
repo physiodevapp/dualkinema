@@ -6,7 +6,7 @@
 //
 // Los modelos se alojan en el propio sitio (`public/modelos/`, con el hash del original en el nombre). El de RTMPose-m
 // (56 MB) va en trozos de 20 MB por el límite de 25 MiB por archivo de Cloudflare, y aquí se juntan. El WASM de ONNX
-// Runtime (la variante «jsep», con WebGPU) lo copia Vite de node_modules con `?url`. En CPU usa varios hilos si la página
+// Runtime lo copia Vite de node_modules con `?url`. En CPU usa varios hilos si la página
 // está aislada (`crossOriginIsolated`, con las cabeceras COOP/COEP de `_headers`); si no, uno.
 //
 // El detector de personas no se pasa en cada frame: entre medias, la caja sale de los puntos del frame anterior
@@ -14,9 +14,14 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'mediabunny'
 // La variante sin el cargador del WASM dentro: lo carga de `wasmPaths` (la incluida no sobrevive al empaquetado de Vite:
 // «e is not a function»).
-import * as ort from '../../node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs'
-import cargadorWasm from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs?url'
-import binarioWasm from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url'
+// Dos variantes, cada una con su WASM (no se pueden mezclar: con el de la otra, «webgpuInit is not a function»): la de
+// WebGPU (1.23: el WASM «asyncify») para la GPU, y la de solo WASM para la CPU. Se carga la que se usa; al ser dos módulos
+// distintos, si la GPU falla, la CPU arranca de cero con sus hilos.
+import type * as Ort from 'onnxruntime-web'
+import cargadorGpu from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs?url'
+import binarioGpu from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm?url'
+import cargadorCpu from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs?url'
+import binarioCpu from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm?url'
 import {
   ALTO_POSE,
   ANCHO_POSE,
@@ -91,48 +96,58 @@ async function bajar(rutas: readonly string[]): Promise<Uint8Array> {
 /** Lo más que se espera a que se prepare cada modelo en la GPU antes de pasar a la CPU (ms). */
 const ESPERA_GPU_MS = 30000
 
+/** El ONNX Runtime con que se trabaja (el de la GPU o el de la CPU): sus `Tensor` tienen que ser de ese mismo módulo. */
+let ort: typeof Ort
+
+async function runtime(gpu: boolean, hilos: number): Promise<typeof Ort> {
+  const r: typeof Ort = gpu
+    ? await import('../../node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs')
+    : await import('../../node_modules/onnxruntime-web/dist/ort.wasm.min.mjs')
+  const [cargador, binario] = gpu ? [cargadorGpu, binarioGpu] : [cargadorCpu, binarioCpu]
+  r.env.wasm.wasmPaths = { mjs: new URL(cargador, self.location.href).href, wasm: new URL(binario, self.location.href).href }
+  // Los hilos se fijan antes de arrancar el WASM (y no se cambian después).
+  r.env.wasm.numThreads = hilos
+  // Solo errores: el aviso de «CPU desconocida» del WASM sale por console.error en cada carga.
+  r.env.logLevel = 'error'
+  return r
+}
+
 async function sesiones(
   modelo: TamanoModeloPose,
   delegado: 'GPU' | 'CPU',
-): Promise<{ s: [ort.InferenceSession, ort.InferenceSession]; delegado: 'GPU' | 'CPU'; hilos: number; aviso?: string }> {
-  ort.env.wasm.wasmPaths = { mjs: new URL(cargadorWasm, self.location.href).href, wasm: new URL(binarioWasm, self.location.href).href }
-  // Solo errores: el aviso de «CPU desconocida» del WASM sale por console.error en cada carga.
-  ort.env.logLevel = 'error'
+): Promise<{ s: [Ort.InferenceSession, Ort.InferenceSession]; delegado: 'GPU' | 'CPU'; hilos: number; aviso?: string }> {
   const rutas = MODELOS[modelo]
   if (!rutas) throw new Error(`Modelo desconocido: ${modelo}`)
   enviar({ tipo: 'cargando', texto: 'descargando los modelos' })
   const [bytesDetector, bytesPose] = await Promise.all([bajar([DETECTOR]), bajar(rutas)])
-  const crear = (proveedor: 'webgpu' | 'wasm') =>
-    Promise.all([
-      ort.InferenceSession.create(bytesDetector, { executionProviders: [proveedor] }),
-      ort.InferenceSession.create(bytesPose, { executionProviders: [proveedor] }),
-    ])
+  // Uno detrás de otro: WebGPU no deja preparar dos a la vez («another WebGPU EP inference session is being created»).
+  // `logSeverityLevel` 3: solo errores (avisa por consola de los nodos que van a la CPU, que es lo normal).
+  const crear = async (r: typeof Ort, proveedor: 'webgpu' | 'wasm'): Promise<[Ort.InferenceSession, Ort.InferenceSession]> => {
+    const opciones = { executionProviders: [proveedor], logSeverityLevel: 3 as const }
+    const detector = await r.InferenceSession.create(bytesDetector, opciones)
+    return [detector, await r.InferenceSession.create(bytesPose, opciones)]
+  }
+  const enCpu = async (aviso?: string) => {
+    enviar({ tipo: 'cargando', texto: `preparando la CPU (${HILOS} ${HILOS === 1 ? 'hilo' : 'hilos'})` })
+    ort = await runtime(false, HILOS)
+    return { s: await crear(ort, 'wasm'), delegado: 'CPU' as const, hilos: HILOS, ...(aviso ? { aviso } : {}) }
+  }
   // Sin un adaptador de verdad (o si pedirlo no contesta en 3 s, como en un navegador sin GPU), ni se intenta WebGPU.
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu
   const adaptador = delegado === 'GPU' && gpu ? await Promise.race([gpu.requestAdapter().catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 3000))]) : null
-  // Los hilos se fijan antes de arrancar el WASM y no se pueden cambiar después. Con la GPU, uno: WebGPU con varios hilos
-  // se quedaba colgado al prepararse en Chrome Android (09-11); si la GPU falla, la CPU va con ese hilo.
-  const hilos = adaptador ? 1 : HILOS
-  ort.env.wasm.numThreads = hilos
-  if (adaptador) {
-    enviar({ tipo: 'cargando', texto: 'preparando la GPU' })
-    try {
-      const s = await Promise.race([
-        crear('webgpu'),
-        new Promise<never>((_, mal) => setTimeout(() => mal(new Error(`no se ha preparado en ${ESPERA_GPU_MS / 1000} s`)), ESPERA_GPU_MS)),
-      ])
-      return { s, delegado: 'GPU', hilos }
-    } catch (err) {
-      enviar({ tipo: 'cargando', texto: 'la GPU no responde: preparando la CPU' })
-      return { s: await crear('wasm'), delegado: 'CPU', hilos, aviso: `GPU no disponible: ${mensaje(err)}` }
-    }
-  }
-  enviar({ tipo: 'cargando', texto: `preparando la CPU (${hilos} ${hilos === 1 ? 'hilo' : 'hilos'})` })
-  return {
-    s: await crear('wasm'),
-    delegado: 'CPU',
-    hilos,
-    ...(delegado === 'GPU' ? { aviso: 'Este navegador no da WebGPU en un worker: va en CPU.' } : {}),
+  if (!adaptador) return enCpu(delegado === 'GPU' ? 'Este navegador no da WebGPU en un worker: va en CPU.' : undefined)
+  enviar({ tipo: 'cargando', texto: 'preparando la GPU' })
+  try {
+    // Con la GPU, un hilo del WASM (con varios se quedaba colgado en Chrome Android, 09-11).
+    const r = await runtime(true, 1)
+    const s = await Promise.race([
+      crear(r, 'webgpu'),
+      new Promise<never>((_, mal) => setTimeout(() => mal(new Error(`no se ha preparado en ${ESPERA_GPU_MS / 1000} s`)), ESPERA_GPU_MS)),
+    ])
+    ort = r
+    return { s, delegado: 'GPU', hilos: 1 }
+  } catch (err) {
+    return enCpu(`GPU no disponible: ${mensaje(err)}`)
   }
 }
 
