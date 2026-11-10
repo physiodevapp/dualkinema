@@ -278,6 +278,14 @@ function Aplicacion() {
       for (const i of [iRef, iVista]) abiertos.push(await VideoAbierto.abrir(archivos[i]))
       const [ref, otra] = abiertos as [VideoAbierto, VideoAbierto]
       if (sustituida()) return
+      // La propuesta de la sincronía (el pitido si es fiable; si no, el reloj), también al continuar una sesión: si ya está
+      // aplicada, la tarjeta lo dice; si no (se detectó antes de sincronizar), se ofrece igual que la primera vez.
+      const pitido =
+        dRef.pitidos && dVista.pitidos
+          ? await idaVueltaDePareja({ archivo: archivos[iRef], pitidos: dRef.pitidos }, { archivo: archivos[iVista], pitidos: dVista.pitidos }).catch(() => null)
+          : null
+      const propuesta = proponerDesfase(pitido, desfaseDeReloj(dRef, dVista))
+      if (sustituida()) return
       // ¿Ya se trabajó con esta pareja? Entonces se continúa donde se dejó.
       const candidatas = await buscarPorHuella(huellaDe(ref)).catch(() => [])
       for (const { cabecera } of candidatas) {
@@ -286,16 +294,11 @@ function Aplicacion() {
         if (vRef && vOtra && cabecera.vistas.length === 2) {
           const { cabecera: c, datos } = await leerSesion(cabecera.id)
           if (sustituida()) return
-          setEstado(estadoDeSesion(c, datos, { [vRef.id]: ref, [vOtra.id]: otra }, apertura))
+          const e = estadoDeSesion(c, datos, { [vRef.id]: ref, [vOtra.id]: otra }, apertura)
+          setEstado(e.fase === 'visor' ? { ...e, vistas: e.vistas.map((v) => (v.id === vOtra.id ? { ...v, propuesta } : v)) } : e)
           return
         }
       }
-      const pitido =
-        dRef.pitidos && dVista.pitidos
-          ? await idaVueltaDePareja({ archivo: archivos[iRef], pitidos: dRef.pitidos }, { archivo: archivos[iVista], pitidos: dVista.pitidos }).catch(() => null)
-          : null
-      const propuesta = proponerDesfase(pitido, desfaseDeReloj(dRef, dVista))
-      if (sustituida()) return
       for (const v of abiertos) v.repartirMemoria(2)
       setEstado({
         fase: 'visor',

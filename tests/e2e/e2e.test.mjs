@@ -5050,6 +5050,21 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
       // El de perfil es la vista A y la orientación de cada una sale de sus metadatos (A mira a la derecha; B, de frente).
       assert.match(await q.getByTestId('vista-A').getAttribute('title'), /mira a la derecha/)
       assert.match(await q.getByTestId('vista-B').getAttribute('title'), /desde delante/)
+      // Algo marcado (a ojo, en el centro): así se crea la sesión (solo sincronizar no la crea).
+      await abrirPestana(q, 'marcar')
+      await q.getByTestId('colocar-a-ojo').filter({ visible: true }).click()
+      await tocarVideo(q, 320, 180)
+      await q.getByTestId('guardado').filter({ hasText: /Guardado en este dispositivo/ }).first().waitFor({ timeout: 10000 })
+      // Al volver a abrir la pareja (en la misma página: cada página de prueba tiene su propio almacén) se continúa la
+      // sesión, y la propuesta sale igual: aquí, ya aplicada.
+      await q.goto(URL_APP)
+      await q.setInputFiles('[data-testid=selector-doble]', [pareja.perfil, pareja.frente])
+      // Al recuperar un trabajo se vuelve a la pestaña donde se dejó («Marcar»): la sincronía está en «Vídeo».
+      await q.getByTestId('guardado').filter({ hasText: /Guardado en este dispositivo/ }).first().waitFor({ timeout: 30000 })
+      await abrirPestana(q, 'video')
+      assert.equal(await q.getByTestId('propuesta-doble').getAttribute('data-metodo'), 'reloj')
+      await q.getByTestId('propuesta-aplicada').waitFor({ timeout: 10000 })
+      assert.match(await q.getByTestId('metodo-sincronia').innerText(), /Por el reloj común/)
     } finally {
       await q.close()
     }
