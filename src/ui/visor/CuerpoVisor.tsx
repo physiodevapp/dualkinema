@@ -42,6 +42,7 @@ import { textoOrientacion } from '../sesion'
 import AnadirVista from './AnadirVista'
 import ConmutadorVista from './ConmutadorVista'
 import MiniaturaVista from './MiniaturaVista'
+import { enFlancos } from '../../core/sala/doble'
 import PanelComparacion, { useVistaComparada } from './PanelComparacion'
 import SincronizarVistas, { type MarcaEvento } from './SincronizarVistas'
 import Calibrar3D from './Calibrar3D'
@@ -832,6 +833,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                   hasta={rangoComun.hasta}
                   instante={deseado < total ? tabla.tiempos[deseado]! + desfaseActiva : null}
                   onBuscar={buscarEnComun}
+                  enFlancos={enFlancos(vistaA!.orientacion, vistaB!.orientacion)}
                 />
               ) : undefined
             }

@@ -2927,6 +2927,8 @@ describe('dos vistas: se sigue de una en una y cada vista conserva lo suyo', () 
     await p.getByTestId('conmutador-vista').waitFor()
     await p.getByTestId('vista-B').click()
     await esperarQuieto(p)
+    // Perfil y frente: no es la pareja de flancos, así que la comparación 2D no lleva su aviso.
+    assert.equal(await p.getByTestId('aviso-flancos-2d').count(), 0)
     await abrirPestana(p, 'marcar')
     await marcarTres(p, videos.rojo.verdad[0].ps)
     await p.getByTestId('vista-A').click()
@@ -4172,6 +4174,14 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
       await fuente.getByRole('radio', { name: 'Sin marcadores', checked: true }).waitFor({ timeout: 10000 })
       await irAFrame(p, 60)
       assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+      // Midiendo sin marcadores no hay nada que colocar: ni «Toca: Trocánter» ni un gomet elegido, y los puntos detectados
+      // de la articulación van primero en el selector.
+      await abrirPestana(p, 'marcar')
+      assert.equal(await p.getByText(/^Toca:/).count(), 0)
+      const radios = p.getByRole('radiogroup', { name: 'Marcador a colocar' }).first().getByRole('radio')
+      assert.match(await radios.first().innerText(), /Cadera derecha/)
+      assert.equal(await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).first().getByRole('radio', { checked: true }).count(), 0)
+      await abrirPestana(p, 'analisis')
       // Se puede volver a los gomets a mano (y la gráfica queda vacía hasta marcarlos).
       await fuente.getByRole('radio', { name: 'Gomets' }).click()
       assert.equal(await fuente.getByRole('radio', { checked: true }).innerText(), 'Gomets')

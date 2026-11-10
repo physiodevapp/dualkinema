@@ -32,6 +32,8 @@ interface Props {
   readonly instante: number | null
   /** Se toca o arrastra una gráfica: instante común pedido. */
   readonly onBuscar: (tComun: number) => void
+  /** Un móvil en cada flanco (para el 3D): ninguna de las dos ve la pierna de perfil puro; se avisa. */
+  readonly enFlancos?: boolean
 }
 
 /** Color de cada vista, en orden (A, B): distintos entre sí y de lo interpolado (azul, a trazos). */
@@ -47,7 +49,7 @@ const grados = (v: number) => `${fmt(v, 0)}°`
  * vista conserva sus instantes; al superponerlas se unen con `uPlot.join`, donde un hueco (null) corta la línea y un
  * instante que solo existe en la otra vista (undefined) se salta sin cortarla.
  */
-export default function PanelComparacion({ vistas, indices, desde, hasta, instante, onBuscar }: Props) {
+export default function PanelComparacion({ vistas, indices, desde, hasta, instante, onBuscar, enFlancos = false }: Props) {
   const [modo, setModo] = useState<ModoComparacion>(leerModoComparacion)
   const elegirModo = (m: ModoComparacion) => {
     setModo(m)
@@ -121,6 +123,13 @@ export default function PanelComparacion({ vistas, indices, desde, hasta, instan
           ))}
         </div>
       </div>
+
+      {enFlancos && (
+        <p className="rounded-md border border-acento/40 px-2 py-1.5 text-xs text-texto-2" data-testid="aviso-flancos-2d">
+          Un móvil en cada flanco: cada vista mide en 2D la misma pierna vista en diagonal, así que sus ángulos no coinciden (son proyecciones). La
+          medida buena es la 3D, con las dos piernas: «Análisis» → «Ángulos en 3D».
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-1.5 px-1" role="group" aria-label="Vistas de la comparación">
         {vistas.map((v, k) => (
