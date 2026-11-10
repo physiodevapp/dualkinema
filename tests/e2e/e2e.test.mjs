@@ -5336,7 +5336,7 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
   })
 })
 
-describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () => {
+describe('RTMPose de verdad en el navegador (fase 6, experimento)', () => {
   // Una foto de una persona (Pexels, uso libre; `fixtures/persona.jpg`, 320 × 480) hecha vídeo de 1 s. Lo que debe dar cada
   // punto es lo que da RTMPose-s en Python (onnxruntime) con el mismo preprocesado sobre la foto; el vídeo VP9 cambia
   // algún píxel, así que se compara a unos px.
@@ -5350,16 +5350,18 @@ describe('RTMPose de verdad en el navegador (fase 6, experimento ?rtmpose)', () 
   before(async () => {
     // Medio segundo de la foto hecho vídeo (VP9) con ffmpeg, guardado: la CI con los vídeos en caché no instala ffmpeg.
     ruta = join(import.meta.dirname, 'fixtures', 'persona.webm')
-    p = await abrirApp(navegador, { consulta: '?rtmpose' })
+    // Sin `?rtmpose`: desde el 10-11 está siempre en el selector.
+    p = await abrirApp(navegador)
     await cargarSinMarcadores(p, ruta)
     await abrirPestana(p, 'marcar')
   })
   after(() => p?.close())
 
-  it('sin ?rtmpose no se ofrece; con él, RTMPose-s detecta a la persona y sus puntos caen donde los pone Python', async () => {
+  it('RTMPose-s (en el selector, con su aviso) detecta a la persona y sus puntos caen donde los pone Python', async () => {
     const opciones = await p.getByTestId('modelo-pose').locator('option').allInnerTexts()
     assert.ok(opciones.some((o) => /RTMPose-s/.test(o)), opciones.join(' | '))
     await p.getByTestId('modelo-pose').selectOption('rtmpose-s')
+    assert.match(await p.getByTestId('aviso-rtmpose').innerText(), /Experimental/)
     await p.getByTestId('detectar-cuerpo').getByRole('button', { name: /detectar/i }).click()
     await p.getByTestId('deteccion-hecha').waitFor({ timeout: 300000 })
     assert.match(await p.getByTestId('deteccion-hecha').innerText(), /rtmpose-s · (CPU|GPU) · persona en 15 frames/)
