@@ -9,7 +9,7 @@ import type { Aviso } from './useSeguimiento'
 
 /** Lo que se ve mientras se detecta: cargando el modelo, recorriendo el vídeo o la pasada hacia atrás. */
 export type ProgresoDeteccion =
-  | { fase: 'cargando' }
+  | { fase: 'cargando'; texto?: string }
   | {
       fase: 'delante' | 'atras'
       fraccion: number
@@ -30,6 +30,8 @@ const UMBRAL_LADO_FRENTE = 0.02
 
 
 /** RTMPose (fase 6) solo con `?rtmpose` en la dirección, mientras es un experimento. */
+/** `?rtmpose=cpu`: RTMPose en la CPU (con sus hilos) aunque haya GPU, para comparar la velocidad de las dos. */
+const RTMPOSE_EN_CPU = typeof location !== 'undefined' && new URLSearchParams(location.search).get('rtmpose') === 'cpu'
 export const HAY_RTMPOSE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('rtmpose')
 
 export const MODELOS_POSE: readonly { id: TamanoModeloPose; nombre: string }[] = [
@@ -131,7 +133,9 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
       if (worker.current !== w) return
       const m = e.data
       const u = ultimo.current
-      if (m.tipo === 'listo') {
+      if (m.tipo === 'cargando') {
+        setProgreso({ fase: 'cargando', texto: m.texto })
+      } else if (m.tipo === 'listo') {
         delegado = m.delegado
         avisoDelegado = m.avisoDelegado
         if (m.libreria) libreria = m.libreria
@@ -185,7 +189,7 @@ export function useDeteccionPose({ video, orientacion, inicial, aplicarPose, fus
       ultimo.current.setAviso({ texto: `No se ha podido detectar el cuerpo: ${ev.message || 'no se ha podido cargar el proceso. Recarga la página.'}` })
       cerrar()
     }
-    w.postMessage({ tipo: 'detectar', archivo: video.archivo, modelo, delegado: 'GPU', ...(paso > 1 ? { paso } : {}) } satisfies AlWorkerPose)
+    w.postMessage({ tipo: 'detectar', archivo: video.archivo, modelo, delegado: esRtmpose(modelo) && RTMPOSE_EN_CPU ? 'CPU' : 'GPU', ...(paso > 1 ? { paso } : {}) } satisfies AlWorkerPose)
   }, [video, modeloPose, soloAlgunos, alEmpezar, setAviso])
 
   const pararDeteccion = useCallback(() => {
