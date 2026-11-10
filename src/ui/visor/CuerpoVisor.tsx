@@ -47,6 +47,9 @@ import PanelComparacion, { useVistaComparada } from './PanelComparacion'
 import SincronizarVistas, { type MarcaEvento } from './SincronizarVistas'
 import Calibrar3D from './Calibrar3D'
 import Panel3D from './Panel3D'
+import Grafica3DCentral from './Grafica3DCentral'
+import { useAngulos3D } from './useAngulos3D'
+import { guardarGraficaCentral, leerGraficaCentral, type GraficaCentral } from './preferencias'
 import type { Calibracion3D } from '../../core/tresd/calibracion3d'
 import { rangoSesion } from '../../core/tiempo/comun'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
@@ -205,6 +208,17 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   const ocupada = siguiendo || detectando
 
   // Se guardan todas las vistas, con el filtro de la sesión.
+  // Los ángulos 3D de la sesión calibrada (fase 6): los comparten la tarjeta de «Análisis» y la gráfica central.
+  const calibrada3d = vistas.length === 2 && !!calibracion3d && calibracion3d.vistas[0] === vistas[0]!.id && calibracion3d.vistas[1] === vistas[1]!.id
+  const t3 = useAngulos3D({ a: calibrada3d ? vistas[0]! : null, b: calibrada3d ? vistas[1]! : null, calibracion: calibrada3d ? calibracion3d : null, ajustes })
+  // Con la sesión en 3D, la gráfica central enseña los ángulos 3D (o, si se pide, los 2D de cada vista).
+  const [graficaCentral, setGraficaCentral] = useState<GraficaCentral>(leerGraficaCentral)
+  const elegirGraficaCentral = (m: GraficaCentral) => {
+    setGraficaCentral(m)
+    guardarGraficaCentral(m)
+  }
+  const central3d = !!t3 && graficaCentral === '3d'
+
   const guardado = useGuardado({
     sesion,
     modelo,
@@ -818,6 +832,37 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
             </div>
           )}
 
+          {t3 && rangoComun && (
+            <>
+              <div className="flex shrink-0 self-start overflow-hidden rounded-md border border-borde text-xs" role="group" aria-label="Qué enseña la gráfica" data-testid="conmutador-grafica-central">
+                {(['3d', '2d'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    aria-pressed={graficaCentral === m}
+                    onClick={() => elegirGraficaCentral(m)}
+                    data-testid={`ver-grafica-${m}`}
+                    className={`px-3 py-1.5 ${graficaCentral === m ? 'bg-acento text-fondo' : 'text-texto-2'}`}
+                  >
+                    {m === '3d' ? 'Ángulos 3D' : '2D por vista'}
+                  </button>
+                ))}
+              </div>
+              {central3d && (
+                <Grafica3DCentral
+                  t3={t3}
+                  instante={deseado < total ? tabla.tiempos[deseado]! + desfaseActiva : null}
+                  desde={rangoComun.desde}
+                  hasta={rangoComun.hasta}
+                  onBuscar={buscarEnComun}
+                  ampliada={enGraficas || anchoLg}
+                />
+              )}
+            </>
+          )}
+
+          {/* Con los ángulos 3D en su sitio, lo 2D sigue montado (no pierde estado), oculto. */}
+          <div className={central3d ? 'hidden' : 'contents'}>
           <PanelGrafica
             ampliada={enGraficas || anchoLg}
             tiempos={tiemposGrafica}
@@ -862,6 +907,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               ) : undefined
             }
           />
+          </div>
 
           {error && <p className="rounded-md border border-red-400/50 p-3 text-red-300">{error}</p>}
         </div>
@@ -968,12 +1014,9 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               tiemposGrafica={tiemposGrafica}
               onBuscar={buscarEnComun}
             />
-            {vistas.length === 2 && calibracion3d && calibracion3d.vistas[0] === vistas[0]!.id && calibracion3d.vistas[1] === vistas[1]!.id && rangoComun && (
+            {t3 && rangoComun && (
               <Panel3D
-                a={vistas[0]!}
-                b={vistas[1]!}
-                calibracion={calibracion3d}
-                ajustes={ajustes}
+                t3={t3}
                 instante={deseado < total ? tabla.tiempos[deseado]! + desfaseActiva : null}
                 desde={rangoComun.desde}
                 hasta={rangoComun.hasta}

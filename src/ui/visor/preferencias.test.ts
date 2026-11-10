@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { comparacionDeTexto, esPestana, PESTANA_DEFECTO, pestanaDeTexto, seriesDeTexto } from './preferencias'
+import { comparacionDeTexto, esPestana, PESTANA_DEFECTO, pestanaDeTexto, seriesDeTexto, graficaCentralDeTexto } from './preferencias'
 
 describe('pestaña recordada', () => {
   it('cada una de las cuatro pestañas se reconoce', () => {
@@ -47,5 +47,13 @@ describe('modo de comparar las dos vistas recordado', () => {
 
   it('sin valor o con uno ajeno, las alineadas', () => {
     for (const v of [null, '', 'superpuesta', 'Alineadas', '{}', 'null']) expect(comparacionDeTexto(v)).toBe('alineadas')
+  })
+})
+
+describe('gráfica central con la sesión en 3D', () => {
+  it('por defecto los ángulos 3D; un valor ajeno o ilegible no cuenta', () => {
+    expect(graficaCentralDeTexto(null)).toBe('3d')
+    expect(graficaCentralDeTexto('2d')).toBe('2d')
+    expect(graficaCentralDeTexto('4d')).toBe('3d')
   })
 })
