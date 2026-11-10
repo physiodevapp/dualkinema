@@ -38,6 +38,12 @@ export const formatoCodigo = (codigo: string): string => `${codigo.slice(0, 3)}-
 /** La dirección del QR: el mismo origen (en una previsualización, la misma) con la sala. */
 export const urlDeSala = (origen: string, codigo: string): string => `${origen.replace(/\/+$/, '')}/?sala=${codigo}`
 
+/** La dirección del mando (un ordenador que maneja los dos móviles): la de la sala con `&mando`. */
+export const urlDeMando = (origen: string, codigo: string): string => `${urlDeSala(origen, codigo)}&mando`
+
+/** Si la parte `?…` de una dirección pide el mando (`mando` sin valor, o `mando=1`). */
+export const esMando = (busqueda: string): boolean => /[?&]mando(=1)?(&|#|$)/.test(busqueda)
+
 /** El código de la parte `?…` de una dirección; null si no hay o no es válido. */
 export function codigoDeBusqueda(busqueda: string): string | null {
   const m = /[?&]sala=([^&#]*)/.exec(busqueda)

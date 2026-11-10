@@ -3,7 +3,7 @@ import type { Calibracion3D } from '../core/tresd/calibracion3d'
 import type { Fuente } from '../core/pose/catalogo'
 import { ArrowLeftIcon, ArrowPathIcon, BookOpenIcon, ClipboardDocumentListIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
-import { codigoDeBusqueda } from '../core/sala/codigo'
+import { codigoDeBusqueda, esMando } from '../core/sala/codigo'
 import type { AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores } from '../core/modelo/tipos'
 import type { CabeceraSesion, DatosSesion } from '../core/persistencia/esquema'
@@ -32,6 +32,8 @@ const HAY_LABORATORIO = new URLSearchParams(location.search).has('laboratorio')
 const Grabar = lazy(() => import('./Grabar'))
 // Grabar con dos móviles (fase 4, paso 4): emparejar por código o QR. Un QR lleva `?sala=CÓDIGO` y abre la app ya en la sala.
 const Emparejar = lazy(() => import('./Emparejar'))
+// El mando: un ordenador que maneja la sala de dos móviles (`?sala=CÓDIGO&mando`).
+const Mando = lazy(() => import('./Mando'))
 const GuiaTomaB1 = lazy(() => import('./tomaB1/GuiaTomaB1'))
 const PUEDE_GRABAR =
   typeof navigator.mediaDevices?.getUserMedia === 'function' &&
@@ -46,6 +48,7 @@ type Estado =
   | { fase: 'grabar' }
   /** Grabar con dos móviles: la sala (con su código si ya se ha creado o se llega por el QR). */
   | { fase: 'emparejar'; codigo: string | null }
+  | { fase: 'mando'; codigo: string }
   | { fase: 'guia-b1' }
   | { fase: 'cargando'; nombre: string }
   /** Abrir una grabación doble (fase 4): ya hay un vídeo de la pareja; falta elegir el otro. */
@@ -131,8 +134,10 @@ function BotonGlosario({ conVideo }: { conVideo: boolean }) {
 
 function Aplicacion() {
   const [estado, setEstado] = useState<Estado>(() => {
-    const codigo = PUEDE_GRABAR ? codigoDeBusqueda(location.search) : null
-    return codigo ? { fase: 'emparejar', codigo } : { fase: 'inicio' }
+    const codigo = codigoDeBusqueda(location.search)
+    // El mando no graba: no le hace falta la cámara.
+    if (codigo && esMando(location.search)) return { fase: 'mando', codigo }
+    return codigo && PUEDE_GRABAR ? { fase: 'emparejar', codigo } : { fase: 'inicio' }
   })
   // El botón de volver de la cabecera (en el móvil, de una herramienta o del vídeo grande a la pantalla principal): lo pide el
   // visor, que sabe a dónde se vuelve, y la cabecera lo pinta en lugar del título.
@@ -594,7 +599,27 @@ function Aplicacion() {
 
       {estado.fase === 'emparejar' && (
         <Suspense fallback={<p className="text-texto-2">Cargando…</p>}>
-          <Emparejar codigoInicial={estado.codigo} alSalir={() => setEstado({ fase: 'inicio' })} alAbrirDoble={(archivo) => setEstado({ fase: 'doble', primero: archivo })} />
+          <Emparejar
+            codigoInicial={estado.codigo}
+            alSalir={() => setEstado({ fase: 'inicio' })}
+            alAbrirDoble={(archivo) => setEstado({ fase: 'doble', primero: archivo })}
+            alMando={(codigo) => {
+              history.replaceState(null, '', `${location.pathname}?sala=${codigo}&mando`)
+              setEstado({ fase: 'mando', codigo })
+            }}
+          />
+        </Suspense>
+      )}
+
+      {estado.fase === 'mando' && (
+        <Suspense fallback={<p className="text-texto-2">Cargando…</p>}>
+          <Mando
+            codigo={estado.codigo}
+            alSalir={() => {
+              history.replaceState(null, '', location.pathname)
+              setEstado({ fase: 'inicio' })
+            }}
+          />
         </Suspense>
       )}
 

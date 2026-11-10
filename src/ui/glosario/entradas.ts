@@ -271,6 +271,15 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'mando',
+    titulo: 'Manejar la sala desde un ordenador (mando)',
+    texto: [
+      'Con los dos móviles colocados y la persona en su sitio, otra persona puede llevarlo todo desde un ordenador: abre la dirección de la sala con «&mando» al final (sale en «Manejarlo desde un ordenador», en la sala de los móviles) o escribe el código en «Grabar con dos móviles» → «Manejar esa sala desde aquí». El mando no cuenta como un tercer móvil: no graba ni mide el reloj.',
+      'Ve cada móvil (cómo ve a la persona, la cámara, la batería, el espacio, a cuántos fps grabaría, su inclinación, si ve a la persona entera y la cota del reloj común) y lo que falta para poder grabar. Puede comprobar el encuadre (lo dice en voz alta uno de los móviles), programar la grabación (cuenta atrás y duración) y pararla. Cada orden la ejecuta uno de los móviles como si se pulsara en él, con las mismas comprobaciones de siempre.',
+      'Por la sala no pasa ningún vídeo ni nada de la persona: solo el estado de cada móvil y las órdenes. Cada vídeo se queda en el móvil que lo graba.',
+    ],
+  },
+  {
     id: 'reproyeccion',
     titulo: 'Error de reproyección',
     texto: [

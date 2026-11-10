@@ -10,6 +10,10 @@ import type { OrientacionVista } from '../geometria/canonico'
  * Los instantes van en el reloj de quien envía (`performance.now()`, ms); quien recibe los pasa al suyo con su estimación
  * del desfase (`core/reloj/desfase.ts`). Los dos móviles se hacen pings el uno al otro, así que cualquiera puede
  * programar el inicio (D8).
+ *
+ * **El mando** (un ordenador en la misma sala, `?rol=mando` en el relé): no graba ni hace pings; oye lo que mandan los
+ * móviles (cada uno se presenta con un id aleatorio, `movil`, en `hola` y `estado`, para distinguirlos) y les manda
+ * `orden`es dirigidas a uno (`para`), que este ejecuta como si se hubiera pulsado en él. Un móvil de antes las ignora.
  */
 
 /** Sube si un mensaje cambia de sentido o deja de leerse igual. Con versiones distintas, la app lo dice y no graba. */
@@ -42,14 +46,45 @@ export interface EstadoMovil {
   readonly encuadre: Encuadre | null
   /** Pide al otro que compruebe también el encuadre (lo activó en él). */
   readonly pideEncuadre: boolean
+  /** La cota de su reloj común con el otro (ms), para el mando; null si aún no está medido (o el móvil es anterior). */
+  readonly reloj: number | null
 }
+
+/** Solo los campos del estado de un móvil (de un mensaje `estado`, sin `tipo` ni `movil`). */
+export const soloEstado = (m: EstadoMovil): EstadoMovil => ({
+  camara: m.camara,
+  libreMB: m.libreMB,
+  bateria: m.bateria,
+  grabando: m.grabando,
+  codificador: m.codificador,
+  microExterno: m.microExterno,
+  fpsGrabacion: m.fpsGrabacion,
+  inclinacion: m.inclinacion,
+  encuadre: m.encuadre,
+  pideEncuadre: m.pideEncuadre,
+  reloj: m.reloj,
+})
+
+/** Lo que el mando pide a un móvil. */
+export type Orden =
+  /** Programar la grabación de los dos (como «Grabar» en él): cuenta atrás (s) y duración (s; null, hasta parar). */
+  | { readonly orden: 'programar'; readonly cuentaAtras: number; readonly duracion: number | null }
+  /** Parar la grabación de los dos, o cancelar la cuenta atrás. */
+  | { readonly orden: 'parar' }
+  /** Empezar o dejar de comprobar el encuadre (por voz, en ese móvil; pide al otro que compruebe también). */
+  | { readonly orden: 'encuadre'; readonly activo: boolean }
+
+/** Cuenta atrás que puede pedir el mando (s). */
+export const CUENTA_ATRAS_MANDO = { min: 3, max: 30 } as const
 
 export type Mensaje =
   /** Al entrar en la sala y al cambiar de vista. */
-  | { readonly tipo: 'hola'; readonly version: number; readonly vista: OrientacionVista | null }
+  | { readonly tipo: 'hola'; readonly version: number; readonly vista: OrientacionVista | null; readonly movil?: string }
   | { readonly tipo: 'ping'; readonly id: number; readonly t1: number }
   | { readonly tipo: 'pong'; readonly id: number; readonly t1: number; readonly t2: number; readonly t3: number }
-  | ({ readonly tipo: 'estado' } & EstadoMovil)
+  | ({ readonly tipo: 'estado'; readonly movil?: string } & EstadoMovil)
+  /** Del mando a un móvil (`para`: su id). */
+  | ({ readonly tipo: 'orden'; readonly para: string } & Orden)
   /** Grabar desde `inicio` (reloj de quien envía) durante `duracion` s, o hasta que alguien pare (null). */
   | { readonly tipo: 'programar'; readonly grabacion: string; readonly inicio: number; readonly duracion: number | null }
   | { readonly tipo: 'confirmar'; readonly grabacion: string }
@@ -64,6 +99,9 @@ const finito = (x: unknown): x is number => typeof x === 'number' && Number.isFi
 const entero = (x: unknown): x is number => Number.isSafeInteger(x)
 /** Ids de grabación: aleatorios (UUID), sin texto libre. */
 const esId = (x: unknown): x is string => typeof x === 'string' && /^[0-9a-f-]{8,64}$/i.test(x)
+/** Id de un móvil en la sala: aleatorio, de letras y cifras. */
+export const esIdMovil = (x: unknown): x is string => typeof x === 'string' && /^[0-9a-z]{8,32}$/i.test(x)
+const conMovil = (o: Record<string, unknown>) => (esIdMovil(o.movil) ? { movil: o.movil } : {})
 
 function leerVista(v: unknown): OrientacionVista | null | undefined {
   if (v === null) return null
@@ -95,7 +133,9 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
   // Añadidos con la comprobación del encuadre, igual de opcionales.
   const encuadre = leerEncuadre(o.encuadre)
   const pideEncuadre = o.pideEncuadre === true
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre }
+  // Añadido con el mando, igual de opcional.
+  const reloj = finito(o.reloj) && o.reloj >= 0 && o.reloj < 60_000 ? o.reloj : null
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, reloj }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */
@@ -112,7 +152,7 @@ export function leerMensaje(texto: string): Mensaje | null {
   switch (o.tipo) {
     case 'hola': {
       const vista = leerVista(o.vista)
-      return entero(o.version) && o.version >= 1 && vista !== undefined ? { tipo: 'hola', version: o.version, vista } : null
+      return entero(o.version) && o.version >= 1 && vista !== undefined ? { tipo: 'hola', version: o.version, vista, ...conMovil(o) } : null
     }
     case 'ping':
       return entero(o.id) && finito(o.t1) ? { tipo: 'ping', id: o.id, t1: o.t1 } : null
@@ -120,7 +160,18 @@ export function leerMensaje(texto: string): Mensaje | null {
       return entero(o.id) && finito(o.t1) && finito(o.t2) && finito(o.t3) ? { tipo: 'pong', id: o.id, t1: o.t1, t2: o.t2, t3: o.t3 } : null
     case 'estado': {
       const e = leerEstado(o)
-      return e ? { tipo: 'estado', ...e } : null
+      return e ? { tipo: 'estado', ...conMovil(o), ...e } : null
+    }
+    case 'orden': {
+      if (!esIdMovil(o.para)) return null
+      if (o.orden === 'parar') return { tipo: 'orden', para: o.para, orden: 'parar' }
+      if (o.orden === 'encuadre') return typeof o.activo === 'boolean' ? { tipo: 'orden', para: o.para, orden: 'encuadre', activo: o.activo } : null
+      if (o.orden === 'programar') {
+        const duracion = o.duracion === null ? null : finito(o.duracion) && o.duracion > 0 && o.duracion <= DURACION_MAXIMA_PROGRAMADA_S ? o.duracion : undefined
+        const cuenta = entero(o.cuentaAtras) && o.cuentaAtras >= CUENTA_ATRAS_MANDO.min && o.cuentaAtras <= CUENTA_ATRAS_MANDO.max ? o.cuentaAtras : undefined
+        return duracion !== undefined && cuenta !== undefined ? { tipo: 'orden', para: o.para, orden: 'programar', cuentaAtras: cuenta, duracion } : null
+      }
+      return null
     }
     case 'programar': {
       const duracion = o.duracion === null ? null : finito(o.duracion) && o.duracion > 0 && o.duracion <= DURACION_MAXIMA_PROGRAMADA_S ? o.duracion : undefined

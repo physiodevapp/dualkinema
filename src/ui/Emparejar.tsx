@@ -4,6 +4,7 @@ import {
   ArrowLeftIcon,
   ArrowRightOnRectangleIcon,
   LinkIcon,
+  ComputerDesktopIcon,
   PlusIcon,
   ShareIcon,
   Square2StackIcon,
@@ -14,9 +15,9 @@ import {
 import { encode } from 'uqr'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { revisarFps } from '../core/grabacion/revision'
-import { redondearInclinacion, revisarInclinacion, type Inclinacion } from '../core/grabacion/colocacion'
+import { redondearInclinacion, type Inclinacion } from '../core/grabacion/colocacion'
 import { useInclinacion } from './useInclinacion'
-import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeSala } from '../core/sala/codigo'
+import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeMando, urlDeSala } from '../core/sala/codigo'
 import { RevisionSensores } from './RevisionSensores'
 import { GUIONES, guionPorId, numeroGrabacion, siguienteGuion, type GuionVoz } from '../core/grabacion/guionVoz'
 import { callar, HAY_VOZ, hablar } from '../sala/voz'
@@ -33,6 +34,7 @@ import { ahora } from '../sala/config'
 import { useGrabacionDoble, type GrabacionDoble } from '../sala/useGrabacionDoble'
 import { useSala, type Conexion, type Sala } from '../sala/useSala'
 import { InfoGlosario } from './glosario/Glosario'
+import { Aviso, Colocacion, idDeVista, TextoEncuadre, textoVista, VISTAS } from './piezasSala'
 import { useCamara } from './useCamara'
 import { useCodificador } from './useCodificador'
 import { useMicroExterno } from './useMicroExterno'
@@ -46,17 +48,6 @@ import { textoPrevision, textoPrevisionOtro, usePrevisionFps } from './usePrevis
  * solo viajan los mensajes de `core/sala/protocolo.ts`.
  */
 
-const VISTAS: readonly { readonly id: string; readonly vista: OrientacionVista; readonly etiqueta: string }[] = [
-  { id: 'perfil-izquierda', vista: { plano: 'sagital', mira: 'izquierda' }, etiqueta: 'De perfil, mira a la izquierda' },
-  { id: 'perfil-derecha', vista: { plano: 'sagital', mira: 'derecha' }, etiqueta: 'De perfil, mira a la derecha' },
-  { id: 'frente', vista: { plano: 'frontal', ve: 'delante' }, etiqueta: 'De frente' },
-  { id: 'espalda', vista: { plano: 'frontal', ve: 'detras' }, etiqueta: 'De espaldas' },
-]
-
-const idDeVista = (v: OrientacionVista | null): string | null =>
-  v === null ? null : (VISTAS.find((x) => JSON.stringify(x.vista) === JSON.stringify(v))?.id ?? null)
-
-const textoVista = (v: OrientacionVista | null): string => (v === null ? 'sin elegir' : (VISTAS.find((x) => x.id === idDeVista(v))?.etiqueta.toLowerCase() ?? '—'))
 
 const TEXTO_CONEXION: Record<Conexion, string> = {
   conectando: 'Conectando con la sala…',
@@ -123,51 +114,14 @@ function useMiEstado(
       inclinacion,
       encuadre,
       pideEncuadre,
+      // La cota del reloj la pone la sala al mandarlo.
+      reloj: null,
     }
   }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre])
 }
 
-/**
- * La inclinación de un móvil (este, en directo; o el otro, la que manda) y qué hacer si no mira casi en horizontal o está
- * torcido (fase 6, paso 6: el asistente de colocación). Nada si no se sabe (un ordenador no tiene acelerómetro).
- */
-function Colocacion({ inclinacion, testid, otro = false }: { inclinacion: Inclinacion | null; testid: string; otro?: boolean }) {
-  if (!inclinacion) return null
-  const r = revisarInclinacion(inclinacion)
-  return (
-    <div className="flex flex-col gap-1" data-testid={testid} data-cabeceo={inclinacion.cabeceo} data-alabeo={inclinacion.alabeo}>
-      <p className="flex items-center gap-1 font-mono text-xs text-texto-2">
-        {otro ? 'Su cámara' : 'Esta cámara'}: {r.cabeceo} {r.bienCabeceo ? '✓' : '✗'} · {r.alabeo} {r.bienAlabeo ? '✓' : '✗'}
-        <InfoGlosario id="colocacion" tema="cómo colocar los móviles" className="-my-1.5" />
-      </p>
-      {r.consejo && <Aviso testid={`${testid}-aviso`}>{otro ? `El otro móvil: ${r.consejo.charAt(0).toLowerCase()}${r.consejo.slice(1)}` : r.consejo}</Aviso>}
-    </div>
-  )
-}
 
-/** Lo que ve una cámara de la persona («te ve entero ✓», «no se te ven los pies»…); nada si no se está comprobando. */
-function TextoEncuadre({ encuadre, activo, testid, quien }: { encuadre: Encuadre | null; activo: boolean; testid: string; quien: string }) {
-  if (!activo) return null
-  const bien = enteraEn(encuadre)
-  const texto = !encuadre
-    ? 'mirando…'
-    : bien
-      ? 'te ve entero ✓'
-      : fraseEncuadre(encuadre, encuadre).split(';')[0]!.replace(/^En este móvil /, '').replace(/\.$/, '')
-  return (
-    <p className={`font-mono text-sm ${encuadre && !bien ? 'text-acento' : ''}`} data-testid={testid} data-entera={encuadre ? String(bien) : ''}>
-      {quien}: {texto}
-    </p>
-  )
-}
 
-function Aviso({ children, testid }: { children: React.ReactNode; testid: string }) {
-  return (
-    <p className="rounded-md border border-acento/60 p-3 text-sm" data-testid={testid}>
-      {children}
-    </p>
-  )
-}
 
 const formatoReloj = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000))
@@ -439,6 +393,43 @@ function ResultadoDoble({
 }
 
 /** La sala ya abierta (con su código). */
+/** El mando: si hay uno conectado, se dice; si no, el enlace para abrirlo en un ordenador (plegado: no hace falta para grabar). */
+function ManejarDesdeOrdenador({ codigo, hayMando }: { codigo: string; hayMando: boolean }) {
+  const [copiado, setCopiado] = useState(false)
+  const enlace = urlDeMando(location.origin, codigo)
+  if (hayMando)
+    return (
+      <p className="flex items-center gap-1 rounded-md border border-acento/40 p-3 text-sm" data-testid="mando-conectado">
+        Hay un ordenador manejando la sala: puede comprobar el encuadre, programar la grabación y pararla.
+        <InfoGlosario id="mando" tema="manejar la sala desde un ordenador" className="-my-1.5" />
+      </p>
+    )
+  return (
+    <details className="rounded-md border border-borde p-3 text-sm" data-testid="enlace-mando">
+      <summary className="cursor-pointer">Manejarlo desde un ordenador</summary>
+      <div className="mt-2 flex flex-col gap-2">
+        <p className="flex items-center gap-1 text-texto-2">
+          Abre esta dirección en el ordenador: verá los dos móviles y podrá comprobar el encuadre, programar la grabación y pararla. Por ahí no pasa
+          ningún vídeo.
+          <InfoGlosario id="mando" tema="manejar la sala desde un ordenador" className="-my-1.5" />
+        </p>
+        <p className="font-mono text-xs break-all" data-testid="url-mando">
+          {enlace}
+        </p>
+        <button
+          type="button"
+          className={`${boton} text-sm`}
+          onClick={() => {
+            void navigator.clipboard?.writeText(enlace).then(() => setCopiado(true))
+          }}
+        >
+          {copiado ? 'Copiado' : 'Copiar el enlace'}
+        </button>
+      </div>
+    </details>
+  )
+}
+
 function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: () => void; alAbrirDoble: (archivo: File) => void }) {
   usePantallaEncendida()
   const [vista, setVista] = useState<OrientacionVista | null>(null)
@@ -505,6 +496,27 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
 
   const url = urlDeSala(location.origin, codigo)
   const { otro, reloj, deriva } = sala
+  const puedeGrabar = sala.conexion === 'emparejado' && reloj !== null && vistasCompatibles(vista, otro?.vista ?? null) && flujo !== null
+
+  // Las órdenes del mando (un ordenador en la sala): como si se pulsara aquí. Lo último, en una referencia (el oyente se
+  // pone una vez).
+  const ordenes = useRef({ doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre })
+  useEffect(() => {
+    ordenes.current = { doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre }
+  })
+  const { escucharOrdenes } = sala
+  useEffect(
+    () =>
+      escucharOrdenes((o) => {
+        const a = ordenes.current
+        if (o.orden === 'programar') {
+          if (a.puedeGrabar && a.doble.fase.f === 'libre') a.doble.programar(o.cuentaAtras, o.duracion, null)
+        } else if (o.orden === 'parar') {
+          if (a.ocupado) a.doble.parar()
+        } else if (o.activo !== a.comprobarEncuadre) a.alternarEncuadre()
+      }),
+    [escucharOrdenes],
+  )
   const emparejado = sala.conexion === 'emparejado'
   const mismoPlano = !!vista && !!otro?.vista && !vistasCompatibles(vista, otro.vista)
   const flancos = enFlancos(vista, otro?.vista ?? null)
@@ -537,6 +549,8 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
           <InfoGlosario id="emparejar" tema="grabar con dos móviles" className="-my-1.5" />
         </p>
       </div>
+
+      <ManejarDesdeOrdenador codigo={codigo} hayMando={sala.hayMando} />
 
       {sala.versionDistinta && (
         <Aviso testid="aviso-version">
@@ -641,7 +655,7 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
       )}
 
       {((emparejado && vistasCompatibles(vista, otro?.vista ?? null)) || doble.fase.f !== 'libre') && (
-        <TarjetaGrabar doble={doble} alAbrirDoble={alAbrirDoble} puede={emparejado && reloj !== null && vistasCompatibles(vista, otro?.vista ?? null) && flujo !== null} />
+        <TarjetaGrabar doble={doble} alAbrirDoble={alAbrirDoble} puede={puedeGrabar} />
       )}
 
       <button
@@ -675,9 +689,11 @@ interface Props {
   readonly alSalir: () => void
   /** Abrir como grabación doble lo que acaba de grabar este móvil (después se elige el vídeo del otro). */
   readonly alAbrirDoble: (archivo: File) => void
+  /** Entrar en la sala como mando (un ordenador que la maneja), con su código. */
+  readonly alMando: (codigo: string) => void
 }
 
-export default function Emparejar({ codigoInicial, alSalir, alAbrirDoble }: Props) {
+export default function Emparejar({ codigoInicial, alSalir, alAbrirDoble, alMando }: Props) {
   const [codigo, setCodigo] = useState<string | null>(codigoInicial)
   const [escrito, setEscrito] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -750,6 +766,20 @@ export default function Emparejar({ codigoInicial, alSalir, alAbrirDoble }: Prop
             <button type="submit" data-testid="unirse-sala" className={boton}>
               <LinkIcon className="size-5" />
               Unirme
+            </button>
+            <button
+              type="button"
+              data-testid="entrar-mando"
+              className={`${boton} text-sm`}
+              onClick={() => {
+                const c = normalizarCodigo(escrito)
+                if (!c) return setError('Ese código no es válido: son 6 letras y números (sin 0, O, 1, I ni L).')
+                setError(null)
+                alMando(c)
+              }}
+            >
+              <ComputerDesktopIcon className="size-5" />
+              Manejar esa sala desde aquí (mando, para un ordenador)
             </button>
             {error && (
               <p role="alert" data-testid="error-codigo" className="text-sm text-red-300">

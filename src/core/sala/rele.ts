@@ -2,12 +2,30 @@
  * Lo que decide el relé de salas (fase 4, paso 4; §3 de docs/plan-fase-4.md, D4) y los avisos que manda, en TypeScript
  * puro para probarlo sin el entorno de Cloudflare. El Worker (`senal/`) es una capa fina encima.
  *
- * El relé no entiende los mensajes de la app (`protocolo.ts`): los reenvía tal cual al otro móvil de la sala. Solo
- * decide quién entra (dos como mucho), cuánto puede mandar cada uno (tamaño y ritmo) y cuánto dura una sala, y avisa
- * de quién entra y sale. Sus avisos llevan la clave `rele` (los de la app, `tipo`), así no se confunden.
+ * El relé no entiende los mensajes de la app (`protocolo.ts`): los reenvía tal cual a los demás de la sala. Solo
+ * decide quién entra (dos móviles y un mando como mucho), cuánto puede mandar cada uno (tamaño y ritmo) y cuánto dura una
+ * sala, y avisa de quién entra y sale. Sus avisos llevan la clave `rele` (los de la app, `tipo`), así no se confunden.
+ *
+ * El **mando** (un ordenador que maneja los dos móviles; entra con `?rol=mando`) no cuenta como móvil: `entra`, `sale` y
+ * los `ocupantes` de la bienvenida hablan solo de móviles (un móvil no lo confunde con el otro), y su llegada y su salida
+ * van en un aviso aparte (`mando`), que un móvil de antes ignora.
  */
 
+/** Móviles por sala (los que graban). */
 export const OCUPANTES_MAXIMOS = 2
+/** Mandos por sala. */
+export const MANDOS_MAXIMOS = 1
+
+export type Rol = 'movil' | 'mando'
+
+/** El rol de quien se conecta, por la dirección (`/sala/<código>?rol=mando`); sin decirlo, un móvil. */
+export function rolDeUrl(url: string): Rol {
+  const consulta = url.split('#')[0]!.split('?')[1] ?? ''
+  return consulta.split('&').includes('rol=mando') ? 'mando' : 'movil'
+}
+
+/** Si cabe uno más de ese rol, con los que ya hay. */
+export const cabe = (rol: Rol, moviles: number, mandos: number): boolean => (rol === 'mando' ? mandos < MANDOS_MAXIMOS : moviles < OCUPANTES_MAXIMOS)
 /** Mensajes por segundo y móvil sostenidos, y ráfaga: al emparejar, los pings van a 20 por segundo durante 1,5 s. */
 export const RITMO_MAXIMO = 30
 export const RAFAGA_MAXIMA = 60
@@ -18,10 +36,13 @@ export const DURACION_MAXIMA_SALA_MS = 3 * 60 * 60 * 1000
 export const CIERRE = { llena: 4001, caducada: 4002, ritmo: 4003, mensaje: 4004 } as const
 
 export type AvisoRele =
-  /** Al entrar: cuántos hay ya (contándose). */
-  | { readonly rele: 'bienvenida'; readonly ocupantes: number }
+  /** Al entrar: cuántos móviles hay ya (contándose si es un móvil) y si hay un mando. */
+  | { readonly rele: 'bienvenida'; readonly ocupantes: number; readonly mando?: boolean }
+  /** Entra o sale un móvil: cuántos móviles quedan. */
   | { readonly rele: 'entra'; readonly ocupantes: number }
   | { readonly rele: 'sale'; readonly ocupantes: number }
+  /** Entra o sale el mando (a los móviles). */
+  | { readonly rele: 'mando'; readonly presente: boolean; readonly ocupantes: number }
 
 export const textoAviso = (a: AvisoRele): string => JSON.stringify(a)
 
@@ -35,9 +56,11 @@ export function leerAviso(texto: string): AvisoRele | null {
   }
   if (typeof v !== 'object' || v === null) return null
   const o = v as Record<string, unknown>
-  if ((o.rele === 'bienvenida' || o.rele === 'entra' || o.rele === 'sale') && Number.isSafeInteger(o.ocupantes) && (o.ocupantes as number) >= 0) {
-    return { rele: o.rele, ocupantes: o.ocupantes as number }
-  }
+  if (!Number.isSafeInteger(o.ocupantes) || (o.ocupantes as number) < 0) return null
+  const ocupantes = o.ocupantes as number
+  if (o.rele === 'bienvenida') return typeof o.mando === 'boolean' ? { rele: o.rele, ocupantes, mando: o.mando } : { rele: o.rele, ocupantes }
+  if (o.rele === 'entra' || o.rele === 'sale') return { rele: o.rele, ocupantes }
+  if (o.rele === 'mando' && typeof o.presente === 'boolean') return { rele: 'mando', presente: o.presente, ocupantes }
   return null
 }
 

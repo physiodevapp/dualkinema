@@ -34,8 +34,8 @@ let salas = 0
 const codigoNuevo = () => `PRB${'23456789ABCDEFGHJKMNPQRSTUVWXYZ'[salas++ % 31]}${'XYZ'[Math.floor(salas / 31) % 3]}2`
 
 /** Abre un WebSocket a una sala y guarda lo que llega. */
-function conectar(codigo, origen = ORIGEN) {
-  const ws = new WebSocket(`ws://127.0.0.1:${PUERTO}/sala/${codigo}`, { headers: { Origin: origen } })
+function conectar(codigo, origen = ORIGEN, rol = null) {
+  const ws = new WebSocket(`ws://127.0.0.1:${PUERTO}/sala/${codigo}${rol ? `?rol=${rol}` : ''}`, { headers: { Origin: origen } })
   const recibidos = []
   const esperas = []
   let cierre = null
@@ -87,12 +87,12 @@ describe('relé de salas', () => {
     const a = conectar(codigo)
     await a.abierto
     await a.esperar(() => avisos(a).length === 1)
-    assert.deepEqual(avisos(a), [{ rele: 'bienvenida', ocupantes: 1 }])
+    assert.deepEqual(avisos(a), [{ rele: 'bienvenida', ocupantes: 1, mando: false }])
     const b = conectar(codigo.toLowerCase()) // escrito en minúsculas: la misma sala
     await b.abierto
     await b.esperar(() => avisos(b).length === 1)
     await a.esperar(() => avisos(a).length === 2)
-    assert.deepEqual(avisos(b), [{ rele: 'bienvenida', ocupantes: 2 }])
+    assert.deepEqual(avisos(b), [{ rele: 'bienvenida', ocupantes: 2, mando: false }])
     assert.deepEqual(avisos(a)[1], { rele: 'entra', ocupantes: 2 })
     const texto = JSON.stringify({ tipo: 'ping', id: 1, t1: 123.456 })
     a.ws.send(texto)
@@ -115,6 +115,53 @@ describe('relé de salas', () => {
     await b.esperar(() => b.recibidos.includes('{"tipo":"adios"}'))
     a.ws.close()
     b.ws.close()
+  })
+
+  it('el mando: entra con los dos móviles sin contar como móvil, oye a los dos, le oyen, y un segundo mando no entra', async () => {
+    const { codigo, a, b } = await pareja()
+    const m = conectar(codigo, ORIGEN, 'mando')
+    await m.abierto
+    await m.esperar(() => avisos(m).length === 1)
+    assert.deepEqual(avisos(m), [{ rele: 'bienvenida', ocupantes: 2, mando: true }])
+    // Los móviles reciben un aviso aparte (no «entra»: no lo confunden con el otro móvil).
+    await a.esperar(() => avisos(a).some((x) => x.rele === 'mando'))
+    await b.esperar(() => avisos(b).some((x) => x.rele === 'mando'))
+    assert.deepEqual(avisos(a).at(-1), { rele: 'mando', presente: true, ocupantes: 2 })
+    // Lo de un móvil llega al otro y al mando; lo del mando, a los dos móviles.
+    a.ws.send('{"tipo":"adios"}')
+    await b.esperar(() => b.recibidos.includes('{"tipo":"adios"}'))
+    await m.esperar(() => m.recibidos.includes('{"tipo":"adios"}'))
+    m.ws.send('{"tipo":"orden"}')
+    await a.esperar(() => a.recibidos.includes('{"tipo":"orden"}'))
+    await b.esperar(() => b.recibidos.includes('{"tipo":"orden"}'))
+    // Un segundo mando no entra; un tercer móvil tampoco.
+    const m2 = conectar(codigo, ORIGEN, 'mando')
+    await m2.esperar(() => m2.cierre() !== null)
+    assert.equal(m2.cierre().code, 4001)
+    // Al salir un móvil, el mando se entera con «sale» y los móviles que quedan; al salir el mando, los móviles con «mando».
+    a.ws.close()
+    await m.esperar(() => avisos(m).some((x) => x.rele === 'sale'))
+    assert.deepEqual(avisos(m).at(-1), { rele: 'sale', ocupantes: 1 })
+    m.ws.close()
+    await b.esperar(() => avisos(b).some((x) => x.rele === 'mando' && !x.presente))
+    assert.deepEqual(avisos(b).at(-1), { rele: 'mando', presente: false, ocupantes: 1 })
+    b.ws.close()
+  })
+
+  it('el mando puede entrar antes que los móviles: los móviles se ven como siempre', async () => {
+    const codigo = codigoNuevo()
+    const m = conectar(codigo, ORIGEN, 'mando')
+    await m.abierto
+    await m.esperar(() => avisos(m).length === 1)
+    assert.deepEqual(avisos(m), [{ rele: 'bienvenida', ocupantes: 0, mando: true }])
+    const a = conectar(codigo)
+    await a.abierto
+    await a.esperar(() => avisos(a).length === 1)
+    assert.deepEqual(avisos(a), [{ rele: 'bienvenida', ocupantes: 1, mando: true }])
+    await m.esperar(() => avisos(m).some((x) => x.rele === 'entra'))
+    assert.deepEqual(avisos(m).at(-1), { rele: 'entra', ocupantes: 1 })
+    a.ws.close()
+    m.ws.close()
   })
 
   it('salas distintas no se oyen', async () => {
