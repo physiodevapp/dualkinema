@@ -1,3 +1,4 @@
+import { primeraConDatos } from '../../core/articulaciones/modeloVista'
 import { useCallback, useMemo, useState } from 'react'
 import { CALIDAD_MINIMA, serieAngular } from '../../core/articulaciones/calculo'
 import { marcadoresDeArticulacion, segmentosDeArticulacion } from '../../core/articulaciones/definicion'
@@ -81,13 +82,18 @@ export function useVista({
 }: Opciones) {
   const ids = useMemo(() => modelo.marcadores.map((m) => m.id), [modelo])
   // La articulación que se mira (fase 5, paso 3b): una de las de su plano que se pueden calcular con los marcadores de la
-  // vista (de perfil sin marcadores, cuatro). Sin elegir, la primera (con gomets y sin marcadores, la de los gomets: D5).
-  // Si deja de estar (no debería: el modelo solo crece), la primera.
+  // vista (de perfil sin marcadores, cuatro). Sin elegir, la primera. Pero al abrir y al acabar una detección, si la que se
+  // mira no tiene datos y otra sí, se pasa a la primera con datos (`primeraConDatos`: con gomets y sin marcadores, la de los
+  // gomets si están marcados, D5; si no, la del cuerpo detectado): una vista con gomets sin marcar y el cuerpo detectado
+  // no se queda en una gráfica vacía. Si deja de estar (no debería: el modelo solo crece), la primera.
   const articulaciones = useMemo(() => {
     const delPlano = modelo.articulaciones.filter((a) => a.plano === orientacion.plano)
     return delPlano.length ? delPlano : modelo.articulaciones.slice(0, 1)
   }, [modelo, orientacion])
-  const [elegida, setElegida] = useState<string | undefined>(articulacionGuardada)
+  const [elegida, setElegida] = useState<string | undefined>(() => {
+    const def = articulaciones.find((a) => a.id === articulacionGuardada) ?? articulaciones[0]!
+    return inicial && !primeraConDatos([def], inicial) ? (primeraConDatos(articulaciones, inicial)?.id ?? articulacionGuardada) : articulacionGuardada
+  })
   const [revArticulacion, setRevArticulacion] = useState(0)
   const articulacion = articulaciones.find((a) => a.id === elegida) ?? articulaciones[0]!
   const elegirArticulacion = useCallback((id: string) => {
@@ -187,6 +193,14 @@ export function useVista({
     alEmpezar: usarPose,
     setAviso,
   })
+  // Al acabar una detección, si la que se mira no tiene datos, la primera que los tenga (estado ajustado durante el render:
+  // el almacén ya tiene lo detectado, que se juntó antes de subir `revDeteccion`).
+  const [revVista, setRevVista] = useState(revDeteccion)
+  if (revVista !== revDeteccion) {
+    setRevVista(revDeteccion)
+    const conDatos = primeraConDatos([articulacion], series) ? null : primeraConDatos(articulaciones, series)
+    if (conDatos) setElegida(conDatos.id)
+  }
 
   // Escala: la guardada, el borrador mientras se calibra, los toques en los extremos y la medida entre marcadores.
   const {

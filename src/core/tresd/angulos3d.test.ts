@@ -32,7 +32,8 @@ function verdad(t0: number, t1: number): { tr: Trayectorias3D; estados: EstadoSi
 
 const cerca = (a: number, b: number, tol: number) => expect(Math.abs(a - b), `${a} frente a ${b}`).toBeLessThan(tol)
 
-describe('ángulos 3D con la persona sintética (de verdad conocida)', () => {
+// Cálculos de verdad con la persona sintética: en el runner de la CI, alguno pasa de los 5 s por defecto.
+describe('ángulos 3D con la persona sintética (de verdad conocida)', { timeout: 30_000 }, () => {
   it('sagitales de las dos piernas y el tronco, en la sentadilla y en la marcha, mire hacia donde mire', () => {
     const { tr, estados } = verdad(0, 18)
     const s = (id: string) => serieAngular3D(id, tr)
@@ -91,7 +92,8 @@ describe('ángulos 3D con la persona sintética (de verdad conocida)', () => {
   })
 })
 
-describe('puntos 3D de la sesión: triangular, marco del laboratorio y filtro', () => {
+// Cálculos de verdad con la persona sintética: en el runner de la CI, alguno pasa de los 5 s por defecto.
+describe('puntos 3D de la sesión: triangular, marco del laboratorio y filtro', { timeout: 30_000 }, () => {
   const IMG = { ancho: 1080, alto: 1920 }
   const f = focalPrevia(IMG.ancho, IMG.alto)
   const A = camaraMirando(vec3(3 * Math.SQRT1_2, 3 * Math.SQRT1_2, 1.0), vec3(0, 0, 0.9), vec3(0, 0, 1), f, IMG.ancho, IMG.alto)

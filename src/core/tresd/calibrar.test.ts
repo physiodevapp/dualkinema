@@ -54,7 +54,8 @@ describe('nivelacion', () => {
   })
 })
 
-describe('calibrarDosCamaras con la persona sintética', () => {
+// Cálculos de verdad con la persona sintética: en el runner de la CI, alguno pasa de los 5 s por defecto.
+describe('calibrarDosCamaras con la persona sintética', { timeout: 30_000 }, () => {
   it('sin ruido y con la focal de cada móvil conocida: el ángulo entre las cámaras y la forma de la persona salen exactos', () => {
     const { camaras, correspondencias, verdad } = escena({ ruidoPx: 0, malos: 0 })
     const r = calibrarDosCamaras({ correspondencias, imagenes: [IMG, IMG], verticales: [abajoEn(camaras[0]), abajoEn(camaras[1])], focales: [f, f * 1.08] })

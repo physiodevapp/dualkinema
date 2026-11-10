@@ -79,7 +79,8 @@ describe('correspondencias entre las dos vistas', () => {
   })
 })
 
-describe('calibrar3D con la persona sintética', () => {
+// Cálculos de verdad con la persona sintética: en el runner de la CI, alguno pasa de los 5 s por defecto.
+describe('calibrar3D con la persona sintética', { timeout: 30_000 }, () => {
   // Móviles en los flancos a ±45°, a 3 m de la persona, a 1,0 y 0,8 m de alto; B con un 5 % más de focal.
   const A = camaraMirando(vec3(3 * Math.SQRT1_2, 3 * Math.SQRT1_2, 1.0), vec3(0, 0, 0.9), ARRIBA, f, IMG.ancho, IMG.alto)
   const B = camaraMirando(vec3(-3 * Math.SQRT1_2, 3 * Math.SQRT1_2, 0.8), vec3(0, 0, 0.85), ARRIBA, f * 1.05, IMG.ancho, IMG.alto)

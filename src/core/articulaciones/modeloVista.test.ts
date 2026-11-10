@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { conRodillaFrontal, marcadores, modeloRodilla3 } from './catalogo'
-import { marcadoresParaVista, modeloDeVista } from './modeloVista'
+import { marcadoresParaVista, modeloDeVista, primeraConDatos } from './modeloVista'
 
 const LATERAL = { plano: 'sagital', mira: 'derecha' } as const
 const FRENTE = { plano: 'frontal', ve: 'delante' } as const
@@ -46,5 +46,23 @@ describe('lo que ve cada vista del modelo de la sesión', () => {
     const v = modeloDeVista(sesion, [m.cadera], LATERAL)
     expect(v.marcadores.map((mk) => mk.id)).toEqual([m.cadera])
     expect(v.articulaciones).toHaveLength(1)
+  })
+})
+
+describe('la articulación que se mira sin elegir ninguna', () => {
+  // Dos articulaciones: la flexión (gomets de perfil) y el FPPA (otros marcadores), en ese orden.
+  const [flexion, fppa] = sesion.articulaciones
+  const muestra = (calidad = 0.9) => ({ t: 0, x: 1, y: 2, calidad, editadoManual: false })
+  const conDatos = (ids: readonly string[], calidad = 0.9) => new Map(ids.map((id) => [id, [undefined, muestra(calidad)]]))
+
+  it('la primera con algún frame calculable: la de los gomets si están; si no, la siguiente', () => {
+    expect(primeraConDatos([flexion!, fppa!], conDatos([m.cadera, m.rodilla, m.tobillo, m.musloProximal, m.centroRodilla, m.centroTobillo]))).toBe(flexion)
+    expect(primeraConDatos([flexion!, fppa!], conDatos([m.musloProximal, m.centroRodilla, m.centroTobillo]))).toBe(fppa)
+  })
+
+  it('un marcador que falta o una posición no utilizable no cuentan; sin ninguna, null', () => {
+    expect(primeraConDatos([flexion!], conDatos([m.cadera, m.rodilla]))).toBeNull()
+    expect(primeraConDatos([flexion!], conDatos([m.cadera, m.rodilla, m.tobillo], 0.3))).toBeNull()
+    expect(primeraConDatos([flexion!, fppa!], new Map())).toBeNull()
   })
 })
