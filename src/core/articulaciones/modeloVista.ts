@@ -1,5 +1,6 @@
 import type { OrientacionVista } from '../geometria/canonico'
-import type { IdMarcador, ModeloMarcadores } from '../modelo/tipos'
+import type { IdMarcador, ModeloMarcadores, Muestra2D } from '../modelo/tipos'
+import { CALIDAD_MINIMA } from './calculo'
 import { marcadoresDeArticulacion, type DefinicionArticulacion } from './definicion'
 
 /*
@@ -35,4 +36,24 @@ export function modeloDeVista(modelo: ModeloMarcadores, marcadoresVista: readonl
   const calculables = modelo.articulaciones.filter((a) => marcadoresDeArticulacion(a).every((id) => sigue.has(id)))
   const ordenadas = [...calculables.filter((a) => a.plano === orientacion.plano), ...calculables.filter((a) => a.plano !== orientacion.plano)]
   return { marcadores, articulaciones: ordenadas.length ? ordenadas : modelo.articulaciones.slice(0, 1) }
+}
+
+/**
+ * La articulación que se mira si no se ha elegido ninguna: la primera (en el orden de la vista: la de los gomets antes que
+ * su equivalente sin marcadores, D5 de la fase 5) que se puede calcular en algún frame, con todos sus marcadores en una
+ * posición utilizable. Sin ninguna así, null (se queda la primera). Así, una vista con gomets sin marcar y el cuerpo
+ * detectado no abre con una gráfica vacía.
+ */
+export function primeraConDatos(
+  articulaciones: readonly DefinicionArticulacion[],
+  series: ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>,
+): DefinicionArticulacion | null {
+  const util = (m: Muestra2D | undefined) => !!m && m.calidad >= CALIDAD_MINIMA && Number.isFinite(m.x) && Number.isFinite(m.y)
+  for (const a of articulaciones) {
+    const ss = marcadoresDeArticulacion(a).map((id) => series.get(id))
+    if (ss.some((x) => !x)) continue
+    const n = Math.min(...ss.map((x) => x!.length))
+    for (let i = 0; i < n; i++) if (ss.every((x) => util(x![i]))) return a
+  }
+  return null
 }

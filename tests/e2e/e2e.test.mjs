@@ -4161,6 +4161,25 @@ describe('sin marcadores en una vista con gomets (fase 5, paso 3)', () => {
     }
   })
 
+  it('con los gomets sin marcar, al detectar se pasa a la medida sin marcadores (no se queda en una gráfica vacía)', async () => {
+    const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad))
+    try {
+      await cargarVideo(p, videos.verde.ruta)
+      await abrirPestana(p, 'marcar')
+      await detectarCuerpo(p)
+      await abrirPestana(p, 'analisis')
+      const fuente = p.getByRole('radiogroup', { name: 'Fuente' })
+      await fuente.getByRole('radio', { name: 'Sin marcadores', checked: true }).waitFor({ timeout: 10000 })
+      await irAFrame(p, 60)
+      assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
+      // Se puede volver a los gomets a mano (y la gráfica queda vacía hasta marcarlos).
+      await fuente.getByRole('radio', { name: 'Gomets' }).click()
+      assert.equal(await fuente.getByRole('radio', { checked: true }).innerText(), 'Gomets')
+    } finally {
+      await p.close()
+    }
+  })
+
   it('una vista que empezó sin marcadores puede añadir los gomets, seguirlos y compararlos', async () => {
     const p = await abrirConPoseFalsa(navegador, deteccionFalsa(videos.verde.verdad))
     try {
