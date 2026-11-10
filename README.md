@@ -14,7 +14,7 @@ Qué hace hoy, con una vista de perfil y 3 gomets en la pierna (rodilla en el pl
 - una segunda vista de frente (FPPA de la rodilla: valgo dinámico), sincronizada por un evento visual o por el audio (con la comprobación del evento), con cursor común, las dos medidas en el tiempo común (alineadas o superpuestas) y un CSV por vista con el tiempo común;
 - glosario dentro de la app, con un icono junto a cada valor o aviso.
 
-El trabajo se guarda solo en el dispositivo (IndexedDB), sin el vídeo: al volver a abrir el mismo archivo se puede recuperar. Cómo grabar y colocar los gomets: [`docs/grabacion.md`](docs/grabacion.md).
+El trabajo se guarda solo en el dispositivo (IndexedDB), sin el vídeo: al volver a abrir el mismo archivo se puede recuperar. Se conservan las 5 sesiones más recientes y cada una se borra sola a los 30 días de su último guardado (cada guardado renueva el plazo); la lista de la portada dice cuándo se borra cada una y tiene «Borrar todo lo guardado» ([`docs/plan-fase-2.md`](docs/plan-fase-2.md), «límites de lo guardado»). Cómo grabar y colocar los gomets: [`docs/grabacion.md`](docs/grabacion.md).
 
 ## Desarrollo
 

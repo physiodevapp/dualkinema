@@ -19,3 +19,12 @@ export function textoResumen(c: CabeceraSesion): string {
   const { frames, conDatos, aMano, interpolados } = c.resumen
   return `${conDatos} de ${frames} frames seguidos · ${aMano} con marcas a mano${interpolados ? ` · ${interpolados} interpolados` : ''}`
 }
+
+/** «12 dic»: el día en que se borrará una sesión. */
+export const diaCorto = (ms: number) => new Date(ms).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+
+/** «1,2 MB», «340 KB»: lo que ocupa una sesión guardada. */
+export function textoBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toLocaleString('es-ES', { maximumFractionDigits: 1 })} MB`
+}
