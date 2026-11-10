@@ -5498,7 +5498,7 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
       cabecera = await leer()
       if (!cabecera) await p.waitForTimeout(300)
     }
-    assert.equal(cabecera.esquema, 6)
+    assert.equal(cabecera.esquema, 7) // ESQUEMA_ACTUAL: la calibración 3D va desde el 6
     assert.equal(cabecera.estatura, 1.75)
     assert.deepEqual(cabecera.calibracion3d.vistas, ['v1', 'v2'])
     assert.equal(cabecera.calibracion3d.escalaDe, 'estatura')
