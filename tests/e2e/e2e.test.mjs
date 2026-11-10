@@ -5259,6 +5259,23 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
         assert.ok(Math.abs((await leer()) - esperado) < 2.5, `${id}, frame ${i + 1}: ${await leer()} frente a ${esperado}`)
       }
     }
+    // La gráfica central enseña los ángulos 3D (con la sesión calibrada): la misma articulación y el mismo valor que la
+    // tarjeta; elegir otra en la central la cambia también en la tarjeta; «2D por vista» vuelve a la comparación 2D.
+    const central = p.getByTestId('grafica-central-3d')
+    await central.waitFor()
+    const leerCentral = async () => Number((await p.getByTestId('valor-3d-central').innerText()).replace(/°.*/s, '').replace(',', '.').replace('−', '-'))
+    assert.ok(Math.abs((await leerCentral()) - (await leer())) < 0.11, `central ${await leerCentral()} frente a ${await leer()}`)
+    const antes3d = await panel.getByTestId('articulacion-3d').inputValue()
+    const otra = await panel.getByTestId('articulacion-3d').locator('option').nth(1).getAttribute('value')
+    await p.getByTestId('articulacion-3d-central').selectOption(otra)
+    assert.equal(await panel.getByTestId('articulacion-3d').inputValue(), otra)
+    assert.equal(await p.getByTestId('comparacion').isVisible(), false)
+    await p.getByTestId('ver-grafica-2d').click()
+    await p.getByTestId('comparacion').waitFor()
+    assert.equal(await central.count(), 0)
+    await p.getByTestId('ver-grafica-3d').click()
+    await central.waitFor()
+    await panel.getByTestId('articulacion-3d').selectOption(antes3d)
     // El monigote 3D: dibujado (hay píxeles de la pierna derecha, en ámbar) y se gira arrastrando.
     const monigote = panel.getByTestId('monigote-3d')
     const ambar = () =>

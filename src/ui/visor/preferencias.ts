@@ -12,6 +12,12 @@ export const PESTANA_DEFECTO: IdPestana = 'marcar'
 export const CLAVE_PESTANA = 'dualkinema.pestana'
 export const CLAVE_SERIES = 'dualkinema.seriesVisibles'
 export const CLAVE_COMPARACION = 'dualkinema.comparacion'
+export const CLAVE_GRAFICA_CENTRAL = 'dualkinema.graficaCentral'
+
+/** Qué enseña la gráfica central con la sesión calibrada en 3D: los ángulos 3D (por defecto) o los 2D de cada vista. */
+export const GRAFICAS_CENTRALES = ['3d', '2d'] as const
+export type GraficaCentral = (typeof GRAFICAS_CENTRALES)[number]
+export const graficaCentralDeTexto = (v: string | null): GraficaCentral => GRAFICAS_CENTRALES.find((m) => m === v) ?? '3d'
 
 /** Cómo se comparan las dos vistas: una gráfica por vista (alineadas en el tiempo común) o las dos en la misma. */
 export const MODOS_COMPARACION = ['alineadas', 'superpuestas'] as const
@@ -68,3 +74,6 @@ export const guardarSeriesVisibles = (visibles: Readonly<Record<string, boolean>
 
 export const leerModoComparacion = (): ModoComparacion => comparacionDeTexto(leer(CLAVE_COMPARACION))
 export const guardarModoComparacion = (m: ModoComparacion) => guardar(CLAVE_COMPARACION, m)
+
+export const leerGraficaCentral = (): GraficaCentral => graficaCentralDeTexto(leer(CLAVE_GRAFICA_CENTRAL))
+export const guardarGraficaCentral = (m: GraficaCentral) => guardar(CLAVE_GRAFICA_CENTRAL, m)
