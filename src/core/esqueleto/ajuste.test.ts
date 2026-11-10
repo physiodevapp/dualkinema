@@ -66,7 +66,8 @@ describe('medidas de la persona a partir de la toma', () => {
   })
 })
 
-describe('cinemática inversa sobre las dos vistas', () => {
+// Cálculos de verdad con la persona sintética: en el runner de la CI, alguno pasa de los 5 s por defecto.
+describe('cinemática inversa sobre las dos vistas', { timeout: 30_000 }, () => {
   it('sin ruido: la postura de verdad, también la rotación de cadera con la rodilla doblada', () => {
     const r = secuencia(6, 9, 0)
     for (const x of r.filter((_, i) => i % 10 === 0)) {

@@ -33,7 +33,8 @@ const vista = (c: Camara, px: number): VistaParaEmparejar => {
 }
 const deg = (r: number) => (r * 180) / Math.PI
 
-describe('el esqueleto en toda la toma', () => {
+// Cálculos de verdad con la persona sintética: en el runner de la CI, alguno pasa de los 5 s por defecto.
+describe('el esqueleto en toda la toma', { timeout: 30_000 }, () => {
   it('calibrado con la persona, ajustado y filtrado: las rodillas, las caderas (también su rotación con la rodilla doblada) y el tronco', { timeout: 120000 }, () => {
     const [va, vb] = [vista(A, 1.5), vista(B, 1.5)]
     const ids = [...va.series.keys()]
