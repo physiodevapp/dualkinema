@@ -10,6 +10,8 @@ import type { Aviso } from './useSeguimiento'
 import type { SeriesTrayectorias } from './useTrayectorias'
 
 interface Opciones {
+  /** Midiendo sin marcadores: no se elige ningún marcador de partida (los puntos se detectan; los gomets no se usan). */
+  readonly sinElegir?: boolean
   readonly ids: readonly IdMarcador[]
   readonly tabla: TablaFrames
   /** Tamaño del vídeo en px. */
@@ -38,13 +40,19 @@ interface Opciones {
  * El marcado a mano: el marcador elegido, «Colocar a ojo», colocar un marcador donde se toca (en el centro del gomet
  * o a ojo), previsualizar dónde quedaría (la lupa) y quitar una marca a mano.
  */
-export function useMarcado({ ids, tabla, info, inicial, valida, series, muestra, poner, quitar, mostrado, ultimoFrame, setErrorToque, setAviso }: Opciones) {
+export function useMarcado({ ids, sinElegir = false, tabla, info, inicial, valida, series, muestra, poner, quitar, mostrado, ultimoFrame, setErrorToque, setAviso }: Opciones) {
   // Al recuperar, el primer marcador que falte en el frame inicial (como al marcar);
   // si están todos, ninguno, para no mover uno sin querer con el primer toque. Con un vídeo nuevo, el primer gomet (sin
   // marcadores, ninguno: los puntos se detectan, no se colocan).
   const [seleccionado, setSeleccionado] = useState<IdMarcador | null>(() =>
-    inicial ? (ids.find((id) => !valida(inicial.get(id)?.[0])) ?? null) : (ids.find((id) => !esIdPose(id)) ?? null),
+    sinElegir ? null : inicial ? (ids.find((id) => !valida(inicial.get(id)?.[0])) ?? null) : (ids.find((id) => !esIdPose(id)) ?? null),
   )
+  // Al pasar a medir sin marcadores (al detectar, o eligiéndolo), un gomet elegido deja de estarlo.
+  const [sinElegirAntes, setSinElegirAntes] = useState(sinElegir)
+  if (sinElegir !== sinElegirAntes) {
+    setSinElegirAntes(sinElegir)
+    if (sinElegir && seleccionado !== null && !esIdPose(seleccionado)) setSeleccionado(null)
+  }
   // Si el elegido deja de poderse marcar (otra articulación), no queda elegido: el siguiente toque no lo pondría a mano
   // fuera de lo que se mide.
   if (seleccionado !== null && !ids.includes(seleccionado)) setSeleccionado(null)

@@ -104,11 +104,15 @@ export function useVista({
   // del modelo se detectan. Se marcan (y cuentan en la franja) los gomets y los puntos de la articulación que se mide: los
   // demás puntos del modelo (la pierna lejana, casi siempre dudosa) se dibujan en el esqueleto, pero no se eligen.
   const idsGomets = useMemo(() => ids.filter((id) => !esIdPose(id)), [ids])
+  // Los de la articulación que se mide van primero (midiendo sin marcadores, sus puntos detectados antes que los gomets).
   const marcables = useMemo(() => {
     // Un punto medio (el tronco de frente) no se marca: se corrigen los dos puntos de los que sale.
     const deLaArticulacion = new Set(marcadoresDeArticulacion(articulacion).flatMap(puntosDe))
-    return modelo.marcadores.filter((mk) => !esIdPose(mk.id) || deLaArticulacion.has(mk.id))
+    const todos = modelo.marcadores.filter((mk) => !esIdPose(mk.id) || deLaArticulacion.has(mk.id))
+    return [...todos.filter((mk) => deLaArticulacion.has(mk.id)), ...todos.filter((mk) => !deLaArticulacion.has(mk.id))]
   }, [modelo, articulacion])
+  // Midiendo sin marcadores, sus puntos se detectan: no hay nada que colocar (ni «Toca: Trocánter» de unos gomets que no se usan).
+  const midiendoSinMarcadores = fuenteDe(articulacion) === 'sinMarcadores'
   const idsMarcables = useMemo(() => marcables.map((mk) => mk.id), [marcables])
   const conPose = useMemo(() => ids.some(esIdPose), [ids])
   const { info, tabla } = video
@@ -153,6 +157,7 @@ export function useVista({
   // Marcado a mano: marcador elegido, «Colocar a ojo», colocar (en el gomet o a ojo), la lupa y quitar.
   const { seleccionado, setSeleccionado, colocarAOjo, setColocarAOjo, ponerManual, previsualizar, colocar, quitarManual } = useMarcado({
     ids: idsMarcables,
+    sinElegir: midiendoSinMarcadores,
     tabla,
     info,
     inicial,
