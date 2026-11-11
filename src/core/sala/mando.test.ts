@@ -16,6 +16,7 @@ const estado = (cambios: Partial<EstadoMovil> = {}): EstadoMovil => ({
   reloj: 2,
   primero: null,
   rechazo: null,
+  sucesos: [],
   ...cambios,
 })
 const movil = (id: string, cambios: Partial<MovilEnMando> = {}): MovilEnMando => ({

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { formatoCodigo } from '../core/sala/codigo'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos } from '../core/sala/doble'
 import { destino, faltaParaGrabar, grabando as algunoGraba, rechazoNuevo, TEXTO_RECHAZO, type MovilEnMando } from '../core/sala/mando'
+import { esImportante, textoSuceso, type EntradaRegistro } from '../core/sala/sucesos'
 import type { EstadoCanal } from '../sala/canal'
 import { useMando } from '../sala/useMando'
 import { InfoGlosario } from './glosario/Glosario'
@@ -53,8 +54,47 @@ function TarjetaMovil({ m, n, encuadreActivo }: { m: MovilEnMando; n: number; en
   )
 }
 
+/** «Móvil N» por su sitio en el mando (el que entró primero en la sala es el 1). */
+function nombreMovil(moviles: readonly MovilEnMando[], id: string): string {
+  const i = moviles.findIndex((m) => m.id === id)
+  return i < 0 ? 'Un móvil que ya no está' : `Móvil ${i + 1}`
+}
+
+const hora = (ms: number) => new Date(ms).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+/** Lo último que ha pasado al grabar en cada móvil, lo más reciente arriba; lo que hay que revisar, en ámbar. */
+function Registro({ registro, moviles }: { registro: readonly EntradaRegistro[]; moviles: readonly MovilEnMando[] }) {
+  const quien = (id: string) => nombreMovil(moviles, id)
+  return (
+    <section className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="mando-registro">
+      <h3 className="font-medium">Lo último</h3>
+      {registro.length === 0 ? (
+        <p className="text-sm text-texto-2">Aquí saldrá lo que pase al grabar en cada móvil: si empieza, si no graba y por qué, si se corta y cómo ha quedado.</p>
+      ) : (
+        <ol className="flex flex-col gap-1">
+          {registro.map((e) => {
+            const importante = esImportante(e.suceso)
+            return (
+              <li
+                key={`${e.movil}-${e.suceso.n}`}
+                className={`flex gap-2 rounded-md p-2 text-sm ${importante ? 'border border-acento/60' : ''}`}
+                data-testid="mando-suceso"
+                data-tipo={e.suceso.tipo}
+                data-importante={String(importante)}
+              >
+                <span className="shrink-0 font-mono text-xs text-texto-2">{hora(e.hora)}</span>
+                <span>{textoSuceso(e.suceso, quien(e.movil))}</span>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </section>
+  )
+}
+
 export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: () => void }) {
-  const { conexion, moviles, ordenar } = useMando(codigo)
+  const { conexion, moviles, ordenar, registro } = useMando(codigo)
   const [cuenta, setCuenta] = useState<number>(10)
   const [duracion, setDuracion] = useState<number | null>(30)
   // Lo pedido (con el contador de rechazos del móvil en ese momento, para saber si uno nuevo es de esta orden).
@@ -168,6 +208,15 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
             Parar los dos
           </button>
         </div>
+        {registro[0] && (
+          <p
+            className={`rounded-md p-2 text-sm ${esImportante(registro[0].suceso) ? 'border border-acento/60' : 'text-texto-2'}`}
+            role="status"
+            data-testid="mando-ultimo"
+          >
+            {hora(registro[0].hora)} · {textoSuceso(registro[0].suceso, nombreMovil(moviles, registro[0].movil))}
+          </p>
+        )}
         {pedido && !graba && (rechazado ? (
           <Aviso testid="mando-rechazo">El Móvil 1 no ha grabado: {TEXTO_RECHAZO[rechazado]}.</Aviso>
         ) : (
@@ -176,6 +225,7 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
           </p>
         ))}
       </div>
+      <Registro registro={registro} moviles={moviles} />
     </section>
   )
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { movilesVivos, type MovilEnMando } from '../core/sala/mando'
 import { soloEstado, type Orden } from '../core/sala/protocolo'
+import { REGISTRO_MAXIMO, sucesosNuevos, type EntradaRegistro } from '../core/sala/sucesos'
 import { CanalSala, type EstadoCanal } from './canal'
 import { urlRele } from './config'
 
@@ -16,6 +17,8 @@ export interface Mando {
   readonly moviles: readonly MovilEnMando[]
   /** Manda una orden a un móvil; false si ahora no hay conexión. */
   readonly ordenar: (para: string, orden: Orden) => boolean
+  /** Lo que ha pasado al grabar en los móviles desde que se abrió el mando, lo más reciente primero. */
+  readonly registro: readonly EntradaRegistro[]
 }
 
 /** Cada cuánto se miran los móviles sin noticias (ms). */
@@ -26,8 +29,11 @@ export function useMando(codigo: string): Mando {
   const [todos, setTodos] = useState<readonly MovilEnMando[]>([])
   const [reloj, setReloj] = useState(() => performance.now())
   const canal = useRef<CanalSala | null>(null)
+  const [registro, setRegistro] = useState<readonly EntradaRegistro[]>([])
 
   useEffect(() => {
+    // El último suceso visto de cada móvil (por su id).
+    const ultimos = new Map<string, number>()
     // Actualiza un móvil por su id (lo añade si es nuevo, al final).
     const poner = (id: string, cambio: (m: MovilEnMando) => MovilEnMando) =>
       setTodos((ms) => {
@@ -45,7 +51,16 @@ export function useMando(codigo: string): Mando {
         } else {
           const m = e.mensaje
           if (m.tipo === 'hola' && m.movil) poner(m.movil, (p) => ({ ...p, vista: m.vista, version: m.version }))
-          else if (m.tipo === 'estado' && m.movil) poner(m.movil, (p) => ({ ...p, estado: soloEstado(m) }))
+          else if (m.tipo === 'estado' && m.movil) {
+            const id = m.movil
+            poner(id, (p) => ({ ...p, estado: soloEstado(m) }))
+            const { nuevos, ultimo } = sucesosNuevos(m.sucesos, ultimos.get(id))
+            ultimos.set(id, ultimo)
+            if (nuevos.length) {
+              const hora = Date.now()
+              setRegistro((r) => [...nuevos.map((suceso) => ({ movil: id, hora, suceso })).reverse(), ...r].slice(0, REGISTRO_MAXIMO))
+            }
+          }
         }
       },
       false,
@@ -61,5 +76,5 @@ export function useMando(codigo: string): Mando {
 
   const ordenar = useCallback((para: string, orden: Orden) => canal.current?.enviar({ tipo: 'orden', para, ...orden }) ?? false, [])
 
-  return { conexion, moviles: movilesVivos(todos, reloj), ordenar }
+  return { conexion, moviles: movilesVivos(todos, reloj), ordenar, registro }
 }
