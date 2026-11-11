@@ -14,6 +14,7 @@ const estado = (cambios: Partial<EstadoMovil> = {}): EstadoMovil => ({
   encuadre: null,
   pideEncuadre: false,
   reloj: 2,
+  primero: null,
   ...cambios,
 })
 const movil = (id: string, cambios: Partial<MovilEnMando> = {}): MovilEnMando => ({
@@ -55,5 +56,19 @@ describe('el mando', () => {
   it('grabando si alguno graba', () => {
     expect(grabando([movil('aaaaaaaa'), movil('bbbbbbbb', { estado: estado({ grabando: true }) })])).toBe(true)
     expect(grabando([movil('aaaaaaaa')])).toBe(false)
+  })
+})
+
+describe('el orden de los móviles en el mando', () => {
+  it('el que entró primero en la sala es el «Móvil 1» aunque llegara después al mando; sin saberlo, por llegada', () => {
+    const ahora = 10_000
+    const a = movil('a', { estado: estado({ primero: false }), visto: ahora })
+    const b = movil('b', { estado: estado({ primero: true }), visto: ahora })
+    expect(movilesVivos([a, b], ahora).map((m) => m.id)).toEqual(['b', 'a'])
+    const c = movil('c', { estado: estado({ primero: null }), visto: ahora })
+    const d = movil('d', { estado: estado({ primero: null }), visto: ahora })
+    expect(movilesVivos([c, d], ahora).map((m) => m.id)).toEqual(['c', 'd'])
+    // Las órdenes van al «Móvil 1».
+    expect(destino(movilesVivos([a, b], ahora))?.id).toBe('b')
   })
 })

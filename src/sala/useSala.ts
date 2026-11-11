@@ -45,6 +45,8 @@ export interface Sala {
   readonly escuchar: (oyente: (m: Mensaje) => void) => () => void
   /** Hay un mando (ordenador) en la sala. */
   readonly hayMando: boolean
+  /** Si entró en la sala antes que el otro: en el mando es el «Móvil 1» (null hasta saberlo). */
+  readonly primero: boolean | null
   /** Oye las órdenes del mando para este móvil. Devuelve cómo dejar de oír. */
   readonly escucharOrdenes: (oyente: (o: Orden) => void) => () => void
 }
@@ -70,6 +72,9 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
   const oyentes = useRef(new Set<(m: Mensaje) => void>())
   const oyentesOrden = useRef(new Set<(o: Orden) => void>())
   const [hayMando, setHayMando] = useState(false)
+  // Si entró en la sala antes que el otro: en el mando es el «Móvil 1» (null hasta saberlo).
+  const [primero, setPrimero] = useState<boolean | null>(null)
+  const primeroRef = useRef<boolean | null>(null)
   const [miId] = useState(idMovil)
   // Lo último que hay que mandar, para los temporizadores y los avisos (que no se vuelven a crear al cambiar).
   const vistaRef = useRef(vista)
@@ -81,7 +86,7 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
   useEffect(() => {
     const relojSala = new RelojSala((m: Mensaje) => canal.current?.enviar(m) ?? false, ahora)
     const hola = () => canal.current?.enviar({ tipo: 'hola', version: VERSION_PROTOCOLO, vista: vistaRef.current, movil: miId })
-    const estado = () => canal.current?.enviar({ tipo: 'estado', movil: miId, ...estadoRef.current, reloj: relojSala.estimacion()?.cota ?? null })
+    const estado = () => canal.current?.enviar({ tipo: 'estado', movil: miId, ...estadoRef.current, reloj: relojSala.estimacion()?.cota ?? null, primero: primeroRef.current })
     relojRef.current = relojSala
 
     const c = new CanalSala(`${urlRele()}/sala/${codigo}`, (e) => {
@@ -105,7 +110,12 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
           }
           return
         }
-        if (e.aviso.rele === 'bienvenida') setHayMando(!!e.aviso.mando)
+        if (e.aviso.rele === 'bienvenida') {
+          setHayMando(!!e.aviso.mando)
+          // Entró el primero (la sala estaba vacía): en el mando es el «Móvil 1».
+          primeroRef.current = e.aviso.ocupantes === 0
+          setPrimero(primeroRef.current)
+        }
         if (e.aviso.rele === 'sale' || (e.aviso.rele === 'bienvenida' && e.aviso.ocupantes < 2)) {
           setConexion('esperando')
           setOtro(null)
@@ -115,7 +125,12 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
         } else {
           // Somos dos: el que estaba se presenta al que llega, y los dos empiezan el reloj de cero.
           setConexion('emparejado')
-          if (e.aviso.rele === 'entra') hola()
+          if (e.aviso.rele === 'entra') {
+            // El otro llega cuando ya estábamos: somos el primero (también si él se fue y vuelve).
+            primeroRef.current = true
+            setPrimero(true)
+            hola()
+          }
           estado()
           relojSala.reiniciar()
         }
@@ -175,5 +190,5 @@ export function useSala(codigo: string, vista: OrientacionVista | null, miEstado
     [],
   )
 
-  return { conexion, otro, reloj, deriva, hayMando, versionDistinta: otro !== null && otro.version !== VERSION_PROTOCOLO, ...acciones }
+  return { conexion, otro, reloj, deriva, hayMando, primero, versionDistinta: otro !== null && otro.version !== VERSION_PROTOCOLO, ...acciones }
 }

@@ -20,9 +20,15 @@ export interface MovilEnMando {
 /** Un móvil que no manda nada en este tiempo se da por ido (el estado llega cada 2 s). */
 export const SIN_NOTICIAS_MS = 6000
 
-/** Los móviles con noticias recientes, en el orden en que llegaron (como mucho dos: los últimos). */
+/**
+ * Los móviles con noticias recientes (como mucho dos: los últimos), el que entró primero en la sala delante (el «Móvil 1»,
+ * normalmente el que la creó; cada móvil dice en su pantalla qué número es); sin saberlo, en el orden en que llegaron al
+ * mando.
+ */
 export function movilesVivos(moviles: readonly MovilEnMando[], ahora: number): MovilEnMando[] {
-  return moviles.filter((m) => ahora - m.visto <= SIN_NOTICIAS_MS).slice(-2)
+  const vivos = moviles.filter((m) => ahora - m.visto <= SIN_NOTICIAS_MS).slice(-2)
+  const rango = (m: MovilEnMando) => (m.estado?.primero === true ? 0 : m.estado?.primero === false ? 2 : 1)
+  return vivos.map((m, i) => ({ m, i })).sort((p, q) => rango(p.m) - rango(q.m) || p.i - q.i).map((x) => x.m)
 }
 
 /** Lo que falta para grabar, en el orden en que hay que arreglarlo; vacío si se puede. */
