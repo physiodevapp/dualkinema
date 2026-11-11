@@ -26,6 +26,10 @@ export const DURACION_MAXIMA_PROGRAMADA_S = 300
 /** Por qué no se graba: lo pidió la persona, o el móvil que contesta no puede (ver `doble.ts`), o falló al grabar. */
 export type MotivoCancelar = 'usuario' | 'sin-camara' | 'sin-vista' | 'sin-reloj' | 'sin-espacio' | 'tarde' | 'ocupado' | 'version' | 'fallo'
 
+/** Por qué un móvil no ha hecho lo que le pidió el mando (programar la grabación). */
+export type MotivoRechazo = 'sin-camara' | 'sin-otro' | 'sin-vista' | 'sin-reloj' | 'ocupado'
+const RECHAZOS: readonly MotivoRechazo[] = ['sin-camara', 'sin-otro', 'sin-vista', 'sin-reloj', 'ocupado']
+
 export interface EstadoMovil {
   /** Lo que da su cámara; null si no está abierta. */
   readonly camara: { readonly ancho: number; readonly alto: number; readonly fps: number } | null
@@ -53,6 +57,11 @@ export interface EstadoMovil {
    * qué número es en el mando. null si no se sabe (o el móvil es anterior).
    */
   readonly primero: boolean | null
+  /**
+   * La última orden del mando que no pudo hacer, con su motivo y un contador (cambia con cada rechazo, para que el mando
+   * sepa si es de ahora). null si no ha rechazado ninguna (o el móvil es anterior).
+   */
+  readonly rechazo: { readonly motivo: MotivoRechazo; readonly n: number } | null
 }
 
 /** Solo los campos del estado de un móvil (de un mensaje `estado`, sin `tipo` ni `movil`). */
@@ -69,6 +78,7 @@ export const soloEstado = (m: EstadoMovil): EstadoMovil => ({
   pideEncuadre: m.pideEncuadre,
   reloj: m.reloj,
   primero: m.primero,
+  rechazo: m.rechazo,
 })
 
 /** Lo que el mando pide a un móvil. */
@@ -142,7 +152,12 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
   // Añadido con el mando, igual de opcional.
   const reloj = finito(o.reloj) && o.reloj >= 0 && o.reloj < 60_000 ? o.reloj : null
   const primero = typeof o.primero === 'boolean' ? o.primero : null
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, reloj, primero }
+  const r = o.rechazo as Record<string, unknown> | null | undefined
+  const rechazo =
+    r && typeof r === 'object' && RECHAZOS.includes(r.motivo as MotivoRechazo) && Number.isInteger(r.n) && (r.n as number) > 0
+      ? { motivo: r.motivo as MotivoRechazo, n: r.n as number }
+      : null
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, reloj, primero, rechazo }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { destino, faltaParaGrabar, grabando, movilesVivos, SIN_NOTICIAS_MS, type MovilEnMando } from './mando'
+import { rechazoNuevo, destino, faltaParaGrabar, grabando, movilesVivos, SIN_NOTICIAS_MS, type MovilEnMando } from './mando'
 import type { EstadoMovil } from './protocolo'
 
 const estado = (cambios: Partial<EstadoMovil> = {}): EstadoMovil => ({
@@ -15,6 +15,7 @@ const estado = (cambios: Partial<EstadoMovil> = {}): EstadoMovil => ({
   pideEncuadre: false,
   reloj: 2,
   primero: null,
+  rechazo: null,
   ...cambios,
 })
 const movil = (id: string, cambios: Partial<MovilEnMando> = {}): MovilEnMando => ({
@@ -70,5 +71,15 @@ describe('el orden de los móviles en el mando', () => {
     expect(movilesVivos([c, d], ahora).map((m) => m.id)).toEqual(['c', 'd'])
     // Las órdenes van al «Móvil 1».
     expect(destino(movilesVivos([a, b], ahora))?.id).toBe('b')
+  })
+})
+
+describe('el rechazo de una orden', () => {
+  it('se ve solo si llega después de pedirla', () => {
+    const m = movil('a', { estado: estado({ rechazo: { motivo: 'sin-camara', n: 2 } }) })
+    expect(rechazoNuevo(m, 1)).toBe('sin-camara')
+    expect(rechazoNuevo(m, 2)).toBeNull()
+    expect(rechazoNuevo(movil('b', { estado: estado() }), 0)).toBeNull()
+    expect(rechazoNuevo(null, 0)).toBeNull()
   })
 })

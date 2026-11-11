@@ -5144,6 +5144,17 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
       await fase(b, 'hecha', 30000)
       const [ra, rb] = [await resultado(a), await resultado(b)]
       assert.ok(ra.id && ra.id === rb.id, 'la misma grabación doble en los dos')
+      // Con el resultado a la vista en los móviles, el mando puede pedir otra (antes la orden se perdía sin decir nada).
+      await m.waitForFunction(() => !document.querySelector('[data-testid=mando-grabar]')?.disabled, null, { timeout: 20000 })
+      await m.getByTestId('mando-grabar').click()
+      await fase(a, 'programada')
+      await fase(b, 'programada')
+      // Pedirla otra vez durante la cuenta atrás: el Móvil 1 no puede, y el mando dice por qué.
+      await m.getByTestId('mando-grabar').click()
+      await m.getByTestId('mando-rechazo').filter({ hasText: 'ya estaba grabando o con una cuenta atrás' }).waitFor({ timeout: 10000 })
+      await m.getByTestId('mando-parar').click()
+      await fase(a, 'libre')
+      await fase(b, 'libre')
     } finally {
       await m.close()
     }
@@ -5151,7 +5162,6 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
     for (const p of [a, b]) {
       await p.getByTestId('enlace-mando').waitFor({ timeout: 10000 })
       assert.equal(await p.getByTestId('conexion').getAttribute('data-conexion'), 'emparejado')
-      await p.getByTestId('grabar-otra-vez').click()
     }
   })
 

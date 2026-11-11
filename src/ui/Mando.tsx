@@ -2,7 +2,7 @@ import { ArrowLeftIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline'
 import { useState } from 'react'
 import { formatoCodigo } from '../core/sala/codigo'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos } from '../core/sala/doble'
-import { destino, faltaParaGrabar, grabando as algunoGraba, type MovilEnMando } from '../core/sala/mando'
+import { destino, faltaParaGrabar, grabando as algunoGraba, rechazoNuevo, TEXTO_RECHAZO, type MovilEnMando } from '../core/sala/mando'
 import type { EstadoCanal } from '../sala/canal'
 import { useMando } from '../sala/useMando'
 import { InfoGlosario } from './glosario/Glosario'
@@ -57,13 +57,15 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
   const { conexion, moviles, ordenar } = useMando(codigo)
   const [cuenta, setCuenta] = useState<number>(10)
   const [duracion, setDuracion] = useState<number | null>(30)
-  const [pedido, setPedido] = useState<string | null>(null)
+  // Lo pedido (con el contador de rechazos del móvil en ese momento, para saber si uno nuevo es de esta orden).
+  const [pedido, setPedido] = useState<{ texto: string; antes: number } | null>(null)
   const primero = destino(moviles)
   const falta = faltaParaGrabar(moviles)
   const graba = algunoGraba(moviles)
   // El encuadre se comprueba en los dos si uno lo pidió (el primero, al que se le ordena).
   const encuadreActivo = moviles.some((m) => m.estado?.pideEncuadre)
   const conectado = conexion === 'abierto'
+  const rechazado = pedido ? rechazoNuevo(primero, pedido.antes) : null
 
   return (
     <section className="mx-auto flex w-full max-w-5xl flex-col gap-4" data-testid="mando">
@@ -144,7 +146,7 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
             type="button"
             onClick={() => {
               if (!primero || !ordenar(primero.id, { orden: 'programar', cuentaAtras: cuenta, duracion })) return
-              setPedido(`Pedido: empieza en ${cuenta} s${duracion ? ` y dura ${duracion} s` : ''}.`)
+              setPedido({ texto: `Pedido: empieza en ${cuenta} s${duracion ? ` y dura ${duracion} s` : ''}.`, antes: primero.estado?.rechazo?.n ?? 0 })
             }}
             disabled={!conectado || falta.length > 0 || graba}
             className={`${boton} min-h-14 border-acento bg-acento font-medium text-fondo`}
@@ -166,11 +168,13 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
             Parar los dos
           </button>
         </div>
-        {pedido && !graba && (
+        {pedido && !graba && (rechazado ? (
+          <Aviso testid="mando-rechazo">El Móvil 1 no ha grabado: {TEXTO_RECHAZO[rechazado]}.</Aviso>
+        ) : (
           <p className="text-sm text-texto-2" data-testid="mando-pedido">
-            {pedido} Si no empieza, mira en los móviles qué dicen.
+            {pedido.texto} Si no empieza, mira en los móviles qué dicen.
           </p>
-        )}
+        ))}
       </div>
     </section>
   )
