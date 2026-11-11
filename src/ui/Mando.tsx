@@ -33,7 +33,8 @@ function TarjetaMovil({ m, n, encuadreActivo }: { m: MovilEnMando; n: number; en
     <div className="flex flex-col gap-2 rounded-2xl border border-borde bg-panel p-4" data-testid="mando-movil" data-id={m.id} data-grabando={String(!!e?.grabando)}>
       <h3 className="flex items-center justify-between gap-2 font-medium">
         <span>
-          {quien}: {textoVista(m.vista)}
+          {quien}
+          {e?.primero != null && <span className="text-texto-2"> ({e.primero ? 'creó la sala' : 'se unió'})</span>}: {textoVista(m.vista)}
         </span>
         {e?.grabando && <span className="rounded-md bg-red-500/80 px-2 py-0.5 text-sm text-white">Grabando</span>}
       </h3>

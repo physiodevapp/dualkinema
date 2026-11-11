@@ -9,9 +9,9 @@ const mensajes: Mensaje[] = [
   { tipo: 'hola', version: VERSION_PROTOCOLO, vista: null },
   { tipo: 'ping', id: 7, t1: 12345.678 },
   { tipo: 'pong', id: 7, t1: 12345.678, t2: -998.5, t3: -998.25 },
-  { tipo: 'estado', camara: { ancho: 1080, alto: 1920, fps: 30 }, libreMB: 9800.5, bateria: 0.83, grabando: false, codificador: 'hardware', microExterno: false, fpsGrabacion: 29.7, inclinacion: { cabeceo: 3.5, alabeo: -0.5 }, encuadre: { persona: true, cortes: ['pies'] }, pideEncuadre: true, reloj: 1.5 },
-  { tipo: 'estado', camara: null, libreMB: null, bateria: null, grabando: true, codificador: null, microExterno: null, fpsGrabacion: null, inclinacion: null, encuadre: { persona: false }, pideEncuadre: false, reloj: null },
-  { tipo: 'estado', camara: null, libreMB: null, bateria: null, grabando: false, codificador: 'software', microExterno: true, fpsGrabacion: 10, inclinacion: null, encuadre: null, pideEncuadre: false, reloj: null, movil: 'a1b2c3d4e5f6' },
+  { tipo: 'estado', camara: { ancho: 1080, alto: 1920, fps: 30 }, libreMB: 9800.5, bateria: 0.83, grabando: false, codificador: 'hardware', microExterno: false, fpsGrabacion: 29.7, inclinacion: { cabeceo: 3.5, alabeo: -0.5 }, encuadre: { persona: true, cortes: ['pies'] }, pideEncuadre: true, reloj: 1.5, primero: true },
+  { tipo: 'estado', camara: null, libreMB: null, bateria: null, grabando: true, codificador: null, microExterno: null, fpsGrabacion: null, inclinacion: null, encuadre: { persona: false }, pideEncuadre: false, reloj: null, primero: false },
+  { tipo: 'estado', camara: null, libreMB: null, bateria: null, grabando: false, codificador: 'software', microExterno: true, fpsGrabacion: 10, inclinacion: null, encuadre: null, pideEncuadre: false, reloj: null, primero: null, movil: 'a1b2c3d4e5f6' },
   { tipo: 'hola', version: VERSION_PROTOCOLO, vista: null, movil: 'a1b2c3d4e5f6' },
   { tipo: 'orden', para: 'a1b2c3d4e5f6', orden: 'programar', cuentaAtras: 10, duracion: 30 },
   { tipo: 'orden', para: 'a1b2c3d4e5f6', orden: 'programar', cuentaAtras: 5, duracion: null },
@@ -35,9 +35,9 @@ describe('protocolo de la sala', () => {
     expect(m).toEqual({ tipo: 'confirmar', grabacion: id })
     const e = leerMensaje(JSON.stringify({ tipo: 'estado', camara: { ancho: 1, alto: 1, fps: 30, modelo: 'x' }, libreMB: 1, bateria: 1, grabando: false, extra: 1 }))
     // Sin `codificador` ni `microExterno` (un móvil anterior al paso 6): no se sabe.
-    expect(e).toEqual({ tipo: 'estado', camara: { ancho: 1, alto: 1, fps: 30 }, libreMB: 1, bateria: 1, grabando: false, codificador: null, microExterno: null, fpsGrabacion: null, inclinacion: null, encuadre: null, pideEncuadre: false, reloj: null })
+    expect(e).toEqual({ tipo: 'estado', camara: { ancho: 1, alto: 1, fps: 30 }, libreMB: 1, bateria: 1, grabando: false, codificador: null, microExterno: null, fpsGrabacion: null, inclinacion: null, encuadre: null, pideEncuadre: false, reloj: null, primero: null })
     const raro = leerMensaje(JSON.stringify({ tipo: 'estado', camara: null, libreMB: 1, bateria: 1, grabando: false, codificador: 'gpu', microExterno: 'sí', fpsGrabacion: -3, inclinacion: { cabeceo: 'x', alabeo: 0 } }))
-    expect(raro).toEqual({ tipo: 'estado', camara: null, libreMB: 1, bateria: 1, grabando: false, codificador: null, microExterno: null, fpsGrabacion: null, inclinacion: null, encuadre: null, pideEncuadre: false, reloj: null })
+    expect(raro).toEqual({ tipo: 'estado', camara: null, libreMB: 1, bateria: 1, grabando: false, codificador: null, microExterno: null, fpsGrabacion: null, inclinacion: null, encuadre: null, pideEncuadre: false, reloj: null, primero: null })
   })
 
   it('no se entiende (null): roto, de otro tipo, campos inválidos o demasiado grande', () => {

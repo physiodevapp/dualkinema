@@ -4837,10 +4837,14 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
       // El enlace del mando sale en la sala de los móviles mientras no hay ninguno; con él, se dice que lo hay.
       await a.getByTestId('mando-conectado').waitFor({ timeout: 10000 })
       await m.getByTestId('mando-encuadre').click()
-      // Uno de los dos (el que primero se presentó al mando) lo activa; el otro mira porque se lo pide.
+      // El «Móvil 1» es el que creó la sala (A), y cada móvil lo dice; las órdenes van a él y el otro mira porque se lo pide.
+      assert.match(await a.getByTestId('numero-en-mando').innerText(), /«Móvil 1»/)
+      await b.getByTestId('numero-en-mando').filter({ hasText: '«Móvil 2»' }).waitFor({ timeout: 10000 })
+      await m.getByTestId('mando-movil').first().filter({ hasText: 'Móvil 1 (creó la sala)' }).waitFor({ timeout: 10000 })
+      assert.match(await m.getByTestId('mando-movil').nth(1).innerText(), /Móvil 2 \(se unió\)/)
       await m.waitForFunction(() => document.querySelector('[data-testid=mando-encuadre]')?.getAttribute('aria-pressed') === 'true', null, { timeout: 10000 })
       const pulsados = await Promise.all([a, b].map((p) => p.getByTestId('comprobar-encuadre').getAttribute('aria-pressed')))
-      assert.deepEqual(pulsados.toSorted(), ['false', 'true'])
+      assert.deepEqual(pulsados, ['true', 'false'])
       await m.getByTestId('mando-encuadre-1').filter({ hasText: 'te ve entero ✓' }).waitFor({ timeout: 10000 })
       await m.getByTestId('mando-encuadre-2').filter({ hasText: 'te ve entero ✓' }).waitFor({ timeout: 10000 })
       await m.getByTestId('mando-encuadre').click()
