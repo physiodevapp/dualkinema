@@ -1,5 +1,6 @@
 import { leerEncuadre, type Encuadre } from '../grabacion/encuadre'
 import type { OrientacionVista } from '../geometria/canonico'
+import { leerSucesos, type Suceso } from './sucesos'
 
 /*
  * Mensajes entre los dos móviles de una sala (fase 4, §3–5 de docs/plan-fase-4.md). Viajan por el relé de señalización,
@@ -62,6 +63,8 @@ export interface EstadoMovil {
    * sepa si es de ahora). null si no ha rechazado ninguna (o el móvil es anterior).
    */
   readonly rechazo: { readonly motivo: MotivoRechazo; readonly n: number } | null
+  /** Sus últimos sucesos al grabar, para el registro del mando (`sucesos.ts`); vacío si no hay (o el móvil es anterior). */
+  readonly sucesos: readonly Suceso[]
 }
 
 /** Solo los campos del estado de un móvil (de un mensaje `estado`, sin `tipo` ni `movil`). */
@@ -79,6 +82,7 @@ export const soloEstado = (m: EstadoMovil): EstadoMovil => ({
   reloj: m.reloj,
   primero: m.primero,
   rechazo: m.rechazo,
+  sucesos: m.sucesos,
 })
 
 /** Lo que el mando pide a un móvil. */
@@ -157,7 +161,8 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
     r && typeof r === 'object' && RECHAZOS.includes(r.motivo as MotivoRechazo) && Number.isInteger(r.n) && (r.n as number) > 0
       ? { motivo: r.motivo as MotivoRechazo, n: r.n as number }
       : null
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, reloj, primero, rechazo }
+  const sucesos = leerSucesos(o.sucesos)
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, reloj, primero, rechazo, sucesos }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */

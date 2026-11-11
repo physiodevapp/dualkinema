@@ -5144,6 +5144,13 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
       await fase(b, 'hecha', 30000)
       const [ra, rb] = [await resultado(a), await resultado(b)]
       assert.ok(ra.id && ra.id === rb.id, 'la misma grabación doble en los dos')
+      // El registro del mando: los dos empezaron y terminaron (con la duración y los fps), y lo último se ve arriba.
+      const contar = (tipo) => m.locator(`[data-testid=mando-suceso][data-tipo=${tipo}]`).count()
+      await m.waitForFunction(() => document.querySelectorAll('[data-testid=mando-suceso][data-tipo=terminada]').length === 2, null, { timeout: 15000 })
+      assert.equal(await contar('empieza'), 2)
+      const terminadas = await m.locator('[data-testid=mando-suceso][data-tipo=terminada]').allInnerTexts()
+      for (const t of terminadas) assert.match(t, /Móvil [12]: grabación terminada · [\d,]+ s · a [\d,]+ fps/)
+      assert.match(await m.getByTestId('mando-ultimo').innerText(), /grabación terminada/)
       // Con el resultado a la vista en los móviles, el mando puede pedir otra (antes la orden se perdía sin decir nada).
       await m.waitForFunction(() => !document.querySelector('[data-testid=mando-grabar]')?.disabled, null, { timeout: 20000 })
       await m.getByTestId('mando-grabar').click()
@@ -5155,6 +5162,10 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
       await m.getByTestId('mando-parar').click()
       await fase(a, 'libre')
       await fase(b, 'libre')
+      // La cancelación también queda en el registro (sin ámbar: la ha pedido alguien).
+      await m.locator('[data-testid=mando-suceso][data-tipo=no-graba]').first().waitFor({ timeout: 15000 })
+      assert.match(await m.locator('[data-testid=mando-suceso][data-tipo=no-graba]').first().innerText(), /no graba: se ha cancelado/)
+      assert.equal(await m.locator('[data-testid=mando-suceso][data-tipo=no-graba]').first().getAttribute('data-importante'), 'false')
     } finally {
       await m.close()
     }
