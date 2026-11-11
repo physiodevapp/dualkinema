@@ -48,6 +48,11 @@ export interface EstadoMovil {
   readonly pideEncuadre: boolean
   /** La cota de su reloj común con el otro (ms), para el mando; null si aún no está medido (o el móvil es anterior). */
   readonly reloj: number | null
+  /**
+   * Si entró en la sala antes que el otro (normalmente, el que la creó): el mando lo pone como «Móvil 1», y cada móvil dice
+   * qué número es en el mando. null si no se sabe (o el móvil es anterior).
+   */
+  readonly primero: boolean | null
 }
 
 /** Solo los campos del estado de un móvil (de un mensaje `estado`, sin `tipo` ni `movil`). */
@@ -63,6 +68,7 @@ export const soloEstado = (m: EstadoMovil): EstadoMovil => ({
   encuadre: m.encuadre,
   pideEncuadre: m.pideEncuadre,
   reloj: m.reloj,
+  primero: m.primero,
 })
 
 /** Lo que el mando pide a un móvil. */
@@ -135,7 +141,8 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
   const pideEncuadre = o.pideEncuadre === true
   // Añadido con el mando, igual de opcional.
   const reloj = finito(o.reloj) && o.reloj >= 0 && o.reloj < 60_000 ? o.reloj : null
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, reloj }
+  const primero = typeof o.primero === 'boolean' ? o.primero : null
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, reloj, primero }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */

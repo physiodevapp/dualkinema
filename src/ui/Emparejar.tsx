@@ -116,6 +116,7 @@ function useMiEstado(
       pideEncuadre,
       // La cota del reloj la pone la sala al mandarlo.
       reloj: null,
+      primero: null,
     }
   }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre])
 }
@@ -394,13 +395,14 @@ function ResultadoDoble({
 
 /** La sala ya abierta (con su código). */
 /** El mando: si hay uno conectado, se dice; si no, el enlace para abrirlo en un ordenador (plegado: no hace falta para grabar). */
-function ManejarDesdeOrdenador({ codigo, hayMando }: { codigo: string; hayMando: boolean }) {
+function ManejarDesdeOrdenador({ codigo, hayMando, primero }: { codigo: string; hayMando: boolean; primero: boolean | null }) {
   const [copiado, setCopiado] = useState(false)
   const enlace = urlDeMando(location.origin, codigo)
   if (hayMando)
     return (
       <p className="flex items-center gap-1 rounded-md border border-acento/40 p-3 text-sm" data-testid="mando-conectado">
         Hay un ordenador manejando la sala: puede comprobar el encuadre, programar la grabación y pararla.
+        {primero !== null && <strong data-testid="numero-en-mando"> Allí este móvil es el «Móvil {primero ? 1 : 2}».</strong>}
         <InfoGlosario id="mando" tema="manejar la sala desde un ordenador" className="-my-1.5" />
       </p>
     )
@@ -550,7 +552,7 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
         </p>
       </div>
 
-      <ManejarDesdeOrdenador codigo={codigo} hayMando={sala.hayMando} />
+      <ManejarDesdeOrdenador codigo={codigo} hayMando={sala.hayMando} primero={sala.primero} />
 
       {sala.versionDistinta && (
         <Aviso testid="aviso-version">
