@@ -5,7 +5,7 @@
  */
 import type { OrientacionVista } from '../geometria/canonico'
 import { ESPACIO_MINIMO_MB, vistasCompatibles } from './doble'
-import { VERSION_PROTOCOLO, type EstadoMovil } from './protocolo'
+import { VERSION_PROTOCOLO, type EstadoMovil, type MotivoRechazo } from './protocolo'
 
 export interface MovilEnMando {
   readonly id: string
@@ -54,3 +54,18 @@ export const grabando = (moviles: readonly MovilEnMando[]): boolean => moviles.s
  * basta (él se lo pide al otro, como si se pulsara «Grabar» en él); lo mismo el encuadre (él pide al otro que mire).
  */
 export const destino = (moviles: readonly MovilEnMando[]): MovilEnMando | null => moviles[0] ?? null
+
+/** Lo que se dice en el mando cuando el móvil al que se le pidió grabar no ha podido (`EstadoMovil.rechazo`). */
+export const TEXTO_RECHAZO: Record<MotivoRechazo, string> = {
+  'sin-camara': 'tiene la cámara cerrada (¿se ha bloqueado la pantalla o la app ha quedado detrás?)',
+  'sin-otro': 'no está emparejado con el otro móvil',
+  'sin-vista': 'las vistas de los dos móviles no casan',
+  'sin-reloj': 'aún se está midiendo el reloj común',
+  ocupado: 'ya estaba grabando o con una cuenta atrás',
+}
+
+/** El rechazo de una orden que llegó después de pedirla (`antes`: el contador de rechazos del móvil al pedirla). */
+export function rechazoNuevo(m: MovilEnMando | null, antes: number): MotivoRechazo | null {
+  const r = m?.estado?.rechazo
+  return r && r.n > antes ? r.motivo : null
+}

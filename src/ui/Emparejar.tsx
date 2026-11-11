@@ -24,7 +24,8 @@ import { callar, HAY_VOZ, hablar } from '../sala/voz'
 import { enteraEn, fraseEncuadre, type Encuadre } from '../core/grabacion/encuadre'
 import { useEncuadre } from './useEncuadre'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos, vistasCompatibles } from '../core/sala/doble'
-import type { EstadoMovil } from '../core/sala/protocolo'
+import type { EstadoMovil, MotivoRechazo } from '../core/sala/protocolo'
+import { TEXTO_RECHAZO } from '../core/sala/mando'
 import { CALIDAD_PITIDO_MINIMA, DURACION_SECUENCIA_S, PITIDO_OTRA_S, VENTANA_DESPUES_S, type Deteccion } from '../core/sincronia/pitido'
 import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { espacio } from '../media/grabaciones'
@@ -86,6 +87,7 @@ function useMiEstado(
   inclinacion: Inclinacion | null,
   encuadre: Encuadre | null,
   pideEncuadre: boolean,
+  rechazo: EstadoMovil['rechazo'],
 ): EstadoMovil {
   const [libreMB, setLibreMB] = useState<number | null>(null)
   const [bateria, setBateria] = useState<number | null>(null)
@@ -117,8 +119,9 @@ function useMiEstado(
       // La cota del reloj la pone la sala al mandarlo.
       reloj: null,
       primero: null,
+      rechazo,
     }
-  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre])
+  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, rechazo])
 }
 
 
@@ -461,13 +464,18 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   const [comprobarEncuadre, setComprobarEncuadre] = useState(false)
   const [pideOtro, setPideOtro] = useState(false)
   const { encuadre: miEncuadre, error: errorEncuadre } = useEncuadre(video, (comprobarEncuadre || pideOtro) && !!flujo && !enMarcha)
-  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre)
+  // La última orden del mando que no se pudo hacer: se le cuenta (con su motivo) y se dice aquí.
+  const [rechazo, setRechazo] = useState<EstadoMovil['rechazo']>(null)
+  const [verRechazo, setVerRechazo] = useState(false)
+  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre, rechazo)
   const sala: Sala = useSala(codigo, vista, miEstado)
   const pideAhora = sala.conexion === 'emparejado' && !!sala.otro?.estado?.pideEncuadre
   if (pideAhora !== pideOtro) setPideOtro(pideAhora)
   const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio, calidad)
   const ocupado = doble.fase.f === 'esperando' || doble.fase.f === 'programada' || doble.fase.f === 'grabando' || doble.fase.f === 'parando'
   if (grabando !== (doble.fase.f === 'grabando')) setGrabando(doble.fase.f === 'grabando')
+  // Al empezar otra grabación, el aviso de la orden que no se pudo hacer ya no vale.
+  if (ocupado && verRechazo) setVerRechazo(false)
   if (enMarcha !== ocupado) setEnMarcha(ocupado)
 
   useEffect(() => {
@@ -502,9 +510,21 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
 
   // Las órdenes del mando (un ordenador en la sala): como si se pulsara aquí. Lo último, en una referencia (el oyente se
   // pone una vez).
-  const ordenes = useRef({ doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre })
+  // Por qué no se podría programar ahora (lo mismo que `puedeGrabar`, con su motivo para el mando).
+  const motivoRechazo: MotivoRechazo | null = !flujo
+    ? 'sin-camara'
+    : sala.conexion !== 'emparejado'
+      ? 'sin-otro'
+      : !vistasCompatibles(vista, otro?.vista ?? null)
+        ? 'sin-vista'
+        : reloj === null
+          ? 'sin-reloj'
+          : ocupado
+            ? 'ocupado'
+            : null
+  const ordenes = useRef({ doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre, motivoRechazo })
   useEffect(() => {
-    ordenes.current = { doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre }
+    ordenes.current = { doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre, motivoRechazo }
   })
   const { escucharOrdenes } = sala
   useEffect(
@@ -512,7 +532,14 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
       escucharOrdenes((o) => {
         const a = ordenes.current
         if (o.orden === 'programar') {
-          if (a.puedeGrabar && a.doble.fase.f === 'libre') a.doble.programar(o.cuentaAtras, o.duracion, null)
+          // Como «Grabar» aquí: también con el resultado de la grabación anterior a la vista (antes solo en «libre», y la
+          // orden se perdía sin decir nada).
+          if (a.puedeGrabar && !a.ocupado) a.doble.programar(o.cuentaAtras, o.duracion, null)
+          else {
+            const motivo = a.motivoRechazo ?? 'ocupado'
+            setRechazo((r) => ({ motivo, n: (r?.n ?? 0) + 1 }))
+            setVerRechazo(true)
+          }
         } else if (o.orden === 'parar') {
           if (a.ocupado) a.doble.parar()
         } else if (o.activo !== a.comprobarEncuadre) a.alternarEncuadre()
@@ -552,6 +579,11 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
         </p>
       </div>
 
+      {verRechazo && rechazo && !ocupado && (
+        <p className="rounded-md border border-acento/60 p-3 text-sm" role="status" data-testid="aviso-rechazo">
+          El mando ha pedido grabar, pero no se ha podido: {TEXTO_RECHAZO[rechazo.motivo]}.
+        </p>
+      )}
       <ManejarDesdeOrdenador codigo={codigo} hayMando={sala.hayMando} primero={sala.primero} />
 
       {sala.versionDistinta && (
