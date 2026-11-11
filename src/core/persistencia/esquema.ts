@@ -7,6 +7,7 @@ import { esAjustesFiltro, type AjustesFiltro } from '../filtros/tramos'
 import { claveHuella, esHuella, type HuellaArchivo } from './huella'
 import { leerSensores, type Sensores } from '../sensores/sensores'
 import { esCalibracion3D, type Calibracion3D } from '../tresd/calibracion3d'
+import { bytesEsqueleto, leerAjustes3D, type Ajustes3D, type EsqueletoGuardado } from './esqueleto'
 import { caducaEn } from './retencion'
 import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, type TrayectoriaGuardada } from './trayectorias'
 
@@ -68,6 +69,10 @@ import { empaquetarTrayectoria, errorTrayectoria, recuento, type SerieFrames, ty
  * días desde su último guardado (`actualizada`); si esa fecha no se pudiera
  * leer, desde el momento de la migración. Una app de esquema 6 no abre una
  * sesión de la 7 (al guardar perdería `expiraEn` y la sesión no caducaría).
+ *
+ * Sin subir el esquema (11-11, ver esqueleto.ts): la cabecera puede llevar lo que se mira en «Ángulos en 3D» (`tresd`) y
+ * los datos, el esqueleto ajustado (`esqueleto`). Son opcionales: lo que no se pueda leer se descarta sin rechazar la
+ * sesión, y una app anterior los ignora (solo se pierden al guardar con ella).
  */
 
 export const ESQUEMA_ACTUAL = 7
@@ -122,6 +127,8 @@ export interface CabeceraSesion {
   readonly expiraEn: number
   /** Lo que ocupa guardada, aproximadamente (bytes); se calcula al guardar, así que las migradas no lo tienen. */
   readonly bytes?: number
+  /** Lo que se mira en «Ángulos en 3D» (opcional, sin subir el esquema). */
+  readonly tresd?: Ajustes3D
 }
 
 export interface DatosSesion {
@@ -129,6 +136,8 @@ export interface DatosSesion {
   readonly id: string
   /** Por id de vista y de marcador. */
   readonly trayectorias: Readonly<Record<string, Readonly<Record<IdMarcador, TrayectoriaGuardada>>>>
+  /** El esqueleto ajustado (opcional, sin subir el esquema; se valida al usarlo: `desempaquetarEsqueleto`). */
+  readonly esqueleto?: EsqueletoGuardado
 }
 
 export type Lectura<T> =
@@ -173,6 +182,10 @@ export interface EntradaGuardado {
   readonly calibracion3d?: Calibracion3D | null
   /** Estatura (m); sin ella (o null), ninguna. */
   readonly estatura?: number | null
+  /** Lo que se mira en «Ángulos en 3D»; sin ello (o null), nada. */
+  readonly tresd?: Ajustes3D | null
+  /** El esqueleto ajustado; sin él (o null), ninguno. */
+  readonly esqueleto?: EsqueletoGuardado | null
 }
 
 const SIN_SINCRONIA: Sincronia = { metodo: 'ninguna' }
@@ -218,8 +231,9 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     calibracion3d: e.calibracion3d ?? null,
     // Una estatura fuera de lo que se lee no se guarda (si no, la sesión no se volvería a abrir).
     estatura: e.estatura && e.estatura > 0 && e.estatura < 3 ? e.estatura : null,
+    ...(e.tresd ? { tresd: e.tresd } : {}),
   }
-  const datos: DatosSesion = { esquema: ESQUEMA_ACTUAL, id: e.id, trayectorias }
+  const datos: DatosSesion = { esquema: ESQUEMA_ACTUAL, id: e.id, trayectorias, ...(e.esqueleto ? { esqueleto: e.esqueleto } : {}) }
   const ahora = Date.parse(e.ahora)
   return {
     cabecera: { ...cabecera, expiraEn: caducaEn(Number.isNaN(ahora) ? Date.now() : ahora), bytes: bytesAproximados(cabecera, datos) },
@@ -235,6 +249,7 @@ export function bytesAproximados(cabecera: Omit<CabeceraSesion, 'expiraEn' | 'by
       for (const v of Object.values(t)) if (ArrayBuffer.isView(v)) n += v.byteLength
     }
   }
+  if (datos.esqueleto) n += bytesEsqueleto(datos.esqueleto) + JSON.stringify(datos.esqueleto.medidas).length
   return n
 }
 
@@ -463,6 +478,12 @@ export function leerCabecera(v: unknown): Lectura<CabeceraSesion> {
     if (!esCalibracion3D(c.calibracion3d)) return mal('calibración 3D no válida')
     const ids = new Set(vistas.map((x) => x.id))
     if (!c.calibracion3d.vistas.every((id) => ids.has(id))) return mal('la calibración 3D es de vistas que no están en la sesión')
+  }
+  // Lo que se mira en el 3D: si no se puede leer, se descarta (se empieza como siempre).
+  if (c.tresd !== undefined) {
+    const t = leerAjustes3D(c.tresd)
+    if (t) c.tresd = t
+    else delete c.tresd
   }
   return { ok: true, valor: c as unknown as CabeceraSesion }
 }

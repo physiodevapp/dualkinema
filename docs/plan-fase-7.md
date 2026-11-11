@@ -78,7 +78,7 @@ Una lectura independiente de lo que añade la fase 7 (`git diff 4c4265d..`), con
 1. **Probado solo con datos sintéticos** (el acuerdo del proyecto): la validación con la toma de dos móviles queda para el final.
 2. **La anteversión de la pelvis no se mide** (fija en 0) y la rotación de cadera solo con la rodilla doblada (por debajo de 20°, sujeta a la anterior y marcada como poco fiable).
 3. **Converge despacio** (jacobiano numérico, hasta 150 iteraciones: 20–30 ms por frame): unos minutos de vídeo son decenas de segundos en el worker. Un jacobiano analítico lo aceleraría.
-4. **El ajuste no se guarda** con la sesión (se pide con el botón al abrirla) ni sus ceros; los gomets todavía no entran como puntos del modelo (D9).
+4. ~~El ajuste no se guarda con la sesión ni sus ceros~~ (resuelto el 11-11: se guardan el esqueleto, con la huella de los puntos 3D de los que salió, y lo que se mira en «Ángulos en 3D» —fuente, articulación y ceros—; ver `core/persistencia/esqueleto.ts`); los gomets todavía no entran como puntos del modelo (D9).
 5. **Las medidas de la persona** salen de la mediana de los puntos 3D de la toma: si el detector pone la cadera desplazada desde un lado, el muslo medido lo arrastra.
 
 ## Riesgos

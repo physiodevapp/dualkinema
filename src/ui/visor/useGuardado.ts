@@ -11,6 +11,7 @@ import type { DeteccionPose, IdMarcador, ModeloMarcadores, Muestra2D, Sincronia 
 import { prepararGuardado } from '../../core/persistencia/esquema'
 import type { Sensores } from '../../core/sensores/sensores'
 import type { Calibracion3D } from '../../core/tresd/calibracion3d'
+import type { Ajustes3D, EsqueletoGuardado } from '../../core/persistencia/esqueleto'
 import type { HuellaArchivo } from '../../core/persistencia/huella'
 import { fijarSesionAbierta, guardarSesion, pedirPersistencia } from '../../persistencia/almacen'
 
@@ -68,6 +69,9 @@ interface Opciones {
   /** La calibración 3D de la sesión y la estatura (fase 6). */
   readonly calibracion3d: Calibracion3D | null
   readonly estatura: number | null
+  /** Lo que se mira en «Ángulos en 3D» y el esqueleto ajustado (null sin ellos). */
+  readonly tresd?: Ajustes3D | null
+  readonly esqueleto?: EsqueletoGuardado | null
   /** Cambia con cada modificación de lo que se guarda (trayectorias, ajustes, ceros o escala); solo crece. */
   readonly version: number
   /** La sesión viene de lo guardado (no es nueva). */
@@ -83,7 +87,7 @@ interface Opciones {
  * cerrar el visor. No crea la sesión hasta que hay algo marcado o una escala;
  * una vez creada, quitarlo todo también se guarda (si no, volvería al recuperar).
  */
-export function useGuardado({ sesion, modelo, filtro, vistas, calibracion3d, estatura, version, recuperada, sinGuardar = false }: Opciones): EstadoGuardado {
+export function useGuardado({ sesion, modelo, filtro, vistas, calibracion3d, estatura, tresd = null, esqueleto = null, version, recuperada, sinGuardar = false }: Opciones): EstadoGuardado {
   const [estado, setEstado] = useState<EstadoGuardado>({ estado: recuperada ? 'recuperado' : 'nada' })
   // La versión con que se montó ya está guardada (vacía o recuperada), salvo que se diga que no (-1 no coincide con ninguna).
   const guardada = useRef(sinGuardar ? -1 : version)
@@ -95,8 +99,8 @@ export function useGuardado({ sesion, modelo, filtro, vistas, calibracion3d, est
   // La sesión ya está en el dispositivo: a partir de ahí, quitarlo todo también se guarda.
   const existe = useRef(recuperada)
   // Lo que se lee al guardar: siempre lo último, sin rehacer los efectos.
-  const datos = useRef({ sesion, modelo, filtro, vistas, calibracion3d, estatura })
-  datos.current = { sesion, modelo, filtro, vistas, calibracion3d, estatura }
+  const datos = useRef({ sesion, modelo, filtro, vistas, calibracion3d, estatura, tresd, esqueleto })
+  datos.current = { sesion, modelo, filtro, vistas, calibracion3d, estatura, tresd, esqueleto }
 
   const guardar = useCallback(() => {
     if (temporizador.current) clearTimeout(temporizador.current)
@@ -110,7 +114,7 @@ export function useGuardado({ sesion, modelo, filtro, vistas, calibracion3d, est
       setEstado({ estado: 'nada' })
       return
     }
-    const { sesion, modelo, filtro, vistas, calibracion3d, estatura } = datos.current
+    const { sesion, modelo, filtro, vistas, calibracion3d, estatura, tresd, esqueleto } = datos.current
     // Se serializa ahora: las trayectorias cambian en sitio.
     const { cabecera, datos: tray } = prepararGuardado({
       id: sesion.id,
@@ -123,6 +127,8 @@ export function useGuardado({ sesion, modelo, filtro, vistas, calibracion3d, est
       referencia: sesion.referencia,
       calibracion3d,
       estatura,
+      tresd,
+      esqueleto,
     })
     guardada.current = v
     existe.current = true

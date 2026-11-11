@@ -11,6 +11,7 @@ import type { Calibracion3D } from '../../core/tresd/calibracion3d'
 import { aLaboratorio, filtrar3D, triangularSesion } from '../../core/tresd/puntos3d'
 import { ARTICULACIONES_ESQUELETO, serieEsqueleto, type ResultadoEsqueleto } from '../../core/esqueleto/sesion'
 import { puntosDePostura } from '../../core/esqueleto/modelo'
+import { desempaquetarEsqueleto, empaquetarEsqueleto, huellaTrayectorias3D, type Ajustes3D, type EsqueletoGuardado } from '../../core/persistencia/esqueleto'
 import type { AlWorkerEsqueleto, DelWorkerEsqueleto } from '../../workers/protocolo'
 import type { VistaViva } from './vistas'
 
@@ -31,15 +32,26 @@ export function useAngulos3D({
   b,
   calibracion,
   ajustes,
+  inicial,
+  alCambiar,
 }: {
   readonly a: VistaViva | null
   readonly b: VistaViva | null
   readonly calibracion: Calibracion3D | null
   readonly ajustes: AjustesFiltro
+  /** Lo guardado con la sesión: lo que se miraba y el esqueleto ajustado (que vale si los puntos 3D no han cambiado). */
+  readonly inicial?: { readonly tresd: Ajustes3D | null; readonly esqueleto: EsqueletoGuardado | null }
+  /** Cambió algo de lo que se guarda (para el guardado de la sesión). */
+  readonly alCambiar?: () => void
 }) {
   const hay = !!a && !!b && !!calibracion
-  const [elegida, setElegida] = useState(ARTICULACIONES_3D[0]!.id)
-  const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>({})
+  // Lo guardado se lee una vez, al montar.
+  const [guardado] = useState(() => {
+    const e = inicial?.esqueleto ? desempaquetarEsqueleto(inicial.esqueleto) : null
+    return { tresd: inicial?.tresd ?? null, esqueleto: e && inicial?.esqueleto ? { ...e, empaquetado: inicial.esqueleto } : null }
+  })
+  const [elegida, setElegidaEstado] = useState(guardado.tresd?.articulacion ?? ARTICULACIONES_3D[0]!.id)
+  const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>(guardado.tresd?.ceros ?? {})
   // Mientras se sigue o se detecta en una vista, sus trayectorias cambian con cada lote: no se rehace el 3D de toda la toma
   // cada vez (se rehace al acabar).
   const ocupado = !!a && !!b && (a.siguiendo || a.detectando || b.siguiendo || b.detectando)
@@ -58,6 +70,8 @@ export function useAngulos3D({
   )
   const fs = a ? fpsMediano(a.tabla) : 30
   const tr = useMemo(() => (bruto ? filtrar3D(bruto, fs, ajustes) : null), [bruto, fs, ajustes])
+  // La huella de los puntos sin filtrar: el esqueleto vale mientras no cambie (también el guardado, al reabrir).
+  const huella = useMemo(() => (bruto ? huellaTrayectorias3D(bruto) : null), [bruto])
   const anchoA = a?.info.ancho
   const altoA = a?.info.alto
   const anchoB = b?.info.ancho
@@ -71,12 +85,23 @@ export function useAngulos3D({
     [anchoA, altoA, anchoB, altoB],
   )
   // El esqueleto (fase 7): se ajusta a petición en un worker y vale mientras no cambien los puntos 3D de los que sale.
-  const [fuente, setFuente] = useState<Fuente3D>('puntos')
-  const [ajuste, setAjuste] = useState<{ bruto: typeof bruto; resultado: ResultadoEsqueleto | null; ms: number } | null>(null)
+  const [fuente, setFuenteEstado] = useState<Fuente3D>(guardado.tresd?.fuente ?? 'puntos')
+  const [ajuste, setAjuste] = useState<{ huella: string | null; resultado: ResultadoEsqueleto | null; ms: number; empaquetado?: EsqueletoGuardado } | null>(() =>
+    guardado.esqueleto ? { huella: guardado.esqueleto.huella, resultado: guardado.esqueleto.resultado, ms: 0, empaquetado: guardado.esqueleto.empaquetado } : null,
+  )
+  const avisar = () => alCambiar?.()
+  const setFuente = (f: Fuente3D) => {
+    setFuenteEstado(f)
+    avisar()
+  }
+  const setElegida = (id: string) => {
+    setElegidaEstado(id)
+    avisar()
+  }
   const [estadoEsq, setEstadoEsq] = useState<EstadoEsqueleto>({ fase: 'parado' })
   const worker = useRef<Worker | null>(null)
   useEffect(() => () => worker.current?.terminate(), [])
-  const esqueleto = ajuste && ajuste.bruto === bruto ? ajuste.resultado : null
+  const esqueleto = ajuste && huella !== null && ajuste.huella === huella ? ajuste.resultado : null
   const conEsqueleto = fuente === 'esqueleto' && !!esqueleto
   const lista = fuente === 'esqueleto' ? ARTICULACIONES_ESQUELETO : ARTICULACIONES_3D
   const elegidaVigente = lista.some((x) => x.id === elegida) ? elegida : lista[0]!.id
@@ -99,14 +124,15 @@ export function useAngulos3D({
     worker.current?.terminate()
     const w = new Worker(new URL('../../workers/esqueleto.worker.ts', import.meta.url), { type: 'module' })
     worker.current = w
-    const desde = bruto
+    const desde = huella
     setEstadoEsq({ fase: 'ajustando', fraccion: 0 })
     w.onmessage = (e: MessageEvent<DelWorkerEsqueleto>) => {
       if (worker.current !== w) return
       const m = e.data
       if (m.tipo === 'progreso') return setEstadoEsq({ fase: 'ajustando', fraccion: m.fraccion })
       if (m.tipo === 'hecho') {
-        setAjuste({ bruto: desde, resultado: m.resultado, ms: m.ms })
+        setAjuste({ huella: desde, resultado: m.resultado, ms: m.ms })
+        avisar()
         setEstadoEsq(m.resultado ? { fase: 'parado' } : { fase: 'error', mensaje: 'no hay bastantes puntos 3D para medir a la persona.' })
       } else setEstadoEsq({ fase: 'error', mensaje: m.mensaje })
       w.terminate()
@@ -128,8 +154,16 @@ export function useAngulos3D({
   }
   const tramo = ceros[elegidaVigente] ?? null
   const cero = tramo ? ceroDeReferencia(serie, tramo) : null
-  const ponerCero = (t: TramoEstatico | null) =>
+  const ponerCero = (t: TramoEstatico | null) => {
     setCeros((c) => (t ? { ...c, [elegidaVigente]: t } : Object.fromEntries(Object.entries(c).filter(([k]) => k !== elegidaVigente))))
+    avisar()
+  }
+  // Lo que se guarda con la sesión: el esqueleto se empaqueta una vez por ajuste (el guardado lo lee en cada guardado).
+  const empaquetado = useMemo(
+    () => (ajuste?.resultado && ajuste.huella ? (ajuste.empaquetado ?? empaquetarEsqueleto(ajuste.resultado, ajuste.huella)) : null),
+    [ajuste],
+  )
+  const aGuardar = useMemo(() => ({ tresd: { fuente, articulacion: elegida, ceros } satisfies Ajustes3D, esqueleto: empaquetado }), [fuente, elegida, ceros, empaquetado])
 
   const generar = (formato: Parameters<typeof construirCsv3D>[1]) => {
     const angulos = ARTICULACIONES_3D.map((x) => {
@@ -156,7 +190,7 @@ export function useAngulos3D({
     ocupado,
     fuente,
     setFuente,
-    ajuste: ajuste && { cambiado: ajuste.bruto !== bruto },
+    ajuste: ajuste && { cambiado: ajuste.huella !== huella },
     estadoEsq,
     esqueleto,
     lista,
@@ -171,6 +205,7 @@ export function useAngulos3D({
     cero,
     ponerCero,
     generar,
+    aGuardar,
   }
 }
 

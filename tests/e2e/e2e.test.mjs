@@ -5480,6 +5480,54 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     const texto = await readFile(await (await descarga).path(), 'utf8')
     const columnas = texto.split('\r\n').find((l) => l.startsWith('t_comun_s')).split(';')
     assert.ok(columnas.includes('esq_cadera_rot_der_grados') && columnas.includes('esq_cadera_rot_der_fiable'))
+  })
+
+  it('el esqueleto y lo que se mira en el 3D se guardan con la sesión: al reabrir están sin volver a ajustar', async () => {
+    const panel = p.getByTestId('panel-3d')
+    await panel.getByTestId('articulacion-3d').selectOption('esq_rodilla_izq')
+    await irAFrame(p, 60)
+    await abrirPestana(p, 'analisis')
+    const leer = async () => Number((await panel.getByTestId('valor-3d').innerText()).replace(/°.*/s, '').replace(',', '.').replace('−', '-'))
+    const antes = await leer()
+    const resumen = await panel.getByTestId('resumen-esqueleto').innerText()
+    // Guardado: la cabecera con lo que se mira y las trayectorias con el esqueleto.
+    await p.waitForFunction(
+      async () => {
+        const bd = await new Promise((ok) => {
+          const r = indexedDB.open('dualkinema')
+          r.onsuccess = () => ok(r.result)
+        })
+        try {
+          const todo = (almacen) =>
+            new Promise((ok) => {
+              const r = bd.transaction(almacen).objectStore(almacen).getAll()
+              r.onsuccess = () => ok(r.result)
+            })
+          const cabecera = (await todo('sesiones')).find((c) => c.calibracion3d)
+          const datos = (await todo('trayectorias')).find((d) => d.id === cabecera?.id)
+          return cabecera?.tresd?.fuente === 'esqueleto' && cabecera.tresd.articulacion === 'esq_rodilla_izq' && datos?.esqueleto?.posturas instanceof Float64Array
+        } finally {
+          bd.close()
+        }
+      },
+      null,
+      { timeout: 20000, polling: 300 },
+    )
+    await p.reload()
+    await p.getByTestId('sesion-guardada').first().waitFor()
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Continuar' }).first(), videos.verde.ruta)
+    await p.getByTestId('faltan-videos').waitFor({ timeout: 20000 })
+    await elegirArchivoDesde(p, p.getByRole('button', { name: 'Elegir el vídeo que falta' }), videos.frontal25.ruta)
+    await p.getByTestId('conmutador-vista').waitFor({ timeout: 20000 })
+    await esperarQuieto(p)
+    await irAFrame(p, 60)
+    await abrirPestana(p, 'analisis')
+    await panel.waitFor()
+    assert.equal(await panel.getByTestId('fuente-esqueleto').isChecked(), true)
+    assert.equal(await panel.getByTestId('articulacion-3d').inputValue(), 'esq_rodilla_izq')
+    assert.equal(await panel.getByTestId('resumen-esqueleto').innerText(), resumen)
+    assert.equal(await panel.getByRole('button', { name: 'Volver a ajustar el esqueleto' }).count(), 1)
+    assert.ok(Math.abs((await leer()) - antes) < 0.051, `${await leer()} frente a ${antes}`)
     await panel.getByRole('radio', { name: 'Puntos' }).check()
   })
 

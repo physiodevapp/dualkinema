@@ -42,6 +42,7 @@ export function armarSesion(cabecera: CabeceraSesion, datos: DatosSesion, abiert
     filtro: cabecera.filtro,
     calibracion3d: cabecera.calibracion3d,
     estatura: cabecera.estatura,
+    inicial3d: { tresd: cabecera.tresd ?? null, esqueleto: datos.esqueleto ?? null },
     aviso: `Trabajo recuperado tal como se guardó el ${fechaCorta(cabecera.actualizada)}: ${textoResumen(cabecera)}.`,
   }
 }

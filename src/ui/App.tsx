@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Calibracion3D } from '../core/tresd/calibracion3d'
+import type { Ajustes3D, EsqueletoGuardado } from '../core/persistencia/esqueleto'
 import type { Fuente } from '../core/pose/catalogo'
 import { ArrowLeftIcon, ArrowPathIcon, BookOpenIcon, ClipboardDocumentListIcon, DevicePhoneMobileIcon, FilmIcon, Square2StackIcon, VideoCameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import type { OrientacionVista } from '../core/geometria/canonico'
@@ -69,6 +70,8 @@ type Estado =
       /** Solo al recuperar: la calibración 3D y la estatura guardadas (fase 6). */
       calibracion3d?: Calibracion3D | null
       estatura?: number | null
+      /** Solo al recuperar: lo que se miraba en el 3D y el esqueleto ajustado. */
+      inicial3d?: { readonly tresd: Ajustes3D | null; readonly esqueleto: EsqueletoGuardado | null }
       aviso?: string
       /** Pestaña con que empezar (una grabación doble abre en «Vídeo», con la sincronía propuesta). */
       pestana?: string
@@ -683,6 +686,7 @@ function Aplicacion() {
             pestanaInicial={estado.pestana}
             calibracion3d={estado.calibracion3d}
             estatura={estado.estatura}
+            inicial3d={estado.inicial3d}
           />
         </Suspense>
       )}
