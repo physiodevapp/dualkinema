@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownTrayIcon,
   ArrowLeftIcon,
@@ -26,6 +26,7 @@ import { useEncuadre } from './useEncuadre'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil, MotivoRechazo } from '../core/sala/protocolo'
 import { TEXTO_RECHAZO } from '../core/sala/mando'
+import { anotarSuceso, type Suceso, type SucesoNuevo } from '../core/sala/sucesos'
 import { CALIDAD_PITIDO_MINIMA, DURACION_SECUENCIA_S, PITIDO_OTRA_S, VENTANA_DESPUES_S, type Deteccion } from '../core/sincronia/pitido'
 import { AVISO_SOFTWARE, calidadInicial } from '../media/codificador'
 import { espacio } from '../media/grabaciones'
@@ -88,6 +89,7 @@ function useMiEstado(
   encuadre: Encuadre | null,
   pideEncuadre: boolean,
   rechazo: EstadoMovil['rechazo'],
+  sucesos: EstadoMovil['sucesos'],
 ): EstadoMovil {
   const [libreMB, setLibreMB] = useState<number | null>(null)
   const [bateria, setBateria] = useState<number | null>(null)
@@ -120,8 +122,9 @@ function useMiEstado(
       reloj: null,
       primero: null,
       rechazo,
+      sucesos,
     }
-  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, rechazo])
+  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, rechazo, sucesos])
 }
 
 
@@ -467,11 +470,14 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   // La última orden del mando que no se pudo hacer: se le cuenta (con su motivo) y se dice aquí.
   const [rechazo, setRechazo] = useState<EstadoMovil['rechazo']>(null)
   const [verRechazo, setVerRechazo] = useState(false)
-  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre, rechazo)
+  // Lo que pasa al grabar, para el registro del mando.
+  const [sucesos, setSucesos] = useState<readonly Suceso[]>([])
+  const alSuceso = useCallback((s: SucesoNuevo) => setSucesos((l) => anotarSuceso(l, s)), [])
+  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre, rechazo, sucesos)
   const sala: Sala = useSala(codigo, vista, miEstado)
   const pideAhora = sala.conexion === 'emparejado' && !!sala.otro?.estado?.pideEncuadre
   if (pideAhora !== pideOtro) setPideOtro(pideAhora)
-  const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio, calidad)
+  const doble = useGrabacionDoble(sala, flujo, vista, sala.otro?.vista ?? null, miEstado.libreMB, audio, calidad, alSuceso)
   const ocupado = doble.fase.f === 'esperando' || doble.fase.f === 'programada' || doble.fase.f === 'grabando' || doble.fase.f === 'parando'
   if (grabando !== (doble.fase.f === 'grabando')) setGrabando(doble.fase.f === 'grabando')
   // Al empezar otra grabación, el aviso de la orden que no se pudo hacer ya no vale.

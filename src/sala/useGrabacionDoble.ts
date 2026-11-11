@@ -15,6 +15,8 @@ import { emitirSecuencia, pitar } from './sonido'
 import type { GuionVoz } from '../core/grabacion/guionVoz'
 import { callar, hablar } from './voz'
 import type { Sala } from './useSala'
+import type { SucesoNuevo } from '../core/sala/sucesos'
+import { CALIDAD_PITIDO_MINIMA } from '../core/sincronia/pitido'
 
 /*
  * La grabación doble vista desde este móvil (fase 4, paso 5; D8 de docs/plan-fase-4.md). Reglas en
@@ -95,6 +97,8 @@ export function useGrabacionDoble(
   libreMB: number | null,
   audio: AudioContext | null,
   calidad: Calidad,
+  /** Lo que pasa al grabar (para el registro del mando: `core/sala/sucesos.ts`). */
+  alSuceso: (s: SucesoNuevo) => void = () => {},
 ): GrabacionDoble {
   const [fase, setFaseEstado] = useState<FaseDoble>({ f: 'libre' })
   const faseRef = useRef<FaseDoble>(fase)
@@ -111,10 +115,11 @@ export function useGrabacionDoble(
   // El guion por voz de la grabación que este móvil ha programado (el otro no habla).
   const guion = useRef<{ id: string; guion: GuionVoz } | null>(null)
   // Lo que cambia y leen los temporizadores y los mensajes.
-  const vivo = useRef({ sala, flujo, vista, otraVista, libreMB, audio, calidad })
+  const vivo = useRef({ sala, flujo, vista, otraVista, libreMB, audio, calidad, alSuceso })
   useEffect(() => {
-    vivo.current = { sala, flujo, vista, otraVista, libreMB, audio, calidad }
+    vivo.current = { sala, flujo, vista, otraVista, libreMB, audio, calidad, alSuceso }
   })
+  const suceso = useCallback((s: SucesoNuevo) => vivo.current.alSuceso(s), [])
 
   const limpiar = useCallback(() => {
     for (const t of temporizadores.current) clearTimeout(t)
@@ -146,12 +151,20 @@ export function useGrabacionDoble(
         const t = await g.parar()
         const analisis = await analizarGrabacion(t.archivo).catch(() => null)
         const oidos = plan ? await buscarPitidos(t.archivo, plan.propio, plan.otro).catch(() => null) : null
+        const oida = (d: { calidad: number } | null | undefined) => (d && d.calidad >= CALIDAD_PITIDO_MINIMA ? 1 : 0)
+        suceso({
+          tipo: 'terminada',
+          segundos: analisis ? Math.round(analisis.duracion * 10) / 10 : null,
+          fps: analisis ? Math.round(analisis.fpsMediano * 10) / 10 : null,
+          pitidos: oidos ? oida(oidos.propio) + oida(oidos.otro) : null,
+        })
         setFase({ f: 'hecha', id, archivo: t.archivo, enAlmacen: t.enAlmacen, analisis, arranque, pitidos: oidos, pito: plan?.pito ?? false, tiempos: g.tiempos, ...(aviso ? { aviso } : {}) })
       } catch (e) {
+        suceso({ tipo: 'no-termina' })
         setFase({ f: 'libre', aviso: `No se ha podido terminar la grabación: ${e instanceof Error ? e.message : String(e)}` })
       }
     },
-    [limpiar, setFase],
+    [limpiar, setFase, suceso],
   )
 
   /** Lo de este móvil una vez acordado el inicio (en mi reloj). */
@@ -160,6 +173,7 @@ export function useGrabacionDoble(
       const { sala: s, flujo: f, vista: v, otraVista: ov, audio: a, calidad } = vivo.current
       if (!f || !v) {
         s.enviar({ tipo: 'cancelar', grabacion: id, motivo: f ? 'sin-vista' : 'sin-camara' })
+        suceso({ tipo: 'no-graba', motivo: f ? 'sin-vista' : 'sin-camara', deOtro: false })
         setFase({ f: 'libre', aviso: `No se graba: ${f ? 'falta elegir la vista de este móvil' : 'la cámara de este móvil no está abierta'}.` })
         return
       }
@@ -215,19 +229,22 @@ export function useGrabacionDoble(
           // En memoria (si OPFS falla) se graba menos tiempo: `duracionMaxima` es la de esta grabación.
           const finReal = Math.min(fin ?? Infinity, inicio + g.duracionMaxima * 1000)
           setFase({ f: 'grabando', id, inicio, fin: finReal, arranque })
+          suceso({ tipo: 'empieza' })
           en(finReal, () => void terminar(id, arranque))
           g.error.catch((e: unknown) => {
             if (grabadora.current !== g) return
             vivo.current.sala.enviar({ tipo: 'cancelar', grabacion: id, motivo: 'fallo' })
+            suceso({ tipo: 'cortada', segundos: Math.round((ahora() - arranque) / 100) / 10 })
             void terminar(id, arranque, `La grabación se ha interrumpido (${e instanceof Error ? e.message : String(e)}): se guarda lo grabado hasta ahí.`)
           })
         } catch (e) {
           vivo.current.sala.enviar({ tipo: 'cancelar', grabacion: id, motivo: 'fallo' })
+          suceso({ tipo: 'no-graba', motivo: 'fallo', deOtro: false })
           setFase({ f: 'libre', aviso: `Este móvil no ha podido grabar: ${e instanceof Error ? e.message : String(e)}` })
         }
       })
     },
-    [en, setFase, terminar],
+    [en, setFase, terminar, suceso],
   )
 
   // Mensajes del otro móvil.
@@ -250,6 +267,7 @@ export function useGrabacionDoble(
           })
           if (motivo) {
             s.enviar({ tipo: 'cancelar', grabacion: m.grabacion, motivo })
+            suceso({ tipo: 'no-graba', motivo, deOtro: false })
             if (!ocupado(f)) setFase({ f: 'libre', aviso: `El otro móvil ha pedido grabar, pero ${TEXTO_MOTIVO[motivo]}: no se graba.` })
             return
           }
@@ -263,6 +281,7 @@ export function useGrabacionDoble(
             limpiar()
             callar()
             void descartarPreparada()
+            suceso({ tipo: 'no-graba', motivo: m.motivo, deOtro: true })
             setFase({ f: 'libre', aviso: `No se graba: ${TEXTO_MOTIVO[m.motivo]}.` })
           }
           // Grabando: el otro ha fallado, pero este sigue (su vídeo vale para una vista).
@@ -271,11 +290,12 @@ export function useGrabacionDoble(
           else if (f.f === 'programada') {
             limpiar()
             void descartarPreparada()
+            suceso({ tipo: 'no-graba', motivo: 'usuario', deOtro: true })
             setFase({ f: 'libre', aviso: 'El otro móvil ha cancelado la cuenta atrás.' })
           }
         }
       }),
-    [escuchar, prepararYArrancar, limpiar, descartarPreparada, terminar, setFase],
+    [escuchar, prepararYArrancar, limpiar, descartarPreparada, terminar, setFase, suceso],
   )
 
   // Al salir de la pantalla, nada se queda grabando ni preparado.
@@ -300,6 +320,7 @@ export function useGrabacionDoble(
       const inicio = ahora() + cuentaAtrasS * 1000
       const fin = duracionS === null ? null : inicio + duracionS * 1000
       if (!vivo.current.sala.enviar({ tipo: 'programar', grabacion: id, inicio, duracion: duracionS })) {
+        suceso({ tipo: 'no-graba', motivo: 'sin-conexion', deOtro: false })
         setFase({ f: 'libre', aviso: 'No hay conexión con el otro móvil: no se graba.' })
         return
       }
@@ -307,10 +328,11 @@ export function useGrabacionDoble(
       en(ahora() + ESPERA_CONFIRMACION_MS, () => {
         if (faseRef.current.f !== 'esperando' || faseRef.current.id !== id) return
         vivo.current.sala.enviar({ tipo: 'cancelar', grabacion: id, motivo: 'tarde' })
+        suceso({ tipo: 'no-graba', motivo: 'sin-respuesta', deOtro: false })
         setFase({ f: 'libre', aviso: 'El otro móvil no ha contestado: no se graba.' })
       })
     },
-    [en, setFase],
+    [en, setFase, suceso],
   )
 
   const parar = useCallback(() => {
@@ -323,9 +345,10 @@ export function useGrabacionDoble(
       vivo.current.sala.enviar({ tipo: 'cancelar', grabacion: f.id, motivo: 'usuario' })
       limpiar()
       void descartarPreparada()
+      suceso({ tipo: 'no-graba', motivo: 'usuario', deOtro: false })
       setFase({ f: 'libre', aviso: 'Cancelado.' })
     }
-  }, [terminar, limpiar, descartarPreparada, setFase])
+  }, [terminar, limpiar, descartarPreparada, setFase, suceso])
 
   const otraVez = useCallback(() => setFase({ f: 'libre' }), [setFase])
 
