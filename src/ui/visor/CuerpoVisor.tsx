@@ -51,6 +51,7 @@ import Grafica3DCentral from './Grafica3DCentral'
 import { useAngulos3D } from './useAngulos3D'
 import { guardarGraficaCentral, leerGraficaCentral, type GraficaCentral } from './preferencias'
 import type { Calibracion3D } from '../../core/tresd/calibracion3d'
+import type { Ajustes3D, EsqueletoGuardado } from '../../core/persistencia/esqueleto'
 import { rangoSesion } from '../../core/tiempo/comun'
 import type { SincronizacionExportada } from '../../core/exportacion/csv'
 import { incertidumbreEvento, pasoTipico } from '../../core/sincronia/evento'
@@ -104,11 +105,13 @@ interface Props {
   estatura: number | null
   onCalibracion3d: (c: Calibracion3D | null, estatura: number | null) => void
   rev3d: number
+  /** Al recuperar: lo que se miraba en el 3D y el esqueleto ajustado. */
+  inicial3d?: { readonly tresd: Ajustes3D | null; readonly esqueleto: EsqueletoGuardado | null }
   onElegirVista: (id: string) => void
   onAnadirVista: (video: VideoAbierto, orientacion: OrientacionVista, fuente: Fuente) => void
 }
 
-export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, ajustes, onCambiarAjustes: cambiarAjustes, revAjustes, calibracion3d, estatura, onCalibracion3d, rev3d, onElegirVista, onAnadirVista }: Props) {
+export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recuperada, sinGuardar, pestana, onPestana: setPestana, fuera, registrarVistas, sincronizarVistas, enlazarCursor, onSincronia, revSinc, ajustes, onCambiarAjustes: cambiarAjustes, revAjustes, calibracion3d, estatura, onCalibracion3d, rev3d, inicial3d, onElegirVista, onAnadirVista }: Props) {
   const activaViva = vistas[activa]!
   const orientacion = activaViva.orientacion
   // La articulación que se mira en la vista activa (fase 5: la elegida en «Análisis»).
@@ -210,7 +213,10 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
   // Se guardan todas las vistas, con el filtro de la sesión.
   // Los ángulos 3D de la sesión calibrada (fase 6): los comparten la tarjeta de «Análisis» y la gráfica central.
   const calibrada3d = vistas.length === 2 && !!calibracion3d && calibracion3d.vistas[0] === vistas[0]!.id && calibracion3d.vistas[1] === vistas[1]!.id
-  const t3 = useAngulos3D({ a: calibrada3d ? vistas[0]! : null, b: calibrada3d ? vistas[1]! : null, calibracion: calibrada3d ? calibracion3d : null, ajustes })
+  // Lo que se mira en el 3D y el esqueleto se guardan con la sesión: cada cambio sube este contador.
+  const [revT3, setRevT3] = useState(0)
+  const alCambiarT3 = useCallback(() => setRevT3((n) => n + 1), [])
+  const t3 = useAngulos3D({ a: calibrada3d ? vistas[0]! : null, b: calibrada3d ? vistas[1]! : null, calibracion: calibrada3d ? calibracion3d : null, ajustes, inicial: inicial3d, alCambiar: alCambiarT3 })
   // Con la sesión en 3D, la gráfica central enseña los ángulos 3D (o, si se pide, los 2D de cada vista).
   const [graficaCentral, setGraficaCentral] = useState<GraficaCentral>(leerGraficaCentral)
   const elegirGraficaCentral = (m: GraficaCentral) => {
@@ -240,8 +246,10 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
     })),
     calibracion3d,
     estatura,
+    tresd: t3?.aGuardar.tresd ?? null,
+    esqueleto: t3?.aGuardar.esqueleto ?? null,
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: revSinc + revAjustes + rev3d + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion, 0),
+    version: revSinc + revAjustes + rev3d + revT3 + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion, 0),
     recuperada,
     sinGuardar,
   })

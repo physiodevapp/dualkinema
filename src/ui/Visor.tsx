@@ -6,6 +6,7 @@ import type { OrientacionVista } from '../core/geometria/canonico'
 import { AJUSTES_FILTRO_DEFECTO, type AjustesFiltro } from '../core/filtros/tramos'
 import type { ModeloMarcadores, Sincronia } from '../core/modelo/tipos'
 import type { Calibracion3D } from '../core/tresd/calibracion3d'
+import type { Ajustes3D, EsqueletoGuardado } from '../core/persistencia/esqueleto'
 import type { VideoAbierto } from '../media/video'
 import { ladoDeVista } from './marcadores'
 import AnfitrionVista from './visor/AnfitrionVista'
@@ -31,6 +32,8 @@ interface Props {
   /** Al recuperar: la calibración 3D y la estatura guardadas (fase 6). */
   calibracion3d?: Calibracion3D | null
   estatura?: number | null
+  /** Al recuperar: lo que se miraba en el 3D y el esqueleto ajustado. */
+  inicial3d?: { readonly tresd: Ajustes3D | null; readonly esqueleto: EsqueletoGuardado | null }
 }
 
 interface PropsAnfitriones {
@@ -84,7 +87,7 @@ function Anfitriones({ entradas, acumuladas, modelo, filtro, avisoInicial, activ
  * vista activa con el cursor común y la pestaña abierta. `CuerpoVisor` pinta la vista activa y se ocupa de lo común
  * (reparto de la pantalla y guardado).
  */
-export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, avisoInicial, onAnadirVista, pestanaInicial, calibracion3d: calibracionGuardada, estatura: estaturaGuardada }: Props) {
+export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, avisoInicial, onAnadirVista, pestanaInicial, calibracion3d: calibracionGuardada, estatura: estaturaGuardada, inicial3d }: Props) {
   // Un único modelo por sesión con todos los marcadores (D4): la rodilla con 3 gomets en la pierna que ve la cámara de la
   // vista de referencia (lateral) y, para una vista de frente, sus 3 marcadores y el FPPA de esa rodilla. Cada vista sigue
   // los suyos (`modeloDeVista`). Una sesión recuperada parte del que se guardó con ella. Se fija al abrir, ya con lo de la
@@ -182,6 +185,7 @@ export default function Visor({ vistas, sesion, modelo: modeloGuardado, filtro, 
           estatura={tresd.estatura}
           onCalibracion3d={fijarTresd}
           rev3d={rev3d}
+          inicial3d={inicial3d}
           onElegirVista={cursor.elegirActiva}
           onAnadirVista={onAnadirVista}
         />
