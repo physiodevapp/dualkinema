@@ -49,7 +49,7 @@ function TarjetaMovil({ m, n, encuadreActivo }: { m: MovilEnMando; n: number; en
       </p>
       {e?.microExterno && <Aviso testid="mando-aviso-micro">Tiene unos auriculares o un micrófono externo conectados: que se desconecten, o no se oirá su pitido.</Aviso>}
       <Colocacion inclinacion={e?.inclinacion ?? null} testid={`mando-inclinacion-${n}`} quien={quien} />
-      <TextoEncuadre encuadre={e?.encuadre ?? null} activo={encuadreActivo} testid={`mando-encuadre-${n}`} quien={quien} />
+      <TextoEncuadre encuadre={e?.encuadre ?? null} activo={encuadreActivo} fallo={!!e?.encuadreFallo} testid={`mando-encuadre-${n}`} quien={quien} />
     </div>
   )
 }

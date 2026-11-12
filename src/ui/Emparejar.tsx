@@ -88,6 +88,7 @@ function useMiEstado(
   inclinacion: Inclinacion | null,
   encuadre: Encuadre | null,
   pideEncuadre: boolean,
+  encuadreFallo: boolean,
   rechazo: EstadoMovil['rechazo'],
   sucesos: EstadoMovil['sucesos'],
 ): EstadoMovil {
@@ -118,13 +119,14 @@ function useMiEstado(
       inclinacion,
       encuadre,
       pideEncuadre,
+      encuadreFallo,
       // La cota del reloj la pone la sala al mandarlo.
       reloj: null,
       primero: null,
       rechazo,
       sucesos,
     }
-  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, rechazo, sucesos])
+  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, encuadreFallo, rechazo, sucesos])
 }
 
 
@@ -473,7 +475,7 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   // Lo que pasa al grabar, para el registro del mando.
   const [sucesos, setSucesos] = useState<readonly Suceso[]>([])
   const alSuceso = useCallback((s: SucesoNuevo) => setSucesos((l) => anotarSuceso(l, s)), [])
-  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre, rechazo, sucesos)
+  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre, errorEncuadre !== null, rechazo, sucesos)
   const sala: Sala = useSala(codigo, vista, miEstado)
   const pideAhora = sala.conexion === 'emparejado' && !!sala.otro?.estado?.pideEncuadre
   if (pideAhora !== pideOtro) setPideOtro(pideAhora)
@@ -667,7 +669,7 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
             <Aviso testid="aviso-codificador-otro">El otro móvil codifica el vídeo por software: puede grabar a menos de 30 fps.</Aviso>
           )}
           <Colocacion inclinacion={otro?.estado?.inclinacion ?? null} testid="inclinacion-otro" otro />
-          <TextoEncuadre encuadre={otro?.estado?.encuadre ?? null} activo={comprobarEncuadre || !!otro?.estado?.pideEncuadre} testid="encuadre-otro" quien="Su cámara" />
+          <TextoEncuadre encuadre={otro?.estado?.encuadre ?? null} activo={comprobarEncuadre || !!otro?.estado?.pideEncuadre} fallo={!!otro?.estado?.encuadreFallo} testid="encuadre-otro" quien="Su cámara" />
           {otro?.estado?.microExterno && (
             <Aviso testid="aviso-micro-otro">El otro móvil tiene unos auriculares o un micrófono externo conectados: que los desconecte, o no se oirá su pitido.</Aviso>
           )}

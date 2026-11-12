@@ -36,9 +36,16 @@ export function Colocacion({ inclinacion, testid, otro = false, quien }: { incli
 }
 
 /** Lo que ve una cámara de la persona («te ve entero ✓», «no se te ven los pies»…); nada si no se está comprobando. */
-export function TextoEncuadre({ encuadre, activo, testid, quien }: { encuadre: Encuadre | null; activo: boolean; testid: string; quien: string }) {
+export function TextoEncuadre({ encuadre, activo, fallo = false, testid, quien }: { encuadre: Encuadre | null; activo: boolean; fallo?: boolean; testid: string; quien: string }) {
   if (!activo) return null
   const bien = enteraEn(encuadre)
+  // Su detector no carga: se dice, en vez de «mirando…» para siempre.
+  if (fallo && !encuadre)
+    return (
+      <p className="font-mono text-sm text-acento" data-testid={testid} data-fallo="true">
+        {quien}: no puede comprobar el encuadre (su detector no carga: mira su pantalla)
+      </p>
+    )
   const texto = !encuadre
     ? 'mirando…'
     : bien
