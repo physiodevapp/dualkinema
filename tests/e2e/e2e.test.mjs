@@ -5179,6 +5179,9 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
       const terminadas = await m.locator('[data-testid=mando-suceso][data-tipo=terminada]').allInnerTexts()
       for (const t of terminadas) assert.match(t, /Móvil [12]: grabación terminada · [\d,]+ s · a [\d,]+ fps/)
       assert.match(await m.getByTestId('mando-ultimo').innerText(), /grabación terminada/)
+      // Terminada, no hay nada que parar y lo pedido ya no se dice.
+      assert.equal(await m.getByTestId('mando-parar').isDisabled(), true)
+      assert.equal(await m.getByTestId('mando-pedido').count(), 0)
       // Con el resultado a la vista en los móviles, el mando puede pedir otra (antes la orden se perdía sin decir nada).
       await m.waitForFunction(() => !document.querySelector('[data-testid=mando-grabar]')?.disabled, null, { timeout: 20000 })
       await m.getByTestId('mando-grabar').click()
