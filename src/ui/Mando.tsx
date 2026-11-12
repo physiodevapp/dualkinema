@@ -2,7 +2,7 @@ import { ArrowLeftIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline'
 import { useState } from 'react'
 import { formatoCodigo } from '../core/sala/codigo'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos } from '../core/sala/doble'
-import { destino, faltaParaGrabar, grabando as algunoGraba, rechazoNuevo, TEXTO_RECHAZO, type MovilEnMando } from '../core/sala/mando'
+import { destino, destinosParar, faltaParaGrabar, grabando as algunoGraba, rechazoNuevo, TEXTO_RECHAZO, type MovilEnMando } from '../core/sala/mando'
 import { esImportante, textoSuceso, type EntradaRegistro } from '../core/sala/sucesos'
 import type { EstadoCanal } from '../sala/canal'
 import { useMando } from '../sala/useMando'
@@ -206,7 +206,8 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
           <button
             type="button"
             onClick={() => {
-              if (!primero || !ordenar(primero.id, { orden: 'parar' })) return
+              const para = destinosParar(moviles)
+              if (!para.length || !para.map((m) => ordenar(m.id, { orden: 'parar' })).some(Boolean)) return
               setPedido(null)
               setEsperando(null)
             }}

@@ -46,6 +46,18 @@ export function faltaParaGrabar(moviles: readonly MovilEnMando[]): string[] {
   return r
 }
 
+/**
+ * A quién se manda «Parar los dos»: a cada móvil que esté grabando (si uno se ha cortado —bloqueado, app en segundo
+ * plano— el otro sigue y hay que pararlo a él: el 12-11 la orden iba solo al primero, que ya no grababa, y el otro
+ * siguió); si ninguno graba (cuenta atrás), al que recibe las órdenes.
+ */
+export function destinosParar(moviles: readonly MovilEnMando[]): MovilEnMando[] {
+  const grabando = moviles.filter((m) => m.estado?.grabando)
+  if (grabando.length) return grabando
+  const d = destino(moviles)
+  return d ? [d] : []
+}
+
 /** Si alguno está grabando (o parando). */
 export const grabando = (moviles: readonly MovilEnMando[]): boolean => moviles.some((m) => m.estado?.grabando)
 
