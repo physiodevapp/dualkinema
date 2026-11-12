@@ -98,7 +98,10 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
   const [cuenta, setCuenta] = useState<number>(10)
   const [duracion, setDuracion] = useState<number | null>(30)
   // Lo pedido (con el contador de rechazos del móvil en ese momento, para saber si uno nuevo es de esta orden).
-  const [pedido, setPedido] = useState<{ texto: string; antes: number } | null>(null)
+  const [pedido, setPedido] = useState<{ texto: string; antes: number; desde: number } | null>(null)
+  // Desde cuándo hay una grabación pedida desde aquí que aún no ha empezado (o no se ha dicho que no): mientras, se puede
+  // cancelar con «Parar los dos». Se queda con el primer pedido aunque se pida otra vez durante la cuenta atrás.
+  const [esperando, setEsperando] = useState<number | null>(null)
   const primero = destino(moviles)
   const falta = faltaParaGrabar(moviles)
   const graba = algunoGraba(moviles)
@@ -106,6 +109,9 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
   const encuadreActivo = moviles.some((m) => m.estado?.pideEncuadre)
   const conectado = conexion === 'abierto'
   const rechazado = pedido ? rechazoNuevo(primero, pedido.antes) : null
+  // Lo pedido ya ha empezado o no se graba (lo dice el registro): el aviso de lo pedido sobra y no hay nada que parar.
+  const resuelto = (desde: number) => registro.some((e) => e.hora >= desde && (e.suceso.tipo === 'empieza' || e.suceso.tipo === 'no-graba'))
+  const cuentaEnMarcha = esperando !== null && !resuelto(esperando)
 
   return (
     <section className="mx-auto flex w-full max-w-5xl flex-col gap-4" data-testid="mando">
@@ -186,7 +192,9 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
             type="button"
             onClick={() => {
               if (!primero || !ordenar(primero.id, { orden: 'programar', cuentaAtras: cuenta, duracion })) return
-              setPedido({ texto: `Pedido: empieza en ${cuenta} s${duracion ? ` y dura ${duracion} s` : ''}.`, antes: primero.estado?.rechazo?.n ?? 0 })
+              const desde = Date.now()
+              setPedido({ texto: `Pedido: empieza en ${cuenta} s${duracion ? ` y dura ${duracion} s` : ''}.`, antes: primero.estado?.rechazo?.n ?? 0, desde })
+              setEsperando((e) => (e !== null && !resuelto(e) ? e : desde))
             }}
             disabled={!conectado || falta.length > 0 || graba}
             className={`${boton} min-h-14 border-acento bg-acento font-medium text-fondo`}
@@ -198,9 +206,12 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
           <button
             type="button"
             onClick={() => {
-              if (primero && ordenar(primero.id, { orden: 'parar' })) setPedido(null)
+              if (!primero || !ordenar(primero.id, { orden: 'parar' })) return
+              setPedido(null)
+              setEsperando(null)
             }}
-            disabled={!conectado || !primero}
+            // Solo con algo que parar: grabando o con la cuenta atrás que se pidió desde aquí.
+            disabled={!conectado || !primero || !(graba || cuentaEnMarcha)}
             className={`${boton} min-h-14`}
             data-testid="mando-parar"
           >
@@ -217,7 +228,7 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
             {hora(registro[0].hora)} · {textoSuceso(registro[0].suceso, nombreMovil(moviles, registro[0].movil))}
           </p>
         )}
-        {pedido && !graba && (rechazado ? (
+        {pedido && !graba && (rechazado || !resuelto(pedido.desde)) && (rechazado ? (
           <Aviso testid="mando-rechazo">El Móvil 1 no ha grabado: {TEXTO_RECHAZO[rechazado]}.</Aviso>
         ) : (
           <p className="text-sm text-texto-2" data-testid="mando-pedido">
