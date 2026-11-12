@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { rechazoNuevo, destino, faltaParaGrabar, grabando, movilesVivos, SIN_NOTICIAS_MS, type MovilEnMando } from './mando'
+import { rechazoNuevo, destino, destinosParar, faltaParaGrabar, grabando, movilesVivos, SIN_NOTICIAS_MS, type MovilEnMando } from './mando'
 import type { EstadoMovil } from './protocolo'
 
 const estado = (cambios: Partial<EstadoMovil> = {}): EstadoMovil => ({
@@ -83,5 +83,15 @@ describe('el rechazo de una orden', () => {
     expect(rechazoNuevo(m, 2)).toBeNull()
     expect(rechazoNuevo(movil('b', { estado: estado() }), 0)).toBeNull()
     expect(rechazoNuevo(null, 0)).toBeNull()
+  })
+})
+
+describe('a quién va «Parar los dos»', () => {
+  it('a cada uno que graba; si uno se ha cortado, al otro; sin grabar (cuenta atrás), al primero', () => {
+    const graba = (id: string, si: boolean) => movil(id, { estado: estado({ grabando: si }) })
+    expect(destinosParar([graba('a', true), graba('b', true)]).map((m) => m.id)).toEqual(['a', 'b'])
+    expect(destinosParar([graba('a', false), graba('b', true)]).map((m) => m.id)).toEqual(['b'])
+    expect(destinosParar([graba('a', false), graba('b', false)]).map((m) => m.id)).toEqual(['a'])
+    expect(destinosParar([])).toEqual([])
   })
 })
