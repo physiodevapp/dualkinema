@@ -4800,6 +4800,13 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
       window.Worker = function (url, opciones) {
         if (!String(url).includes('encuadre.worker')) return new Original(url, opciones)
         const w = { onmessage: null, onerror: null, terminate() {} }
+        window.__workersEncuadre = [...(window.__workersEncuadre ?? []), opciones?.name ?? 'gpu']
+        // `__caeGpu`: el worker con la GPU se cae al arrancar (como en el Pixel 8 el 11-11); `__sinDetector`: también en CPU.
+        if (window.__sinDetector || (window.__caeGpu && opciones?.name !== 'cpu')) {
+          setTimeout(() => w.onerror?.({ message: '', filename: '', lineno: 0, preventDefault() {} }), 10)
+          w.postMessage = (m) => m.imagen?.close?.()
+          return w
+        }
         setTimeout(() => w.onmessage?.({ data: { tipo: 'listo' } }), 10)
         w.postMessage = (m) => {
           m.imagen?.close?.()
@@ -4828,6 +4835,27 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     await dicho(a, 'Se te ve entero en los dos móviles.')
     await a.getByTestId('comprobar-encuadre').click()
     await b.getByTestId('encuadre-este').waitFor({ state: 'detached', timeout: 10000 })
+    // Si el detector con la GPU tumba el worker, se vuelve a crear en CPU y sigue funcionando.
+    await b.evaluate(() => {
+      window.__caeGpu = true
+      window.__workersEncuadre = []
+    })
+    await a.getByTestId('comprobar-encuadre').click()
+    await b.getByTestId('encuadre-este').filter({ hasText: 'te ve entero ✓' }).waitFor({ timeout: 10000 })
+    assert.deepEqual(await b.evaluate(() => window.__workersEncuadre), ['gpu', 'cpu'])
+    await a.getByTestId('comprobar-encuadre').click()
+    await b.getByTestId('encuadre-este').waitFor({ state: 'detached', timeout: 10000 })
+    // Si tampoco carga en CPU, ese móvil lo dice (y que recargue) y el otro no se queda en «mirando…».
+    await b.evaluate(() => (window.__sinDetector = true))
+    await a.getByTestId('comprobar-encuadre').click()
+    await b.getByText(/No se puede comprobar: no se ha podido cargar el detector\. Recarga la página/).waitFor({ timeout: 10000 })
+    await a.getByTestId('encuadre-otro').filter({ hasText: 'Su cámara: no puede comprobar el encuadre' }).waitFor({ timeout: 10000 })
+    await a.getByTestId('comprobar-encuadre').click()
+    await b.getByTestId('encuadre-este').waitFor({ state: 'detached', timeout: 10000 })
+    await b.evaluate(() => {
+      window.__sinDetector = false
+      window.__caeGpu = false
+    })
   })
 
   it('el mando pide comprobar el encuadre: lo hace un móvil (y se lo pide al otro) y el mando ve lo de los dos', async () => {

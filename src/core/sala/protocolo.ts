@@ -51,6 +51,8 @@ export interface EstadoMovil {
   readonly encuadre: Encuadre | null
   /** Pide al otro que compruebe también el encuadre (lo activó en él). */
   readonly pideEncuadre: boolean
+  /** No puede comprobar el encuadre (su detector no carga): el otro y el mando lo dicen en vez de «mirando…». */
+  readonly encuadreFallo: boolean
   /** La cota de su reloj común con el otro (ms), para el mando; null si aún no está medido (o el móvil es anterior). */
   readonly reloj: number | null
   /**
@@ -79,6 +81,7 @@ export const soloEstado = (m: EstadoMovil): EstadoMovil => ({
   inclinacion: m.inclinacion,
   encuadre: m.encuadre,
   pideEncuadre: m.pideEncuadre,
+  encuadreFallo: m.encuadreFallo,
   reloj: m.reloj,
   primero: m.primero,
   rechazo: m.rechazo,
@@ -153,6 +156,7 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
   // Añadidos con la comprobación del encuadre, igual de opcionales.
   const encuadre = leerEncuadre(o.encuadre)
   const pideEncuadre = o.pideEncuadre === true
+  const encuadreFallo = o.encuadreFallo === true
   // Añadido con el mando, igual de opcional.
   const reloj = finito(o.reloj) && o.reloj >= 0 && o.reloj < 60_000 ? o.reloj : null
   const primero = typeof o.primero === 'boolean' ? o.primero : null
@@ -162,7 +166,7 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
       ? { motivo: r.motivo as MotivoRechazo, n: r.n as number }
       : null
   const sucesos = leerSucesos(o.sucesos)
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, reloj, primero, rechazo, sucesos }
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, encuadreFallo, reloj, primero, rechazo, sucesos }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */

@@ -22,7 +22,11 @@ async function crear(delegate: 'GPU' | 'CPU') {
   return PoseLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetPath: MODELO, delegate }, runningMode: 'IMAGE', numPoses: 1 })
 }
 
-const detector: Promise<PoseLandmarker> = crear('GPU').catch(() => crear('CPU'))
+// Con la GPU, y si falla, en CPU. Si la GPU tumba el worker en vez de fallar (en algún móvil el arranque de WebGL aborta sin
+// rechazar la promesa), la app lo vuelve a crear con el nombre «cpu» y va directo a la CPU.
+const detector: Promise<PoseLandmarker> = self.name === 'cpu' ? crear('CPU') : crear('GPU').catch(() => crear('CPU'))
+// Lo que se escape (un aborto del WASM en una llamada diferida) se cuenta con su sitio, para saber dónde falla.
+self.addEventListener('unhandledrejection', (e) => enviar({ tipo: 'error', mensaje: `${e.reason instanceof Error ? e.reason.message : String(e.reason)}` }))
 detector.then(
   () => enviar({ tipo: 'listo' }),
   (e: unknown) => enviar({ tipo: 'error', mensaje: e instanceof Error ? e.message : String(e) }),

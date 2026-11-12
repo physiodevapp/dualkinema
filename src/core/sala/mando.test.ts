@@ -13,6 +13,7 @@ const estado = (cambios: Partial<EstadoMovil> = {}): EstadoMovil => ({
   inclinacion: null,
   encuadre: null,
   pideEncuadre: false,
+  encuadreFallo: false,
   reloj: 2,
   primero: null,
   rechazo: null,
