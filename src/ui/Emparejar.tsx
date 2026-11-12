@@ -20,7 +20,7 @@ import { useInclinacion } from './useInclinacion'
 import { formatoCodigo, generarCodigo, normalizarCodigo, urlDeMando, urlDeSala } from '../core/sala/codigo'
 import { RevisionSensores } from './RevisionSensores'
 import { GUIONES, guionPorId, numeroGrabacion, siguienteGuion, type GuionVoz } from '../core/grabacion/guionVoz'
-import { callar, HAY_VOZ, hablar } from '../sala/voz'
+import { anunciar, callar, HAY_VOZ } from '../sala/voz'
 import { enteraEn, fraseEncuadre, type Encuadre } from '../core/grabacion/encuadre'
 import { useEncuadre } from './useEncuadre'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos, vistasCompatibles } from '../core/sala/doble'
@@ -496,9 +496,10 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   const todoBien = enteraEn(miEncuadre) && enteraEn(encuadreOtro)
   useEffect(() => {
     if (!frase) return
-    hablar(frase)
+    // Sin cortar la frase en curso: al acabar, se dice la que toque entonces.
+    anunciar(frase)
     if (todoBien) return
-    const id = setInterval(() => hablar(frase), 10_000)
+    const id = setInterval(() => anunciar(frase), 10_000)
     return () => clearInterval(id)
   }, [frase, todoBien])
   const alternarEncuadre = () => {
@@ -509,7 +510,8 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
     }
     setComprobarEncuadre(true)
     // El navegador solo deja hablar tras un toque: se dice algo ya, que además comprueba que se oye.
-    hablar('Comprobando el encuadre. Colócate en tu sitio.')
+    callar()
+    anunciar('Comprobando el encuadre. Colócate en tu sitio.')
   }
 
   const url = urlDeSala(location.origin, codigo)
