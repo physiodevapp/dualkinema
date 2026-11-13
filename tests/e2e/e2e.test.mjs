@@ -5142,6 +5142,23 @@ describe('grabar con dos móviles: grabación doble (fase 4, pasos 5 a 7)', () =
     assert.match(await a.getByTestId('aviso-grabacion').innerText(), /cancel/i)
   })
 
+  it('si a uno se le corta la grabación (Android pausa la cámara), el otro para también y guarda lo suyo', async () => {
+    await a.getByTestId('cuenta-atras-s').selectOption('5')
+    await a.getByTestId('duracion-s').selectOption('parar')
+    await a.getByTestId('grabar-los-dos').click()
+    await fase(a, 'grabando', 15000)
+    await fase(b, 'grabando', 15000)
+    await a.waitForTimeout(1500)
+    // Android pausa la cámara de una app que pasa a segundo plano (`mute`): la de A se corta.
+    await a.evaluate(() => document.querySelector('video').srcObject.getVideoTracks()[0].dispatchEvent(new Event('mute')))
+    await fase(a, 'hecha', 30000)
+    await fase(b, 'hecha', 30000)
+    assert.match(await a.getByTestId('aviso-interrumpida').innerText(), /se guarda lo grabado/)
+    assert.match(await b.getByTestId('aviso-interrumpida').innerText(), /Parado porque al otro móvil se le ha cortado la grabación/)
+    await a.getByTestId('grabar-otra-vez').click()
+    await b.getByTestId('grabar-otra-vez').click()
+  })
+
   it('el mando (un ordenador en la sala): ve los dos móviles, programa la grabación de los dos y la para', async () => {
     const codigo = new URL(a.url()).searchParams.get('sala')
     const m = await abrirApp(navA, { consulta: `?sala=${codigo}&mando&senal=${URL_RELE}` })

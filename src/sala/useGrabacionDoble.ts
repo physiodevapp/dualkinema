@@ -284,7 +284,13 @@ export function useGrabacionDoble(
             suceso({ tipo: 'no-graba', motivo: m.motivo, deOtro: true })
             setFase({ f: 'libre', aviso: `No se graba: ${TEXTO_MOTIVO[m.motivo]}.` })
           }
-          // Grabando: el otro ha fallado, pero este sigue (su vídeo vale para una vista).
+          // Grabando: al otro se le ha cortado la grabación (bloqueado, app en segundo plano, fallo). Sin él la toma doble
+          // ya no sirve (ni para el 3D ni para comparar las vistas): este para también y guarda lo suyo, para repetirla
+          // enseguida (antes seguía hasta su hora o hasta «Parar»; cambiado a petición del usuario el 13-11).
+          else if (f.f === 'grabando') {
+            suceso({ tipo: 'parada-otro' })
+            void terminar(f.id, f.arranque, 'Parado porque al otro móvil se le ha cortado la grabación: lo grabado hasta aquí se guarda. Repite la toma.')
+          }
         } else if (m.tipo === 'parar' && 'id' in f && f.id === m.grabacion) {
           if (f.f === 'grabando') void terminar(f.id, f.arranque)
           else if (f.f === 'programada') {
