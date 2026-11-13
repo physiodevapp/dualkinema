@@ -24,7 +24,7 @@ Analizar la marcha grabada de perfil: encontrar los **eventos del ciclo** (conta
 
 **D8 — Interfaz.** En «Análisis», con una vista de perfil, la tarjeta «Marcha»: «Buscar los ciclos», el resumen (ciclos encontrados, válidos y descartados), los parámetros, la gráfica en % del ciclo de la articulación que se mira (media ± DE en banda, ciclos sueltos finos detrás, la línea vertical del despegue medio) y la lista de ciclos para incluir o excluir. Los eventos, como marcas sobre la gráfica del tiempo. CSV «Ciclos de marcha»: la media, la DE y cada ciclo en columnas, con los parámetros en la cabecera. Glosario: «Ciclo de marcha», «Contacto inicial y despegue», «% del ciclo», «Cadencia y parámetros espaciotemporales».
 
-**D9 — Verdad conocida.** Una persona sintética que anda (`core/marcha/sintetico.ts`): cadera, rodilla y tobillo con curvas de marcha típicas, longitudes de segmento conocidas, zancada y % de apoyo conocidos, en cinta y por el suelo, con ruido y frames sin persona. Tests: eventos a menos de un frame de la verdad, ciclos normalizados a menos de 1° de la curva de verdad, parámetros exactos sin ruido. e2e: el worker falso de las pruebas sin marcadores manda la persona que anda.
+**D9 — Verdad conocida.** Una persona sintética que anda (`core/marcha/sintetico.ts`): cadera, rodilla y tobillo con curvas de marcha típicas, longitudes de segmento conocidas, zancada y % de apoyo conocidos, en cinta y por el suelo, con ruido y frames sin persona. Tests: eventos a menos de un frame de la verdad, ciclos normalizados a menos de 2° de la curva de verdad (el filtro de 6 Hz rebaja unas décimas el pico del balanceo de la rodilla, y unos ms de error en el evento pesan donde la rodilla se dobla deprisa), parámetros exactos sin ruido. e2e: el worker falso de las pruebas sin marcadores manda la persona que anda.
 
 **D10 — 3D, después.** Con dos móviles calibrados, los mismos eventos salen de los puntos 3D (adelante = el rumbo de la persona) y valen para las dos piernas; queda para un paso posterior.
 
@@ -35,3 +35,7 @@ Analizar la marcha grabada de perfil: encontrar los **eventos del ciclo** (conta
 | 1 | Núcleo (`core/marcha/`): eventos, ciclos, normalización, media, parámetros y la persona sintética que anda, con tests de valor conocido |
 | 2 | Interfaz: la tarjeta «Marcha», la gráfica en % del ciclo, la corrección de eventos, el CSV, el glosario y lo guardado; e2e |
 | 3 | Cierre: revisión de código y limitaciones |
+
+## Hecho
+
+**Paso 1 (13-11):** `core/marcha/`: `sintetico.ts` (la persona que anda, en cinta o por el suelo, con curvas típicas y eventos de verdad), `eventos.ts` (detección por tramos con el filtro de la sesión, prominencia del 20 %, separación de 0,4 s y vértice de la parábola por tiempo; las correcciones a mano) y `ciclos.ts` (ciclos con descarte por hueco, despegues o duración; normalización; media ± DE; parámetros). Tests: sin ruido, cada evento a menos de 5 ms de la verdad mirando a los dos lados con fps variable; con 2 px de ruido, a menos de un frame; ningún ciclo cruza un hueco; la rodilla normalizada a menos de 2° de la verdad; zancada, cadencia, longitud y velocidad exactas; en cinta, sin longitud ni velocidad.
