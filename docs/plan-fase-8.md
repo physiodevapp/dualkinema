@@ -1,6 +1,6 @@
 # Fase 8: extremidad superior y cabeza sin marcadores
 
-Estado: **en marcha** (plan del 13-11-2026, pedido por el usuario el 10-11 y el 13-11: «Extremidad superior y cabeza sin marcadores»). Las decisiones D1–D9 están escritas y se siguen con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
+Estado: **cerrada** (13-11-2026; ver «Cierre de la fase 8»). Plan del 13-11-2026, pedido por el usuario el 10-11 y el 13-11: «Extremidad superior y cabeza sin marcadores»). Las decisiones D1–D9 están escritas y se siguen con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
 
 ## Qué se quiere
 
@@ -39,3 +39,16 @@ Más adelante (sin paso asignado): brazos en el esqueleto de la fase 7 (hombro e
 ## Hecho
 
 **Paso 1 (13-11):** `core/pose/puntos.ts` guarda 18 puntos (los 12 de siempre primero; codos, muñecas y orejas detrás, con sus índices de MediaPipe y de Halpe26) y `PUNTOS_TRONCO_PIERNAS`, los 12 con los que se calibra y se ajusta el esqueleto. `core/pose/catalogo.ts`: de perfil, hombro y codo como los de los gomets (con su equivalente para compararlos) y la cabeza; de frente, el hombro de cada lado y la cabeza; `completarPuntosPose` para las vistas guardadas con los 12. El esqueleto sobre el vídeo dibuja brazos y cabeza. Glosario «Hombro, codo y cabeza sin marcadores». e2e: el worker falso manda brazos y orejas y se comprueban el hombro, el codo y la cabeza de perfil y de frente.
+
+**Paso 2 (13-11):** se triangulan los 18 puntos (`IDS_3D`); el hombro (flexión y abducción) y la cabeza salen en las vistas virtuales de la pelvis, como los demás; el codo y la elevación del brazo, como ángulos reales entre segmentos (grupo «Entre segmentos» del selector 3D), con tests de posturas de verdad conocida (`angulos3d.test.ts`). El esqueleto recibe solo los 12 del tronco y las piernas, y su huella se calcula con ellos (un esqueleto guardado antes sigue valiendo). El monigote dibuja brazos y cabeza.
+
+## Cierre de la fase 8 (paso 3, 13-11-2026)
+
+**Revisión de código.** Los puntos nuevos van detrás de los de siempre en todo lo que viaja por posición (el protocolo de los workers, `FramePose`), y por id en lo guardado: nada de antes cambia de sitio. Lo que dependía de la lista de puntos (`intercambiar`, el dibujo, `marcadoresSinMarcadores`) los toma solos; lo que no debe (calibrar en 3D, el esqueleto y su huella) usa `PUNTOS_TRONCO_PIERNAS` explícitamente. Las tablas por parte (`NOMBRE_PARTE`, `NOMBRE_PUNTO`, los índices) son `Record<ParteCuerpo, …>`: el compilador obliga a completarlas. La persona 3D de las e2e no tiene brazos: sus puntos van sin ver (calidad 0), y la e2e comprueba que el codo 3D sale «—», nunca 0.
+
+**Limitaciones conocidas.**
+1. **Hombro en 2D**: sale del plano de la cámara en cuanto el brazo no se mueve en él (de perfil, una abducción parece una flexión pequeña; de frente, al revés). Se dice en el glosario; la medida buena es la 3D.
+2. **Codo en 3D sin signo**: el ángulo entre brazo y antebrazo va de 0 a 180°; una hiperextensión sale como una flexión pequeña.
+3. **Cabeza por la oreja**: el ángulo de la cabeza usa el hombro y la oreja del modelo, no C7 y el trago: se compara relativo al cero, no con valores de la literatura.
+4. **Brazos fuera del esqueleto** de la fase 7 (no hay hombro esférico ni codo bisagra) y del centro de masas (ver «Ideas apuntadas»).
+5. **Pendiente de validar con vídeos**: la visibilidad real de codos y muñecas (de perfil, el brazo lejano queda detrás del cuerpo), que los brazos no se intercambien solos de perfil, y la oreja de RTMPose frente a la de MediaPipe.

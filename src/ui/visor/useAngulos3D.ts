@@ -2,20 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ceroDeReferencia, type TramoEstatico } from '../../core/articulaciones/cero'
 import { construirCsv3D } from '../../core/exportacion/csv3d'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
-import { PUNTOS_TRONCO_PIERNAS } from '../../core/pose/puntos'
+import { PUNTOS_POSE, PUNTOS_TRONCO_PIERNAS } from '../../core/pose/puntos'
 import { pasoTipico } from '../../core/sincronia/evento'
 import { fpsMediano } from '../../core/tiempo/tablaFrames'
 import { ARTICULACIONES_3D, serieAngular3D } from '../../core/tresd/angulos3d'
 import type { Calibracion3D } from '../../core/tresd/calibracion3d'
-import { aLaboratorio, filtrar3D, triangularSesion } from '../../core/tresd/puntos3d'
+import { aLaboratorio, filtrar3D, soloPuntos, triangularSesion } from '../../core/tresd/puntos3d'
 import { ARTICULACIONES_ESQUELETO, serieEsqueleto, type ResultadoEsqueleto } from '../../core/esqueleto/sesion'
 import { puntosDePostura } from '../../core/esqueleto/modelo'
 import { desempaquetarEsqueleto, empaquetarEsqueleto, huellaTrayectorias3D, type Ajustes3D, type EsqueletoGuardado } from '../../core/persistencia/esqueleto'
 import type { AlWorkerEsqueleto, DelWorkerEsqueleto } from '../../workers/protocolo'
 import type { VistaViva } from './vistas'
 
-/** Los puntos del cuerpo que se triangulan (los 12 del tronco y las piernas; los puntos medios salen de ellos). */
-export const IDS_3D = PUNTOS_TRONCO_PIERNAS
+/** Los puntos del cuerpo que se triangulan: todos los del modelo (desde la fase 8, también brazos y orejas; los puntos medios salen de ellos). */
+export const IDS_3D = PUNTOS_POSE.map((p) => p.id)
 
 export type Fuente3D = 'puntos' | 'esqueleto'
 export type EstadoEsqueleto = { fase: 'parado' } | { fase: 'ajustando'; fraccion: number } | { fase: 'error'; mensaje: string }
@@ -70,7 +70,9 @@ export function useAngulos3D({
   const fs = a ? fpsMediano(a.tabla) : 30
   const tr = useMemo(() => (bruto ? filtrar3D(bruto, fs, ajustes) : null), [bruto, fs, ajustes])
   // La huella de los puntos sin filtrar: el esqueleto vale mientras no cambie (también el guardado, al reabrir).
-  const huella = useMemo(() => (bruto ? huellaTrayectorias3D(bruto) : null), [bruto])
+  // Solo de los 12 del tronco y las piernas, los del esqueleto (D3 de la fase 8): así no cambia por los brazos, y un
+  // esqueleto guardado antes de que se triangularan sigue valiendo.
+  const huella = useMemo(() => (bruto ? huellaTrayectorias3D(soloPuntos(bruto, PUNTOS_TRONCO_PIERNAS)) : null), [bruto])
   const anchoA = a?.info.ancho
   const altoA = a?.info.alto
   const anchoB = b?.info.ancho
@@ -144,7 +146,7 @@ export function useAngulos3D({
       worker.current = null
     }
     const vista = (x: VistaViva) => ({ series: x.series, tabla: x.tabla, desfase: x.desfaseS, paso: pasoTipico(x.tabla) })
-    w.postMessage({ tipo: 'ajustar', calibracion, a: vista(a), b: vista(b), tr, ids: IDS_3D } satisfies AlWorkerEsqueleto)
+    w.postMessage({ tipo: 'ajustar', calibracion, a: vista(a), b: vista(b), tr: soloPuntos(tr, PUNTOS_TRONCO_PIERNAS), ids: PUNTOS_TRONCO_PIERNAS } satisfies AlWorkerEsqueleto)
   }
   const pararEsqueleto = () => {
     worker.current?.terminate()

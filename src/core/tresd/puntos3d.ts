@@ -166,3 +166,8 @@ export function filtrar3D(tr: Trayectorias3D, fs: number, ajustes: AjustesFiltro
   }
   return { ...tr, series }
 }
+
+/** Las mismas trayectorias con solo los puntos `ids` (los que no estén, no se añaden). */
+export function soloPuntos(tr: Trayectorias3D, ids: readonly IdMarcador[]): Trayectorias3D {
+  return { ...tr, series: new Map([...tr.series].filter(([id]) => ids.includes(id))) }
+}

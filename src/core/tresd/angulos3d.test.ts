@@ -149,3 +149,71 @@ describe('puntos 3D de la sesión: triangular, marco del laboratorio y filtro', 
     expect(serieAngular3D('3d_rodilla_sagital_der', tr).every((m) => Number.isNaN(m.valor))).toBe(true)
   })
 })
+
+describe('brazos y cabeza en 3D (fase 8) con posturas de verdad conocida', () => {
+  const rad = (d: number) => (d * Math.PI) / 180
+  type V = { x: number; y: number; z: number }
+  /**
+   * Un frame por postura: la persona mira hacia +x (su izquierda, +y), caderas a 1 m y hombros a 1,5 m, en el mismo y.
+   * Brazo derecho: flexión `f` (hacia delante) o abducción `a` (hacia fuera, −y), y el antebrazo `codo` grados más allá en
+   * el mismo plano; la cabeza adelantada `cs` y ladeada a la izquierda `cf`.
+   */
+  function posturas(lista: { f?: number; a?: number; codo?: number; cs?: number; cf?: number }[]): Trayectorias3D {
+    const tiempos = lista.map((_, i) => i / FPS)
+    const series = new Map<IdMarcador, Muestra3D[]>()
+    const poner = (id: IdMarcador, i: number, p: V) => {
+      if (!series.has(id)) series.set(id, [])
+      series.get(id)![i] = { t: tiempos[i]!, ...p, calidad: 0.9, editadoManual: false, error: 0 }
+    }
+    lista.forEach((q, i) => {
+      const hd = { x: 0, y: -0.2, z: 1.5 }
+      const hi = { x: 0, y: 0.2, z: 1.5 }
+      poner(idPose('cadera', 'der'), i, { x: 0, y: -0.2, z: 1 })
+      poner(idPose('cadera', 'izq'), i, { x: 0, y: 0.2, z: 1 })
+      poner(idPose('hombro', 'der'), i, hd)
+      poner(idPose('hombro', 'izq'), i, hi)
+      // Dirección del brazo: colgando (0, 0, −1) girado hacia delante (f) o hacia fuera (a).
+      const dir = (g1: number): V => (q.a !== undefined ? { x: 0, y: -Math.sin(rad(g1)), z: -Math.cos(rad(g1)) } : { x: Math.sin(rad(g1)), y: 0, z: -Math.cos(rad(g1)) })
+      const g0 = q.a ?? q.f ?? 0
+      const brazo = dir(g0)
+      const codo = { x: hd.x + 0.3 * brazo.x, y: hd.y + 0.3 * brazo.y, z: hd.z + 0.3 * brazo.z }
+      const ante = dir(g0 + (q.codo ?? 0))
+      poner(idPose('codo', 'der'), i, codo)
+      poner(idPose('muneca', 'der'), i, { x: codo.x + 0.27 * ante.x, y: codo.y + 0.27 * ante.y, z: codo.z + 0.27 * ante.z })
+      poner(idPose('oreja', 'der'), i, { x: hd.x + 0.25 * Math.sin(rad(q.cs ?? 0)), y: hd.y + 0.12, z: hd.z + 0.25 * Math.cos(rad(q.cs ?? 0)) })
+      const b = rad(q.cf ?? 0)
+      const c = { x: 0.03, y: 0, z: 1.75 }
+      poner(idPose('oreja', 'izq'), i, { x: c.x, y: c.y + 0.08 * Math.cos(b), z: c.z - 0.08 * Math.sin(b) })
+      // La oreja derecha de la cabeza ladeada (la de perfil va aparte: aquí se sobrescribe para lo de frente si se pide).
+      if (q.cf !== undefined) poner(idPose('oreja', 'der'), i, { x: c.x, y: c.y - 0.08 * Math.cos(b), z: c.z + 0.08 * Math.sin(b) })
+    })
+    return { tiempos, series, enMetros: true }
+  }
+
+  it('codo: el ángulo real entre brazo y antebrazo, con el brazo hacia delante o separado', () => {
+    const tr = posturas([{ f: 0, codo: 0 }, { f: 40, codo: 90 }, { a: 80, codo: 30 }, { a: 30, codo: 120 }])
+    const s = serieAngular3D('3d_codo_der', tr).map((m) => m.valor)
+    ;[0, 90, 30, 120].forEach((v, i) => cerca(s[i]!, v, 1e-6))
+  })
+
+  it('elevación del brazo: el ángulo real con el tronco de su lado, por delante o de lado', () => {
+    const tr = posturas([{ f: 0 }, { f: 90 }, { a: 90 }, { a: 150 }, { f: 30, codo: 60 }])
+    const s = serieAngular3D('3d_hombro_elevacion_der', tr).map((m) => m.valor)
+    ;[0, 90, 90, 150, 30].forEach((v, i) => cerca(s[i]!, v, 1e-6))
+  })
+
+  it('hombro sagital y frontal en las vistas virtuales: flexión por delante y abducción de lado', () => {
+    const tr = posturas([{ f: 60 }, { a: 45 }])
+    cerca(serieAngular3D('3d_hombro_sagital_der', tr)[0]!.valor, 60, 1e-6)
+    cerca(serieAngular3D('3d_hombro_frontal_der', tr)[1]!.valor, 45, 1e-6)
+  })
+
+  it('cabeza: adelantada de perfil y ladeada de frente; codo de perfil solo entre segmentos', () => {
+    cerca(serieAngular3D('3d_cabeza_sagital', posturas([{ cs: 20 }]))[0]!.valor, 20, 1e-6)
+    cerca(serieAngular3D('3d_cabeza_frontal', posturas([{ cf: 12 }]))[0]!.valor, 12, 1e-6)
+    const ids = ARTICULACIONES_3D.map((a) => a.id)
+    expect(ids).not.toContain('3d_codo_sagital_der')
+    expect(ids).not.toContain('3d_cabeza_sagital_izq')
+    expect(ids.filter((id) => /codo|elevacion/.test(id))).toEqual(['3d_codo_der', '3d_hombro_elevacion_der', '3d_codo_izq', '3d_hombro_elevacion_izq'])
+  })
+})

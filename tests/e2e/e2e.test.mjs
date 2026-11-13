@@ -5423,6 +5423,95 @@ describe('guía de la toma B1 (fase 6)', () => {
   })
 })
 
+describe('marcha (fase 9) con la persona sintética que anda', () => {
+  let p
+  let r
+  before(async () => {
+    const { build } = await import('esbuild')
+    const salida = join(tmpdir(), 'dualkinema-marcha.mjs')
+    await build({ entryPoints: [new URL('./marcha.ts', import.meta.url).pathname], bundle: true, format: 'esm', platform: 'node', outfile: salida, logLevel: 'silent' })
+    const { marchaFalsa } = await import(pathToFileURL(salida).href)
+    r = marchaFalsa(videos.verde.verdad.map((x) => x.t), 640, 360)
+    p = await abrirConPoseFalsa(navegador, r.frames)
+    await cargarSinMarcadores(p, videos.verde.ruta)
+    await abrirPestana(p, 'marcar')
+    await detectarCuerpo(p)
+  })
+  after(() => p?.close())
+
+  it('busca los ciclos: zancada, cadencia y apoyo de la verdad, en cinta, y la curva media de la rodilla', async () => {
+    await abrirPestana(p, 'analisis')
+    const panel = p.getByTestId('panel-marcha')
+    await panel.getByRole('button', { name: 'Buscar los ciclos' }).click()
+    const resumen = await panel.getByTestId('resumen-marcha').innerText()
+    const validos = Number(/^(\d+) ciclos válidos del pie derecho/.exec(resumen)?.[1])
+    assert.equal(validos, r.contactos.length - 1, resumen)
+    const num = (s) => Number(/-?\d+(?:,\d+)?/.exec(s)[0].replace(',', '.'))
+    assert.ok(Math.abs(num(await panel.getByTestId('zancada').innerText()) - r.zancada) < 0.02, await panel.getByTestId('zancada').innerText())
+    assert.ok(Math.abs(num(await panel.getByTestId('cadencia').innerText()) - 120 / r.zancada) < 3)
+    const apoyo = num(await panel.getByTestId('apoyo').innerText())
+    assert.ok(apoyo > 55 && apoyo < 70, `apoyo ${apoyo}`)
+    assert.match(await panel.getByTestId('longitud').innerText(), /en cinta/)
+    assert.equal(Number(await panel.getByTestId('grafica-ciclo').getAttribute('data-ciclos')), validos)
+    // Excluir un ciclo lo saca de la media; «Ir» lleva al contacto.
+    await panel.getByRole('checkbox', { name: 'Ciclo 1 en la media' }).uncheck()
+    assert.equal(Number(await panel.getByTestId('grafica-ciclo').getAttribute('data-ciclos')), validos - 1)
+    await panel.getByTestId('ciclo').first().getByRole('button', { name: 'Ir' }).click()
+    await esperarQuieto(p)
+    const t = videos.verde.verdad[(await leerPosicion(p)).frame - 1].t
+    assert.ok(Math.abs(t - r.contactos[0].t) < 0.04, `en ${t}, contacto en ${r.contactos[0].t}`)
+    // El CSV: una fila por % del ciclo, con los ciclos incluidos.
+    const [descarga] = await Promise.all([p.waitForEvent('download'), panel.getByTestId('descargar-csv').click()])
+    assert.match(descarga.suggestedFilename(), /_marcha_pose_rodilla_sagital_der\.csv$/)
+    const texto = await readFile(await descarga.path(), 'utf8')
+    const filas = texto.trim().split('\r\n').filter((l) => !l.startsWith('#'))
+    assert.equal(filas.length, 102)
+    assert.equal(filas[0].split(';').length, 3 + validos - 1)
+  })
+
+  it('un evento movido a mano se guarda y se recupera con los ciclos excluidos', async () => {
+    const panel = p.getByTestId('panel-marcha')
+    await panel.getByTestId('eventos-marcha').locator('summary').click()
+    const antes = await panel.getByTestId('evento').count()
+    // Se quita el primer evento: el ciclo que lo usaba cambia.
+    await panel.getByTestId('evento').first().getByRole('button', { name: 'Quitar' }).click()
+    assert.equal(await panel.getByTestId('evento').count(), antes - 1)
+    // Espera a que la sesión guardada lleve la marcha con el evento quitado y el ciclo excluido.
+    const guardada = () => p.evaluate(async () => {
+      const bd = await new Promise((ok, mal) => {
+        const r = indexedDB.open('dualkinema')
+        r.onsuccess = () => ok(r.result)
+        r.onerror = () => mal(r.error)
+      })
+      try {
+        const todas = await new Promise((ok) => {
+          const r = bd.transaction('sesiones').objectStore('sesiones').getAll()
+          r.onsuccess = () => ok(r.result)
+        })
+        return todas.some((c) => c.vistas[0].marcha?.quitados.length === 1 && c.vistas[0].marcha.excluidos.length === 1)
+      } finally {
+        bd.close()
+      }
+    })
+    let ok = false
+    for (let k = 0; k < 60 && !ok; k++) {
+      ok = await guardada()
+      if (!ok) await p.waitForTimeout(300)
+    }
+    assert.ok(ok, 'la marcha no se ha guardado')
+    await p.reload()
+    await p.setInputFiles('input[type=file]', videos.verde.ruta)
+    await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+    await esperarQuieto(p)
+    await abrirPestana(p, 'analisis')
+    const tras = p.getByTestId('panel-marcha')
+    await tras.getByTestId('resumen-marcha').waitFor()
+    await tras.getByTestId('eventos-marcha').locator('summary').click()
+    assert.equal(await tras.getByTestId('evento').count(), antes - 1)
+    assert.match(await tras.getByTestId('resumen-marcha').innerText(), /excluidos a mano|ciclos válidos/)
+  })
+})
+
 describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
   let p
   let verdad
@@ -5487,6 +5576,10 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     const panel = p.getByTestId('panel-3d')
     await panel.waitFor()
     const leer = async () => Number((await panel.getByTestId('valor-3d').innerText()).replace('°', '').replace(',', '.').replace('−', '-'))
+    // Los brazos (fase 8) van «entre segmentos»; la persona sintética no tiene brazos: sin valor, nunca 0.
+    assert.deepEqual(await panel.getByTestId('articulacion-3d').locator('optgroup').evaluateAll((gs) => gs.map((g) => g.label)), ['Sagital', 'Frontal', 'Transversal', 'Entre segmentos'])
+    await panel.getByTestId('articulacion-3d').selectOption('3d_codo_der')
+    assert.equal(await panel.getByTestId('valor-3d').innerText(), '—')
     for (const [id, clave] of [['3d_rodilla_sagital_der', 'rodillaDer'], ['3d_rodilla_sagital_izq', 'rodillaIzq'], ['3d_tronco_sagital', 'tronco']]) {
       await panel.getByTestId('articulacion-3d').selectOption(id)
       for (const i of [30, 60, 95]) {

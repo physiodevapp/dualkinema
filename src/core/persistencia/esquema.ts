@@ -1,4 +1,5 @@
 import { esTramoEstatico, type TramoEstatico } from '../articulaciones/cero'
+import type { MarchaGuardada } from '../marcha/guardado'
 import { esCalibracion, type CalibracionVista } from '../calibracion/escala'
 import type { DefinicionArticulacion, Plano } from '../articulaciones/definicion'
 import type { OrientacionVista } from '../geometria/canonico'
@@ -100,6 +101,11 @@ export interface VistaCabecera {
   readonly articulacion?: string
   /** El acelerómetro y el giróscopo leídos del MP4 (esquema 6); null sin ellos. */
   readonly sensores: Sensores | null
+  /**
+   * Lo corregido de la marcha (fase 9). Opcional y sin subir el esquema: lo que no se pueda leer (`leerMarcha`) se
+   * descarta al recuperar sin rechazar la sesión.
+   */
+  readonly marcha?: MarchaGuardada
 }
 
 export interface CabeceraSesion {
@@ -175,6 +181,8 @@ export interface EntradaGuardado {
     readonly articulacion?: string
     /** Los sensores leídos del MP4; sin ellos (o null), ninguno. */
     readonly sensores?: Sensores | null
+    /** Lo corregido de la marcha; sin ello (o null), no se buscaron los ciclos. */
+    readonly marcha?: MarchaGuardada | null
   }[]
   /** Id de la vista de referencia; sin él, la primera. */
   readonly referencia?: string
@@ -223,6 +231,7 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
       deteccion: v.deteccion ?? null,
       ...(v.articulacion ? { articulacion: v.articulacion } : {}),
       sensores: v.sensores ?? null,
+      ...(v.marcha ? { marcha: v.marcha } : {}),
     })),
     referencia: e.referencia ?? e.vistas[0]!.id,
     filtro: e.filtro ?? null,
