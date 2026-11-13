@@ -7,6 +7,10 @@
   # `vite.config.ts` para `vite preview` (las e2e).
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: credentialless
+  # Fase 10 (D1): a qué se puede conectar la app: el propio sitio, el relé de salas y el modelo heavy de MediaPipe. Corta el
+  # registro de uso que MediaPipe intenta mandar a odml.pa.googleapis.com (la otra barrera está en src/privacidad/). Las
+  # fuentes de Google no son conexiones (son estilos y fuentes): no las toca. La misma, con el relé local, en vite.config.ts.
+  Content-Security-Policy: connect-src 'self' blob: data: https://storage.googleapis.com/mediapipe-models/ wss://dualkinema-senal.edu-gamboa-rodriguez.workers.dev
 
 # Se vuelve a pedir siempre: dice si hay una versión más nueva publicada.
 /version.json
