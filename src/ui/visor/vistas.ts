@@ -1,3 +1,4 @@
+import type { MarchaGuardada } from '../../core/marcha/guardado'
 import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
 import type { OrientacionVista } from '../../core/geometria/canonico'
@@ -37,6 +38,8 @@ export interface EntradaVista {
   readonly articulacion?: string
   /** El acelerómetro y el giróscopo de su MP4 (fase 6), leídos al abrirlo o guardados con la sesión; null sin ellos. */
   readonly sensores?: Sensores | null
+  /** Al recuperar: lo corregido de la marcha (fase 9); sin ello, no se buscaron los ciclos. */
+  readonly marcha?: MarchaGuardada | null
 }
 
 /** Una vista con todo su estado (lo que devuelve `useVista`) y los datos de su entrada que necesita la sesión. */
@@ -48,4 +51,8 @@ export type VistaViva = ReturnType<typeof useVista> & Pick<EntradaVista, 'id' | 
   readonly marcadores: readonly IdMarcador[]
   /** Una vista sin marcadores pasa a seguir también los gomets de su plano (fase 5). */
   readonly anadirGomets: () => void
+  /** La marcha (fase 9): null hasta «Buscar los ciclos»; cambiarla cuenta para el guardado (`revMarcha`). */
+  readonly marcha: MarchaGuardada | null
+  readonly cambiarMarcha: (m: MarchaGuardada | null) => void
+  readonly revMarcha: number
 }

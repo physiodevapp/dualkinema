@@ -348,6 +348,16 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'marcha',
+    titulo: 'Marcha: ciclos y parámetros',
+    texto: [
+      'Para una toma andando de perfil (por el suelo o en cinta). «Buscar los ciclos» encuentra los eventos del pie que ve la cámara: el contacto inicial, cuando el talón está lo más adelantado respecto a la cadera, y el despegue, cuando la punta del pie está lo más atrasada (el método de Zeni, que vale igual en cinta). Salen de las coordenadas filtradas, nunca a través de un hueco.',
+      'Un ciclo (una zancada) va de un contacto al siguiente del mismo pie, con un despegue en medio. Se descartan los que cruzan un hueco, los que no tienen un despegue en medio y los que duran un 25 % más o menos que lo habitual de la toma (un tropiezo, un giro, un evento perdido). Cada ciclo se estira o encoge a 0–100 % y se dibuja la media ± la desviación típica de la articulación que se mira, con los ciclos sueltos detrás y la línea del despegue medio. Un ciclo se puede quitar de la media con su casilla.',
+      'Parámetros: el tiempo de zancada, la cadencia (pasos por minuto: dos pasos por zancada), el apoyo (% del ciclo con el pie en el suelo, unos 60 % andando) y, con la escala y andando por el suelo, la longitud de zancada y la velocidad. En cinta no salen de la imagen (el suelo se mueve): la app lo nota porque la cadera apenas avanza, y se puede cambiar a mano.',
+      'Un evento mal puesto se corrige en «Eventos»: «Mover aquí» lo lleva al frame que se ve, «Quitar» lo borra y «Añadir… aquí» pone uno nuevo. Lo corregido a mano se guarda y manda sobre lo que se detecta.',
+    ],
+  },
+  {
     id: 'piernas-intercambiadas',
     titulo: 'Piernas intercambiadas',
     texto: [

@@ -37,6 +37,7 @@ import ResumenGrafica from './ResumenGrafica'
 import DatosVideo from './DatosVideo'
 import PanelMarcar from './PanelMarcar'
 import PanelAnalisis from './PanelAnalisis'
+import PanelMarcha from './PanelMarcha'
 import BarraPosicion, { ANCHO_COLUMNA_APAISADA } from './BarraPosicion'
 import { textoOrientacion } from '../sesion'
 import AnadirVista from './AnadirVista'
@@ -243,13 +244,14 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       deteccion: w.deteccion,
       articulacion: w.articulacion.id,
       sensores: w.sensores,
+      marcha: w.marcha,
     })),
     calibracion3d,
     estatura,
     tresd: t3?.aGuardar.tresd ?? null,
     esqueleto: t3?.aGuardar.esqueleto ?? null,
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: revSinc + revAjustes + rev3d + revT3 + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion, 0),
+    version: revSinc + revAjustes + rev3d + revT3 + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion + w.revMarcha, 0),
     recuperada,
     sinGuardar,
   })
@@ -1021,6 +1023,18 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               comparacion={activaViva.comparacionFuentes}
               tiemposGrafica={tiemposGrafica}
               onBuscar={buscarEnComun}
+            />
+            <PanelMarcha
+              vista={activaViva}
+              filtrado={filtrado}
+              ajustes={ajustes}
+              cero={cero}
+              calibracion={calibracion}
+              lado={lado}
+              t={mostrado !== null ? (tabla.tiempos[mostrado] ?? null) : null}
+              onIr={(tv) => buscarEnComun(tv + desfaseActiva)}
+              nombreArchivo={info.nombre}
+              deshabilitado={ocupada}
             />
             {t3 && rangoComun && (
               <Panel3D

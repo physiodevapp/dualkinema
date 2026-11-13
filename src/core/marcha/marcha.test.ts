@@ -4,6 +4,9 @@ import { articulacionesSagitales, marcadores, type Lado } from '../articulacione
 import { comoMuestras, filtrarTrayectoria } from '../filtros/tramos'
 import type { OrientacionVista } from '../geometria/canonico'
 import type { Muestra2D } from '../modelo/tipos'
+import { idPose } from '../pose/puntos'
+import { analizarMarcha, idsDelPie } from './analisis'
+import { alternarExcluido, MARCHA_VACIA } from './guardado'
 import { ciclosDe, mediaYDesviacion, normalizarCiclo, parametrosMarcha, PUNTOS_CICLO, type Ciclo } from './ciclos'
 import { adelanteEn, conCorrecciones, detectarEventos, maximos, type EventoMarcha, type PuntosPie } from './eventos'
 import { angulosEnFase, eventosVerdad, MARCHA_DEFECTO, puntosMarcha, type OpcionesMarcha } from './sintetico'
@@ -234,5 +237,39 @@ describe('correcciones a mano (D7)', () => {
       { tipo: 'contacto', lado: 'der', t: 1.05, manual: true },
       { tipo: 'contacto', lado: 'der', t: 2.1 },
     ])
+  })
+})
+
+describe('el análisis entero (analizarMarcha)', () => {
+  it('con los puntos del modelo: ciclos, curva media de la rodilla relativa al cero, excluir un ciclo y en cinta forzado', () => {
+    const g = grabar(PERFIL_D, { ruidoPx: 1 })
+    const p = g.pie('der')
+    const series = new Map<string, (Muestra2D | undefined)[]>([
+      [idPose('cadera', 'der'), [...p.cadera]],
+      [idPose('talon', 'der'), [...p.talon]],
+      [idPose('punta', 'der'), [...p.punta]],
+    ])
+    const ids = idsDelPie(series, 'der', 'gomets')!
+    expect(ids.talon).toBe(idPose('talon', 'der')) // sin gomets del pie, los del modelo
+    expect(idsDelPie(new Map(), 'der', 'sinMarcadores')).toBeNull()
+    const rodilla = articulacionesSagitales('der').find((a) => a.id === 'rodilla_sagital_der')!
+    const filtradas = Object.fromEntries(Object.entries(g.gomets).map(([id, s]) => [id, comoMuestras(filtrarTrayectoria(s, FPS, AJUSTES))]))
+    const serieAngulo = serieAngular(rodilla, filtradas, PERFIL_D)
+    const base = { series, orientacion: PERFIL_D, lado: 'der' as const, ids, fs: FPS, ajustes: AJUSTES, guardado: MARCHA_VACIA, serieAngulo, cero: null, metrosPorPx: 1 / ESCALA }
+    const a = analizarMarcha(base)
+    const validos = a.ciclos.filter((c) => !c.descarte)
+    expect(validos.length).toBeGreaterThanOrEqual(5)
+    expect(a.parametros!.ciclos).toBe(validos.length)
+    expect(a.parametros!.zancada.media).toBeCloseTo(1.1, 2)
+    expect(a.parametros!.velocidad!).toBeCloseTo(1.2, 1)
+    expect(a.despegueMedio).toBeGreaterThan(55)
+    const conCero = analizarMarcha({ ...base, cero: 4 })
+    expect(conCero.media!.media[50]!).toBeCloseTo(a.media!.media[50]! - 4, 9)
+    const sinUno = analizarMarcha({ ...base, guardado: alternarExcluido(MARCHA_VACIA, validos[0]!.inicio) })
+    expect(sinUno.parametros!.ciclos).toBe(validos.length - 1)
+    expect(sinUno.ciclos[a.ciclos.indexOf(validos[0]!)]!.excluido).toBe(true)
+    const cinta = analizarMarcha({ ...base, guardado: { ...MARCHA_VACIA, enCinta: true } })
+    expect(cinta.parametros!.enCinta).toBe(true)
+    expect(cinta.parametros!.longitud).toBeNull()
   })
 })

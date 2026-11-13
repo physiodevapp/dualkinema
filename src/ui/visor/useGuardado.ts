@@ -1,3 +1,4 @@
+import type { MarchaGuardada } from '../../core/marcha/guardado'
 /* eslint-disable react-hooks/refs --
  * Patrón «lo último en una ref» (`actual`, `datos`): el guardado lee siempre lo último al disparar sin rehacer los
  * efectos, y la transacción tiene que crearse de forma síncrona (ver CLAUDE.md, «Persistencia»). Código anterior al
@@ -51,6 +52,8 @@ export interface VistaAGuardar {
   readonly articulacion: string
   /** Los sensores de su MP4 (null = ninguno). */
   readonly sensores: Sensores | null
+  /** Lo corregido de la marcha (fase 9; null = no se buscaron los ciclos). */
+  readonly marcha?: MarchaGuardada | null
 }
 
 export type EstadoGuardado =
