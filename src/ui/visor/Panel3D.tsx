@@ -6,6 +6,7 @@ import { fmt } from './formato'
 import GraficaTiempo from './GraficaTiempo'
 import Monigote3D from './Monigote3D'
 import PanelExportar from './PanelExportar'
+import PanelMarcha3D from './PanelMarcha3D'
 import SelectorArticulacion3D from './SelectorArticulacion3D'
 import { IDS_3D, type Angulos3D } from './useAngulos3D'
 
@@ -18,6 +19,8 @@ interface Props {
   readonly desde: number
   readonly hasta: number
   readonly onBuscar: (tComun: number) => void
+  /** El filtro de la sesión (la marcha filtra sus señales con él). */
+  readonly ajustes: { readonly corteHz: number }
 }
 
 const medianaFinita = (xs: readonly number[]) => {
@@ -33,7 +36,7 @@ const grados = (v: number) => `${fmt(Math.round(v * 10) / 10 + 0, 1)}°`
  * ángulos y las coordenadas 3D. Los puntos 3D se recalculan de las trayectorias 2D: corregir un punto en una vista cambia
  * su 3D.
  */
-export default function Panel3D({ t3, instante, desde, hasta, onBuscar }: Props) {
+export default function Panel3D({ t3, instante, desde, hasta, onBuscar, ajustes }: Props) {
   const { tr, calibracion, imagenes, ocupado, fuente, setFuente, ajuste, estadoEsq, esqueleto, art, serie, puntosEsqueleto, tramo, cero, ponerCero } = t3
   const ajustarEsqueleto = t3.ajustarEsqueleto
   const pararEsqueleto = t3.pararEsqueleto
@@ -154,6 +157,7 @@ export default function Panel3D({ t3, instante, desde, hasta, onBuscar }: Props)
         </p>
       )}
       <PanelExportar generar={t3.generar} resumen={`${xs.length} frames · ${ARTICULACIONES_3D.length} ángulos 3D y las coordenadas de ${IDS_3D.length} puntos${tr.enMetros ? ' (m)' : ' (sin escala)'}`} />
+      <PanelMarcha3D t3={t3} instante={instante} onBuscar={onBuscar} ajustes={ajustes} />
     </section>
   )
 }

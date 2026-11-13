@@ -5660,6 +5660,16 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     assert.equal(lineas.filter((l) => /^\d/.test(l)).length, videos.verde.verdad.length)
   })
 
+  it('la marcha en 3D: busca los ciclos de los dos pies sin errores y se deja de mirar', async () => {
+    await abrirPestana(p, 'analisis')
+    const m = p.getByTestId('panel-3d').getByTestId('marcha-3d')
+    await m.getByRole('button', { name: 'Buscar los ciclos' }).click()
+    // La persona sintética da unos pasos por la zona: no se exige un número de ciclos, solo que los busque en los dos pies.
+    assert.match(await m.getByTestId('resumen-marcha-3d').innerText(), /^Pie derecho: \d+ ciclos válidos · Pie izquierdo: \d+ ciclos válidos$/)
+    await m.getByRole('button', { name: 'Dejar de mirar la marcha' }).click()
+    await m.getByRole('button', { name: 'Buscar los ciclos' }).waitFor()
+  })
+
   it('el esqueleto ajustado (fase 7): las dos rodillas como las de verdad, el monigote y el CSV con sus columnas', async () => {
     await abrirPestana(p, 'analisis')
     const panel = p.getByTestId('panel-3d')

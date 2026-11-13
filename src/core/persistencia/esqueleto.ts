@@ -11,6 +11,7 @@
 import { esTramoEstatico, type TramoEstatico } from '../articulaciones/cero'
 import type { Lado } from '../articulaciones/catalogo'
 import type { ResultadoEsqueleto } from '../esqueleto/sesion'
+import { leerMarcha, type MarchaGuardada } from '../marcha/guardado'
 import { N_GRADOS, type Medidas } from '../esqueleto/modelo'
 import type { IdMarcador } from '../modelo/tipos'
 import type { Trayectorias3D } from '../tresd/puntos3d'
@@ -22,6 +23,8 @@ export interface Ajustes3D {
   readonly articulacion?: string
   /** Tramo del cero por id de articulación 3D o del esqueleto. */
   readonly ceros: Readonly<Record<string, TramoEstatico>>
+  /** La marcha en 3D (lo corregido a mano); sin ella, no se buscaron los ciclos. */
+  readonly marcha?: MarchaGuardada
 }
 
 /** El esqueleto empaquetado en arrays tipados (IndexedDB los guarda tal cual). */
@@ -156,7 +159,9 @@ export function leerAjustes3D(v: unknown): Ajustes3D | null {
   if (!esObjeto(v) || (v.fuente !== 'puntos' && v.fuente !== 'esqueleto')) return null
   if (v.articulacion !== undefined && typeof v.articulacion !== 'string') return null
   if (!esObjeto(v.ceros) || !Object.values(v.ceros).every(esTramoEstatico)) return null
-  return { fuente: v.fuente, ...(v.articulacion !== undefined ? { articulacion: v.articulacion } : {}), ceros: v.ceros as Record<string, TramoEstatico> }
+  // La marcha ilegible se descarta sola (lo demás se conserva).
+  const marcha = leerMarcha(v.marcha)
+  return { fuente: v.fuente, ...(v.articulacion !== undefined ? { articulacion: v.articulacion } : {}), ceros: v.ceros as Record<string, TramoEstatico>, ...(marcha ? { marcha } : {}) }
 }
 
 /** Bytes de los arrays del esqueleto (para lo que ocupa la sesión). */

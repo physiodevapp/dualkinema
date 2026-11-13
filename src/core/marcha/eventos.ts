@@ -132,8 +132,22 @@ export interface DeteccionPie {
 
 /** Los contactos y despegues de un pie (`fs`: los fps medianos del vídeo; `ajustes`: el filtro de la sesión). */
 export function detectarEventos(p: PuntosPie, lado: Lado, o: OrientacionVista, fs: number, ajustes: AjustesFiltro): DeteccionPie {
-  const contactos = extremos(relativa(p.talon, p.cadera, o), 1, fs, ajustes)
-  const despegues = extremos(relativa(p.punta, p.cadera, o), -1, fs, ajustes)
+  return eventosDeSenales(relativa(p.talon, p.cadera, o), relativa(p.punta, p.cadera, o), lado, fs, ajustes)
+}
+
+/**
+ * Los contactos y despegues a partir de las señales ya relativas a la pelvis (en `x`, hacia delante; una muestra o nada por
+ * frame): las de una vista de perfil (`detectarEventos`) o las de los puntos 3D (`marcha/tresd.ts`).
+ */
+export function eventosDeSenales(
+  talon: readonly (Muestra2D | undefined)[],
+  punta: readonly (Muestra2D | undefined)[],
+  lado: Lado,
+  fs: number,
+  ajustes: AjustesFiltro,
+): DeteccionPie {
+  const contactos = extremos(talon, 1, fs, ajustes)
+  const despegues = extremos(punta, -1, fs, ajustes)
   const eventos: EventoMarcha[] = [
     ...contactos.instantes.map((t) => ({ tipo: 'contacto' as const, lado, t })),
     ...despegues.instantes.map((t) => ({ tipo: 'despegue' as const, lado, t })),

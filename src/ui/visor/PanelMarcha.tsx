@@ -169,7 +169,7 @@ export default function PanelMarcha({ vista, filtrado, ajustes, cero, calibracio
 
 type Cambio = (m: typeof MARCHA_VACIA) => typeof MARCHA_VACIA
 
-function Eventos({ eventos, t, onIr, deshabilitado, onCambiar, lado }: { eventos: readonly EventoMarcha[]; t: number | null; onIr: (t: number) => void; deshabilitado: boolean; onCambiar: (f: Cambio) => void; lado: Lado }) {
+export function Eventos({ eventos, t, onIr, deshabilitado, onCambiar, lado }: { eventos: readonly EventoMarcha[]; t: number | null; onIr: (t: number) => void; deshabilitado: boolean; onCambiar: (f: Cambio) => void; lado: Lado }) {
   return (
     <details className="flex flex-col gap-1" data-testid="eventos-marcha">
       <summary className="cursor-pointer text-xs text-texto-2">Eventos ({eventos.length}): corregir a mano</summary>
@@ -202,7 +202,7 @@ function Eventos({ eventos, t, onIr, deshabilitado, onCambiar, lado }: { eventos
 }
 
 /** La curva en % del ciclo: los ciclos incluidos finos, la banda media ± DE, la media y el despegue medio (SVG estático). */
-function GraficaCiclo({ analisis, titulo }: { analisis: AnalisisMarcha; titulo: string }) {
+export function GraficaCiclo({ analisis, titulo }: { analisis: Pick<AnalisisMarcha, 'ciclos' | 'media' | 'despegueMedio'>; titulo: string }) {
   const curvas = analisis.ciclos.filter((c) => !c.descarte && !c.excluido && c.curva).map((c) => c.curva!)
   const m = analisis.media
   if (!m || curvas.length === 0) return <p className="text-sm text-texto-2">Sin ciclos con la curva entera.</p>

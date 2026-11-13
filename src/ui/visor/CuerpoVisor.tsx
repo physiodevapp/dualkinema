@@ -1043,6 +1043,7 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
                 desde={rangoComun.desde}
                 hasta={rangoComun.hasta}
                 onBuscar={buscarEnComun}
+                ajustes={ajustes}
               />
             )}
           </PanelPestana>

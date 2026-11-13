@@ -14,7 +14,9 @@ export interface DatosCsvMarcha {
   /** La media del cero (null sin cero: las curvas van a pelo). */
   readonly cero: number | null
   readonly corteHz: number
-  readonly analisis: AnalisisMarcha
+  readonly analisis: Pick<AnalisisMarcha, 'ciclos' | 'media' | 'parametros'>
+  /** Líneas de cabecera de más (la marcha en 3D: los parámetros de los dos pies), detrás de los parámetros. */
+  readonly extra?: readonly (readonly [string, string])[]
 }
 
 export function construirCsvMarcha(d: DatosCsvMarcha, formato: FormatoCsv = 'es'): string {
@@ -40,6 +42,7 @@ export function construirCsvMarcha(d: DatosCsvMarcha, formato: FormatoCsv = 'es'
     if (p.longitud) cab.push(['longitud de zancada (m)', `${n(p.longitud.media, 3)} ± ${n(p.longitud.de, 3)}`])
     if (p.velocidad !== null) cab.push(['velocidad (m/s)', n(p.velocidad, 3)])
   }
+  for (const [clave, valor] of d.extra ?? []) cab.push([clave, valor])
   usados.forEach((c, k) => cab.push([`ciclo ${k + 1}`, `${n(c.inicio, 3)} s a ${n(c.fin, 3)} s, despegue ${c.despegue === null ? '—' : `${n(c.despegue, 3)} s`}`]))
   const lineas = cab.map(([clave, valor]) => `# ${celda(clave, e)}${e.sep}${celda(valor, e)}`)
   lineas.push(['ciclo_pct', 'media_grados', 'de_grados', ...usados.map((_, k) => `ciclo_${k + 1}_grados`)].join(e.sep))
