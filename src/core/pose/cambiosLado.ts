@@ -70,7 +70,7 @@ const PARTES_DUDOSAS: readonly ParteCuerpo[] = ['rodilla', 'tobillo', 'talon', '
 
 const copiar = (series: SeriesPose) => new Map([...series].map(([id, s]) => [id, [...s]] as [IdMarcador, (Muestra2D | undefined)[]]))
 
-/** Intercambia izquierda y derecha de los 12 puntos en los frames del tramo. */
+/** Intercambia izquierda y derecha de todos los puntos en los frames del tramo. */
 function intercambiar(series: Map<IdMarcador, (Muestra2D | undefined)[]>, tramo: TramoFrames) {
   for (const p of PUNTOS_POSE) {
     if (p.lado !== 'izq') continue
@@ -97,7 +97,7 @@ type SeriesPose = ReadonlyMap<IdMarcador, readonly (Muestra2D | undefined)[]>
 /**
  * De frente, cada lado va donde tiene que estar: la cadera izquierda de la persona queda hacia +x del marco canónico
  * (con la cámara delante, a la derecha de la imagen; detrás, a la izquierda). Un frame con las caderas al revés (más de
- * `umbralPx` en x) tiene los 12 puntos intercambiados. Las caderas no se cruzan, así que el criterio no depende de lo que
+ * `umbralPx` en x) tiene todos los puntos intercambiados. Las caderas no se cruzan, así que el criterio no depende de lo que
  * pasara en el frame anterior, y arregla de paso que el modelo etiquete los lados como si viera a la persona de frente
  * cuando la cámara está detrás.
  */

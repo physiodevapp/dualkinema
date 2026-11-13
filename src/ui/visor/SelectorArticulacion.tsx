@@ -32,6 +32,7 @@ export default function SelectorArticulacion({ articulaciones, elegida, onElegir
   const primeraDe = (g: DefinicionArticulacion[]) => g.find((a) => fuenteDe(a) === 'gomets') ?? g[0]!
   const conTronco = articulaciones.some((a) => a.id.includes('tronco'))
   const conPelvis = articulaciones.some((a) => a.id.includes('pelvis'))
+  const conBrazos = articulaciones.some((a) => /^pose_(hombro|codo|cabeza)_/.test(a.id))
   const boton = (activo: boolean) =>
     `rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 ${activo ? 'border-acento text-texto' : 'border-borde text-texto-2'}`
   return (
@@ -40,6 +41,7 @@ export default function SelectorArticulacion({ articulaciones, elegida, onElegir
         Articulación
         {conTronco && <InfoGlosario id="inclinacion-tronco" tema="la inclinación del tronco" className="-my-1.5" />}
         {conPelvis && <InfoGlosario id="pelvis-cadera-frente" tema="la pelvis y la cadera de frente" className="-my-1.5" />}
+        {conBrazos && <InfoGlosario id="brazos-cabeza" tema="el hombro, el codo y la cabeza" className="-my-1.5" />}
       </h2>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Articulación">
         {grupos.map((g) => {

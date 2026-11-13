@@ -3,7 +3,7 @@
  * `?rtmpose`; ver «RTMPose» en docs/plan-fase-6.md). Es «de arriba abajo»: un detector de personas (RTMDet-nano) da la
  * caja de la persona y RTMPose busca sus 26 puntos (Halpe26: cuerpo y pies) dentro de un recorte de 192 × 256. Lo que no
  * depende del navegador va aquí: la geometría del recorte, la decodificación SimCC, elegir a la persona de frame en frame y
- * el paso de los 26 puntos a los 12 que guarda la app (`PUNTOS_POSE`). Los números de preprocesado son los del
+ * el paso de los 26 puntos a los 18 que guarda la app (`PUNTOS_POSE`). Los números de preprocesado son los del
  * `pipeline.json` de cada modelo.
  */
 import type { Lado } from '../articulaciones/catalogo'
@@ -184,10 +184,13 @@ export const INDICE_HALPE26: Record<ParteCuerpo, Record<Lado, number>> = {
   tobillo: { izq: 15, der: 16 },
   talon: { izq: 24, der: 25 },
   punta: { izq: 20, der: 21 },
+  codo: { izq: 7, der: 8 },
+  muneca: { izq: 9, der: 10 },
+  oreja: { izq: 3, der: 4 },
 }
 
 /**
- * Los 12 puntos de la app (`PUNTOS_POSE`, `[x, y, calidad]` por punto) a partir de los 26 de Halpe26. La calidad es la
+ * Los 18 puntos de la app (`PUNTOS_POSE`, `[x, y, calidad]` por punto) a partir de los 26 de Halpe26. La calidad es la
  * puntuación de RTMPose limitada a 0–1 (no es una probabilidad: un punto bien visto suele dar 0,6–0,9; **pendiente de
  * validar con vídeos** que el umbral común, `CALIDAD_MINIMA`, le sirva).
  */

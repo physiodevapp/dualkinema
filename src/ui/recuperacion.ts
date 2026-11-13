@@ -1,6 +1,7 @@
 import type { CabeceraSesion, DatosSesion, VistaCabecera } from '../core/persistencia/esquema'
 import { compararHuella, type HuellaArchivo } from '../core/persistencia/huella'
 import { desempaquetarTrayectoria } from '../core/persistencia/trayectorias'
+import { completarPuntosPose } from '../core/pose/catalogo'
 import type { IdMarcador, Muestra2D } from '../core/modelo/tipos'
 import type { VideoAbierto } from '../media/video'
 import { fechaCorta, textoResumen } from './sesion'
@@ -32,7 +33,7 @@ export function armarSesion(cabecera: CabeceraSesion, datos: DatosSesion, abiert
     const total = video.tabla.tiempos.length
     const inicial = new Map<IdMarcador, (Muestra2D | undefined)[]>()
     for (const mk of cabecera.modelo.marcadores) inicial.set(mk.id, desempaquetarTrayectoria(datos.trayectorias[v.id]![mk.id]!, total))
-    return { id: v.id, video, orientacion: v.orientacion, desfase: v.desfase, sincronia: v.sincronia, inicial, ceros: v.ceros, calibracion: v.calibracion, marcadores: v.marcadores, deteccion: v.deteccion, articulacion: v.articulacion, sensores: v.sensores }
+    return { id: v.id, video, orientacion: v.orientacion, desfase: v.desfase, sincronia: v.sincronia, inicial, ceros: v.ceros, calibracion: v.calibracion, marcadores: v.marcadores && completarPuntosPose(v.marcadores, v.orientacion), deteccion: v.deteccion, articulacion: v.articulacion, sensores: v.sensores }
   })
   const sesion: SesionAbierta = { id: cabecera.id, nombre: cabecera.nombre, creada: cabecera.creada, referencia: cabecera.referencia }
   return {

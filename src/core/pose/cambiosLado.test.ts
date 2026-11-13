@@ -50,7 +50,7 @@ describe('cambiosDeLado', () => {
  * altura; en los frames de `cruzadas` el modelo los da intercambiados, y en los de `sinPersona` no ve a nadie.
  */
 function cuerpo(n: number, cruzadas: Set<number>, sinPersona = new Set<number>()) {
-  const Y = { hombro: 100, cadera: 250, rodilla: 400, tobillo: 550, talon: 570, punta: 580 }
+  const Y = { hombro: 100, cadera: 250, rodilla: 400, tobillo: 550, talon: 570, punta: 580, codo: 180, muneca: 260, oreja: 60 }
   const r = new Map<string, (Muestra2D | undefined)[]>()
   for (const p of PUNTOS_POSE) {
     r.set(

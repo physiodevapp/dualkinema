@@ -86,6 +86,8 @@ function vistaVirtual(tr: Trayectorias3D, orientacion: OrientacionVista, rumbo: 
 
 const sinFuente = (nombre: string) => nombre.replace(/ sin marcadores$/, ' en 3D')
 
+const BRAZOS_CABEZA = /^pose_(hombro|codo|cabeza)_/
+
 /** Las articulaciones del 2D sin marcadores que se calculan en una vista virtual, con su id 3D. */
 function deCatalogo(): { readonly art: Articulacion3D; readonly def: DefinicionArticulacion; readonly orientacion: OrientacionVista }[] {
   const lado = (id: string): Lado | null => (id.endsWith('_der') ? 'der' : id.endsWith('_izq') ? 'izq' : null)
@@ -96,7 +98,8 @@ function deCatalogo(): { readonly art: Articulacion3D; readonly def: DefinicionA
       .map((def) => ({ def, orientacion: { plano: 'sagital', mira: l === 'der' ? 'derecha' : 'izquierda' } as OrientacionVista, lado: def.id.startsWith('pose_tronco') ? null : l })),
   )
   const frontales = articulacionesPoseFrontales('der').map((def) => ({ def, orientacion: { plano: 'frontal', ve: 'delante' } as OrientacionVista, lado: lado(def.id) }))
-  return [...sagitales, ...frontales].map(({ def, orientacion, lado: l }) => ({
+  // Los brazos y la cabeza (fase 8) todavía no se triangulan: llegan al 3D en su paso 2.
+  return [...sagitales, ...frontales].filter(({ def }) => !BRAZOS_CABEZA.test(def.id)).map(({ def, orientacion, lado: l }) => ({
     def,
     orientacion,
     art: { id: `3d_${def.id.replace(/^pose_/, '').replace(/^tronco_sagital_der$/, 'tronco_sagital')}`, nombre: sinFuente(def.nombre), plano: def.plano, lado: l, positivo: def.positivo, negativo: def.negativo },
