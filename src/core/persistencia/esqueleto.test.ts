@@ -120,3 +120,12 @@ describe('con la sesión', () => {
     if (c.ok) expect(c.valor.tresd).toBeUndefined()
   })
 })
+
+describe('la marcha en 3D guardada con lo que se mira', () => {
+  it('se lee con los ajustes; ilegible, se descarta sin perder lo demás', () => {
+    const marcha = { manuales: [{ tipo: 'contacto', lado: 'izq', t: 1.2, manual: true }], quitados: [], excluidos: [2.3], enCinta: null }
+    const base = { fuente: 'puntos', ceros: {} }
+    expect(leerAjustes3D({ ...base, marcha })).toEqual({ ...base, marcha })
+    expect(leerAjustes3D({ ...base, marcha: { manuales: 'no' } })).toEqual(base)
+  })
+})

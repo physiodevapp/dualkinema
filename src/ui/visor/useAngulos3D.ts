@@ -1,3 +1,4 @@
+import type { MarchaGuardada } from '../../core/marcha/guardado'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ceroDeReferencia, type TramoEstatico } from '../../core/articulaciones/cero'
 import { construirCsv3D } from '../../core/exportacion/csv3d'
@@ -51,6 +52,8 @@ export function useAngulos3D({
   })
   const [elegida, setElegidaEstado] = useState(guardado.tresd?.articulacion ?? ARTICULACIONES_3D[0]!.id)
   const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>(guardado.tresd?.ceros ?? {})
+  // La marcha en 3D (null hasta «Buscar los ciclos»).
+  const [marcha, setMarchaEstado] = useState<MarchaGuardada | null>(guardado.tresd?.marcha ?? null)
   // Mientras se sigue o se detecta en una vista, sus trayectorias cambian con cada lote: no se rehace el 3D de toda la toma
   // cada vez (se rehace al acabar).
   const ocupado = !!a && !!b && (a.siguiendo || a.detectando || b.siguiendo || b.detectando)
@@ -164,7 +167,14 @@ export function useAngulos3D({
     () => (ajuste?.resultado && ajuste.huella ? (ajuste.empaquetado ?? empaquetarEsqueleto(ajuste.resultado, ajuste.huella)) : null),
     [ajuste],
   )
-  const aGuardar = useMemo(() => ({ tresd: { fuente, articulacion: elegida, ceros } satisfies Ajustes3D, esqueleto: empaquetado }), [fuente, elegida, ceros, empaquetado])
+  const aGuardar = useMemo(
+    () => ({ tresd: { fuente, articulacion: elegida, ceros, ...(marcha ? { marcha } : {}) } satisfies Ajustes3D, esqueleto: empaquetado }),
+    [fuente, elegida, ceros, marcha, empaquetado],
+  )
+  const setMarcha = (m: MarchaGuardada | null) => {
+    setMarchaEstado(m)
+    avisar()
+  }
 
   const generar = (formato: Parameters<typeof construirCsv3D>[1]) => {
     const angulos = ARTICULACIONES_3D.map((x) => {
@@ -207,6 +217,11 @@ export function useAngulos3D({
     ponerCero,
     generar,
     aGuardar,
+    /** Los puntos 3D sin filtrar (la marcha los filtra por tramos ella misma) y los fps de referencia. */
+    bruto: bruto!,
+    fs,
+    marcha,
+    setMarcha,
   }
 }
 
