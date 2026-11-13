@@ -1,6 +1,6 @@
 # Fase 9: marcha
 
-Estado: **planificada** (plan del 13-11-2026, pedido por el usuario el 13-11; empieza al cerrar la fase 8). Las decisiones D1–D10 están escritas y se siguen con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md`. Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
+Estado: **cerrada** (13-11-2026; ver «Cierre de la fase 9»). Plan del 13-11-2026, pedido por el usuario el 13-11. Las decisiones D1–D10 están escritas y se siguen con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md`. Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
 
 ## Qué se quiere
 
@@ -43,3 +43,14 @@ Analizar la marcha grabada de perfil: encontrar los **eventos del ciclo** (conta
 **Paso 2 (13-11):** la tarjeta «Marcha» en «Análisis» (`ui/visor/PanelMarcha.tsx`, con una vista de perfil): «Buscar los ciclos», el resumen, los parámetros, «Dónde anda» (lo decide la app, por el suelo o en cinta), la curva en % del ciclo de la articulación que se mira (relativa al cero si lo hay), la lista de ciclos con su casilla para la media y su motivo de descarte, los eventos para corregir («Ir», «Mover aquí», «Quitar», «Añadir… aquí») y el CSV (`core/exportacion/csvMarcha.ts`). El análisis entero, en el núcleo (`core/marcha/analisis.ts`: qué puntos del pie usar —`idsDelPie`, D2— y `analizarMarcha`). Lo corregido se guarda con la vista (`core/marcha/guardado.ts`, `VistaCabecera.marcha`, opcional y sin subir el esquema; vive en `AnfitrionVista`). Glosario «Marcha: ciclos y parámetros». e2e con la persona sintética que anda (en cinta): ciclos, zancada, cadencia, apoyo, excluir un ciclo, «Ir», el CSV y un evento quitado que se recupera.
 
 Cambios sobre el plan: **la gráfica en % del ciclo es un SVG**, no uPlot: es estática (sin cursor ni zoom) y así sale entera y sin coste en cualquier ancho. **Los eventos no se marcan sobre la gráfica del tiempo** ni se usa el pie lejano (D2): quedan para cuando haya vídeos reales con los que ver si hacen falta. **Pendiente de validar con vídeos:** la prominencia (20 %) y la separación (0,4 s), la detección de «en cinta» y la calidad de talón y punta del modelo en la marcha real.
+
+## Cierre de la fase 9 (paso 3, 13-11-2026)
+
+**Revisión de código.** Todo el cálculo está en el núcleo y probado con la persona sintética (`core/marcha/`); la tarjeta solo junta y pinta. Las señales se filtran por tramos con el filtro de la sesión y los extremos se buscan por tramo, así que ningún evento ni ciclo cruza un hueco; el instante se afina por tiempo (fps variable). Lo corregido a mano se guarda como correcciones sobre lo detectado (manuales, quitados y excluidos), no como una lista cerrada: si se corrigen las trayectorias, lo detectado se recalcula y las correcciones siguen valiendo. Sin valor, celda vacía o «—», nunca 0.
+
+**Limitaciones conocidas.**
+1. **Un solo pie**: el de la cámara. Sin el pie lejano no hay tiempo de paso, doble apoyo ni simetría (con dos vistas de perfil, una en cada flanco, cada una da su pie; con el 3D, los dos).
+2. **Pocos ciclos por el suelo**: en el encuadre de un móvil de perfil caben dos o tres zancadas; para la media hace falta repetir pasadas (todavía no se juntan los ciclos de varias tomas) o usar la cinta.
+3. **En cinta**, sin longitud ni velocidad (no salen de la imagen); la velocidad de la cinta no se puede escribir todavía.
+4. **Umbrales sin validar**: la prominencia (20 %), la separación (0,4 s), la duración (±25 %) y la decisión de «en cinta» son razonados; **pendiente de validar con vídeos**, igual que la calidad del talón y la punta del modelo en la marcha real (el pie es lo que peor detecta).
+5. **La gráfica en % del ciclo es estática** (SVG): sin cursor ni valor al tocarla.
