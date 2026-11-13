@@ -23,7 +23,10 @@ export function persona3d(tiemposA: readonly number[], tiemposB: readonly number
     tiempos.map((t, indice) => {
       const X = puntosDe(estadoEn(t * RITMO, ESTATURA), ESTATURA)
       const puntos = PUNTOS_POSE.flatMap((p) => {
-        const q = proyectar(camara, X.get(`${p.parte}_${p.lado}`)!)
+        // La persona sintética no tiene brazos ni orejas (fase 8): esos puntos, sin ver.
+        const P = X.get(`${p.parte}_${p.lado}` as Parameters<typeof X.get>[0])
+        if (!P) return [NaN, NaN, 0]
+        const q = proyectar(camara, P)
         return [q.u, q.v, 0.98]
       })
       return { indice, t, puntos }
