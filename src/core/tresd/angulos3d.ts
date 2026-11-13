@@ -12,6 +12,11 @@
  *
  * Con dos puntos por segmento (centros articulares) no hay rotación axial del muslo ni de la pierna: la rotación de cadera
  * y de rodilla no se calcula (fase 7, con el esqueleto). Tampoco la anteversión de la pelvis (haría falta otro punto).
+ *
+ * Brazos y cabeza (fase 8, paso 2): el hombro (flexión y abducción) y la cabeza, como los demás, en las vistas virtuales;
+ * el codo no (su flexión sale del plano sagital de la pelvis en cuanto el brazo se separa o gira): es el ángulo real
+ * entre el brazo y el antebrazo, y la elevación del brazo, el ángulo real entre el brazo y el tronco de su lado. Los dos,
+ * «entre segmentos»: no dependen del plano ni de hacia dónde mire la persona.
  */
 import { serieAngular, type MuestraAngulo } from '../articulaciones/calculo'
 import type { Lado } from '../articulaciones/catalogo'
@@ -23,7 +28,7 @@ import { articulacionesPoseFrontales, articulacionesPoseSagitales } from '../pos
 import { idMedio, idPose, PUNTOS_MEDIOS } from '../pose/puntos'
 import type { Muestra3D, Trayectorias3D } from './puntos3d'
 
-export type Plano3D = 'sagital' | 'frontal' | 'transversal'
+export type Plano3D = 'sagital' | 'frontal' | 'transversal' | 'entreSegmentos'
 
 export interface Articulacion3D {
   readonly id: string
@@ -86,25 +91,32 @@ function vistaVirtual(tr: Trayectorias3D, orientacion: OrientacionVista, rumbo: 
 
 const sinFuente = (nombre: string) => nombre.replace(/ sin marcadores$/, ' en 3D')
 
-const BRAZOS_CABEZA = /^pose_(hombro|codo|cabeza)_/
-
 /** Las articulaciones del 2D sin marcadores que se calculan en una vista virtual, con su id 3D. */
 function deCatalogo(): { readonly art: Articulacion3D; readonly def: DefinicionArticulacion; readonly orientacion: OrientacionVista }[] {
   const lado = (id: string): Lado | null => (id.endsWith('_der') ? 'der' : id.endsWith('_izq') ? 'izq' : null)
   const sagitales = (['der', 'izq'] as const).flatMap((l) =>
     articulacionesPoseSagitales(l)
-      // El tronco respecto a la vertical, una vez (la de la pierna derecha).
-      .filter((d) => l === 'der' || !d.id.startsWith('pose_tronco'))
-      .map((def) => ({ def, orientacion: { plano: 'sagital', mira: l === 'der' ? 'derecha' : 'izquierda' } as OrientacionVista, lado: def.id.startsWith('pose_tronco') ? null : l })),
+      // El tronco y la cabeza respecto a la vertical, una vez (los del lado derecho); el codo va entre segmentos.
+      .filter((d) => (l === 'der' || !UNA_VEZ.test(d.id)) && !d.id.startsWith('pose_codo'))
+      .map((def) => ({ def, orientacion: { plano: 'sagital', mira: l === 'der' ? 'derecha' : 'izquierda' } as OrientacionVista, lado: UNA_VEZ.test(def.id) ? null : l })),
   )
   const frontales = articulacionesPoseFrontales('der').map((def) => ({ def, orientacion: { plano: 'frontal', ve: 'delante' } as OrientacionVista, lado: lado(def.id) }))
-  // Los brazos y la cabeza (fase 8) todavía no se triangulan: llegan al 3D en su paso 2.
-  return [...sagitales, ...frontales].filter(({ def }) => !BRAZOS_CABEZA.test(def.id)).map(({ def, orientacion, lado: l }) => ({
+  return [...sagitales, ...frontales].map(({ def, orientacion, lado: l }) => ({
     def,
     orientacion,
-    art: { id: `3d_${def.id.replace(/^pose_/, '').replace(/^tronco_sagital_der$/, 'tronco_sagital')}`, nombre: sinFuente(def.nombre), plano: def.plano, lado: l, positivo: def.positivo, negativo: def.negativo },
+    art: { id: `3d_${def.id.replace(/^pose_/, '').replace(/^(tronco|cabeza)_sagital_der$/, '$1_sagital')}`, nombre: sinFuente(def.nombre), plano: def.plano, lado: l, positivo: def.positivo, negativo: def.negativo },
   }))
 }
+
+const UNA_VEZ = /^pose_(tronco|cabeza)_sagital/
+
+const NOMBRE_M: Record<Lado, string> = { der: 'derecho', izq: 'izquierdo' }
+
+/** Entre segmentos (fase 8): el codo y la elevación del brazo, de los dos lados. */
+const ENTRE_SEGMENTOS: readonly Articulacion3D[] = (['der', 'izq'] as const).flatMap((l): Articulacion3D[] => [
+  { id: `3d_codo_${l}`, nombre: `Codo ${NOMBRE_M[l]} (flexión) en 3D`, plano: 'entreSegmentos', lado: l, positivo: 'flexión', negativo: '—' },
+  { id: `3d_hombro_elevacion_${l}`, nombre: `Hombro ${NOMBRE_M[l]} (elevación del brazo) en 3D`, plano: 'entreSegmentos', lado: l, positivo: 'elevación', negativo: '—' },
+])
 
 const TRANSVERSALES: readonly Articulacion3D[] = [
   { id: '3d_pelvis_transversal', nombre: 'Pelvis (rotación) en 3D', plano: 'transversal', lado: null, positivo: 'rotación a la izquierda', negativo: 'rotación a la derecha' },
@@ -113,8 +125,37 @@ const TRANSVERSALES: readonly Articulacion3D[] = [
   { id: '3d_pie_progresion_izq', nombre: 'Pie izquierdo (ángulo de progresión) en 3D', plano: 'transversal', lado: 'izq', positivo: 'punta hacia fuera', negativo: 'punta hacia dentro' },
 ]
 
-/** Todas las articulaciones 3D: sagitales (de las dos piernas y el tronco), frontales y transversales. */
-export const ARTICULACIONES_3D: readonly Articulacion3D[] = [...deCatalogo().map((x) => x.art), ...TRANSVERSALES]
+/** Todas las articulaciones 3D: sagitales (de las dos piernas y el tronco), frontales, transversales y entre segmentos. */
+export const ARTICULACIONES_3D: readonly Articulacion3D[] = [...deCatalogo().map((x) => x.art), ...TRANSVERSALES, ...ENTRE_SEGMENTOS]
+
+/**
+ * El ángulo (grados, 0–180) entre los vectores `a → b` y `c → d` en cada frame: 0 con los dos en la misma dirección. NaN
+ * sin alguno de los cuatro puntos o con un segmento de longitud nula.
+ */
+function entreVectores(tr: Trayectorias3D, a: IdMarcador, b: IdMarcador, c: IdMarcador, d: IdMarcador): number[] {
+  const [sa, sb, sc, sd] = [a, b, c, d].map((id) => tr.series.get(id) ?? [])
+  return tr.tiempos.map((_, i) => {
+    const [p, q, r, s] = [sa![i], sb![i], sc![i], sd![i]]
+    if (!utilizable(p) || !utilizable(q) || !utilizable(r) || !utilizable(s)) return NaN
+    const u = [q.x - p.x, q.y - p.y, q.z - p.z]
+    const w = [s.x - r.x, s.y - r.y, s.z - r.z]
+    const nu = Math.hypot(u[0]!, u[1]!, u[2]!)
+    const nw = Math.hypot(w[0]!, w[1]!, w[2]!)
+    if (nu < 1e-9 || nw < 1e-9) return NaN
+    const cos = (u[0]! * w[0]! + u[1]! * w[1]! + u[2]! * w[2]!) / (nu * nw)
+    return grados(Math.acos(Math.min(1, Math.max(-1, cos))))
+  })
+}
+
+function entreSegmentos(id: string, tr: Trayectorias3D): MuestraAngulo[] {
+  const l: Lado = id.endsWith('_der') ? 'der' : 'izq'
+  const valores = id.startsWith('3d_codo_')
+    ? // Flexión: el antebrazo respecto a la prolongación del brazo (estirado, 0°).
+      entreVectores(tr, idPose('hombro', l), idPose('codo', l), idPose('codo', l), idPose('muneca', l))
+    : // Elevación: el brazo respecto al tronco de su lado (hombro → cadera; colgando, 0°).
+      entreVectores(tr, idPose('hombro', l), idPose('cadera', l), idPose('hombro', l), idPose('codo', l))
+  return tr.tiempos.map((t, i) => ({ t, valor: valores[i]!, interpolado: false }))
+}
 
 /** El rumbo (rad) de la línea que va de `a` a `b` girada a «delante» (z × (b − a)), por frame. */
 function rumboDeLinea(tr: Trayectorias3D, a: IdMarcador, b: IdMarcador): number[] {
@@ -188,6 +229,7 @@ function transversal(id: string, tr: Trayectorias3D, rumbo: readonly number[]): 
 export function serieAngular3D(id: string, tr: Trayectorias3D): MuestraAngulo[] {
   const rumbo = rumbos(tr)
   if (TRANSVERSALES.some((a) => a.id === id)) return transversal(id, tr, rumbo)
+  if (ENTRE_SEGMENTOS.some((a) => a.id === id)) return entreSegmentos(id, tr)
   const x = deCatalogo().find((c) => c.art.id === id)
   if (!x) throw new Error(`Articulación 3D desconocida: ${id}`)
   const v = vistaVirtual(conMedios3D(tr), x.orientacion, rumbo)

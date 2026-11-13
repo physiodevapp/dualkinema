@@ -5487,6 +5487,10 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     const panel = p.getByTestId('panel-3d')
     await panel.waitFor()
     const leer = async () => Number((await panel.getByTestId('valor-3d').innerText()).replace('°', '').replace(',', '.').replace('−', '-'))
+    // Los brazos (fase 8) van «entre segmentos»; la persona sintética no tiene brazos: sin valor, nunca 0.
+    assert.deepEqual(await panel.getByTestId('articulacion-3d').locator('optgroup').evaluateAll((gs) => gs.map((g) => g.label)), ['Sagital', 'Frontal', 'Transversal', 'Entre segmentos'])
+    await panel.getByTestId('articulacion-3d').selectOption('3d_codo_der')
+    assert.equal(await panel.getByTestId('valor-3d').innerText(), '—')
     for (const [id, clave] of [['3d_rodilla_sagital_der', 'rodillaDer'], ['3d_rodilla_sagital_izq', 'rodillaIzq'], ['3d_tronco_sagital', 'tronco']]) {
       await panel.getByTestId('articulacion-3d').selectOption(id)
       for (const i of [30, 60, 95]) {
