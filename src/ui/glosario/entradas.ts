@@ -359,6 +359,16 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'cervical',
+    titulo: 'Cervical: orientación de la cabeza',
+    texto: [
+      '«Detectar la cara» pasa el vídeo por un modelo de la cara (Face Landmarker, de MediaPipe, el mismo de orbicula) que corre en el propio móvil y da, en cada frame, cómo está girada la cabeza respecto a la cámara con la cara entera (no con dos puntos). De ahí salen la rotación (+ a la izquierda), la flexo-extensión (+ flexión) y la inclinación lateral (+ a la izquierda), en ese orden.',
+      'Se miden respecto al neutro: la posición de la cabeza en un tramo quieto mirando al frente (al acabar, los primeros 2 s; se cambia con «Aquí ± 0,2 s»). Sin neutro no hay ángulos: respecto a la cámara no son clínicos.',
+      'Es la cabeza respecto a la cámara, no respecto al tronco: la persona tiene que estar sentada con la espalda apoyada, para que el tronco no gire. Toma de cerca: la cabeza y los hombros en el encuadre, el móvil delante, a la altura de la cara (a 3–4 m, en una toma de cuerpo entero, la cara es demasiado pequeña).',
+      'Con un móvil, la cara se pierde cuando gira más de unos 70° respecto a la cámara (sale de perfil): esos frames quedan sin valor, nunca se inventan, y el rango de ese lado sale corto (se ve en la asimetría). Por eso el móvil va de frente. Rango: lo más lejos a cada lado en la toma; asimetría = (+ − −) / (+ + −). Pendiente de validar frente a un goniómetro o un inclinómetro.',
+    ],
+  },
+  {
     id: 'piernas-intercambiadas',
     titulo: 'Piernas intercambiadas',
     texto: [

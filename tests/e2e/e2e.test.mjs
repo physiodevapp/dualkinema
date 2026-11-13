@@ -5423,6 +5423,223 @@ describe('guía de la toma B1 (fase 6)', () => {
   })
 })
 
+/**
+ * La cabeza que gira (fase 10): quieta mirando al frente 2,2 s (el neutro son los primeros 2 s), luego una rotación de
+ * ±50° y una flexión de 20°. El worker
+ * de la cara se sustituye por uno falso que manda la matriz de transformación de cada frame (por columnas, como Face
+ * Landmarker; con escala y traslación) y, en `sinCara`, ninguna.
+ */
+function caraFalsa(tiempos, sinCara = []) {
+  const rad = (d) => (d * Math.PI) / 180
+  const verdad = tiempos.map((t) => (t < 2.2 ? { rot: 0, flex: 0 } : { rot: 50 * Math.sin((2 * Math.PI * (t - 2.2)) / 1.6), flex: 20 * Math.sin((Math.PI * (t - 2.2)) / 1.6) ** 2 }))
+  // R = R_y(rot) · R_x(flex), por filas.
+  const giro = ({ rot, flex }) => {
+    const [cy, sy, cx, sx] = [Math.cos(rad(rot)), Math.sin(rad(rot)), Math.cos(rad(flex)), Math.sin(rad(flex))]
+    return [cy, sy * sx, sy * cx, 0, cx, -sx, -sy, cy * sx, cy * cx]
+  }
+  const frames = verdad.map((v, indice) => {
+    if (sinCara.includes(indice)) return { indice, t: tiempos[indice], matriz: null }
+    const r = giro(v)
+    const m = new Array(16).fill(0)
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) m[4 * j + i] = 1.2 * r[i * 3 + j]
+    m[14] = -45
+    m[15] = 1
+    return { indice, t: tiempos[indice], matriz: m }
+  })
+  return { frames, verdad }
+}
+
+describe('cervical (fase 10) con una cabeza de giro conocido', () => {
+  let p
+  let verdad
+  const SIN_CARA = [88, 89, 90]
+  before(async () => {
+    const r = caraFalsa(videos.verde.verdad.map((x) => x.t), SIN_CARA)
+    verdad = r.verdad
+    p = await navegador.newPage({ locale: 'es-ES', viewport: { width: 1280, height: 900 } })
+    await vigilarErrores(p)
+    await p.addInitScript(({ frames }) => {
+      const Original = window.Worker
+      window.Worker = function (url, opciones) {
+        if (!String(url).includes('cara.worker')) return new Original(url, opciones)
+        const w = { onmessage: null, onerror: null, terminate() {} }
+        const enviar = (data, ms) => setTimeout(() => w.onmessage?.({ data }), ms)
+        w.postMessage = (m) => {
+          if (m.tipo !== 'detectar') return
+          enviar({ tipo: 'listo', delegado: 'GPU', msCarga: 1 }, 10)
+          for (let k = 0; k < frames.length; k += 30) enviar({ tipo: 'frames', lote: frames.slice(k, k + 30), progreso: Math.min(1, (k + 30) / frames.length) }, 20 + k)
+          enviar({ tipo: 'fin', motivo: 'final', procesados: frames.length, msProceso: 100 }, 40 + frames.length)
+        }
+        return w
+      }
+    }, { frames: r.frames })
+    await p.goto(URL_APP)
+    await cargarVideo(p, videos.verde.ruta)
+  })
+  after(() => p?.close())
+
+  it('detecta la cara: rotación y flexión de la verdad respecto al neutro de los primeros 2 s, sin valor sin cara', async () => {
+    await abrirPestana(p, 'analisis')
+    const panel = p.getByTestId('panel-cervical')
+    await panel.getByRole('button', { name: 'Detectar la cara' }).click()
+    await panel.getByTestId('valores-cervicales').waitFor({ timeout: 20000 })
+    assert.match(await panel.getByTestId('resumen-cervical').innerText(), new RegExp(`cara utilizable en ${120 - SIN_CARA.length} de 120 frames`))
+    const leer = async (id) => Number((await panel.getByTestId(`valor-${id}`).innerText()).replace('°', '').replace(',', '.').replace('−', '-'))
+    for (const i of [20, 76, 100]) {
+      await irAFrame(p, i)
+      await abrirPestana(p, 'analisis')
+      assert.ok(Math.abs((await leer('rotacion')) - verdad[i].rot) < 1.5, `rotación, frame ${i + 1}: ${await leer('rotacion')} frente a ${verdad[i].rot}`)
+      assert.ok(Math.abs((await leer('flexion')) - verdad[i].flex) < 1.5, `flexión, frame ${i + 1}`)
+      assert.ok(Math.abs(await leer('inclinacion')) < 1.5)
+    }
+    await irAFrame(p, 89)
+    await abrirPestana(p, 'analisis')
+    assert.equal(await panel.getByTestId('valor-rotacion').innerText(), '—')
+    // El rango de rotación a cada lado, cerca de los 50° de verdad (el filtro rebaja algo el pico).
+    const rango = await panel.getByTestId('rango-rotacion').innerText()
+    const [izq, der] = [...rango.matchAll(/(\d+,\d)°/g)].map((m) => Number(m[1].replace(',', '.')))
+    assert.ok(izq > 45 && izq <= 50.5 && der > 45 && der <= 50.5, rango)
+  })
+
+  it('el CSV lleva una fila por frame con las tres curvas, y la detección se guarda con la sesión', async () => {
+    const panel = p.getByTestId('panel-cervical')
+    const [descarga] = await Promise.all([p.waitForEvent('download'), panel.getByTestId('descargar-csv').click()])
+    assert.match(descarga.suggestedFilename(), /_cervical\.csv$/)
+    const csv = leerCsv(await readFile(await descarga.path(), 'utf8'))
+    assert.deepEqual(csv.columnas, ['t_s', 'frame', 'rotacion_grados', 'flexion_grados', 'inclinacion_grados', 'calidad_cara'])
+    assert.equal(csv.filas.length, 120)
+    // Espera a que la detección esté guardada (en los datos de la sesión).
+    let guardada = false
+    for (let k = 0; k < 60 && !guardada; k++) {
+      guardada = await p.evaluate(async () => {
+        const bd = await new Promise((ok, mal) => {
+          const r = indexedDB.open('dualkinema')
+          r.onsuccess = () => ok(r.result)
+          r.onerror = () => mal(r.error)
+        })
+        try {
+          if (!bd.objectStoreNames.contains('trayectorias')) return false
+          const todas = await new Promise((ok) => {
+            const r = bd.transaction('trayectorias').objectStore('trayectorias').getAll()
+            r.onsuccess = () => ok(r.result)
+          })
+          return todas.some((d) => d.caras && Object.keys(d.caras).length === 1)
+        } finally {
+          bd.close()
+        }
+      })
+      if (!guardada) await p.waitForTimeout(300)
+    }
+    assert.ok(guardada, 'la detección de la cara no se ha guardado')
+    await p.reload()
+    await p.setInputFiles('input[type=file]', videos.verde.ruta)
+    await p.getByRole('button', { name: 'Recuperar el trabajo' }).click({ timeout: 20000 })
+    await esperarQuieto(p)
+    await abrirPestana(p, 'analisis')
+    await p.getByTestId('panel-cervical').getByTestId('valores-cervicales').waitFor({ timeout: 20000 })
+    assert.match(await p.getByTestId('panel-cervical').getByTestId('resumen-cervical').innerText(), /cara utilizable en 117 de 120 frames/)
+  })
+})
+
+describe('cervical con dos móviles en diagonal (fase 10, D6)', () => {
+  it('cada móvil pierde la cara en un lado; juntos, el rango de rotación completo (±90°) y simétrico', async () => {
+    const rad = (d) => (d * Math.PI) / 180
+    // La cabeza en el tiempo común: quieta 2,2 s y luego de +90° a −90°.
+    const rot = (t) => (t < 2.2 ? 0 : 90 * Math.sin((2 * Math.PI * (t - 2.2)) / 1.6))
+    // Lo que ve un móvil girado `cam` grados: R = R_y(cam + rot), por columnas; sin cara a más de 70° de frente.
+    const vista = (tiempos, cam) =>
+      tiempos.map((t, indice) => {
+        const a = rad(cam + rot(t))
+        if (Math.cos(a) < 0.34) return { indice, t, matriz: null }
+        const m = new Array(16).fill(0)
+        ;[m[0], m[2], m[5], m[8], m[10], m[15]] = [Math.cos(a), -Math.sin(a), 1, Math.sin(a), Math.cos(a), 1]
+        m[14] = -60
+        return { indice, t, matriz: m }
+      })
+    const tA = videos.verde.verdad.map((x) => x.t)
+    const tB = videos.frontal.verdad.map((x) => x.t)
+    const listas = [vista(tA, -45), vista(tB, 45)]
+    const p = await navegador.newPage({ locale: 'es-ES', viewport: { width: 1280, height: 900 } })
+    await vigilarErrores(p)
+    await p.addInitScript(({ listas }) => {
+      const Original = window.Worker
+      let n = 0
+      window.Worker = function (url, opciones) {
+        if (!String(url).includes('cara.worker')) return new Original(url, opciones)
+        const frames = listas[Math.min(n++, listas.length - 1)]
+        const w = { onmessage: null, onerror: null, terminate() {} }
+        const enviar = (data, ms) => setTimeout(() => w.onmessage?.({ data }), ms)
+        w.postMessage = (m) => {
+          if (m.tipo !== 'detectar') return
+          enviar({ tipo: 'listo', delegado: 'GPU', msCarga: 1 }, 10)
+          enviar({ tipo: 'frames', lote: frames, progreso: 1 }, 30)
+          enviar({ tipo: 'fin', motivo: 'final', procesados: frames.length, msProceso: 100 }, 50)
+        }
+        return w
+      }
+    }, { listas })
+    try {
+      await p.goto(URL_APP)
+      await cargarVideo(p, videos.verde.ruta)
+      await abrirPestana(p, 'video')
+      await p.getByTestId('archivo-segunda-vista').setInputFiles(videos.frontal.ruta)
+      await p.getByRole('button', { name: 'La cámara la ve de frente' }).click()
+      await p.getByTestId('conmutador-vista').waitFor()
+      await esperarQuieto(p)
+      const panel = p.getByTestId('panel-cervical')
+      const rangoRot = async () => [...(await panel.getByTestId('rango-rotacion').innerText()).matchAll(/(\d+,\d)°/g)].map((m) => Number(m[1].replace(',', '.')))
+      // En A, sola: la cara se pierde hacia un lado.
+      await abrirPestana(p, 'analisis')
+      await panel.getByRole('button', { name: 'Detectar la cara' }).click()
+      await panel.getByTestId('valores-cervicales').waitFor({ timeout: 20000 })
+      const [izqA, derA] = await rangoRot()
+      assert.ok(Math.min(izqA, derA) < 75 && Math.max(izqA, derA) > 85, `A sola: ${izqA} y ${derA}`)
+      // En B, y juntas.
+      await p.getByTestId('vista-B').click()
+      await esperarQuieto(p)
+      await abrirPestana(p, 'analisis')
+      await panel.getByRole('button', { name: 'Detectar la cara' }).click()
+      await panel.getByTestId('fusion-cervical').waitFor({ timeout: 20000 })
+      assert.match(await panel.getByTestId('fusion-cervical').innerText(), /dos móviles a 90° entre sí/)
+      const [izq, der] = await rangoRot()
+      assert.ok(izq > 85 && der > 85 && Math.abs(izq - der) < 4, `juntas: ${izq} y ${der}`)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
+describe('cervical con el modelo de la cara de verdad (fase 10)', () => {
+  // La cara de `fixtures/persona.jpg` (Pexels, uso libre), recortada y hecha vídeo de 5 s: 2,5 s tal cual y 2,5 s girada 15°
+  // en el sentido de las agujas del reloj (ffmpeg `rotate`), que es la cabeza inclinada hacia la izquierda de la persona
+  // (está de frente: su izquierda queda a la derecha de la imagen). Fija el convenio de los ejes de Face Landmarker
+  // (D3) con el modelo de verdad, y que la barrera de red corta el registro de uso de MediaPipe (D1).
+  it('Face Landmarker de verdad: la inclinación a la izquierda sale + y unos 15°, sin flexión; el registro de uso queda bloqueado', async () => {
+    const p = await navegador.newPage({ locale: 'es-ES', viewport: { width: 1280, height: 900 } })
+    await vigilarErrores(p)
+    const bloqueos = []
+    p.on('console', (m) => /llamada de red bloqueada/.test(m.text()) && bloqueos.push(m.text()))
+    try {
+      await p.goto(URL_APP)
+      await cargarVideo(p, join(import.meta.dirname, 'fixtures', 'cara-inclinada.webm'))
+      await abrirPestana(p, 'analisis')
+      const panel = p.getByTestId('panel-cervical')
+      await panel.getByRole('button', { name: 'Detectar la cara' }).click()
+      await panel.getByTestId('valores-cervicales').waitFor({ timeout: 120000 })
+      assert.match(await panel.getByTestId('resumen-cervical').innerText(), /cara utilizable en 151 de 151 frames/)
+      const leer = async (id) => Number((await panel.getByTestId(`valor-${id}`).innerText()).replace('°', '').replace(',', '.').replace('−', '-'))
+      await irAFrame(p, 120)
+      await abrirPestana(p, 'analisis')
+      const incl = await leer('inclinacion')
+      assert.ok(incl > 12 && incl < 18, `inclinación ${incl}`)
+      assert.ok(Math.abs(await leer('flexion')) < 3)
+      assert.ok(bloqueos.some((b) => b.includes('odml.pa.googleapis.com')), `sin bloqueo: ${bloqueos.join(' | ')}`)
+    } finally {
+      await p.close()
+    }
+  })
+})
+
 describe('marcha (fase 9) con la persona sintética que anda', () => {
   let p
   let r

@@ -1,3 +1,4 @@
+import type { CaraVista } from '../../core/cervical/sesion'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import type { MarchaGuardada } from '../../core/marcha/guardado'
 import { marcadoresParaVista, modeloDeVista } from '../../core/articulaciones/modeloVista'
@@ -39,6 +40,12 @@ export default function AnfitrionVista({ entrada, modelo, filtro, avisoInicial, 
     setMarcha(m)
     setRevMarcha((n) => n + 1)
   }, [])
+  const [cervical, setCervical] = useState<CaraVista | null>(entrada.cervical ?? null)
+  const [revCervical, setRevCervical] = useState(0)
+  const cambiarCervical = useCallback((c: CaraVista | null) => {
+    setCervical(c)
+    setRevCervical((n) => n + 1)
+  }, [])
   // Lo que ve esta vista del modelo de la sesión: sus marcadores y la articulación de su plano (D4). Una vista nueva sigue
   // los de su plano con la fuente con que se abrió (gomets o sin marcadores, fase 5).
   const fuente = entrada.fuente ?? 'gomets'
@@ -64,5 +71,5 @@ export default function AnfitrionVista({ entrada, modelo, filtro, avisoInicial, 
     articulacionGuardada: entrada.articulacion,
     alUsarPose: usarPose,
   })
-  return children({ id: entrada.id, orientacion: entrada.orientacion, desfaseS: entrada.desfase, sincronia: entrada.sincronia, propuesta: entrada.propuesta, sensores: entrada.sensores ?? null, marcadores, anadirGomets, marcha, cambiarMarcha, revMarcha, ...vista })
+  return children({ id: entrada.id, orientacion: entrada.orientacion, desfaseS: entrada.desfase, sincronia: entrada.sincronia, propuesta: entrada.propuesta, sensores: entrada.sensores ?? null, marcadores, anadirGomets, marcha, cambiarMarcha, revMarcha, cervical, cambiarCervical, revCervical, ...vista })
 }
