@@ -302,7 +302,7 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     titulo: 'Sin marcadores',
     texto: [
       '«Detectar el cuerpo» busca a la persona en cada frame del vídeo con un modelo de visión (MediaPipe Pose, de Google, de uso libre) que corre en el propio móvil: el vídeo no sale de él. La primera vez se carga el modelo (el normal va con la app; el preciso, unos 30 MB, se descarga de Google: solo se descarga, no se envía nada).',
-      'De cada frame se guardan 12 puntos: hombros, caderas, rodillas, tobillos, talones y puntas de los pies, de los dos lados, con su visibilidad (de 0 a 1: lo seguro que está el modelo de ver el punto). Por debajo de 0,5 un punto no se usa para los ángulos, como un gomet dudoso. De perfil, la pierna lejana queda detrás de la otra y suele salir con poca visibilidad: se dibuja, tenue, pero no se mide.',
+      'De cada frame se guardan 18 puntos: hombros, caderas, rodillas, tobillos, talones y puntas de los pies, y también codos, muñecas y orejas, de los dos lados, con su visibilidad (de 0 a 1: lo seguro que está el modelo de ver el punto). Por debajo de 0,5 un punto no se usa para los ángulos, como un gomet dudoso. De perfil, la pierna y el brazo lejanos quedan detrás y suelen salir con poca visibilidad: se dibujan, tenues, pero no se miden.',
       'Los puntos del modelo son centros articulares aproximados (lo que aprendió de miles de personas anotadas), no referencias óseas como los gomets: por eso un ángulo sin marcadores puede diferir unos grados del de los gomets, sobre todo en la posición de partida. La forma de la curva y el recorrido sí se pueden comparar, y el cero de referencia quita esa diferencia constante.',
       'A veces el modelo confunde una pierna con la otra durante unos frames. Al acabar se corrige: de frente, cada cadera tiene su lado de la imagen; de perfil, un intercambio que se deshace en medio segundo se deshace también aquí, y si no, esas piernas quedan dudosas para que las revises. Un punto mal puesto se corrige tocándolo, y volver a detectar no borra lo corregido a mano.',
     ],
@@ -334,6 +334,16 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
       'Pelvis (oblicuidad): la línea que une las dos caderas respecto a la horizontal. Con la cadera izquierda más alta, positivo; con la derecha más alta, negativo. En un apoyo sobre una pierna, la pelvis que cae del lado contrario (signo de Trendelenburg) se ve aquí.',
       'Cadera (abducción-aducción respecto a la pelvis): el muslo (cadera → rodilla) respecto a la línea de las caderas. Con el muslo perpendicular a esa línea, 0°; la rodilla hacia fuera (abducción), positivo; hacia dentro (aducción), negativo, igual en las dos piernas. Va respecto a la pelvis, no al tronco: si la pelvis se inclina, el muslo puede no moverse respecto a la vertical y la cadera sí cambia.',
       'Todo depende de que la cámara esté de frente a la persona, perpendicular y a la altura de la cadera: si la persona gira, una flexión se ve como abducción o como valgo. Por eso se mira junto con la vista de perfil.',
+    ],
+  },
+  {
+    id: 'brazos-cabeza',
+    titulo: 'Hombro, codo y cabeza sin marcadores',
+    texto: [
+      'De perfil (el brazo que ve la cámara): el hombro es el brazo (hombro → codo) respecto al tronco (hombro → cadera): colgando, 0°; hacia delante (flexión), positivo; hacia atrás (extensión), negativo. El codo, el antebrazo (codo → muñeca) respecto al brazo: estirado, 0°; doblado (flexión), positivo. Son los mismos ángulos que con gomets en el acromion, el epicóndilo y la estiloides.',
+      'Cabeza de perfil: la línea del hombro a la oreja respecto a la vertical. Con la oreja por delante del hombro (cabeza adelantada), positivo; por detrás, negativo. Se parece al ángulo craneovertebral de la consulta, pero con el hombro del modelo en lugar de C7: se mira relativo al cero de una postura erguida, no a pelo.',
+      'De frente: el hombro de cada lado es el brazo respecto al tronco de ese lado (hombro → cadera): colgando, 0°; separado del cuerpo (abducción), positivo, igual en los dos brazos. La cabeza, la línea de las orejas respecto a la horizontal: inclinada hacia la izquierda de la persona, positivo; hacia la derecha, negativo. El codo de frente no se mide.',
+      'El hombro es la articulación que más sale del plano de la cámara: de perfil, la flexión solo vale si el brazo se mueve hacia delante (una abducción se ve como una flexión pequeña); de frente, la abducción solo si el brazo va de lado. El codo de perfil se acorta si el brazo está girado. Con dos móviles, en 3D, no pasa.',
     ],
   },
   {

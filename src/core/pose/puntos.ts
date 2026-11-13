@@ -14,7 +14,7 @@
 import type { Lado } from '../articulaciones/catalogo'
 import type { IdMarcador, Muestra2D } from '../modelo/tipos'
 
-export type ParteCuerpo = 'hombro' | 'cadera' | 'rodilla' | 'tobillo' | 'talon' | 'punta'
+export type ParteCuerpo = 'hombro' | 'cadera' | 'rodilla' | 'tobillo' | 'talon' | 'punta' | 'codo' | 'muneca' | 'oreja'
 
 /** Índice de cada parte en los 33 puntos de MediaPipe Pose («izquierda» = la de la persona). */
 const INDICE_MEDIAPIPE: Record<ParteCuerpo, Record<Lado, number>> = {
@@ -24,6 +24,9 @@ const INDICE_MEDIAPIPE: Record<ParteCuerpo, Record<Lado, number>> = {
   tobillo: { izq: 27, der: 28 },
   talon: { izq: 29, der: 30 },
   punta: { izq: 31, der: 32 },
+  codo: { izq: 13, der: 14 },
+  muneca: { izq: 15, der: 16 },
+  oreja: { izq: 7, der: 8 },
 }
 
 export interface PuntoPose {
@@ -39,12 +42,25 @@ export const idPose = (parte: ParteCuerpo, lado: Lado): IdMarcador => `pose_${pa
 /** ¿Es un marcador virtual del modelo sin marcadores (un punto o un punto medio), y no un gomet? */
 export const esIdPose = (id: IdMarcador): boolean => id.startsWith('pose_')
 
-const PARTES: readonly ParteCuerpo[] = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta']
+/** Las partes del tronco y las piernas (fases 5 a 7), las de siempre. */
+const PARTES_TRONCO_PIERNAS: readonly ParteCuerpo[] = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta']
+/** Los brazos y la cabeza (fase 8, D1 de docs/plan-fase-8.md): van detrás, para que lo de siempre no cambie de sitio. */
+const PARTES_BRAZOS_CABEZA: readonly ParteCuerpo[] = ['codo', 'muneca', 'oreja']
 
-/** Los 12 puntos que se guardan, en este orden (el de `FramePose.puntos`). */
-export const PUNTOS_POSE: readonly PuntoPose[] = PARTES.flatMap((parte) =>
-  (['izq', 'der'] as const).map((lado) => ({ id: idPose(parte, lado), parte, lado, indice: INDICE_MEDIAPIPE[parte][lado] })),
-)
+const listaPuntos = (partes: readonly ParteCuerpo[]): PuntoPose[] =>
+  partes.flatMap((parte) => (['izq', 'der'] as const).map((lado) => ({ id: idPose(parte, lado), parte, lado, indice: INDICE_MEDIAPIPE[parte][lado] })))
+
+/**
+ * Los 18 puntos que se guardan, en este orden (el de `FramePose.puntos`): los 12 del tronco y las piernas y, detrás, los
+ * 6 de los brazos y la cabeza (D2 de la fase 8: lo que manda el worker solo crece por el final).
+ */
+export const PUNTOS_POSE: readonly PuntoPose[] = listaPuntos([...PARTES_TRONCO_PIERNAS, ...PARTES_BRAZOS_CABEZA])
+
+/**
+ * Los 12 del tronco y las piernas: con los que se calibra en 3D y se ajusta el esqueleto (D3 de la fase 8: se validaron
+ * con ellos, y muñecas y codos se mueven deprisa y se ocultan detrás del cuerpo).
+ */
+export const PUNTOS_TRONCO_PIERNAS: readonly IdMarcador[] = listaPuntos(PARTES_TRONCO_PIERNAS).map((p) => p.id)
 
 /** Valores por punto en `FramePose.puntos`: x, y (px) y visibilidad. */
 export const VALORES_POR_PUNTO = 3
@@ -111,7 +127,7 @@ export function muestrasDeFrame(f: FramePose): Muestra2D[] {
   })
 }
 
-/** Líneas del esqueleto que se dibujan sobre el vídeo: cada pierna y el tronco, y las que unen los dos lados. */
+/** Líneas del esqueleto que se dibujan sobre el vídeo: cada pierna, el tronco, cada brazo y la cabeza, y las que unen los dos lados. */
 export const LINEAS_ESQUELETO: readonly (readonly [IdMarcador, IdMarcador])[] = [
   ...(['izq', 'der'] as const).flatMap((l) =>
     (
@@ -122,6 +138,9 @@ export const LINEAS_ESQUELETO: readonly (readonly [IdMarcador, IdMarcador])[] = 
         ['tobillo', 'talon'],
         ['talon', 'punta'],
         ['tobillo', 'punta'],
+        ['hombro', 'codo'],
+        ['codo', 'muneca'],
+        ['hombro', 'oreja'],
       ] as const
     ).map(([a, b]) => [idPose(a, l), idPose(b, l)] as const),
   ),

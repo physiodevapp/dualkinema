@@ -3630,12 +3630,18 @@ describe('dos vistas: el FPPA de la rodilla en la vista de frente', () => {
       'pose_cadera_sagital_der',
       'pose_tobillo_sagital_der',
       'pose_tronco_sagital_der',
+      'pose_hombro_sagital_der',
+      'pose_codo_sagital_der',
+      'pose_cabeza_sagital_der',
       'pose_rodilla_frontal_der',
       'pose_rodilla_frontal_izq',
       'pose_cadera_frontal_der',
       'pose_cadera_frontal_izq',
       'pose_pelvis_frontal',
       'pose_tronco_frontal',
+      'pose_hombro_frontal_der',
+      'pose_hombro_frontal_izq',
+      'pose_cabeza_frontal',
     ])
     await p.reload()
     await p.setInputFiles('input[type=file]', videos.frontal.ruta)
@@ -3893,18 +3899,10 @@ describe('dos vistas: gráficas en el tiempo común y CSV con tiempo común', ()
  * lejana de verdad). En `intercambiados` el modelo da las dos piernas al revés y en `sinPersona` no ve a nadie.
  */
 function deteccionFalsa(verdad, { intercambiados = [], sinPersona = [] } = {}) {
-  const PARTES = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta']
+  const PARTES = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta', 'codo', 'muneca', 'oreja']
   return verdad.map((v, indice) => {
     if (sinPersona.includes(indice)) return { indice, t: v.t, puntos: null }
-    const [cadera, rodilla, tobillo] = v.ps
-    const der = {
-      hombro: { x: cadera.x - 5, y: cadera.y - 40 },
-      cadera,
-      rodilla,
-      tobillo,
-      talon: { x: tobillo.x - 12, y: tobillo.y + 8 },
-      punta: { x: tobillo.x + 30, y: tobillo.y + 10 },
-    }
+    const der = brazoFalso(v)
     const al = intercambiados.includes(indice)
     const puntos = PARTES.flatMap((parte) =>
       ['izq', 'der'].flatMap((lado) => {
@@ -3968,14 +3966,32 @@ async function detectarCuerpo(p) {
 }
 
 /**
+ * El lado de la cámara de `deteccionFalsa`: las piernas en los gomets del vídeo; el hombro, 40 px sobre la cadera; el
+ * brazo, hacia delante y abajo con el codo algo doblado, y la oreja por delante del hombro (fase 8).
+ */
+function brazoFalso(v) {
+  const [cadera, rodilla, tobillo] = v.ps
+  const hombro = { x: cadera.x - 5, y: cadera.y - 40 }
+  const codo = { x: hombro.x + 10, y: hombro.y + 25 }
+  return {
+    hombro,
+    cadera,
+    rodilla,
+    tobillo,
+    talon: { x: tobillo.x - 12, y: tobillo.y + 8 },
+    punta: { x: tobillo.x + 30, y: tobillo.y + 10 },
+    codo,
+    muneca: { x: codo.x + 22, y: codo.y + 10 },
+    oreja: { x: hombro.x + 4, y: hombro.y - 20 },
+  }
+}
+
+/**
  * Lo que debe dar cada articulación sin marcadores de perfil con los puntos de `deteccionFalsa` (pierna derecha, mira a la
  * derecha), con su convención (`core/pose/catalogo.ts`): marco canónico = (x, −y) de la imagen.
  */
 function verdadPose(v) {
-  const [cadera, rodilla, tobillo] = v.ps
-  const hombro = { x: cadera.x - 5, y: cadera.y - 40 }
-  const talon = { x: tobillo.x - 12, y: tobillo.y + 8 }
-  const punta = { x: tobillo.x + 30, y: tobillo.y + 10 }
+  const { cadera, rodilla, tobillo, hombro, talon, punta, codo, muneca, oreja } = brazoFalso(v)
   const vec = (a, b) => ({ x: b.x - a.x, y: -(b.y - a.y) })
   const entre = (u, w) => (Math.atan2(u.x * w.y - u.y * w.x, u.x * w.x + u.y * w.y) * 180) / Math.PI
   const norm = (g) => ((((g + 180) % 360) + 360) % 360) - 180
@@ -3983,6 +3999,9 @@ function verdadPose(v) {
     cadera: norm(entre(vec(hombro, cadera), vec(cadera, rodilla))),
     tobillo: norm(entre(vec(rodilla, tobillo), vec(talon, punta)) - 90),
     tronco: norm(-entre({ x: 0, y: 1 }, vec(cadera, hombro))),
+    hombro: norm(entre(vec(hombro, cadera), vec(hombro, codo))),
+    codo: norm(entre(vec(hombro, codo), vec(codo, muneca))),
+    cabeza: norm(-entre({ x: 0, y: 1 }, vec(hombro, oreja))),
   }
 }
 
@@ -4046,15 +4065,15 @@ describe('sin marcadores: detectar el cuerpo (fase 5, paso 3)', () => {
     assert.ok(Math.abs((await leerAngulo(p)) - videos.verde.verdad[11].flexion) < TOLERANCIA_GRADOS)
   })
 
-  it('se elige qué articulación se mira: cadera, tobillo y tronco dan lo que deben, y el CSV lleva las cuatro', async () => {
+  it('se elige qué articulación se mira: cadera, tobillo, tronco, hombro, codo y cabeza dan lo que deben, y el CSV lleva las siete', async () => {
     await abrirPestana(p, 'analisis')
     const selector = p.getByRole('radiogroup', { name: 'Articulación' })
-    assert.deepEqual(await selector.getByRole('radio').allInnerTexts(), ['Rodilla derecha', 'Cadera derecha', 'Tobillo derecho', 'Tronco'])
+    assert.deepEqual(await selector.getByRole('radio').allInnerTexts(), ['Rodilla derecha', 'Cadera derecha', 'Tobillo derecho', 'Tronco', 'Hombro derecho', 'Codo derecho', 'Cabeza'])
     assert.equal(await selector.getByRole('radio', { checked: true }).innerText(), 'Rodilla derecha')
     // Sin gomets no hay fuente que elegir ni comparación.
     assert.equal(await p.getByRole('radiogroup', { name: 'Fuente' }).count(), 0)
     assert.equal(await p.getByTestId('comparacion-fuentes').count(), 0)
-    for (const [nombre, clave] of [['Cadera derecha', 'cadera'], ['Tobillo derecho', 'tobillo'], ['Tronco', 'tronco']]) {
+    for (const [nombre, clave] of [['Cadera derecha', 'cadera'], ['Tobillo derecho', 'tobillo'], ['Tronco', 'tronco'], ['Hombro derecho', 'hombro'], ['Codo derecho', 'codo'], ['Cabeza', 'cabeza']]) {
       await abrirPestana(p, 'analisis')
       await selector.getByRole('radio', { name: nombre }).click()
       // El frame 11 tiene la rodilla corregida a mano (prueba anterior): se miran otros.
@@ -4064,18 +4083,24 @@ describe('sin marcadores: detectar el cuerpo (fase 5, paso 3)', () => {
         assert.ok(Math.abs((await leerAngulo(p)) - esperado) < TOLERANCIA_GRADOS, `${nombre}, frame ${i + 1}: ${await leerAngulo(p)} frente a ${esperado}`)
       }
     }
-    // Los puntos que se marcan son los de la articulación que se mira (con el tronco, la cadera y el hombro).
+    // Los puntos que se marcan son los de la articulación que se mira (con la cabeza, el hombro y la oreja).
     await abrirPestana(p, 'marcar')
     const marcables = await p.getByRole('radiogroup', { name: 'Marcador a colocar' }).innerText()
     assert.match(marcables, /Hombro derecho/)
+    assert.match(marcables, /Oreja derecha/)
     assert.doesNotMatch(marcables, /Rodilla/)
-    // El CSV: las cuatro articulaciones, la que se mira primero, y la detección en la cabecera.
+    // El CSV: las siete articulaciones, la que se mira primero, y la detección en la cabecera.
     await abrirPestana(p, 'analisis')
     const [descarga] = await Promise.all([p.waitForEvent('download'), p.getByTestId('panel-exportar').getByTestId('descargar-csv').click()])
     assert.doesNotMatch(descarga.suggestedFilename(), /_pose_/)
     const csv = leerCsv(await readFile(await descarga.path(), 'utf8'))
     const angulos = csv.columnas.filter((c) => c.endsWith('_crudo_grados'))
-    assert.deepEqual(angulos, ['pose_tronco_sagital_der', 'pose_rodilla_sagital_der', 'pose_cadera_sagital_der', 'pose_tobillo_sagital_der'].map((id) => `angulo_${id}_crudo_grados`))
+    assert.deepEqual(
+      angulos,
+      ['pose_cabeza_sagital_der', 'pose_rodilla_sagital_der', 'pose_cadera_sagital_der', 'pose_tobillo_sagital_der', 'pose_tronco_sagital_der', 'pose_hombro_sagital_der', 'pose_codo_sagital_der'].map(
+        (id) => `angulo_${id}_crudo_grados`,
+      ),
+    )
     assert.ok(csv.cabecera.some((l) => l.startsWith('# sin marcadores;') && l.includes('Pose Landmarker full, GPU')))
     const iRodilla = csv.columnas.indexOf('angulo_pose_rodilla_sagital_der_crudo_grados')
     assert.ok(Math.abs(Number(csv.filas[60][iRodilla].replace(',', '.')) - videos.verde.verdad[60].flexion) < TOLERANCIA_GRADOS)
@@ -4152,7 +4177,7 @@ describe('la navegación se pausa mientras se detecta el cuerpo', () => {
  * (tronco inclinado a la izquierda). En `intercambiados`, el modelo da los lados al revés.
  */
 function frenteFalso(verdad, { intercambiados = [] } = {}) {
-  const PARTES = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta']
+  const PARTES = ['hombro', 'cadera', 'rodilla', 'tobillo', 'talon', 'punta', 'codo', 'muneca', 'oreja']
   return verdad.map((v, indice) => {
     const [cadera, rodilla, tobillo] = v.ps
     const espejo = (q, dy = 0) => ({ x: 720 - q.x, y: q.y + dy })
@@ -4161,6 +4186,13 @@ function frenteFalso(verdad, { intercambiados = [] } = {}) {
       cadera: espejo(cadera, -10), rodilla: espejo(rodilla), tobillo: espejo(tobillo),
       hombro: { x: 720 - cadera.x + 12, y: cadera.y - 130 }, talon: espejo(der.talon), punta: espejo(der.punta),
     }
+    // Fase 8: el brazo derecho separado del cuerpo (abducción), el izquierdo casi colgando, y la cabeza ladeada.
+    der.codo = { x: der.hombro.x - 25, y: der.hombro.y + 50 }
+    der.muneca = { x: der.codo.x - 5, y: der.codo.y + 45 }
+    izq.codo = { x: izq.hombro.x + 6, y: izq.hombro.y + 55 }
+    izq.muneca = { x: izq.codo.x, y: izq.codo.y + 45 }
+    der.oreja = { x: der.hombro.x + 40, y: der.hombro.y - 45 }
+    izq.oreja = { x: izq.hombro.x - 40, y: izq.hombro.y - 52 }
     const al = intercambiados.includes(indice)
     const puntos = PARTES.flatMap((parte) => ['izq', 'der'].flatMap((lado) => {
       const q = ((lado === 'izq') !== al ? izq : der)[parte]
@@ -4183,6 +4215,9 @@ function verdadFrente({ der, izq }) {
     'Cadera izquierda': norm(entre(vec(der.cadera, izq.cadera), vec(izq.cadera, izq.rodilla)) + 90),
     Pelvis: norm(entre({ x: 1, y: 0 }, vec(der.cadera, izq.cadera))),
     Tronco: norm(-entre({ x: 0, y: 1 }, vec(medio(der.cadera, izq.cadera), medio(der.hombro, izq.hombro)))),
+    'Hombro derecho': norm(-entre(vec(der.hombro, der.cadera), vec(der.hombro, der.codo))),
+    'Hombro izquierdo': norm(entre(vec(izq.hombro, izq.cadera), vec(izq.hombro, izq.codo))),
+    Cabeza: norm(-entre({ x: 1, y: 0 }, vec(der.oreja, izq.oreja))),
   }
 }
 
@@ -4211,8 +4246,9 @@ describe('sin marcadores de frente (fase 5, paso 4)', () => {
     assert.match(await p.getByTestId('aviso').innerText(), new RegExp(`piernas intercambiadas corregidas en ${INTERCAMBIADOS.length} frames`))
     await abrirPestana(p, 'analisis')
     const selector = p.getByRole('radiogroup', { name: 'Articulación' })
-    assert.deepEqual(await selector.getByRole('radio').allInnerTexts(), ['Rodilla derecha', 'Rodilla izquierda', 'Cadera derecha', 'Cadera izquierda', 'Pelvis', 'Tronco'])
-    for (const nombre of ['Rodilla derecha', 'Rodilla izquierda', 'Cadera derecha', 'Cadera izquierda', 'Pelvis', 'Tronco']) {
+    const nombres = ['Rodilla derecha', 'Rodilla izquierda', 'Cadera derecha', 'Cadera izquierda', 'Pelvis', 'Tronco', 'Hombro derecho', 'Hombro izquierdo', 'Cabeza']
+    assert.deepEqual(await selector.getByRole('radio').allInnerTexts(), nombres)
+    for (const nombre of nombres) {
       await abrirPestana(p, 'analisis')
       await selector.getByRole('radio', { name: nombre }).click()
       for (const i of [20, 51, 100]) {

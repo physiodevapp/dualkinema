@@ -1,7 +1,6 @@
 import { CubeIcon, ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { marcadoresSinMarcadores } from '../../core/pose/catalogo'
-import { esPuntoMedio } from '../../core/pose/puntos'
+import { PUNTOS_TRONCO_PIERNAS } from '../../core/pose/puntos'
 import { movimiento, verticalCamara, type Sensores } from '../../core/sensores/sensores'
 import { pasoTipico } from '../../core/sincronia/evento'
 import { CAMBIO_DESFASE_S, INSTANTES_MINIMOS, informe3D, nombrePunto, resumir3D, textoAviso, type Calibracion3D } from '../../core/tresd/calibracion3d'
@@ -24,8 +23,8 @@ interface Props {
 
 /** El tramo que se recomienda grabar para calibrar: los primeros segundos, con unos pasos por la zona. */
 const PRIMEROS_S = 10
-/** Los puntos del cuerpo que se emparejan: los 12 del modelo (los puntos medios salen de ellos). */
-const IDS = marcadoresSinMarcadores({ plano: 'sagital', mira: 'derecha' }).filter((id) => !esPuntoMedio(id))
+/** Los puntos del cuerpo que se emparejan: los 12 del tronco y las piernas (D3 de la fase 8; los puntos medios salen de ellos). */
+const IDS = PUNTOS_TRONCO_PIERNAS
 
 const paraEmparejar = (w: VistaViva): VistaParaEmparejar => ({ series: w.series, tabla: w.tabla, desfase: w.desfaseS, paso: pasoTipico(w.tabla) })
 

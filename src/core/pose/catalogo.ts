@@ -20,6 +20,17 @@
  *   - tronco (inclinación lateral): del punto medio de las caderas al de los hombros, respecto a la vertical. Hacia la
  *     izquierda de la persona = hacia +x, un giro horario → signo −1: izquierda +, derecha −.
  * La pelvis y el tronco de frente son de toda la persona, no de una pierna: su signo va por los lados de la persona.
+ *
+ * Brazos y cabeza (fase 8, D4 y D5 de docs/plan-fase-8.md):
+ *   - de perfil, el hombro y el codo como los de los gomets (hombro: tronco hombro → cadera y brazo hombro → codo,
+ *     flexión +; codo: brazo y antebrazo codo → muñeca, flexión +), del lado de la cámara;
+ *   - de perfil, la cabeza: hombro → oreja respecto a la vertical, como el tronco: hacia delante +;
+ *   - de frente, el hombro de cada lado: tronco del mismo lado (hombro → cadera) y brazo; 0° con el brazo colgando,
+ *     abducción (el codo hacia fuera) +: hacia +x en la izquierda (signo +1) y hacia −x en la derecha (signo −1), como la
+ *     cadera de los gomets;
+ *   - de frente, la cabeza (inclinación lateral): la línea de las orejas (derecha → izquierda) respecto a la horizontal.
+ *     Hacia la izquierda de la persona = la oreja izquierda más baja = giro horario → signo −1: izquierda +, como el tronco.
+ * El codo de frente no se mide (su flexión sale del plano en cuanto el brazo no cuelga).
  */
 import { articulacionesFrontales, articulacionesSagitales, type Lado } from '../articulaciones/catalogo'
 import { marcadoresDeArticulacion, type DefinicionArticulacion } from '../articulaciones/definicion'
@@ -60,6 +71,19 @@ export function articulacionesPoseSagitales(l: Lado): DefinicionArticulacion[] {
       positivo: 'inclinación hacia delante',
       negativo: 'inclinación hacia atrás',
     },
+    comoLaDeGomets(deGomets(g, `hombro_sagital_${l}`), ['hombro', 'cadera'], ['hombro', 'codo'], l),
+    comoLaDeGomets(deGomets(g, `codo_sagital_${l}`), ['hombro', 'codo'], ['codo', 'muneca'], l),
+    {
+      id: `pose_cabeza_sagital_${l}`,
+      nombre: 'Cabeza (adelantada-atrasada respecto al hombro) sin marcadores',
+      plano: 'sagital',
+      proximal: { referencia: 'vertical' },
+      distal: { desde: idPose('hombro', l), hasta: idPose('oreja', l) },
+      signo: -1,
+      cero: 0,
+      positivo: 'adelantada',
+      negativo: 'atrasada',
+    },
   ]
 }
 
@@ -78,6 +102,35 @@ function caderaFrontalPose(l: Lado): DefinicionArticulacion {
     positivo: 'abducción',
     negativo: 'aducción',
   }
+}
+
+const NOMBRE_LADO_M: Record<Lado, string> = { der: 'derecho', izq: 'izquierdo' }
+
+/** El hombro de frente: tronco del mismo lado y brazo (ver arriba). */
+function hombroFrontalPose(l: Lado): DefinicionArticulacion {
+  return {
+    id: `pose_hombro_frontal_${l}`,
+    nombre: `Hombro ${NOMBRE_LADO_M[l]} (abducción-aducción) sin marcadores`,
+    plano: 'frontal',
+    proximal: { desde: idPose('hombro', l), hasta: idPose('cadera', l) },
+    distal: { desde: idPose('hombro', l), hasta: idPose('codo', l) },
+    signo: l === 'izq' ? 1 : -1,
+    cero: 0,
+    positivo: 'abducción',
+    negativo: 'aducción',
+  }
+}
+
+export const CABEZA_FRONTAL_POSE: DefinicionArticulacion = {
+  id: 'pose_cabeza_frontal',
+  nombre: 'Cabeza (inclinación lateral) sin marcadores',
+  plano: 'frontal',
+  proximal: { referencia: 'horizontal' },
+  distal: { desde: idPose('oreja', 'der'), hasta: idPose('oreja', 'izq') },
+  signo: -1,
+  cero: 0,
+  positivo: 'inclinación a la izquierda',
+  negativo: 'inclinación a la derecha',
 }
 
 export const PELVIS_FRONTAL_POSE: DefinicionArticulacion = {
@@ -105,12 +158,13 @@ export const TRONCO_FRONTAL_POSE: DefinicionArticulacion = {
 }
 
 /**
- * De frente, las dos piernas a la vez: el FPPA y la cadera de cada una (primero las de `primero`), la pelvis y el tronco.
+ * De frente, las dos piernas a la vez: el FPPA y la cadera de cada una (primero las de `primero`), la pelvis y el tronco;
+ * detrás (fase 8), el hombro de cada lado y la cabeza.
  */
 export function articulacionesPoseFrontales(primero: Lado = 'der'): DefinicionArticulacion[] {
   const lados = [primero, otroLado(primero)]
   const fppa = (l: Lado) => comoLaDeGomets(deGomets(articulacionesFrontales(l), `rodilla_frontal_${l}`), ['cadera', 'rodilla'], ['rodilla', 'tobillo'], l)
-  return [...lados.map(fppa), ...lados.map(caderaFrontalPose), PELVIS_FRONTAL_POSE, TRONCO_FRONTAL_POSE]
+  return [...lados.map(fppa), ...lados.map(caderaFrontalPose), PELVIS_FRONTAL_POSE, TRONCO_FRONTAL_POSE, ...lados.map(hombroFrontalPose), CABEZA_FRONTAL_POSE]
 }
 
 const NOMBRE_PARTE: Record<ParteCuerpo, [string, 'm' | 'f']> = {
@@ -120,10 +174,13 @@ const NOMBRE_PARTE: Record<ParteCuerpo, [string, 'm' | 'f']> = {
   tobillo: ['Tobillo', 'm'],
   talon: ['Talón', 'm'],
   punta: ['Punta del pie', 'm'],
+  codo: ['Codo', 'm'],
+  muneca: ['Muñeca', 'f'],
+  oreja: ['Oreja', 'f'],
 }
 const NOMBRE_MEDIO: Record<ParteMedia, string> = { hombro: 'Punto medio de los hombros', cadera: 'Punto medio de las caderas' }
 
-/** Los marcadores virtuales del modelo: los 12 puntos y, si se piden, los puntos medios (que no se marcan ni se guardan). */
+/** Los marcadores virtuales del modelo: los puntos del modelo y, si se piden, los puntos medios (que no se marcan ni se guardan). */
 export function marcadoresPose(conMedios: boolean): Marcador[] {
   const puntos = PUNTOS_POSE.map((p) => {
     const [nombre, genero] = NOMBRE_PARTE[p.parte]
@@ -135,7 +192,7 @@ export function marcadoresPose(conMedios: boolean): Marcador[] {
 }
 
 /**
- * El modelo sin marcadores de una vista: los 12 puntos (siempre los dos lados, para dibujar el esqueleto) y las
+ * El modelo sin marcadores de una vista: los puntos del modelo (siempre los dos lados, para dibujar el esqueleto) y las
  * articulaciones de su plano. De perfil, las de la pierna `l` (la que ve la cámara); de frente, las de las dos piernas,
  * primero las de `l`, con los puntos medios para el tronco.
  */
@@ -146,7 +203,7 @@ export function modeloPose(orientacion: OrientacionVista, l: Lado): ModeloMarcad
 
 /**
  * El modelo de la sesión con lo sin marcadores añadido (como `conRodillaFrontal`: un único modelo por sesión con todos los
- * marcadores, fijado al abrir; cada vista sigue los suyos): los 12 puntos del modelo y los puntos medios, las
+ * marcadores, fijado al abrir; cada vista sigue los suyos): los puntos del modelo y los puntos medios, las
  * articulaciones de perfil de la pierna `l` (la que ve la cámara de la vista de referencia) y las de frente, de las dos
  * piernas (primero la `l`), la pelvis y el tronco (paso 4). Lo que ya tenía no cambia (ni de orden: las trayectorias
  * guardadas van por id) y no se repite: una sesión guardada en el paso 3, con lo de perfil, gana lo de frente al abrirla.
@@ -167,10 +224,10 @@ export const fuenteDe = (def: DefinicionArticulacion): Fuente => (marcadoresDeAr
 
 /**
  * La articulación de los gomets que mide lo mismo que una sin marcadores (misma convención), para compararlas; null si
- * no hay (el tronco, la pelvis, la cadera de frente respecto a la pelvis).
+ * no hay (el tronco, la pelvis, la cabeza, la cadera y el hombro de frente).
  */
 export function equivalenteGomets(idPoseArticulacion: string): string | null {
-  const m = /^pose_((?:cadera|rodilla|tobillo)_sagital|rodilla_frontal)_(der|izq)$/.exec(idPoseArticulacion)
+  const m = /^pose_((?:cadera|rodilla|tobillo|hombro|codo)_sagital|rodilla_frontal)_(der|izq)$/.exec(idPoseArticulacion)
   return m ? `${m[1]}_${m[2]}` : null
 }
 
@@ -188,9 +245,20 @@ export function parejaDeFuente(def: DefinicionArticulacion, articulaciones: read
 }
 
 /**
- * Los marcadores que sigue una vista sin marcadores: los 12 puntos del modelo (siempre los dos lados: el esqueleto entero)
+ * Los marcadores que sigue una vista sin marcadores: los puntos del modelo (siempre los dos lados: el esqueleto entero)
  * y, de frente, los puntos medios del tronco. Lo mismo que se añade a una vista con gomets al detectar en ella.
  */
 export function marcadoresSinMarcadores(orientacion: OrientacionVista): IdMarcador[] {
   return [...PUNTOS_POSE.map((p) => p.id), ...(orientacion.plano === 'frontal' ? PUNTOS_MEDIOS.map((p) => p.id) : [])]
+}
+
+/**
+ * La lista de marcadores de una vista guardada, completada con los puntos del modelo que le falten si ya seguía alguno
+ * (D2 de la fase 8: una vista sin marcadores de antes, con los 12 puntos, gana los brazos y la cabeza al abrirla, para que
+ * una detección nueva los guarde). Una vista que no seguía ninguno no cambia. Devuelve la misma lista si no falta nada.
+ */
+export function completarPuntosPose(marcadores: readonly IdMarcador[], orientacion: OrientacionVista): readonly IdMarcador[] {
+  if (!marcadores.some(esIdPose)) return marcadores
+  const faltan = marcadoresSinMarcadores(orientacion).filter((id) => !marcadores.includes(id))
+  return faltan.length ? [...marcadores, ...faltan] : marcadores
 }

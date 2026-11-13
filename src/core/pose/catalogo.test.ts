@@ -14,6 +14,8 @@ import {
   parejaDeFuente,
   fuenteDe,
   marcadoresPose,
+  marcadoresSinMarcadores,
+  completarPuntosPose,
   modeloPose,
   PELVIS_FRONTAL_POSE,
   TRONCO_FRONTAL_POSE,
@@ -226,12 +228,15 @@ describe('catálogo sin marcadores', () => {
     for (const id of ids) expect(gomets.has(id)).toBe(false)
   })
 
-  it('de perfil, solo la pierna de la cámara; de frente, las dos piernas, la pelvis y el tronco', () => {
+  it('de perfil, solo el lado de la cámara; de frente, las dos piernas, la pelvis, el tronco, los hombros y la cabeza', () => {
     expect(articulacionesPoseSagitales('der').map((a) => a.id)).toEqual([
       'pose_rodilla_sagital_der',
       'pose_cadera_sagital_der',
       'pose_tobillo_sagital_der',
       'pose_tronco_sagital_der',
+      'pose_hombro_sagital_der',
+      'pose_codo_sagital_der',
+      'pose_cabeza_sagital_der',
     ])
     expect(articulacionesPoseFrontales('izq').map((a) => a.id)).toEqual([
       'pose_rodilla_frontal_izq',
@@ -240,6 +245,9 @@ describe('catálogo sin marcadores', () => {
       'pose_cadera_frontal_der',
       'pose_pelvis_frontal',
       'pose_tronco_frontal',
+      'pose_hombro_frontal_izq',
+      'pose_hombro_frontal_der',
+      'pose_cabeza_frontal',
     ])
   })
 
@@ -298,11 +306,11 @@ describe('catálogo sin marcadores', () => {
 describe('conPose: el modelo de la sesión con lo sin marcadores', () => {
   const base = conRodillaFrontal(modeloRodilla3('der'), 'der')
 
-  it('añade los 12 puntos y los medios, lo de perfil de la pierna de la cámara y lo de frente, sin tocar lo que había', () => {
+  it('añade los 18 puntos y los medios, lo de perfil de la pierna de la cámara y lo de frente, sin tocar lo que había', () => {
     const m = conPose(base, 'der')
     expect(m.marcadores.slice(0, base.marcadores.length)).toEqual(base.marcadores)
     expect(m.articulaciones.slice(0, base.articulaciones.length)).toEqual(base.articulaciones)
-    expect(m.marcadores).toHaveLength(base.marcadores.length + 14)
+    expect(m.marcadores).toHaveLength(base.marcadores.length + 20)
     expect(m.articulaciones.map((a) => a.id).slice(base.articulaciones.length)).toEqual(
       [...articulacionesPoseSagitales('der'), ...articulacionesPoseFrontales('der')].map((a) => a.id),
     )
@@ -318,6 +326,24 @@ describe('conPose: el modelo de la sesión con lo sin marcadores', () => {
     expect(m.marcadores.slice(0, paso3.marcadores.length)).toEqual(paso3.marcadores)
     expect(m.marcadores.slice(paso3.marcadores.length).map((mk) => mk.id)).toEqual([idMedio('hombro'), idMedio('cadera')])
     expect(m.articulaciones.slice(paso3.articulaciones.length).map((a) => a.id)).toEqual(articulacionesPoseFrontales('der').map((a) => a.id))
+  })
+
+  it('una sesión de las fases 5 a 7 (12 puntos) gana los brazos y la cabeza detrás, sin cambiar lo que tenía', () => {
+    const antes = {
+      marcadores: [...base.marcadores, ...marcadoresPose(true).filter((mk) => !/codo|muneca|oreja/.test(mk.id))],
+      articulaciones: [...base.articulaciones, ...[...articulacionesPoseSagitales('der'), ...articulacionesPoseFrontales('der')].filter((a) => !/hombro|codo|cabeza/.test(a.id))],
+    }
+    const m = conPose(antes, 'der')
+    expect(m.marcadores.slice(0, antes.marcadores.length)).toEqual(antes.marcadores)
+    expect(m.marcadores.slice(antes.marcadores.length).map((mk) => mk.id)).toEqual(['pose_codo_izq', 'pose_codo_der', 'pose_muneca_izq', 'pose_muneca_der', 'pose_oreja_izq', 'pose_oreja_der'])
+    expect(m.articulaciones.slice(antes.articulaciones.length).map((a) => a.id)).toEqual([
+      'pose_hombro_sagital_der',
+      'pose_codo_sagital_der',
+      'pose_cabeza_sagital_der',
+      'pose_hombro_frontal_der',
+      'pose_hombro_frontal_izq',
+      'pose_cabeza_frontal',
+    ])
   })
 
   it('una vista de frente sin marcadores mide las dos rodillas, la cadera de cada lado, la pelvis y el tronco', () => {
@@ -358,5 +384,129 @@ describe('parejaDeFuente', () => {
     expect(parejaDeFuente(pose.find((a) => a.id === 'pose_tronco_sagital_der')!, todas)).toBeNull()
     expect(parejaDeFuente(rodilla, gomets)).toBeNull()
     expect(parejaDeFuente(rodillaPose, pose)).toBeNull()
+  })
+})
+
+/**
+ * Brazo y cabeza de perfil (fase 8) en el marco canónico: el tronco inclinado `tronco` grados hacia delante; `hombro`:
+ * flexión del brazo respecto al tronco; `codo`: flexión; `cabeza`: la oreja adelantada respecto a la vertical del hombro.
+ */
+function brazoSagital(l: Lado, a: { tronco?: number; hombro?: number; codo?: number; cabeza?: number }): Record<string, P> {
+  const pose = poseSagital(l, { tronco: a.tronco ?? 0, cadera: 20, rodilla: 30 })
+  const hombro = pose[idPose('hombro', l)]!
+  const brazo = -(a.tronco ?? 0) + (a.hombro ?? 0)
+  const codo = sumar(hombro, brazo, 0.3)
+  const c = ((a.cabeza ?? 0) * Math.PI) / 180
+  return {
+    ...pose,
+    [idPose('codo', l)]: codo,
+    [idPose('muneca', l)]: sumar(codo, brazo + (a.codo ?? 0), 0.27),
+    [idPose('oreja', l)]: { x: hombro.x + 0.25 * Math.sin(c), y: hombro.y + 0.25 * Math.cos(c) },
+  }
+}
+
+describe.each(LADOS)('brazo y cabeza sin marcadores de perfil, lado %s', (l) => {
+  describe.each(SAGITALES)('mirando a la $mira', (o) => {
+    it.each([
+      [0, 0],
+      [90, 90],
+      [150, 150],
+      [-30, -30],
+    ])('hombro: flexión %d° → %d° (con el tronco inclinado 15°)', (flexion, esperado) => {
+      expect(medir(sagital(l, 'hombro'), brazoSagital(l, { tronco: 15, hombro: flexion }), o)).toBeCloseTo(esperado, 9)
+    })
+
+    it.each([
+      [0, 0],
+      [90, 90],
+      [135, 135],
+      [-5, -5],
+    ])('codo: flexión %d° → %d° (con el brazo flexionado 40°)', (flexion, esperado) => {
+      expect(medir(sagital(l, 'codo'), brazoSagital(l, { hombro: 40, codo: flexion }), o)).toBeCloseTo(esperado, 9)
+    })
+
+    it.each([
+      [0, 0],
+      [15, 15],
+      [-10, -10],
+    ])('cabeza: adelantada %d° → %d° (absoluto: no depende del tronco)', (cabeza, esperado) => {
+      expect(medir(sagital(l, 'cabeza'), brazoSagital(l, { tronco: 25, cabeza }), o)).toBeCloseTo(esperado, 9)
+    })
+
+    it('hombro y codo dan lo mismo que los de los gomets con los mismos puntos', () => {
+      const m = marcadores(l)
+      const pose = brazoSagital(l, { tronco: 10, hombro: 60, codo: 70 })
+      const comoGomets = {
+        [m.hombro]: pose[idPose('hombro', l)]!,
+        [m.cadera]: pose[idPose('cadera', l)]!,
+        [m.codo]: pose[idPose('codo', l)]!,
+        [m.muneca]: pose[idPose('muneca', l)]!,
+      }
+      for (const nombre of ['hombro', 'codo']) {
+        const g = articulacionesSagitales(l).find((a) => a.id === `${nombre}_sagital_${l}`)!
+        expect(medir(sagital(l, nombre), pose, o)).toBeCloseTo(medir(g, comoGomets, o), 9)
+        expect(equivalenteGomets(`pose_${nombre}_sagital_${l}`)).toBe(`${nombre}_sagital_${l}`)
+      }
+    })
+  })
+})
+
+/** Brazos y orejas de frente: `abd` por lado (abducción del brazo respecto al tronco de ese lado) y `cabeza` (+ = a la izquierda). */
+function brazosFrontal(a: { izq?: number; der?: number; cabeza?: number }): Record<string, P> {
+  const pose = poseFrontal({ pelvis: 4, tronco: 6 })
+  for (const l of LADOS) {
+    const h = pose[idPose('hombro', l)]!
+    const c = pose[idPose('cadera', l)]!
+    const ang = ((l === 'izq' ? 1 : -1) * (a[l] ?? 0) * Math.PI) / 180
+    const v = { x: c.x - h.x, y: c.y - h.y }
+    const n = Math.hypot(v.x, v.y)
+    // Girar el tronco del lado (hombro → cadera) en sentido antihorario `ang`: hacia +x desde abajo.
+    pose[idPose('codo', l)] = { x: h.x + (0.3 * (v.x * Math.cos(ang) - v.y * Math.sin(ang))) / n, y: h.y + (0.3 * (v.x * Math.sin(ang) + v.y * Math.cos(ang))) / n }
+  }
+  const b = (-(a.cabeza ?? 0) * Math.PI) / 180
+  const centro = { x: 0.1, y: 1.8 }
+  pose[idPose('oreja', 'izq')] = { x: centro.x + 0.08 * Math.cos(b), y: centro.y + 0.08 * Math.sin(b) }
+  pose[idPose('oreja', 'der')] = { x: centro.x - 0.08 * Math.cos(b), y: centro.y - 0.08 * Math.sin(b) }
+  return pose
+}
+
+describe.each(FRONTALES)('brazos y cabeza sin marcadores de frente, cámara $ve', (o) => {
+  describe.each(LADOS)('lado %s', (l) => {
+    it.each([
+      [0, 0],
+      [90, 90],
+      [30, 30],
+      [-10, -10],
+    ])('hombro: abducción %d° → %d°, con el otro brazo en 45°', (abd, esperado) => {
+      const otro = l === 'izq' ? 'der' : 'izq'
+      const pose = brazosFrontal({ [l]: abd, [otro]: 45 })
+      expect(medirFrontal(frontal(`pose_hombro_frontal_${l}`), pose, o)).toBeCloseTo(esperado, 9)
+      expect(medirFrontal(frontal(`pose_hombro_frontal_${otro}`), pose, o)).toBeCloseTo(45, 9)
+    })
+  })
+
+  it.each([
+    [0, 0],
+    [10, 10],
+    [-20, -20],
+  ])('cabeza: inclinada %d° a la izquierda → %d°', (cabeza, esperado) => {
+    expect(medirFrontal(frontal('pose_cabeza_frontal'), brazosFrontal({ cabeza }), o)).toBeCloseTo(esperado, 9)
+  })
+})
+
+describe('completarPuntosPose', () => {
+  const o: OrientacionVista = { plano: 'sagital', mira: 'derecha' }
+  it('una vista con los 12 puntos de antes gana los brazos y la cabeza detrás', () => {
+    const antes = marcadoresSinMarcadores(o).filter((id) => !/codo|muneca|oreja/.test(id))
+    expect(antes).toHaveLength(12)
+    const r = completarPuntosPose(antes, o)
+    expect(r.slice(0, 12)).toEqual(antes)
+    expect(r.slice(12)).toEqual(['pose_codo_izq', 'pose_codo_der', 'pose_muneca_izq', 'pose_muneca_der', 'pose_oreja_izq', 'pose_oreja_der'])
+  })
+  it('sin puntos del modelo o sin nada que añadir, la misma lista', () => {
+    const gomets = ['trocanter_der', 'epicondilo_femoral_der', 'maleolo_der']
+    expect(completarPuntosPose(gomets, o)).toBe(gomets)
+    const todos = marcadoresSinMarcadores(o)
+    expect(completarPuntosPose(todos, o)).toBe(todos)
   })
 })

@@ -255,6 +255,9 @@ const NOMBRE_PUNTO: Record<ParteCuerpo, { readonly nombre: string; readonly feme
   tobillo: { nombre: 'tobillo', femenino: false },
   talon: { nombre: 'talón', femenino: false },
   punta: { nombre: 'punta del pie', femenino: true },
+  codo: { nombre: 'codo', femenino: false },
+  muneca: { nombre: 'muñeca', femenino: true },
+  oreja: { nombre: 'oreja', femenino: true },
 }
 
 /** «la cadera izquierda» de `pose_cadera_izq`, con su artículo si se pide (o el id tal cual si no es un punto del modelo). */

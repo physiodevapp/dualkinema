@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ceroDeReferencia, type TramoEstatico } from '../../core/articulaciones/cero'
 import { construirCsv3D } from '../../core/exportacion/csv3d'
 import type { AjustesFiltro } from '../../core/filtros/tramos'
-import { marcadoresSinMarcadores } from '../../core/pose/catalogo'
-import { esPuntoMedio } from '../../core/pose/puntos'
+import { PUNTOS_TRONCO_PIERNAS } from '../../core/pose/puntos'
 import { pasoTipico } from '../../core/sincronia/evento'
 import { fpsMediano } from '../../core/tiempo/tablaFrames'
 import { ARTICULACIONES_3D, serieAngular3D } from '../../core/tresd/angulos3d'
@@ -15,8 +14,8 @@ import { desempaquetarEsqueleto, empaquetarEsqueleto, huellaTrayectorias3D, type
 import type { AlWorkerEsqueleto, DelWorkerEsqueleto } from '../../workers/protocolo'
 import type { VistaViva } from './vistas'
 
-/** Los puntos del cuerpo que se triangulan (los 12 de los dos lados; los puntos medios salen de ellos). */
-export const IDS_3D = marcadoresSinMarcadores({ plano: 'sagital', mira: 'derecha' }).filter((id) => !esPuntoMedio(id))
+/** Los puntos del cuerpo que se triangulan (los 12 del tronco y las piernas; los puntos medios salen de ellos). */
+export const IDS_3D = PUNTOS_TRONCO_PIERNAS
 
 export type Fuente3D = 'puntos' | 'esqueleto'
 export type EstadoEsqueleto = { fase: 'parado' } | { fase: 'ajustando'; fraccion: number } | { fase: 'error'; mensaje: string }

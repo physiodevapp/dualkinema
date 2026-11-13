@@ -13,11 +13,14 @@ import {
   trayectoriasPose,
   VALORES_POR_PUNTO,
   type FramePose,
+  PUNTOS_TRONCO_PIERNAS,
 } from './puntos'
 
 describe('puntos del modelo', () => {
-  it('son 12, con el índice de MediaPipe de cada parte y lado de la persona', () => {
-    expect(PUNTOS_POSE).toHaveLength(12)
+  it('son 18, con el índice de MediaPipe de cada parte y lado de la persona; los 12 del tronco y las piernas primero', () => {
+    expect(PUNTOS_POSE).toHaveLength(18)
+    expect(PUNTOS_POSE.slice(0, 12).map((p) => p.id)).toEqual([...PUNTOS_TRONCO_PIERNAS])
+    expect(PUNTOS_TRONCO_PIERNAS.some((id) => /codo|muneca|oreja/.test(id))).toBe(false)
     const indice = (id: string) => PUNTOS_POSE.find((p) => p.id === id)!.indice
     expect(indice('pose_hombro_izq')).toBe(11)
     expect(indice('pose_cadera_der')).toBe(24)
@@ -25,7 +28,13 @@ describe('puntos del modelo', () => {
     expect(indice('pose_rodilla_der')).toBe(26)
     expect(indice('pose_tobillo_der')).toBe(28)
     expect(indice('pose_punta_izq')).toBe(31)
-    expect(new Set(PUNTOS_POSE.map((p) => p.id)).size).toBe(12)
+    expect(indice('pose_codo_izq')).toBe(13)
+    expect(indice('pose_codo_der')).toBe(14)
+    expect(indice('pose_muneca_izq')).toBe(15)
+    expect(indice('pose_muneca_der')).toBe(16)
+    expect(indice('pose_oreja_izq')).toBe(7)
+    expect(indice('pose_oreja_der')).toBe(8)
+    expect(new Set(PUNTOS_POSE.map((p) => p.id)).size).toBe(18)
   })
 
   it('las líneas del esqueleto unen puntos que existen', () => {
@@ -41,7 +50,7 @@ describe('puntos del modelo', () => {
     landmarks[25] = { x: 0.25, y: 0.75, visibility: 1.2 }
     landmarks[26] = { x: 0.5, y: 0.1, visibility: NaN }
     const r = puntosDeLandmarks(landmarks, 1920, 1080)
-    expect(r).toHaveLength(12 * VALORES_POR_PUNTO)
+    expect(r).toHaveLength(18 * VALORES_POR_PUNTO)
     const k = (id: string) => PUNTOS_POSE.findIndex((p) => p.id === id) * VALORES_POR_PUNTO
     expect(r.slice(k('pose_rodilla_izq'), k('pose_rodilla_izq') + 3)).toEqual([480, 810, 1])
     expect(r.slice(k('pose_rodilla_der'), k('pose_rodilla_der') + 3)).toEqual([960, 108, 0])

@@ -38,7 +38,7 @@ export function mediana(v: readonly number[]): number {
   return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2
 }
 
-const NOMBRE_PARTE: Record<ParteCuerpo, string> = { hombro: 'hombro', cadera: 'cadera', rodilla: 'rodilla', tobillo: 'tobillo', talon: 'talón', punta: 'punta del pie' }
+const NOMBRE_PARTE: Record<ParteCuerpo, string> = { hombro: 'hombro', cadera: 'cadera', rodilla: 'rodilla', tobillo: 'tobillo', talon: 'talón', punta: 'punta del pie', codo: 'codo', muneca: 'muñeca', oreja: 'oreja' }
 const n1 = (x: number) => (Number.isFinite(x) ? (Math.round(x * 10) / 10 + 0).toFixed(1).replace('.', ',') : '—')
 const n2 = (x: number) => (Number.isFinite(x) ? (Math.round(x * 100) / 100 + 0).toFixed(2).replace('.', ',') : '—')
 const n3 = (x: number) => (Number.isFinite(x) ? (Math.round(x * 1000) / 1000 + 0).toFixed(3).replace('.', ',') : '—')
