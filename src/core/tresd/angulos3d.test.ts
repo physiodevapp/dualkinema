@@ -208,6 +208,22 @@ describe('brazos y cabeza en 3D (fase 8) con posturas de verdad conocida', () =>
     cerca(serieAngular3D('3d_hombro_frontal_der', tr)[1]!.valor, 45, 1e-6)
   })
 
+  it('cabeza respecto al tronco (rotación, fase 10): las orejas giradas sobre la vertical respecto a los hombros', () => {
+    // Orejas a ±8 cm del centro de la cabeza, giradas `g` grados a la izquierda (antihorario desde arriba); la persona
+    // mira hacia +x, así que la línea izquierda → derecha de las orejas sin girar va hacia −y.
+    const conCabeza = (g: number) => {
+      const tr = posturas([{}])
+      const s = new Map(tr.series)
+      const r = rad(g)
+      const c = { x: 0.03, y: 0, z: 1.72 }
+      const oreja = (signo: 1 | -1): Muestra3D => ({ t: 0, x: c.x - signo * 0.08 * Math.sin(r), y: c.y + signo * 0.08 * Math.cos(r), z: c.z, calidad: 0.9, editadoManual: false, error: 0 })
+      s.set(idPose('oreja', 'izq'), [oreja(1)])
+      s.set(idPose('oreja', 'der'), [oreja(-1)])
+      return { ...tr, series: s }
+    }
+    for (const g of [0, 30, -60, 85]) cerca(serieAngular3D('3d_cabeza_transversal', conCabeza(g))[0]!.valor, g, 1e-6)
+  })
+
   it('cabeza: adelantada de perfil y ladeada de frente; codo de perfil solo entre segmentos', () => {
     cerca(serieAngular3D('3d_cabeza_sagital', posturas([{ cs: 20 }]))[0]!.valor, 20, 1e-6)
     cerca(serieAngular3D('3d_cabeza_frontal', posturas([{ cf: 12 }]))[0]!.valor, 12, 1e-6)

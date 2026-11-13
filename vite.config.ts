@@ -22,7 +22,13 @@ const versionJson: Plugin = {
 }
 
 // Las cabeceras de aislamiento de `public/_headers` (RTMPose con hilos), también al servir con Vite: las e2e prueban la app así.
-const aislada = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' }
+// Y la CSP de las conexiones (fase 10, D1), con el relé local de las e2e (`?senal=ws://localhost:…`).
+const aislada = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
+  'Content-Security-Policy':
+    "connect-src 'self' blob: data: https://storage.googleapis.com/mediapipe-models/ wss://dualkinema-senal.edu-gamboa-rodriguez.workers.dev ws://localhost:* ws://127.0.0.1:*",
+}
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), versionJson],

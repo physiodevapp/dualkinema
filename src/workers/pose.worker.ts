@@ -7,6 +7,7 @@
 // en un worker de módulo se carga con `import()`. El modelo *full* (el de por defecto, 9 MB) también se aloja en el sitio
 // (`public/modelos/`, decisión del paso 3); el *heavy* (30 MB) no cabe en el límite por archivo de Cloudflare y se descarga
 // de Google al pedirlo, como el *lite*. Solo se descarga el modelo: no se envía nada.
+import '../privacidad/instalar'
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'mediabunny'
 import { PoseLandmarker } from '@mediapipe/tasks-vision'
 import cargadorWasm from '@mediapipe/tasks-vision/vision_wasm_module_internal.js?url'

@@ -121,6 +121,9 @@ const ENTRE_SEGMENTOS: readonly Articulacion3D[] = (['der', 'izq'] as const).fla
 const TRANSVERSALES: readonly Articulacion3D[] = [
   { id: '3d_pelvis_transversal', nombre: 'Pelvis (rotación) en 3D', plano: 'transversal', lado: null, positivo: 'rotación a la izquierda', negativo: 'rotación a la derecha' },
   { id: '3d_tronco_transversal', nombre: 'Tronco (rotación respecto a la pelvis) en 3D', plano: 'transversal', lado: null, positivo: 'rotación a la izquierda', negativo: 'rotación a la derecha' },
+  // Fase 10 (D2): la línea de las orejas respecto a la de los hombros, vista desde arriba. Para gestos de cuerpo entero (la
+  // cabeza gira poco); a rango completo, el modo «Cervical» con la cara.
+  { id: '3d_cabeza_transversal', nombre: 'Cabeza (rotación respecto al tronco) en 3D', plano: 'transversal', lado: null, positivo: 'rotación a la izquierda', negativo: 'rotación a la derecha' },
   { id: '3d_pie_progresion_der', nombre: 'Pie derecho (ángulo de progresión) en 3D', plano: 'transversal', lado: 'der', positivo: 'punta hacia fuera', negativo: 'punta hacia dentro' },
   { id: '3d_pie_progresion_izq', nombre: 'Pie izquierdo (ángulo de progresión) en 3D', plano: 'transversal', lado: 'izq', positivo: 'punta hacia fuera', negativo: 'punta hacia dentro' },
 ]
@@ -214,6 +217,11 @@ function transversal(id: string, tr: Trayectorias3D, rumbo: readonly number[]): 
   if (id === '3d_tronco_transversal') {
     const hombros = rumboDeLinea(tr, idPose('hombro', 'izq'), idPose('hombro', 'der'))
     return serieContinua(tr.tiempos, hombros.map((h, i) => normalizarGrados(grados(h - rumbo[i]!))))
+  }
+  if (id === '3d_cabeza_transversal') {
+    const orejas = rumboDeLinea(tr, idPose('oreja', 'izq'), idPose('oreja', 'der'))
+    const hombros = rumboDeLinea(tr, idPose('hombro', 'izq'), idPose('hombro', 'der'))
+    return serieContinua(tr.tiempos, orejas.map((o, i) => normalizarGrados(grados(o - hombros[i]!))))
   }
   const l: Lado = id.endsWith('_der') ? 'der' : 'izq'
   const pie = rumboDeVector(tr, idPose('talon', l), idPose('punta', l))

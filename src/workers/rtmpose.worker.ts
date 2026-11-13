@@ -11,6 +11,7 @@
 //
 // El detector de personas no se pasa en cada frame: entre medias, la caja sale de los puntos del frame anterior
 // (`cajaDePuntos`), y se vuelve a él cada `DETECTOR_CADA` frames o si se pierde a la persona.
+import '../privacidad/instalar'
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'mediabunny'
 // La variante sin el cargador del WASM dentro: lo carga de `wasmPaths` (la incluida no sobrevive al empaquetado de Vite:
 // «e is not a function»).

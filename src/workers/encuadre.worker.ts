@@ -2,6 +2,7 @@
 // Comprobar el encuadre (fase 6, asistente de colocación): MediaPipe Pose (el modelo *full*, el que se aloja en el sitio)
 // sobre la imagen de la vista previa que manda la sala unas veces por segundo, en modo imagen. La imagen no sale del
 // dispositivo. Con la GPU si se puede; si no, en CPU.
+import '../privacidad/instalar'
 import { PoseLandmarker } from '@mediapipe/tasks-vision'
 import cargadorWasm from '@mediapipe/tasks-vision/vision_wasm_module_internal.js?url'
 import binarioWasm from '@mediapipe/tasks-vision/vision_wasm_module_internal.wasm?url'
