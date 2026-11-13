@@ -59,3 +59,11 @@ describe('los sucesos de un móvil', () => {
     expect(textoSuceso({ n: 1, tipo: 'cortada', segundos: 12 }, 'Móvil 1')).toMatch(/cortado a los 12 s/)
   })
 })
+
+describe('parada porque al otro se le cortó', () => {
+  it('se lee, va en ámbar y lo dice', () => {
+    expect(leerSucesos([{ n: 1, tipo: 'parada-otro' }])).toEqual([{ n: 1, tipo: 'parada-otro' }])
+    expect(esImportante({ n: 1, tipo: 'parada-otro' })).toBe(true)
+    expect(textoSuceso({ n: 1, tipo: 'parada-otro' }, 'Móvil 2')).toMatch(/^Móvil 2 ha parado porque al otro se le ha cortado/)
+  })
+})

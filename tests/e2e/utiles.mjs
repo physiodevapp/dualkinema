@@ -18,10 +18,22 @@ export const prueba = { actual: '(preparando)' }
 const conGc = process.env.E2E_GC === '1'
 const argsGc = conGc ? ['--js-flags=--expose-gc'] : []
 
+/**
+ * Avisos de consola que no cuentan como error de la app, con su motivo. Decidido con el usuario el 13-11:
+ *
+ * - «A VideoFrame was garbage collected without being closed»: salía en una de cada tres o cuatro ejecuciones de la
+ *   grabación doble (y en `main` tres veces seguidas). Se rastrearon todos los frames que crea o lee la página
+ *   (`new VideoFrame`, `clone`, cada `read()` de `MediaStreamTrackProcessor`) con un `FinalizationRegistry`, y ninguno
+ *   quedaba sin cerrar cuando salía el aviso; cancelar o parar la lectura de la cámara falsa tampoco lo provoca (probado
+ *   aparte). Viene de dentro del Chromium de las pruebas o de su cámara falsa, no de la app. Si algún día se encuentra el
+ *   origen en el código de la app, quitarlo de aquí.
+ */
+const AVISOS_CONOCIDOS = [/^A VideoFrame was garbage collected without being closed\./]
+
 /** Recoge los errores de consola y de página de `p`, cada uno con la prueba en la que salió. Antes de abrir la página. */
 export async function vigilarErrores(p) {
   p.on('pageerror', (e) => errores.push(`pageerror: ${e.message} [${prueba.actual}]`))
-  p.on('console', (m) => m.type() === 'error' && errores.push(`console: ${m.text()} [${prueba.actual}]`))
+  p.on('console', (m) => m.type() === 'error' && !AVISOS_CONOCIDOS.some((r) => r.test(m.text())) && errores.push(`console: ${m.text()} [${prueba.actual}]`))
   if (conGc) await p.addInitScript(() => setInterval(() => globalThis.gc?.(), 200))
 }
 

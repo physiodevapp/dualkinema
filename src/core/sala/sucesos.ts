@@ -21,6 +21,8 @@ export type Suceso = { readonly n: number } & (
   | { readonly tipo: 'cortada'; readonly segundos: number }
   /** No se ha podido terminar de escribir la grabación. */
   | { readonly tipo: 'no-termina' }
+  /** Ha parado porque al otro móvil se le cortó la grabación (se guarda lo grabado). */
+  | { readonly tipo: 'parada-otro' }
   /** Grabación terminada: duración, fps medianos (null si no se pudo analizar) y pitidos oídos de 2 (null si no se buscaron). */
   | { readonly tipo: 'terminada'; readonly segundos: number | null; readonly fps: number | null; readonly pitidos: number | null }
 )
@@ -54,7 +56,7 @@ export function leerSucesos(v: unknown): Suceso[] {
     const o = x as Record<string, unknown>
     if (!Number.isInteger(o.n) || (o.n as number) <= 0) continue
     const n = o.n as number
-    if (o.tipo === 'empieza' || o.tipo === 'no-termina') r.push({ n, tipo: o.tipo })
+    if (o.tipo === 'empieza' || o.tipo === 'no-termina' || o.tipo === 'parada-otro') r.push({ n, tipo: o.tipo })
     else if (o.tipo === 'no-graba' && MOTIVOS.includes(o.motivo as MotivoNoGraba) && typeof o.deOtro === 'boolean')
       r.push({ n, tipo: 'no-graba', motivo: o.motivo as MotivoNoGraba, deOtro: o.deOtro })
     else if (o.tipo === 'cortada' && finito(o.segundos) && o.segundos >= 0 && o.segundos <= 3600) r.push({ n, tipo: 'cortada', segundos: o.segundos })
@@ -105,6 +107,8 @@ export function textoSuceso(s: Suceso, quien: string): string {
       return `${quien}: la grabación se ha cortado a los ${num(s.segundos)} s (¿la app pasó a segundo plano?). Lo grabado está guardado.`
     case 'no-termina':
       return `${quien}: no se ha podido terminar de guardar la grabación.`
+    case 'parada-otro':
+      return `${quien} ha parado porque al otro se le ha cortado la grabación (lo grabado está guardado). Repite la toma.`
     case 'terminada': {
       const partes = [`${quien}: grabación terminada`]
       if (s.segundos !== null) partes.push(`${num(s.segundos, 1)} s`)
