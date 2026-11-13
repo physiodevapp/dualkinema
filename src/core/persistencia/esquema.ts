@@ -1,3 +1,4 @@
+import { bytesCara, type CaraVista } from '../cervical/sesion'
 import { esTramoEstatico, type TramoEstatico } from '../articulaciones/cero'
 import type { MarchaGuardada } from '../marcha/guardado'
 import { esCalibracion, type CalibracionVista } from '../calibracion/escala'
@@ -144,6 +145,8 @@ export interface DatosSesion {
   readonly trayectorias: Readonly<Record<string, Readonly<Record<IdMarcador, TrayectoriaGuardada>>>>
   /** El esqueleto ajustado (opcional, sin subir el esquema; se valida al usarlo: `desempaquetarEsqueleto`). */
   readonly esqueleto?: EsqueletoGuardado
+  /** La detección de la cara por id de vista (fase 10; opcional, sin subir el esquema; se valida al usarla: `leerCara`). */
+  readonly caras?: Readonly<Record<string, CaraVista>>
 }
 
 export type Lectura<T> =
@@ -183,6 +186,8 @@ export interface EntradaGuardado {
     readonly sensores?: Sensores | null
     /** Lo corregido de la marcha; sin ello (o null), no se buscaron los ciclos. */
     readonly marcha?: MarchaGuardada | null
+    /** La detección de la cara (fase 10); sin ella (o null), ninguna. */
+    readonly cervical?: CaraVista | null
   }[]
   /** Id de la vista de referencia; sin él, la primera. */
   readonly referencia?: string
@@ -242,7 +247,14 @@ export function prepararGuardado(e: EntradaGuardado): { cabecera: CabeceraSesion
     estatura: e.estatura && e.estatura > 0 && e.estatura < 3 ? e.estatura : null,
     ...(e.tresd ? { tresd: e.tresd } : {}),
   }
-  const datos: DatosSesion = { esquema: ESQUEMA_ACTUAL, id: e.id, trayectorias, ...(e.esqueleto ? { esqueleto: e.esqueleto } : {}) }
+  const caras = Object.fromEntries(e.vistas.flatMap((v) => (v.cervical ? [[v.id, v.cervical] as const] : [])))
+  const datos: DatosSesion = {
+    esquema: ESQUEMA_ACTUAL,
+    id: e.id,
+    trayectorias,
+    ...(e.esqueleto ? { esqueleto: e.esqueleto } : {}),
+    ...(Object.keys(caras).length ? { caras } : {}),
+  }
   const ahora = Date.parse(e.ahora)
   return {
     cabecera: { ...cabecera, expiraEn: caducaEn(Number.isNaN(ahora) ? Date.now() : ahora), bytes: bytesAproximados(cabecera, datos) },
@@ -259,6 +271,7 @@ export function bytesAproximados(cabecera: Omit<CabeceraSesion, 'expiraEn' | 'by
     }
   }
   if (datos.esqueleto) n += bytesEsqueleto(datos.esqueleto) + JSON.stringify(datos.esqueleto.medidas).length
+  for (const c of Object.values(datos.caras ?? {})) n += bytesCara(c)
   return n
 }
 

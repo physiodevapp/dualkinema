@@ -27,8 +27,10 @@ const argsGc = conGc ? ['--js-flags=--expose-gc'] : []
  *   quedaba sin cerrar cuando salía el aviso; cancelar o parar la lectura de la cámara falsa tampoco lo provoca (probado
  *   aparte). Viene de dentro del Chromium de las pruebas o de su cámara falsa, no de la app. Si algún día se encuentra el
  *   origen en el código de la app, quitarlo de aquí.
+ * - «INFO: Created TensorFlow Lite XNNPACK delegate for CPU.»: MediaPipe escribe sus mensajes informativos con
+ *   `console.error`; sale con el modelo de la cara de verdad (fase 10). No es un error.
  */
-const AVISOS_CONOCIDOS = [/^A VideoFrame was garbage collected without being closed\./]
+const AVISOS_CONOCIDOS = [/^A VideoFrame was garbage collected without being closed\./, /^INFO: Created TensorFlow Lite XNNPACK delegate for CPU\./]
 
 /** Recoge los errores de consola y de página de `p`, cada uno con la prueba en la que salió. Antes de abrir la página. */
 export async function vigilarErrores(p) {

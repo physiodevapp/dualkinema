@@ -152,3 +152,20 @@ export type DelWorkerEncuadre =
   /** Los 33 puntos normalizados de MediaPipe, o null si no hay nadie. */
   | { readonly tipo: 'puntos'; readonly puntos: readonly { readonly x: number; readonly y: number; readonly visibility?: number }[] | null }
   | { readonly tipo: 'error'; readonly mensaje: string }
+
+/** Mensajes del hilo principal al worker de la cara (fase 10, modo «Cervical»). */
+export type AlWorkerCara = { readonly tipo: 'detectar'; readonly archivo: File; readonly delegado: 'GPU' | 'CPU' } | { readonly tipo: 'cancelar' }
+
+/** Lo que da Face Landmarker en un frame: la matriz de transformación de la cara (16 números por columnas) o null sin cara. */
+export interface FrameCaraWorker {
+  readonly indice: number
+  readonly t: number
+  readonly matriz: number[] | null
+}
+
+/** Mensajes del worker de la cara al hilo principal. */
+export type DelWorkerCara =
+  | { readonly tipo: 'listo'; readonly delegado: 'GPU' | 'CPU'; readonly avisoDelegado?: string; readonly msCarga: number }
+  | { readonly tipo: 'frames'; readonly lote: readonly FrameCaraWorker[]; readonly progreso: number }
+  | { readonly tipo: 'fin'; readonly motivo: 'final' | 'cancelado'; readonly procesados: number; readonly msProceso: number }
+  | { readonly tipo: 'error'; readonly mensaje: string }

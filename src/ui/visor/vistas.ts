@@ -1,3 +1,4 @@
+import type { CaraVista } from '../../core/cervical/sesion'
 import type { MarchaGuardada } from '../../core/marcha/guardado'
 import type { TramoEstatico } from '../../core/articulaciones/cero'
 import type { CalibracionVista } from '../../core/calibracion/escala'
@@ -40,6 +41,8 @@ export interface EntradaVista {
   readonly sensores?: Sensores | null
   /** Al recuperar: lo corregido de la marcha (fase 9); sin ello, no se buscaron los ciclos. */
   readonly marcha?: MarchaGuardada | null
+  /** Al recuperar: la detección de la cara (fase 10); sin ella, no se detectó. */
+  readonly cervical?: CaraVista | null
 }
 
 /** Una vista con todo su estado (lo que devuelve `useVista`) y los datos de su entrada que necesita la sesión. */
@@ -55,4 +58,8 @@ export type VistaViva = ReturnType<typeof useVista> & Pick<EntradaVista, 'id' | 
   readonly marcha: MarchaGuardada | null
   readonly cambiarMarcha: (m: MarchaGuardada | null) => void
   readonly revMarcha: number
+  /** Lo cervical (fase 10): null hasta «Detectar la cara»; sus arrays se llenan en sitio mientras se detecta. */
+  readonly cervical: CaraVista | null
+  readonly cambiarCervical: (c: CaraVista | null) => void
+  readonly revCervical: number
 }

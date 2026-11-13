@@ -38,6 +38,7 @@ import DatosVideo from './DatosVideo'
 import PanelMarcar from './PanelMarcar'
 import PanelAnalisis from './PanelAnalisis'
 import PanelMarcha from './PanelMarcha'
+import PanelCervical from './PanelCervical'
 import BarraPosicion, { ANCHO_COLUMNA_APAISADA } from './BarraPosicion'
 import { textoOrientacion } from '../sesion'
 import AnadirVista from './AnadirVista'
@@ -245,13 +246,14 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
       articulacion: w.articulacion.id,
       sensores: w.sensores,
       marcha: w.marcha,
+      cervical: w.cervical,
     })),
     calibracion3d,
     estatura,
     tresd: t3?.aGuardar.tresd ?? null,
     esqueleto: t3?.aGuardar.esqueleto ?? null,
     // Los contadores solo crecen: su suma cambia con cualquiera de ellos.
-    version: revSinc + revAjustes + rev3d + revT3 + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion + w.revMarcha, 0),
+    version: revSinc + revAjustes + rev3d + revT3 + vistas.reduce((suma, w) => suma + w.version + w.revCeros + w.revCalibracion + w.revDeteccion + w.revArticulacion + w.revMarcha + w.revCervical, 0),
     recuperada,
     sinGuardar,
   })
@@ -1023,6 +1025,14 @@ export default function CuerpoVisor({ vistas, activa, sesion, modelo, lado, recu
               comparacion={activaViva.comparacionFuentes}
               tiemposGrafica={tiemposGrafica}
               onBuscar={buscarEnComun}
+            />
+            <PanelCervical
+              vista={activaViva}
+              otra={vistas.length > 1 ? vistas[activa === 0 ? 1 : 0]! : null}
+              ajustes={ajustes}
+              mostrado={mostrado}
+              onIr={(tv) => buscarEnComun(tv + desfaseActiva)}
+              deshabilitado={ocupada}
             />
             <PanelMarcha
               vista={activaViva}

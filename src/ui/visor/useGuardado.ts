@@ -1,3 +1,4 @@
+import type { CaraVista } from '../../core/cervical/sesion'
 import type { MarchaGuardada } from '../../core/marcha/guardado'
 /* eslint-disable react-hooks/refs --
  * Patrón «lo último en una ref» (`actual`, `datos`): el guardado lee siempre lo último al disparar sin rehacer los
@@ -54,6 +55,8 @@ export interface VistaAGuardar {
   readonly sensores: Sensores | null
   /** Lo corregido de la marcha (fase 9; null = no se buscaron los ciclos). */
   readonly marcha?: MarchaGuardada | null
+  /** La detección de la cara (fase 10; null = ninguna). */
+  readonly cervical?: CaraVista | null
 }
 
 export type EstadoGuardado =
@@ -111,7 +114,7 @@ export function useGuardado({ sesion, modelo, filtro, vistas, calibracion3d, est
     const v = actual.current
     if (v === guardada.current) return
     // Calibrar antes de marcar también es trabajo que no se debe perder.
-    const hayAlgo = datos.current.vistas.some((w) => w.calibracion !== null || [...w.series.values()].some((s) => s.some((m) => m !== undefined)))
+    const hayAlgo = datos.current.vistas.some((w) => w.calibracion !== null || !!w.cervical || [...w.series.values()].some((s) => s.some((m) => m !== undefined)))
     if (!hayAlgo && !existe.current) {
       guardada.current = v
       setEstado({ estado: 'nada' })

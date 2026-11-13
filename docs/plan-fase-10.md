@@ -1,6 +1,6 @@
 # Fase 10: cervical (orientación de la cabeza)
 
-Estado: **en marcha** (plan del 13-11-2026, pedido por el usuario el 13-11: «rotaciones cervicales a rango completo»; propuesta de usar el modelo de cara de orbicula). Decisiones D1–D10 escritas y seguidas con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md`. Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
+Estado: **cerrada** (13-11-2026; ver «Cierre de la fase 10»). Plan del 13-11-2026, pedido por el usuario el 13-11: «rotaciones cervicales a rango completo»; propuesta de usar el modelo de cara de orbicula). Decisiones D1–D10 escritas y seguidas con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md`. Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
 
 ## Qué se quiere
 
@@ -46,3 +46,23 @@ Medir la movilidad cervical en sus tres planos (rotación, flexo-extensión e in
 - **Cabeza respecto al tronco en 3D** (`3d_cabeza_transversal` en `angulos3d.ts`): la línea de las orejas respecto a la de los hombros, vista desde arriba; test con giros de 0 a 85°.
 - **Núcleo cervical** (`core/cervical/orientacion.ts`): de la matriz de Face Landmarker (por columnas, sin escala ni traslación) al giro, los ángulos cervicales respecto al neutro (rotación → flexo-extensión → inclinación, convenciones fijadas por los tests), lo de frente que se ve la cara, el giro medio (cuaterniones), el giro entre dos cámaras sacado de la cara y la fusión. Test: dos cámaras a ±45° que ven la cara hasta 60° cada una cubren juntas de −100° a +100°.
 - **Pendiente de validar con vídeos (y con una foto en el paso 2):** que los ejes de la cara canónica de Face Landmarker sean los supuestos (x a la izquierda de la persona, y arriba, z hacia delante) y que su matriz venga por columnas: si no, cambian los signos, y lo dirá la e2e con el modelo de verdad.
+
+**Paso 2 (13-11):**
+- **Worker de la cara** (`workers/cara.worker.ts`, con la barrera de red lo primero): Face Landmarker en modo vídeo, GPU y si no CPU, con la matriz de transformación de cada frame (solo eso sale del worker); el modelo alojado en el sitio (`public/modelos/face_landmarker_float16_1.task`, 3,7 MB).
+- **Núcleo** (`core/cervical/sesion.ts`): la detección de una vista (giros y calidad en arrays tipados, llenados en sitio mientras se detecta), lo utilizable (calidad ≥ `CALIDAD_CARA_MINIMA`, 0,35 ≈ 70° respecto a la cámara), el neutro (giro medio del tramo), las tres curvas filtradas por tramos, el rango a cada lado con su asimetría, y lo guardado (`DatosSesion.caras`, por vista; ilegible, se descarta).
+- **Interfaz**: la tarjeta «Cervical» en «Análisis» (`ui/visor/PanelCervical.tsx`), en cualquier vista: «Detectar la cara» con su progreso y «Parar», el neutro («Primeros 2 s» al acabar, «Aquí ± 0,2 s»), los tres valores en el cursor, la gráfica del plano elegido, los rangos con su asimetría y el CSV (`core/exportacion/csvCervical.ts`). Lo detectado vive en `AnfitrionVista` (`cervical`) y se guarda con la sesión. Glosario «Cervical: orientación de la cabeza».
+- **Con el modelo de verdad** (e2e con la cara de `persona.jpg` girada 15° en la imagen): la inclinación a la izquierda sale +14,5°, sin flexión: **los ejes supuestos (D3) son los buenos**. Y la barrera corta el registro de uso. MediaPipe escribe sus mensajes informativos con `console.error` («INFO: Created TensorFlow Lite XNNPACK delegate for CPU.»): va en `AVISOS_CONOCIDOS` de las e2e.
+- **Cambio sobre el plan:** no hay un modo «Cervical» al abrir el vídeo: la tarjeta va en «Análisis» y sirve para cualquier vista (lo que cambia es cómo se graba, y eso lo dicen la tarjeta y el glosario).
+
+**Paso 3 (13-11): dos móviles.** `fusionarVistas` (en `sesion.ts`): la medida de la otra vista en el instante común de cada frame (el frame más cercano a menos de medio paso: fps y desfase distintos), el giro entre los dos móviles sacado de la cabeza en los frames que ven los dos (`giroEntreCamaras`) y la fusión frame a frame. En la tarjeta, con la cara detectada en las dos vistas, «Juntar los dos móviles» (encendido) y el ángulo entre ellos. Tests: dos móviles a ±45° con 30 y 25 fps y 0,2 s de desfase dan juntos ±90° simétrico; e2e igual con la interfaz.
+
+## Cierre de la fase 10 (paso 4, 13-11-2026)
+
+**Revisión de código.** La matemática de la orientación está entera en el núcleo con tests de valor conocido (cada plano solo y combinados, respecto a un neutro girado, la matriz por columnas con escala y traslación, el giro medio, dos cámaras), y el convenio de ejes, comprobado con el modelo de verdad. El worker solo manda la matriz. Un frame sin cara o de perfil queda sin valor y corta la curva: nunca se inventa ni se filtra a través de él. La barrera de red está en los cuatro workers que cargan modelos (pose, encuadre, RTMPose, cara) y la CSP en las cabeceras del sitio y de las e2e.
+
+**Limitaciones conocidas.**
+1. **Cabeza respecto a la cámara**, no respecto al tronco: vale como cervical solo con el tronco quieto (sentado, apoyado). En 3D de cuerpo entero, la cabeza respecto al tronco con las orejas sirve para giros pequeños.
+2. **Un móvil no da el rango completo**: a más de unos 70° respecto a la cámara la cara se pierde; con el móvil de frente, unos ±70°. Con dos en diagonal, completo.
+3. **El neutro manda**: si en los primeros 2 s la persona no mira al frente quieta, todo sale desplazado; se cambia con «Aquí ± 0,2 s».
+4. **Detectar la cara no bloquea la navegación** (a diferencia de detectar el cuerpo) y, si se añade otra vista mientras detecta, la detección se pierde.
+5. **Pendiente de validar con vídeos**: la precisión en los extremos frente a un goniómetro o un inclinómetro, la calidad mínima (0,35), la distancia máxima a la que sigue la cara y si gafas, barba o pelo la confunden.
