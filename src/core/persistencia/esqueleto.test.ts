@@ -127,5 +127,10 @@ describe('la marcha en 3D guardada con lo que se mira', () => {
     const base = { fuente: 'puntos', ceros: {} }
     expect(leerAjustes3D({ ...base, marcha })).toEqual({ ...base, marcha })
     expect(leerAjustes3D({ ...base, marcha: { manuales: 'no' } })).toEqual(base)
+    // La cinética (fase 11): se lee el modo y el corte; si no se puede leer, se descarta sola.
+    const cinetica = { modo: 'dinamica', corteHz: 2 }
+    expect(leerAjustes3D({ ...base, cinetica })).toEqual({ ...base, cinetica })
+    expect(leerAjustes3D({ ...base, cinetica: { modo: 'dinamica', corteHz: 6 } })).toEqual(base)
+    expect(leerAjustes3D({ ...base, cinetica: { modo: 'otro', corteHz: 2 } })).toEqual(base)
   })
 })

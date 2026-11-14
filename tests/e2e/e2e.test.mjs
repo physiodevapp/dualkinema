@@ -5960,6 +5960,38 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     await panel.getByRole('radio', { name: 'Puntos' }).check()
   })
 
+  it('la cinética estimada (fase 11): el peso entero en cuasiestático, repartido entre los pies, y el CSV con sus columnas', async () => {
+    await abrirPestana(p, 'analisis')
+    const c = p.getByTestId('panel-3d').getByTestId('panel-cinetica')
+    await c.getByRole('button', { name: 'Estimar la cinética' }).click()
+    await c.getByTestId('resumen-cinetica').waitFor()
+    await irAFrame(p, 60)
+    await abrirPestana(p, 'analisis')
+    const numero = (t) => Number(t.replace(',', '.').replace('−', '-'))
+    // Cuasiestático: la fuerza vertical es el peso, y lo que lleva cada pie suma el 100 %.
+    assert.equal(await c.getByTestId('fuerza-cursor').innerText(), '100 % del peso')
+    const [der, izq] = (await c.getByTestId('reparto-cursor').innerText()).match(/-?[\d,]+/g).map(numero)
+    assert.ok(Math.abs(der + izq - 100) <= 1, `${der} + ${izq}`)
+    // El centro de masas de una persona de 1,75 m, de pie o agachada: entre 50 cm y 1,15 m del suelo.
+    const com = numero((await c.getByTestId('com-cursor').innerText()).match(/-?[\d,]+/)[0])
+    assert.ok(com > 50 && com < 115, `centro de masas a ${com} cm`)
+    assert.match(await c.getByTestId('momento-der').innerText(), /^[−-]?\d+,\d\d N·m\/kg$/)
+    // Dinámico: con su filtro bajo, la fuerza vertical cerca del peso (la persona sintética se mueve despacio).
+    await c.getByTestId('modo-dinamico').check()
+    const fz = numero((await c.getByTestId('fuerza-cursor').innerText()).match(/-?[\d,]+/)[0])
+    assert.ok(fz > 60 && fz < 140, `fuerza vertical ${fz} % del peso`)
+    // El CSV: una fila por frame, con los momentos de las dos piernas.
+    const descarga = p.waitForEvent('download')
+    await c.getByTestId('descargar-csv').click()
+    const texto = await readFile(await (await descarga).path(), 'utf8')
+    const lineas = texto.replace(/^\uFEFF/, '').trim().split('\r\n')
+    const columnas = lineas.find((l) => l.startsWith('t_comun_s')).split(';')
+    assert.ok(columnas.includes('rodilla_der_sagital_Nm_kg') && columnas.includes('cadera_izq_frontal_Nm_kg') && columnas.includes('peso_der_pct'))
+    assert.equal(lineas.filter((l) => /^\d/.test(l)).length, videos.verde.verdad.length)
+    await c.getByRole('button', { name: 'Dejar de mirar la cinética' }).click()
+    await c.getByRole('button', { name: 'Estimar la cinética' }).waitFor()
+  })
+
   it('el informe se copia y la calibración se guarda con la sesión (esquema 6)', async () => {
     await abrirPestana(p, 'video')
     const tarjeta = p.getByTestId('calibrar-3d')

@@ -6,6 +6,7 @@ import { fmt } from './formato'
 import GraficaTiempo from './GraficaTiempo'
 import Monigote3D from './Monigote3D'
 import PanelExportar from './PanelExportar'
+import PanelCinetica from './PanelCinetica'
 import PanelMarcha3D from './PanelMarcha3D'
 import SelectorArticulacion3D from './SelectorArticulacion3D'
 import { IDS_3D, type Angulos3D } from './useAngulos3D'
@@ -157,6 +158,7 @@ export default function Panel3D({ t3, instante, desde, hasta, onBuscar, ajustes 
         </p>
       )}
       <PanelExportar generar={t3.generar} resumen={`${xs.length} frames · ${ARTICULACIONES_3D.length} ángulos 3D y las coordenadas de ${IDS_3D.length} puntos${tr.enMetros ? ' (m)' : ' (sin escala)'}`} />
+      <PanelCinetica t3={t3} instante={instante} desde={desde} hasta={hasta} onBuscar={onBuscar} ajustes={ajustes} />
       <PanelMarcha3D t3={t3} instante={instante} onBuscar={onBuscar} ajustes={ajustes} />
     </section>
   )

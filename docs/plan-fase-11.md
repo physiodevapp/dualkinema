@@ -1,6 +1,6 @@
 # Fase 11: cinética sin plataforma de fuerzas (estudio de viabilidad y plan)
 
-Estado: **plan propuesto el 14-11-2026, con el paso 1 hecho** (núcleo de dinámica inversa, `core/cinetica/`). Decisiones D1–D11 escritas y seguidas con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
+Estado: **plan propuesto el 14-11-2026; pasos 1 y 2 hechos** (núcleo de dinámica inversa, `core/cinetica/`). Decisiones D1–D13 escritas y seguidas con lo recomendado, según el acuerdo «Hasta el final del proyecto» de `CLAUDE.md` (el usuario las revisa cuando quiera). Lo que dependa de vídeos reales queda marcado como **pendiente de validar con vídeos**.
 
 ## Qué se quiere
 
@@ -104,19 +104,38 @@ El momento de la rodilla en la sentadilla va de 0,1 a 1,2 N·m/kg. Para comparar
 
 **D11 — Se dice qué es.** Es una **estimación sin plataforma**: el panel lo dice siempre, con lo que no se puede (doble apoyo, impactos, transversal) y sin valores en los frames sin apoyo reconocible.
 
+## Opciones diferidas (pregunta del usuario del 14-11)
+
+¿Algún modelo de los citados se puede integrar aunque tarde más? ¿Algo de «lo que no se puede» con un error razonable en clínica?
+
+- **El tiempo no es lo que impide OpenSim:** no existe compilado para el navegador. Habría que portar OpenSim, Simbody, CasADi e IPOPT a WebAssembly (meses, sin garantía de que quepa en la memoria de un móvil) y después cada simulación con músculos tardaría horas en el móvil. Sigue descartado (D1).
+- **GaitDynamics sí se puede integrar en diferido** (D9): su inferencia es barata; el trabajo es exportarlo, llevar nuestro esqueleto a sus coordenadas y comprobarlo. Solo marcha y carrera. Es lo único que daría la fuerza de cada pie en el doble apoyo de la marcha.
+- **Lo que más mejoraría todo es quitar ruido, y eso sí admite un proceso diferido** (D12): en lugar de ajustar el esqueleto frame a frame, ajustar **toda la toma a la vez** con una penalización de las aceleraciones (como hace OpenCap al seguir la cinemática en su simulación, pero solo cinemática). Puede tardar minutos en el móvil; a cambio, el modo dinámico serviría para movimientos moderados (bajar y subir rápido, un paso) y no solo lentos.
+- **Doble apoyo fuera de la marcha (sentadilla, levantarse):** en vez de la palanca, repartir la fuerza buscando el reparto que pide menos esfuerzo a las articulaciones (mínimo de la suma de momentos al cuadrado, con la fuerza y el momento totales fijos), como Fluit y col. (2014) con un modelo de contacto. Es un problema pequeño por frame, posible en el navegador (D13). Error esperable sin comprobar: hay que validarlo (básculas o plataforma).
+- **Fuerzas musculares y de contacto en la rodilla:** técnicamente cabría la optimización estática (repartir el momento de cada articulación entre los músculos con los brazos de palanca de un modelo libre, como el de Rajagopal), un problema pequeño por frame. Pero el error, incluso en laboratorio con plataformas, es grande y no se puede comprobar sin prótesis instrumentadas: **no lo considero de uso clínico**; queda como idea apuntada, no como paso.
+- **Momentos de rotación (transversales):** se calculan ya (van en el vector del momento), pero son pequeños y dominados por el ruido y por la rotación de cadera mal vista con la rodilla recta: no se enseñan. Se podrían exportar marcados como orientativos.
+- **Picos de impacto:** no. Pasan en 10–30 ms y el vídeo da un frame cada 33 ms (17 a 60 fps); ningún cálculo los recupera, y los modelos aprendidos estiman la forma media, no el pico de cada paso.
+
+**D12 — Suavizado de toda la toma (diferido), antes del modo dinámico «de verdad».** Un ajuste del esqueleto sobre la toma entera con penalización de la aceleración (o un suavizador de Rauch–Tung–Striebel sobre las posturas), en el worker del esqueleto, a petición («Afinar para la cinética»). Criterio con la persona sintética: con 2° de ruido, la fuerza vertical dinámica a 4 Hz con menos de un 5 % del peso de error, frente a más del 20 % ahora.
+
+**D13 — Reparto entre pies por mínimo esfuerzo** (opcional, junto a la palanca), con la persona sintética apoyada de forma asimétrica como verdad.
+
 ## Orden de trabajo (un PR por paso)
 
 | Paso | Contenido | Modelo |
 |---|---|---|
 | 1 | **Núcleo** (`core/cinetica/`): segmentos con su inercia, centro de masas, Newton–Euler, fuerza y centro de presiones totales, reparto entre pies, momentos y potencias, modos cuasiestático y dinámico. Tests de valor conocido (D7) | Opus |
-| 2 | **Interfaz**: tarjeta «Cinética» en el panel 3D (modo cuasiestático), gráficas, reparto del peso, centro de masas, CSV, glosario. e2e con la persona sintética | Opus |
-| 3 | **Dinámico**: corte propio y aviso, fuerza vertical en el tiempo, fases en el aire; la masa opcional | Opus |
-| 4 | **Experimento GaitDynamics** (D9): exportar, convertir el esqueleto, comparar con la persona sintética andando. Si no sale, se apunta por qué y se deja | Opus |
-| 5 | Cierre: revisión de código, documentación y limitaciones | Opus |
+| 2 | **Interfaz**: tarjeta «Cinética estimada» en «Ángulos en 3D» con los dos modos (el dinámico con su corte), momentos de las dos piernas, reparto del peso, centro de masas, picos y asimetría, CSV y glosario. e2e con la persona sintética | Opus |
+| 3 | **Suavizado de toda la toma** (D12), diferido en el worker del esqueleto; la masa opcional (D8) | Opus |
+| 4 | **GaitDynamics** (D9): exportar, convertir el esqueleto, comparar con la persona sintética andando. Si no sale, se apunta por qué y se deja | Opus |
+| 5 | **Reparto por mínimo esfuerzo** (D13) | Opus |
+| 6 | Cierre: revisión de código, documentación y limitaciones | Opus |
 
 ## Hecho
 
 **Paso 1 (14-11):** `core/cinetica/segmentos.ts` (tabla de Winter con el HAT, `cuerpoDePostura`, `centroDeMasas`, `enMetros`) y `core/cinetica/dinamica.ts` (`velocidadAngular` y `aceleracionAngular` de una orientación, `newtonEuler` de un segmento, `reaccionTotal` del cuerpo entero, `repartir` entre los pies y `cineticaDeLaToma` con los modos `dinamica` y `cuasiestatica`), con `dinamica.test.ts` (D7). Lo que enseñó: la segunda derivada de lo filtrado se tuerce cerca de los extremos de cada tramo (con una caída libre, 5 N/kg de más en el segundo frame), de ahí `RECORTE_BORDE_S`; y con ruido frame a frame, la dinámica solo se sostiene con un corte bajo (D5).
+
+**Paso 2 (14-11):** la tarjeta «Cinética estimada» en «Ángulos en 3D» (`ui/visor/PanelCinetica.tsx`), con el esqueleto ajustado y la escala en metros: «Estimar la cinética», el aviso de lo que no vale, los modos cuasiestático y dinámico (con su filtro de 1 a 4 Hz), la articulación y el plano, el momento de las dos piernas en el cursor y en la gráfica, el peso en cada pie (con la banda 45–55 %), la fuerza vertical y la altura del centro de masas, los picos con su asimetría (`core/cinetica/resumen.ts`) y el CSV (`core/exportacion/csvCinetica.ts`). Se guarda el modo y el corte (`Ajustes3D.cinetica`, sin subir el esquema); el resultado se calcula al vuelo. Glosario: «Cinética estimada», «Cinética: cuasiestático y dinámico» y «Momento articular interno». e2e con la persona sintética.
 
 ## Validación (pendiente de validar con vídeos)
 

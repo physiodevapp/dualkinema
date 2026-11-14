@@ -11,6 +11,7 @@
 import { esTramoEstatico, type TramoEstatico } from '../articulaciones/cero'
 import type { Lado } from '../articulaciones/catalogo'
 import type { ResultadoEsqueleto } from '../esqueleto/sesion'
+import { CORTES_DINAMICA_HZ } from '../cinetica/dinamica'
 import { leerMarcha, type MarchaGuardada } from '../marcha/guardado'
 import { N_GRADOS, type Medidas } from '../esqueleto/modelo'
 import type { IdMarcador } from '../modelo/tipos'
@@ -25,6 +26,21 @@ export interface Ajustes3D {
   readonly ceros: Readonly<Record<string, TramoEstatico>>
   /** La marcha en 3D (lo corregido a mano); sin ella, no se buscaron los ciclos. */
   readonly marcha?: MarchaGuardada
+  /** La cinética (fase 11): el modo y el corte del dinámico; sin ella, no se está mirando. */
+  readonly cinetica?: AjustesCinetica
+}
+
+export interface AjustesCinetica {
+  readonly modo: 'cuasiestatica' | 'dinamica'
+  /** Corte del filtro en el modo dinámico (uno de `CORTES_DINAMICA_HZ`). */
+  readonly corteHz: number
+}
+
+/** La cinética guardada, si se puede leer; si no, null (no se está mirando). */
+export function leerCinetica(v: unknown): AjustesCinetica | null {
+  if (!esObjeto(v) || (v.modo !== 'cuasiestatica' && v.modo !== 'dinamica')) return null
+  if (typeof v.corteHz !== 'number' || !(CORTES_DINAMICA_HZ as readonly number[]).includes(v.corteHz)) return null
+  return { modo: v.modo, corteHz: v.corteHz }
 }
 
 /** El esqueleto empaquetado en arrays tipados (IndexedDB los guarda tal cual). */
@@ -159,9 +175,16 @@ export function leerAjustes3D(v: unknown): Ajustes3D | null {
   if (!esObjeto(v) || (v.fuente !== 'puntos' && v.fuente !== 'esqueleto')) return null
   if (v.articulacion !== undefined && typeof v.articulacion !== 'string') return null
   if (!esObjeto(v.ceros) || !Object.values(v.ceros).every(esTramoEstatico)) return null
-  // La marcha ilegible se descarta sola (lo demás se conserva).
+  // La marcha y la cinética ilegibles se descartan solas (lo demás se conserva).
   const marcha = leerMarcha(v.marcha)
-  return { fuente: v.fuente, ...(v.articulacion !== undefined ? { articulacion: v.articulacion } : {}), ceros: v.ceros as Record<string, TramoEstatico>, ...(marcha ? { marcha } : {}) }
+  const cinetica = leerCinetica(v.cinetica)
+  return {
+    fuente: v.fuente,
+    ...(v.articulacion !== undefined ? { articulacion: v.articulacion } : {}),
+    ceros: v.ceros as Record<string, TramoEstatico>,
+    ...(marcha ? { marcha } : {}),
+    ...(cinetica ? { cinetica } : {}),
+  }
 }
 
 /** Bytes de los arrays del esqueleto (para lo que ocupa la sesión). */
