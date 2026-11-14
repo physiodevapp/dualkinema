@@ -33,9 +33,14 @@ export const ACELERACION_LINEAL = 1
 const ERROR_MINIMO_PX = 0.5
 /** Ancla débil a la postura del frame (en sus unidades²): que nada quede sin determinar. */
 const ANCLA = 1e-4
-/** Frames por ventana y solape a cada lado (más que el alcance del suavizado, unas décimas de segundo). */
-const VENTANA = 240
-const SOLAPE = 30
+/**
+ * Frames útiles por ventana y solape a cada lado. Lo que se ve bien se suaviza en unas décimas de segundo, pero un grado de
+ * libertad que apenas se ve lo dictan vecinos a segundos (revisión del cierre: con 1 s de solape la costura dejaba 8° de
+ * escalón en él). Con 1800 frames (60 s a 30 fps, unos 13 MB de matriz) y 300 a cada lado, fundidos en rampa, por ventanas
+ * sale casi lo mismo que de una vez; resolver toda la toma de golpe pediría 65 MB con 5 min.
+ */
+const VENTANA = 1800
+const SOLAPE = 300
 
 export interface EntradaSuavizado {
   readonly tiempos: readonly number[]
@@ -50,6 +55,8 @@ export interface EntradaSuavizado {
   readonly unidad: number
   /** Las aceleraciones típicas del previo (por defecto, `ACELERACION_ANGULAR` y `ACELERACION_LINEAL`). */
   readonly aceleracion?: { readonly angular: number; readonly lineal: number }
+  /** Frames útiles por ventana (solo para las pruebas: por defecto, `VENTANA`). */
+  readonly ventana?: number
 }
 
 /** Cholesky en banda (A = L·Lᵀ) de una matriz simétrica de orden n y semiancho b, guardada por filas: a[i·(b+1) + (i − j)] = A[i][j]. */
@@ -88,7 +95,7 @@ function suavizarTramo(e: EntradaSuavizado, i0: number, i1: number, salida: (num
   const n = i1 - i0 + 1
   const D = N_GRADOS
   const N = n * D
-  const b = 2 * D + D - 1 // un frame se acopla con los dos de cada lado
+  const b = 2 * D // un frame se acopla con los dos de cada lado, grado a grado (la información, dentro del frame)
   const w = b + 1
   const A = new Float64Array(N * w)
   const y = new Float64Array(N)
@@ -134,7 +141,7 @@ function suavizarTramo(e: EntradaSuavizado, i0: number, i1: number, salida: (num
 
 /**
  * Las posturas suavizadas de toda la toma (D12). Un frame sin postura sigue sin ella; un tramo de menos de 3 frames se
- * queda como estaba. Las ventanas largas se resuelven por trozos solapados y se pega el centro de cada uno.
+ * queda como estaba. Las ventanas largas se resuelven por trozos solapados, fundidos en rampa donde se pisan.
  */
 export function suavizarPosturas(e: EntradaSuavizado): (number[] | null)[] {
   const n = e.tiempos.length
@@ -151,15 +158,28 @@ export function suavizarPosturas(e: EntradaSuavizado): (number[] | null)[] {
     if (j - i + 1 < 3) {
       for (let k = i; k <= j; k++) salida[k] = [...e.posturas[k]!]
     } else {
-      // Ventanas de VENTANA frames útiles con SOLAPE a cada lado.
-      for (let desde = i; desde <= j; desde += VENTANA) {
-        const hasta = Math.min(j, desde + VENTANA - 1)
+      // Ventanas de `ventana` frames útiles con SOLAPE a cada lado; en los 2·SOLAPE frames que comparten dos ventanas
+      // seguidas, cada una pesa en rampa (la de antes baja mientras la de después sube).
+      const paso = Math.max(2 * SOLAPE, e.ventana ?? VENTANA)
+      const suma: number[][] = []
+      const pesos: number[] = []
+      for (let desde = i; desde <= j; desde += paso) {
         const a = Math.max(i, desde - SOLAPE)
-        const z = Math.min(j, hasta + SOLAPE)
+        const z = Math.min(j, desde + paso - 1 + SOLAPE)
         const parcial: (number[] | null)[] = []
         suavizarTramo(e, a, z, parcial)
-        for (let k = desde; k <= hasta; k++) salida[k] = parcial[k]!
+        for (let k = a; k <= z; k++) {
+          let w = 1
+          if (a > i) w = Math.min(w, (k - a + 0.5) / (2 * SOLAPE))
+          if (z < j) w = Math.min(w, (z - k + 0.5) / (2 * SOLAPE))
+          const q = parcial[k]!
+          const acc = (suma[k - i] ??= new Array<number>(q.length).fill(0))
+          for (let g = 0; g < q.length; g++) acc[g]! += w * q[g]!
+          pesos[k - i] = (pesos[k - i] ?? 0) + w
+        }
+        if (z === j) break
       }
+      for (let k = i; k <= j; k++) salida[k] = suma[k - i]!.map((v) => v / pesos[k - i]!)
     }
     i = j + 1
   }

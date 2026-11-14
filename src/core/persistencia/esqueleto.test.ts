@@ -138,5 +138,7 @@ describe('la marcha en 3D guardada con lo que se mira', () => {
     expect(leerAjustes3D({ ...base, cinetica: { modo: 'otro', corteHz: 2 } })).toEqual(base)
     expect(leerAjustes3D({ ...base, cinetica: { ...cinetica, masa: 72.5 } })).toEqual({ ...base, cinetica: { ...cinetica, masa: 72.5 } })
     expect(leerAjustes3D({ ...base, cinetica: { ...cinetica, masa: 900 } })).toEqual({ ...base, cinetica })
+    expect(leerAjustes3D({ ...base, cinetica: { ...cinetica, reparto: 'gaitdynamics' } })).toEqual({ ...base, cinetica: { ...cinetica, reparto: 'gaitdynamics' } })
+    expect(leerAjustes3D({ ...base, cinetica: { ...cinetica, reparto: 'otro' } })).toEqual({ ...base, cinetica })
   })
 })

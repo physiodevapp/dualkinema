@@ -36,7 +36,12 @@ export interface AjustesCinetica {
   readonly corteHz: number
   /** La masa de la persona (kg), opcional (D8): con ella, también en N y N·m. */
   readonly masa?: number
+  /** Cómo se reparte el peso entre los pies con los dos apoyando (D4, D9, D13); sin él, la palanca. */
+  readonly reparto?: RepartoCinetica
 }
+
+export type RepartoCinetica = 'palanca' | 'esfuerzo' | 'gaitdynamics'
+const REPARTOS: readonly RepartoCinetica[] = ['palanca', 'esfuerzo', 'gaitdynamics']
 
 /** La masa que se admite (kg). */
 export const MASA_MIN = 15
@@ -48,7 +53,8 @@ export function leerCinetica(v: unknown): AjustesCinetica | null {
   if (typeof v.corteHz !== 'number' || !(CORTES_DINAMICA_HZ as readonly number[]).includes(v.corteHz)) return null
   // Una masa ilegible se descarta sola.
   const masa = esNumero(v.masa) && v.masa >= MASA_MIN && v.masa <= MASA_MAX ? v.masa : null
-  return { modo: v.modo, corteHz: v.corteHz, ...(masa !== null ? { masa } : {}) }
+  const reparto = REPARTOS.find((r) => r === v.reparto)
+  return { modo: v.modo, corteHz: v.corteHz, ...(masa !== null ? { masa } : {}), ...(reparto ? { reparto } : {}) }
 }
 
 /** El esqueleto empaquetado en arrays tipados (IndexedDB los guarda tal cual). */

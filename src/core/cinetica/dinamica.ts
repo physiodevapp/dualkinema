@@ -148,7 +148,7 @@ export interface ReaccionPie {
  * Reparte la fuerza total entre los pies que apoyan (`apoyos`: el punto de apoyo de cada uno en el suelo, o null).
  * Regla de la palanca a lo largo de la recta entre los dos apoyos, conservando la fuerza y el momento totales.
  */
-export function repartir(F: Vec3, cop: Vec3, libre: number, apoyos: Readonly<Record<Lado, Vec3 | null>>): Record<Lado, ReaccionPie | null> {
+export function repartir(F: Vec3, cop: Vec3, libre: number, apoyos: Readonly<Record<Lado, Vec3 | null>>, lambdaFijo?: number): Record<Lado, ReaccionPie | null> {
   const a = apoyos.der
   const b = apoyos.izq
   if (!finito(cop)) return { der: null, izq: null }
@@ -157,7 +157,9 @@ export function repartir(F: Vec3, cop: Vec3, libre: number, apoyos: Readonly<Rec
   if (!a || !b) return { der: null, izq: null }
   const d = vec3(b.x - a.x, b.y - a.y, 0)
   const d2 = d.x * d.x + d.y * d.y
-  const lambda = d2 > 1e-12 ? Math.min(1, Math.max(0, ((cop.x - a.x) * d.x + (cop.y - a.y) * d.y) / d2)) : 0.5
+  const palanca = d2 > 1e-12 ? Math.min(1, Math.max(0, ((cop.x - a.x) * d.x + (cop.y - a.y) * d.y) / d2)) : 0.5
+  // Con `lambdaFijo` (el reparto por mínimo esfuerzo, D13), la parte del pie izquierdo la decide quien llama.
+  const lambda = lambdaFijo ?? palanca
   // El desplazamiento del centro de presiones total respecto a su punto en la recta (perpendicular, o el exceso más allá
   // de un extremo): cada pie lo lleva igual, y la suma ponderada vuelve a dar el total.
   const e = vec3(cop.x - (a.x + lambda * d.x), cop.y - (a.y + lambda * d.y), 0)
@@ -216,7 +218,26 @@ export interface EntradaCinetica {
    * postura. Solo usa posiciones, así que el ruido apenas le afecta; vale para movimientos lentos (D5).
    */
   readonly modo?: 'dinamica' | 'cuasiestatica'
+  /**
+   * Cómo se reparte la fuerza entre los dos pies cuando apoyan los dos (D4 y D13): 'palanca' (por defecto) o 'esfuerzo'
+   * (el reparto que pide menos momento a las seis articulaciones de las piernas).
+   */
+  readonly reparto?: 'palanca' | 'esfuerzo'
+  /**
+   * La fuerza y el centro de presiones de cada pie ya estimados por otro camino (GaitDynamics, D9), por frame: donde los
+   * hay, mandan (la fuerza total es su suma) y los momentos salen de ellos.
+   */
+  readonly piesExternos?: readonly (Readonly<Record<Lado, ReaccionPie | null>> | null)[]
 }
+
+/** Las partes del peso del pie izquierdo que se prueban en el reparto por mínimo esfuerzo (y luego se afina). */
+const PASOS_ESFUERZO = 20
+/**
+ * Lo más que el reparto por mínimo esfuerzo puede apartarse de la palanca, medido en lo que se mueve el centro de presiones
+ * de cada pie a lo largo de la recta entre los dos (m): media anchura de un pie. Más allá, el centro de presiones de un pie
+ * caería fuera de él (lo vio la revisión del cierre: bajaba los momentos con un desplazamiento que no es físico).
+ */
+export const DESVIO_COP_MAX_M = 0.04
 
 // Canales por frame: 7 segmentos × (centro de masas 3 + R 9), la R de la pelvis (9) y 6 puntos por lado (36).
 const N_SEG = 7
@@ -343,28 +364,80 @@ export function cineticaDeLaToma(e: EntradaCinetica): ResultadoCinetica {
         apoyos[l] = cerca.length ? vec3(cerca.reduce((a, p) => a + p.x, 0) / cerca.length, cerca.reduce((a, p) => a + p.y, 0) / cerca.length, suelo) : null
         pies[l].apoyo[idx] = apoyos[l] !== null
       }
-      const reparto = repartir(r.F, r.cop, r.libre, apoyos)
       const [, musloD, musloI, piernaD, piernaI, pieD, pieI] = ec as [SegmentoMovil, SegmentoMovil, SegmentoMovil, SegmentoMovil, SegmentoMovil, SegmentoMovil, SegmentoMovil]
       const porLado = { der: { muslo: musloD, pierna: piernaD, pie: pieD }, izq: { muslo: musloI, pierna: piernaI, pie: pieI } }
-      // En el aire (fuerza vertical total por debajo del 20 % del peso), ningún pie recibe nada y los momentos salen de la
-      // inercia de cada pierna. Con apoyo, un pie que no apoya va sin fuerza; si no se ve apoyar a ninguno, no se sabe.
-      const enElAire = !finito(r.cop)
-      const algunApoyo = LADOS.some((o) => reparto[o])
-      for (const l of LADOS) {
-        const rp = reparto[l]
-        if (!rp && !enElAire && !algunApoyo) continue
-        pies[l].fuerza[idx] = rp ? rp.F : vec3(0, 0, 0)
-        pies[l].cop[idx] = rp ? rp.cop : NAN3
+      /** Newton–Euler de una pierna de abajo arriba con la reacción de su pie (null: sin fuerza). */
+      const pierna = (l: Lado, rp: ReaccionPie | null) => {
         const Fg = rp ? rp.F : vec3(0, 0, 0)
-        const Mg = rp ? vec3(0, 0, rp.libre) : vec3(0, 0, 0)
+        // Sin momento libre conocido (GaitDynamics no lo da), 0: es pequeño y casi solo afecta a lo transversal.
+        const Mg = rp && Number.isFinite(rp.libre) ? vec3(0, 0, rp.libre) : vec3(0, 0, 0)
         const rg = rp ? rp.cop : punto3('tobillo', l)
         const p = porLado[l]
         const tob = punto3('tobillo', l)
         const rod = punto3('rodilla', l)
         const cad = punto3('cadera', l)
         const pie = newtonEuler(p.pie, Fg, Mg, rg, tob)
-        const pierna = newtonEuler(p.pierna, por(pie.F, -1), por(pie.M, -1), tob, rod)
-        const muslo = newtonEuler(p.muslo, por(pierna.F, -1), por(pierna.M, -1), rod, cad)
+        const pi = newtonEuler(p.pierna, por(pie.F, -1), por(pie.M, -1), tob, rod)
+        const mu = newtonEuler(p.muslo, por(pi.F, -1), por(pi.M, -1), rod, cad)
+        return { tobillo: pie.M, rodilla: pi.M, cadera: mu.M }
+      }
+      const externos = e.piesExternos?.[idx]
+      let reparto: Record<Lado, ReaccionPie | null>
+      let enElAire: boolean
+      if (externos) {
+        // GaitDynamics: su fuerza de cada pie manda; la total es su suma y su centro de presiones, la media pesada.
+        reparto = { der: externos.der, izq: externos.izq }
+        const Ft = LADOS.reduce((acc, l) => (reparto[l] ? mas(acc, reparto[l]!.F) : acc), vec3(0, 0, 0))
+        fuerza[idx] = Ft
+        libre[idx] = NaN
+        enElAire = !(Ft.z >= FUERZA_MINIMA_APOYO)
+        const conCop = LADOS.filter((l) => reparto[l] && reparto[l]!.F.z > 0 && finito(reparto[l]!.cop))
+        const fz = conCop.reduce((a, l) => a + reparto[l]!.F.z, 0)
+        cop[idx] = enElAire || !(fz > 0) ? NAN3 : conCop.reduce((acc, l) => mas(acc, por(reparto[l]!.cop, reparto[l]!.F.z / fz)), vec3(0, 0, 0))
+        for (const l of LADOS) pies[l].apoyo[idx] = !!reparto[l] && reparto[l]!.F.z > 0
+      } else {
+        enElAire = !finito(r.cop)
+        reparto = repartir(r.F, r.cop, r.libre, apoyos)
+        if (e.reparto === 'esfuerzo' && reparto.der && reparto.izq) {
+          // Mínimo esfuerzo (D13): la parte del pie izquierdo que deja la menor suma de los cuadrados de los seis
+          // momentos; primero en una rejilla y después afinada con una parábola alrededor del mejor.
+          const coste = (lambda: number) => {
+            const rp = repartir(r.F, r.cop, r.libre, apoyos, lambda)
+            let c = 0
+            for (const l of LADOS) {
+              const m = pierna(l, rp[l])
+              for (const M of [m.cadera, m.rodilla, m.tobillo]) c += punto(M, M)
+            }
+            return c
+          }
+          // Solo cerca de la palanca: que el centro de presiones de cada pie no salga de él (`DESVIO_COP_MAX_M`).
+          const lp = reparto.izq.F.z / r.F.z
+          const largo = Math.hypot(apoyos.izq!.x - apoyos.der!.x, apoyos.izq!.y - apoyos.der!.y)
+          const margen = largo > 1e-6 ? DESVIO_COP_MAX_M / largo : 0
+          const lo = Math.max(0, lp - margen)
+          const hi = Math.min(1, lp + margen)
+          const enRejilla = (k: number) => lo + ((hi - lo) * k) / PASOS_ESFUERZO
+          const cs = Array.from({ length: PASOS_ESFUERZO + 1 }, (_, k) => coste(enRejilla(k)))
+          const k = cs.indexOf(Math.min(...cs))
+          let lambda = enRejilla(k)
+          if (k > 0 && k < PASOS_ESFUERZO) {
+            const [c0, c1, c2] = [cs[k - 1]!, cs[k]!, cs[k + 1]!]
+            const den = c0 - 2 * c1 + c2
+            if (den > 0) lambda = enRejilla(k + (0.5 * (c0 - c2)) / den)
+          }
+          reparto = repartir(r.F, r.cop, r.libre, apoyos, Math.min(hi, Math.max(lo, lambda)))
+        }
+      }
+      // En el aire (fuerza vertical total por debajo del 20 % del peso), ningún pie recibe nada y los momentos salen de la
+      // inercia de cada pierna. Con apoyo, un pie que no apoya va sin fuerza; si no se ve apoyar a ninguno, no se sabe.
+      const algunApoyo = LADOS.some((o) => reparto[o])
+      for (const l of LADOS) {
+        const rp = reparto[l]
+        if (!rp && !enElAire && !algunApoyo) continue
+        pies[l].fuerza[idx] = rp ? rp.F : vec3(0, 0, 0)
+        pies[l].cop[idx] = rp ? rp.cop : NAN3
+        const m = pierna(l, rp)
+        const p = porLado[l]
         const art = articulaciones[l]
         const poner = (id: IdArticulacionCinetica, M: Vec3, Rprox: Mat3, wProx: Vec3, wDist: Vec3) => {
           const a = art[id]
@@ -376,9 +449,9 @@ export function cineticaDeLaToma(e: EntradaCinetica): ResultadoCinetica {
         }
         const w = (q: number) => segs[q]!.w
         const [iM, iP, iF] = l === 'der' ? [1, 3, 5] : [2, 4, 6]
-        poner('cadera', muslo.M, Rp, wPelvis, w(iM))
-        poner('rodilla', pierna.M, p.muslo.R, w(iM), w(iP))
-        poner('tobillo', pie.M, p.pierna.R, w(iP), w(iF))
+        poner('cadera', m.cadera, Rp, wPelvis, w(iM))
+        poner('rodilla', m.rodilla, p.muslo.R, w(iM), w(iP))
+        poner('tobillo', m.tobillo, p.pierna.R, w(iP), w(iF))
       }
     }
   }

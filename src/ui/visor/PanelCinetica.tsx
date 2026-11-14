@@ -1,6 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Lado } from '../../core/articulaciones/catalogo'
-import { cineticaDeLaToma, CORTE_DINAMICA_HZ, CORTES_DINAMICA_HZ, G, type IdArticulacionCinetica } from '../../core/cinetica/dinamica'
+import { cineticaDeLaToma, CORTE_DINAMICA_HZ, CORTES_DINAMICA_HZ, estimarSuelo, G, type IdArticulacionCinetica, type ReaccionPie } from '../../core/cinetica/dinamica'
+import { decodificar, prepararToma } from '../../core/cinetica/gaitdynamics/preparar'
+import { cuerpoDePostura, enMetros } from '../../core/cinetica/segmentos'
+import type { ResultadoEsqueleto } from '../../core/esqueleto/sesion'
+import type { RepartoCinetica } from '../../core/persistencia/esqueleto'
+import type { AlWorkerGaitDynamics, DelWorkerGaitDynamics } from '../../workers/protocolo'
 import { ARTICULACIONES_CINETICA, media, picos, repartoPeso, type Componente } from '../../core/cinetica/resumen'
 import { construirCsvCinetica } from '../../core/exportacion/csvCinetica'
 import { MASA_MAX, MASA_MIN } from '../../core/persistencia/esqueleto'
@@ -28,6 +33,13 @@ const POSITIVO: Record<Componente, Record<IdArticulacionCinetica, string>> = {
   sagital: { cadera: 'extensor', rodilla: 'extensor', tobillo: 'flexor plantar' },
   frontal: { cadera: 'abductor', rodilla: 'abductor', tobillo: '' },
 }
+const NOMBRE_REPARTO: Record<RepartoCinetica, string> = {
+  palanca: 'Palanca (por defecto)',
+  esfuerzo: 'Mínimo esfuerzo',
+  gaitdynamics: 'GaitDynamics (marcha, experimental)',
+}
+type EstadoGd = { fase: 'parado' } | { fase: 'calculando'; fraccion: number } | { fase: 'error'; mensaje: string }
+type PiesPorFrame = (Readonly<Record<Lado, ReaccionPie | null>> | null)[]
 const boton = 'rounded-md border border-borde px-2 py-1 text-xs text-texto-2 disabled:opacity-50'
 const num = (v: number, d: number) => (Number.isFinite(v) ? fmt(v + 0, d) : '—')
 
@@ -50,9 +62,48 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
   const corteHz = modo === 'dinamica' ? (cinetica?.corteHz ?? CORTE_DINAMICA_HZ) : ajustes.corteHz
   // Las posturas suavizadas de toda la toma (D12): sin ellas (un esqueleto guardado antes), las del ajuste frame a frame.
   const afinado = !!esqueleto?.suavizadas
+  const reparto = cinetica?.reparto ?? 'palanca'
+  // GaitDynamics (D9): se calcula a petición en un worker y vale para este esqueleto (no se guarda: se vuelve a pedir).
+  const [gd, setGd] = useState<{ esqueleto: ResultadoEsqueleto; pies: PiesPorFrame } | null>(null)
+  const [estadoGd, setEstadoGd] = useState<EstadoGd>({ fase: 'parado' })
+  const workerGd = useRef<Worker | null>(null)
+  useEffect(() => () => workerGd.current?.terminate(), [])
+  const piesGd = reparto === 'gaitdynamics' && gd && gd.esqueleto === esqueleto ? gd.pies : null
+  const calcularGd = () => {
+    if (!esqueleto || !metros) return
+    const posturas = esqueleto.suavizadas ?? esqueleto.posturas
+    const prep = prepararToma(esqueleto.tiempos, posturas, esqueleto.medidas, metros, fs)
+    if (!prep.ventanas) return setEstadoGd({ fase: 'error', mensaje: 'no hay ningún tramo de 1,5 s seguidos con el esqueleto ajustado.' })
+    workerGd.current?.terminate()
+    const w = new Worker(new URL('../../workers/gaitdynamics.worker.ts', import.meta.url), { type: 'module' })
+    workerGd.current = w
+    const de = esqueleto
+    setEstadoGd({ fase: 'calculando', fraccion: 0 })
+    w.onmessage = (e: MessageEvent<DelWorkerGaitDynamics>) => {
+      if (workerGd.current !== w) return
+      const m = e.data
+      if (m.tipo === 'progreso') return setEstadoGd({ fase: 'calculando', fraccion: m.fraccion })
+      if (m.tipo === 'hecho') {
+        const sueloM = suelo ?? estimarSuelo(posturas.map((q) => (q ? cuerpoDePostura(enMetros(q, de.medidas, metros).q, enMetros(q, de.medidas, metros).m) : null)))
+        setGd({ esqueleto: de, pies: decodificar(prep, m.salida, de.tiempos, posturas, de.medidas, metros, sueloM) })
+        setEstadoGd({ fase: 'parado' })
+      } else setEstadoGd({ fase: 'error', mensaje: m.mensaje })
+      w.terminate()
+      workerGd.current = null
+    }
+    w.onerror = (ev) => {
+      ev.preventDefault()
+      if (workerGd.current !== w) return
+      setEstadoGd({ fase: 'error', mensaje: ev.message || 'no se ha podido cargar el modelo. Recarga la página.' })
+      w.terminate()
+      workerGd.current = null
+    }
+    w.postMessage({ tipo: 'inferir', lote: prep.lote, ventanas: prep.ventanas } satisfies AlWorkerGaitDynamics, [prep.lote.buffer])
+  }
+  const activa = cinetica !== null && cinetica !== undefined
   const resultado = useMemo(
     () =>
-      cinetica && esqueleto && metros
+      activa && esqueleto && metros
         ? cineticaDeLaToma({
             tiempos: esqueleto.tiempos,
             posturas: esqueleto.suavizadas ?? esqueleto.posturas,
@@ -62,11 +113,14 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
             fs,
             corteHz,
             modo,
+            reparto: reparto === 'esfuerzo' ? 'esfuerzo' : 'palanca',
+            ...(piesGd ? { piesExternos: piesGd } : {}),
           })
         : null,
-    [cinetica, esqueleto, metros, suelo, fs, corteHz, modo],
+    // Sin `cinetica` entera: cambiar la masa (solo multiplica lo que se enseña) no recalcula la toma.
+    [activa, esqueleto, metros, suelo, fs, corteHz, modo, reparto, piesGd],
   )
-  const reparto = useMemo(() => (resultado ? repartoPeso(resultado) : null), [resultado])
+  const peso = useMemo(() => (resultado ? repartoPeso(resultado) : null), [resultado])
   const pico = useMemo(() => (resultado ? picos(resultado, componente) : null), [resultado, componente])
 
   const titulo = (
@@ -74,7 +128,7 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
       Cinética estimada <InfoGlosario id="cinetica" tema="la cinética sin plataforma de fuerzas" className="-my-1.5" />
     </h3>
   )
-  if (!cinetica || !esqueleto || !metros || !resultado || !reparto || !pico) {
+  if (!cinetica || !esqueleto || !metros || !resultado || !peso || !pico) {
     const falta = !esqueleto ? 'Hace falta el esqueleto ajustado (fuente «Esqueleto», «Ajustar el esqueleto»).' : !metros ? 'Hace falta la escala en metros: calibra en 3D con la estatura de la persona.' : null
     return (
       <div className="flex flex-col gap-2 border-t border-borde pt-3" data-testid="panel-cinetica">
@@ -106,7 +160,7 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
   const conMasa = (v: number, unidad: string, d: number) => (masa !== null && Number.isFinite(v) ? ` (${num(v * masa, d)} ${unidad})` : '')
   const generar = (formato: Parameters<typeof construirCsvCinetica>[1]) => ({
     nombre: 'dualkinema_cinetica.csv',
-    texto: construirCsvCinetica({ exportado: new Date().toISOString(), resultado, modo, corteHz, afinado, masa }, formato),
+    texto: construirCsvCinetica({ exportado: new Date().toISOString(), resultado, modo, corteHz, afinado, masa, reparto: piesGd ? 'gaitdynamics' : reparto === 'gaitdynamics' ? 'palanca' : reparto }, formato),
   })
 
   return (
@@ -184,6 +238,47 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
         />
         <span>con ella, también en N y N·m</span>
       </label>
+      <div className="flex flex-col gap-2" data-testid="reparto-cinetica">
+        <label className="flex flex-wrap items-center gap-2 text-xs text-texto-2">
+          Con los dos pies apoyando, el peso se reparte por
+          <select
+            value={reparto}
+            onChange={(e) => setCinetica({ ...cinetica, reparto: e.target.value as RepartoCinetica })}
+            className="rounded-md border border-borde bg-fondo px-2 py-1 text-sm text-texto"
+            data-testid="selector-reparto"
+          >
+            {(Object.keys(NOMBRE_REPARTO) as RepartoCinetica[]).map((r) => (
+              <option key={r} value={r}>
+                {NOMBRE_REPARTO[r]}
+              </option>
+            ))}
+          </select>
+          <InfoGlosario id="reparto-pies" tema="el reparto del peso entre los pies" className="-my-1.5" />
+        </label>
+        {reparto === 'gaitdynamics' && (
+          <div className="flex flex-col gap-1 text-xs text-texto-2">
+            <p>
+              Una red entrenada con la marcha y la carrera de cientos de personas con plataforma (GaitDynamics, Stanford) da la fuerza de cada pie, también en el doble apoyo. Experimental: solo para andar o correr, en tramos de 1,5 s o más; corre en este móvil.
+            </p>
+            {estadoGd.fase === 'calculando' ? (
+              <p role="status" data-testid="progreso-gaitdynamics">
+                Calculando con GaitDynamics… {Math.round(estadoGd.fraccion * 100)} %
+              </p>
+            ) : (
+              <button type="button" onClick={calcularGd} disabled={ocupado} className="self-start rounded-md border border-acento px-3 py-1.5 text-sm text-acento disabled:opacity-40">
+                {piesGd ? 'Volver a calcular con GaitDynamics' : 'Calcular con GaitDynamics'}
+              </button>
+            )}
+            {estadoGd.fase === 'error' && <p className="text-acento">No se ha podido: {estadoGd.mensaje}</p>}
+            {!piesGd && estadoGd.fase !== 'calculando' && <p>Mientras no se calcule, se reparte por la palanca.</p>}
+            {piesGd && (
+              <p data-testid="gaitdynamics-listo">
+                Con las fuerzas de GaitDynamics.{modo === 'cuasiestatica' && ' Sus fuerzas incluyen la aceleración del cuerpo: los momentos casan mejor con el modo dinámico.'}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <select value={art} onChange={(e) => setArt(e.target.value as IdArticulacionCinetica)} className="rounded-md border border-borde bg-fondo px-2 py-1" data-testid="articulacion-cinetica" aria-label="Articulación">
           {ARTICULACIONES_CINETICA.map((a) => (
@@ -218,7 +313,7 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
         <dd className="font-sans">{POSITIVO[comp][art]}</dd>
         <dt className="text-texto-2">Peso en cada pie</dt>
         <dd data-testid="reparto-cursor">
-          der. {num(enCursor(reparto.der), 0)} % · izq. {num(enCursor(reparto.izq), 0)} %
+          der. {num(enCursor(peso.der), 0)} % · izq. {num(enCursor(peso.izq), 0)} %
         </dd>
         <dt className="text-texto-2">Fuerza vertical</dt>
         <dd data-testid="fuerza-cursor">
@@ -246,8 +341,8 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
       <GraficaTiempo
         xs={xs}
         series={[
-          { id: 'peso-der', color: 'acento', valores: reparto.der.map((v) => (Number.isFinite(v) ? v : null)), visible: true, ancho: 2 },
-          { id: 'peso-izq', color: 'texto', valores: reparto.izq.map((v) => (Number.isFinite(v) ? v : null)), visible: true, ancho: 1.5 },
+          { id: 'peso-der', color: 'acento', valores: peso.der.map((v) => (Number.isFinite(v) ? v : null)), visible: true, ancho: 2 },
+          { id: 'peso-izq', color: 'texto', valores: peso.izq.map((v) => (Number.isFinite(v) ? v : null)), visible: true, ancho: 1.5 },
         ]}
         desde={desde}
         hasta={hasta}
@@ -281,7 +376,7 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
         </tbody>
       </table>
       <p className="font-mono text-xs text-texto-2" data-testid="resumen-cinetica">
-        Peso medio en el pie derecho {num(media(reparto.der), 0)} % · {modo === 'cuasiestatica' ? 'cuasiestático' : 'dinámico'}, filtro {fmt(corteHz, 0)} Hz
+        Peso medio en el pie derecho {num(media(peso.der), 0)} % · {modo === 'cuasiestatica' ? 'cuasiestático' : 'dinámico'}, filtro {fmt(corteHz, 0)} Hz
       </p>
       <PanelExportar generar={generar} resumen={`${xs.length} frames · centro de masas, fuerza del suelo, peso en cada pie y momentos y potencias de las dos piernas, por kilo`} deshabilitado={ocupado} />
     </div>
