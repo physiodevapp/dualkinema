@@ -5976,6 +5976,11 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     const com = numero((await c.getByTestId('com-cursor').innerText()).match(/-?[\d,]+/)[0])
     assert.ok(com > 50 && com < 115, `centro de masas a ${com} cm`)
     assert.match(await c.getByTestId('momento-der').innerText(), /^[−-]?\d+,\d\d N·m\/kg$/)
+    // El esqueleto (guardado y reabierto en la prueba anterior) trae la toma afinada (D12).
+    assert.match(await c.getByTestId('afinado-cinetica').innerText(), /Con la toma afinada/)
+    // Con la masa, también en N·m.
+    await c.getByTestId('masa-cinetica').fill('70')
+    assert.match(await c.getByTestId('momento-der').innerText(), /N·m\/kg \([−-]?\d+ N·m\)$/)
     // Dinámico: con su filtro bajo, la fuerza vertical cerca del peso (la persona sintética se mueve despacio).
     await c.getByTestId('modo-dinamico').check()
     const fz = numero((await c.getByTestId('fuerza-cursor').innerText()).match(/-?[\d,]+/)[0])

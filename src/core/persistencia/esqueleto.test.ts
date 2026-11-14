@@ -40,6 +40,10 @@ describe('el esqueleto guardado', () => {
     const d = desempaquetarEsqueleto({ ...g })!
     expect(d.huella).toBe('abc')
     expect(d.resultado).toEqual(resultado)
+    // Con las posturas suavizadas (fase 11, D12) también vuelven; uno de antes, sin ellas, se lee sin ellas.
+    const conSuave = { ...resultado, suavizadas: [q(0.5), q(1.5), null, q(3.5)] }
+    expect(desempaquetarEsqueleto({ ...empaquetarEsqueleto(conSuave, 'abc') })!.resultado).toEqual(conSuave)
+    expect(desempaquetarEsqueleto({ ...empaquetarEsqueleto(conSuave, 'abc'), suavizadas: new Float64Array(3) })!.resultado).toEqual(resultado)
   })
 
   it('lo que no se puede leer se descarta (null), sin romper nada', () => {
@@ -130,7 +134,9 @@ describe('la marcha en 3D guardada con lo que se mira', () => {
     // La cinética (fase 11): se lee el modo y el corte; si no se puede leer, se descarta sola.
     const cinetica = { modo: 'dinamica', corteHz: 2 }
     expect(leerAjustes3D({ ...base, cinetica })).toEqual({ ...base, cinetica })
-    expect(leerAjustes3D({ ...base, cinetica: { modo: 'dinamica', corteHz: 6 } })).toEqual(base)
+    expect(leerAjustes3D({ ...base, cinetica: { modo: 'dinamica', corteHz: 5 } })).toEqual(base)
     expect(leerAjustes3D({ ...base, cinetica: { modo: 'otro', corteHz: 2 } })).toEqual(base)
+    expect(leerAjustes3D({ ...base, cinetica: { ...cinetica, masa: 72.5 } })).toEqual({ ...base, cinetica: { ...cinetica, masa: 72.5 } })
+    expect(leerAjustes3D({ ...base, cinetica: { ...cinetica, masa: 900 } })).toEqual({ ...base, cinetica })
   })
 })

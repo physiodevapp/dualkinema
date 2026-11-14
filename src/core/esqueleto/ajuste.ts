@@ -138,6 +138,12 @@ export interface ResultadoAjuste {
   readonly vistas: Readonly<Record<IdMarcador, number>>
   /** La rotación de cada cadera, ¿la determina lo que se ve? (la rodilla doblada). */
   readonly rotacionVisible: Readonly<Record<Lado, boolean>>
+  /**
+   * Lo que dicen las cámaras de cada grado de libertad en este frame (JᵀJ de los residuos de reproyección, N_GRADOS ×
+   * N_GRADOS, en px² por unidad²): la información para el suavizado de toda la toma (fase 11, D12). Solo con
+   * `conInformacion`.
+   */
+  readonly informacion?: Float64Array
 }
 
 /** Los residuos (px y previos adimensionales) de una postura, y los de reproyección sueltos (para el error). */
@@ -188,7 +194,7 @@ function vistasDe(e: EntradaAjuste): Record<IdMarcador, number> {
 const suma2 = (r: readonly number[]) => r.reduce((s, x) => s + x * x, 0)
 
 /** Ajusta la postura de un frame (Levenberg–Marquardt). null si no hay bastantes puntos observados (menos de 6). */
-export function ajustarFrame(e: EntradaAjuste, { iteraciones = 150, anteversion = 0 } = {}): ResultadoAjuste | null {
+export function ajustarFrame(e: EntradaAjuste, { iteraciones = 150, anteversion = 0, conInformacion = false } = {}): ResultadoAjuste | null {
   let q = [...(e.anterior ?? e.arranque)]
   let { r, reproy } = residuos(q, e, anteversion)
   if (reproy.length < 6) return null
@@ -245,10 +251,36 @@ export function ajustarFrame(e: EntradaAjuste, { iteraciones = 150, anteversion 
   return {
     q,
     error,
+    ...(conInformacion ? { informacion: informacionReproyeccion(q, e, anteversion, 2 * reproy.length) } : {}),
     observados: reproy.length,
     vistas: vistasDe(e),
     rotacionVisible: { der: Math.abs(q[indiceGrado('rodillaDer')]!) >= RODILLA_ROTACION_VISIBLE, izq: Math.abs(q[indiceGrado('rodillaIzq')]!) >= RODILLA_ROTACION_VISIBLE },
   }
+}
+
+/** JᵀJ de los `n` primeros residuos (los de reproyección: los previos van detrás) en la postura q. */
+function informacionReproyeccion(q: readonly number[], e: EntradaAjuste, anteversion: number, n: number): Float64Array {
+  const h = 1e-6
+  const r0 = residuos(q, e, anteversion).r
+  const J: number[][] = []
+  for (let j = 0; j < N_GRADOS; j++) {
+    const qj = [...q]
+    qj[j]! += h
+    const rj = residuos(qj, e, anteversion).r
+    const fila = new Array<number>(n)
+    for (let i = 0; i < n; i++) fila[i] = (rj[i]! - r0[i]!) / h
+    J.push(fila)
+  }
+  const I = new Float64Array(N_GRADOS * N_GRADOS)
+  for (let a = 0; a < N_GRADOS; a++) {
+    for (let b = a; b < N_GRADOS; b++) {
+      let s = 0
+      for (let i = 0; i < n; i++) s += J[a]![i]! * J[b]![i]!
+      I[a * N_GRADOS + b] = s
+      I[b * N_GRADOS + a] = s
+    }
+  }
+  return I
 }
 
 /**

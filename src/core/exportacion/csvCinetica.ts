@@ -15,6 +15,10 @@ export interface DatosCsvCinetica {
   readonly modo: 'cuasiestatica' | 'dinamica'
   /** El corte del filtro con que se calculó (Hz). */
   readonly corteHz: number
+  /** Si se calculó con el esqueleto suavizado en toda la toma (D12). */
+  readonly afinado?: boolean
+  /** La masa de la persona (kg), si se escribió. */
+  readonly masa?: number | null
 }
 
 const LADOS: readonly Lado[] = ['der', 'izq']
@@ -34,6 +38,8 @@ export function construirCsvCinetica(d: DatosCsvCinetica, formato: FormatoCsv = 
         : 'dinámico: con las aceleraciones del esqueleto; con el ruido del vídeo, solo para movimientos lentos o moderados',
     ],
     ['filtro', `Butterworth de 2.º orden ida y vuelta, ${n(d.corteHz, 1)} Hz`],
+    ['esqueleto', d.afinado ? 'suavizado en toda la toma (pesando lo que ven mejor las cámaras)' : 'ajustado frame a frame (sin afinar la toma)'],
+    ...(d.masa ? [['masa (kg)', `${n(d.masa, 1)}: multiplica los valores por kilo por ella para tenerlos en N, N·m o W`] as [string, string]] : []),
     ['suelo (m, en el mundo calibrado)', n(r.suelo, 3)],
     ['segmentos', 'Dempster adaptado por Winter (2009): cabeza, brazos y tronco en un bloque'],
     ['unidades', 'por kilo de masa corporal: fuerzas en N/kg (entre 9,81: pesos corporales), momentos en N·m/kg, potencias en W/kg'],
