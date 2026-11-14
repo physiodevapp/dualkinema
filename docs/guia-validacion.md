@@ -2,7 +2,7 @@
 
 Para validar con tus vídeos lo que quedó «pendiente de validar con vídeos» en las fases 5 a 11. Pensada para una habitación de **unos 2 × 2 m**. **No hace falta mandarme los vídeos**: basta con los informes, los CSV y las capturas que pide cada toma (lo que se analiza se queda en el móvil).
 
-Son **cuatro sesiones de grabación** (T1 a T4) con **una sola colocación de los móviles** y una toma de cervical (T5). En total, unos 20–30 minutos con la preparación. Si algo no sale, apúntalo y sigue: cada toma vale por sí sola.
+Son **cuatro sesiones de grabación** (T1 a T4) con **una sola colocación de los móviles** y una toma de cervical (T5). En total, unos 20–30 minutos con la preparación. Si tienes acceso a un espacio más largo (unos **2 × 4 m**: un pasillo, un garaje, un aula), la toma **T6** (opcional) añade la marcha de verdad en 3D y GaitDynamics. Si algo no sale, apúntalo y sigue: cada toma vale por sí sola.
 
 ## 1. El truco del espacio: la esquina
 
@@ -105,6 +105,34 @@ Los dos móviles **en vertical**, con la **lente a ~1 m del suelo** (sobre una s
 - **Al terminar:** «Análisis» → «Cervical» → «Detectar la cara» y el neutro de los primeros 2 s; con dos móviles, «Juntar los dos móviles».
 - **Mándame:** el rango a cada lado que da la app (captura), lo medido con el goniómetro y el CSV.
 
+### T6 · Marcha en un pasillo de 2 × 4 m (fases 9 y 11, opcional)
+
+**Valida:** la marcha en 3D con los dos pies (fase 9) y la fuerza de cada pie de **GaitDynamics** (fase 11), que solo sirve andando de verdad (está entrenada con marcha por el suelo; en el sitio no vale). Es la única toma que lo prueba.
+
+**El espacio:** basta con unos **2 m de ancho y 4 m de largo**. Menos de 4 m deja muy pocos pasos seguidos vistos por los dos móviles; con 5–6 m, mejor.
+
+```
+  M1 ──────────── 4 m ──────────── M2      ← pared de los móviles
+   ·  ↘                        ↙  ·
+   ·      ↘                ↙      ·        (los dos apuntan al centro del recorrido)
+   ·          ↘        ↙          ·
+   ·   ←—————— P anda ——————→     ·        ← a ~1,5 m de la pared de los móviles
+  ───────────────────────────────────      ← pared de enfrente (~50 cm detrás de P)
+```
+
+- **Móviles:** uno en **cada esquina de la misma pared larga** (separados los 4 m), en **vertical**, con la **lente a ~1 m del suelo**, sin inclinar, y cada uno **girado hacia el centro del recorrido**. Desde el centro, los dos quedan a ~2,5 m y a unos **100°** entre sí: es la colocación «un móvil en cada flanco» de T2, pero estirada.
+- **Recorrido:** la persona anda **paralela a la pared larga**, a ~1,5 m de la de los móviles (~50 cm de la de enfrente), de un extremo al otro. Cada móvil la ve entera en los ~2,5 m del centro; los dos primeros pasos y los dos últimos (arrancar, frenar y girar) caen fuera, y no importa.
+- En la sala: M1 y M2 «De perfil» mirando a lados distintos (la app avisa «Un móvil en cada flanco»). Antes de grabar, «Comprobar que se me ve entero (por voz)» con la persona **en el centro** del recorrido.
+- **Duración:** 90 s (720p).
+- **Guion:**
+  1. 5 s quieto en el centro, mirando a la pared de enfrente.
+  2. **Una vuelta despacio sobre ti mismo** en el centro (10 s): para calibrar.
+  3. **Andar de un extremo al otro y volver, 6 idas y 6 vueltas**, a tu paso normal (ni lento ni de desfile), girando en cada extremo sin pararte mucho. Brazos sueltos.
+  4. 5 s quieto en el centro.
+- **Al terminar:** como en T2 (abrir la grabación doble, sincronía, «Detectar el cuerpo» en las dos vistas, «Calibrar en 3D» con la estatura, «Ajustar el esqueleto»). Después, en «Ángulos en 3D»: **«Marcha en 3D» → «Buscar los ciclos»**; y en «Cinética estimada», el reparto **«GaitDynamics» → «Calcular con GaitDynamics»**, en el modo **dinámico**.
+- **Mándame:** el informe de la calibración; capturas de la marcha en 3D (ciclos y parámetros) y de la cinética con GaitDynamics (fuerza vertical de cada pie y peso en cada pie); el CSV de la marcha y el de la cinética. Apunta también la **longitud del recorrido** medida con cinta y **cuántos pasos** das en cada ida (para comparar la longitud del paso).
+- **Qué espero ver:** en cada pie, la fuerza vertical con dos jorobas en el apoyo (~1,1–1,2 veces el peso) y cero en la oscilación; la suma de los dos, alrededor del peso; el apoyo, ~60 % del ciclo.
+
 ## 4. Si algo falla
 
 - **Un móvil no graba o se corta:** mira «Lo último» en el mando o el aviso del móvil, y repite solo esa toma.
@@ -114,5 +142,5 @@ Los dos móviles **en vertical**, con la **lente a ~1 m del suelo** (sobre una s
 
 ## 5. Qué no hace falta
 
-- La **marcha de verdad** (andando por el suelo) no cabe en 2 × 2 m: con la marcha en el sitio de T1 se comprueba que se encuentran los eventos. Si algún día tienes acceso a una cinta de correr, una toma de perfil de 30 s andando en la cinta completaría la validación de la marcha.
+- La **marcha de verdad** (andando por el suelo) no cabe en 2 × 2 m: con la marcha en el sitio de T1 se comprueba que se encuentran los eventos, y la de verdad va en T6 si tienes un espacio de 2 × 4 m. Si algún día tienes acceso a una cinta de correr, una toma de perfil de 30 s andando en la cinta completaría la marcha de la fase 9.
 - Gomets: no hacen falta. Si quieres, en T1 puedes ponerte los tres de la rodilla del lado de M2 (trocánter, epicóndilo y maléolo) para comparar gomets y sin marcadores, como en la primera sentadilla que validamos.
