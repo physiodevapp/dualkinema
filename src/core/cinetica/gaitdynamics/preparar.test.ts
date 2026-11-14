@@ -71,8 +71,10 @@ describe('GaitDynamics: de nuestro esqueleto a las coordenadas de OpenSim', () =
     expect(o(de({ pelvisRumbo: 25 * deg }), 'pelvis_rotation')).toBeCloseTo(25 * deg, 9)
     // Aducción de la cadera derecha: el pie hacia la izquierda (−z de OpenSim) = giro + alrededor de x.
     expect(o(de({ caderaAbdDer: -10 * deg }), 'hip_adduction_r')).toBeCloseTo(10 * deg, 9)
-    // En el modelo de ejemplo, la izquierda usa los mismos ejes: abducirla (pie a la izquierda) también es +.
-    expect(o(de({ caderaAbdIzq: 10 * deg }), 'hip_adduction_l')).toBeCloseTo(10 * deg, 9)
+    // La izquierda (ejes de la derecha con coeficiente −1): aducción + y rotación interna + en las dos piernas.
+    expect(o(de({ caderaAbdIzq: 10 * deg }), 'hip_adduction_l')).toBeCloseTo(-10 * deg, 9)
+    expect(o(de({ caderaRotIzq: 12 * deg }), 'hip_rotation_l')).toBeCloseTo(12 * deg, 9)
+    expect(o(de({ caderaRotDer: 12 * deg }), 'hip_rotation_r')).toBeCloseTo(12 * deg, 9)
   })
   it('la toma: ventanas de 1,5 s solapadas, solo en tramos que llegan', () => {
     const tiempos = Array.from({ length: 120 }, (_, k) => k / 30)
@@ -83,6 +85,18 @@ describe('GaitDynamics: de nuestro esqueleto a las coordenadas de OpenSim', () =
     expect(p.lote.length).toBe(p.ventanas * VENTANA * ENTRADA.length)
     for (const tr of p.tramos) expect(tr.inicios[tr.inicios.length - 1]! + VENTANA).toBe(tr.rejilla.length)
     expect(alturaDeMedidas(M)).toBeCloseTo(1.75, 6)
+  })
+  it('una ida y vuelta (la pelvis gira 180°): cada sentido se alinea por separado', () => {
+    const tiempos = Array.from({ length: 240 }, (_, k) => k / 30)
+    // 0–3,5 s hacia +x, media vuelta en 1 s, 4,5–8 s hacia −x.
+    const rumbo = (t: number) => (t < 3.5 ? 0 : t < 4.5 ? Math.PI * (t - 3.5) : Math.PI)
+    const posturas = tiempos.map((t) => de({ pelvisRumbo: rumbo(t), caderaFlexDer: 0.3 * Math.sin(5 * t) }))
+    const p = prepararToma(tiempos, posturas, M, 1, 30)
+    expect(p.tramos.length).toBeGreaterThanOrEqual(2)
+    const giros = p.tramos.map((tr) => Math.atan2(tr.alineacion.giro[2], tr.alineacion.giro[0]))
+    // El primero sin girar; el último, girado media vuelta.
+    expect(Math.abs(giros[0]!)).toBeLessThan(1e-9)
+    expect(Math.abs(Math.abs(giros[giros.length - 1]!) - Math.PI)).toBeLessThan(1e-6)
   })
 })
 
@@ -114,7 +128,7 @@ describe('GaitDynamics: de lo que da la red a la fuerza de cada pie', () => {
     const talon = cuerpoDePostura(enMetros(posturas[k]!, M, 1).q, M).puntos.talon.der
     expect(der.cop.x).toBeCloseTo(talon.x + 0.1, 4)
     expect(der.cop.y).toBeCloseTo(talon.y, 4)
-    // El izquierdo, sin fuerza: en el aire.
-    expect(pies[k]!.izq!.F.z).toBe(0)
+    // El izquierdo, sin fuerza: en el aire (sin reacción, null; nunca un centro de presiones inventado).
+    expect(pies[k]!.izq).toBeNull()
   })
 })

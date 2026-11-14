@@ -324,6 +324,21 @@ describe('cinética: otros repartos entre los pies (D9 y D13)', () => {
     cerca(mas(esfuerzo.pies.der.fuerza[k]!, esfuerzo.pies.izq.fuerza[k]!), esfuerzo.fuerza[k]!, 1e-9)
   })
 
+  it('mínimo esfuerzo: el centro de presiones de cada pie no se aparta más de 4 cm de su pie (la revisión del cierre)', () => {
+    // El caso de la revisión: sin el límite, el del pie derecho caía 5,3 cm por fuera de su pie.
+    const q = de({ caderaAbdIzq: 10 * deg, caderaAbdDer: 10 * deg, troncoLateral: 10 * deg })
+    const r = cineticaDeLaToma({ ...toma(30, 2, () => q), modo: 'cuasiestatica', reparto: 'esfuerzo' })
+    const c = cuerpoDePostura(q, M)
+    const k = 30
+    const apoyo = (l: Lado) => vec3((c.puntos.talon[l].x + c.puntos.punta[l].x) / 2, (c.puntos.talon[l].y + c.puntos.punta[l].y) / 2, 0)
+    const d = menos(apoyo('izq'), apoyo('der'))
+    const u = por(d, 1 / Math.hypot(d.x, d.y))
+    for (const l of ['der', 'izq'] as const) {
+      const desvio = menos(r.pies[l].cop[k]!, apoyo(l))
+      expect(Math.abs(desvio.x * u.x + desvio.y * u.y)).toBeLessThanOrEqual(0.04 + 1e-9)
+    }
+  })
+
   it('con las fuerzas de cada pie dadas (GaitDynamics), mandan: la total es su suma y los momentos salen de ellas', () => {
     const q = de({})
     const c = cuerpoDePostura(q, M)

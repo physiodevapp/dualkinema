@@ -24,11 +24,30 @@ const isotropa = (sigma: number) => {
 const ecm = (a: readonly number[], b: readonly number[]) => Math.sqrt(a.reduce((s, x, k) => s + (x - b[k]!) ** 2, 0) / a.length)
 
 describe('suavizado de toda la toma (fase 11, D12)', () => {
-  it('un movimiento a velocidad constante se queda exacto, también a través de las ventanas (600 frames)', () => {
+  it('un movimiento a velocidad constante se queda exacto, también a través de las ventanas (600 frames, ventanas de 600)', () => {
     const tiempos = Array.from({ length: 600 }, (_, k) => k / FPS)
     const verdad = tiempos.map((t) => Array.from({ length: N_GRADOS }, (_, i) => 0.1 * i + (0.02 + 0.01 * i) * t))
-    const s = suavizarPosturas({ tiempos, posturas: verdad, informacion: tiempos.map(() => isotropa(0.05)), errores: tiempos.map(() => 1), fs: FPS, unidad: 1 })
+    const s = suavizarPosturas({ tiempos, posturas: verdad, informacion: tiempos.map(() => isotropa(0.05)), errores: tiempos.map(() => 1), fs: FPS, unidad: 1, ventana: 200 })
     for (const k of [0, 239, 240, 241, 479, 480, 599]) for (let i = 0; i < N_GRADOS; i++) expect(s[k]![i]).toBeCloseTo(verdad[k]![i]!, 6)
+  })
+
+  it('por ventanas casi igual que de una vez, también lo que apenas se ve (sin escalón en la costura)', () => {
+    const n = 2700
+    const tiempos = Array.from({ length: n }, (_, k) => k / FPS)
+    const rnd = generadorRuido(11)
+    const posturas = tiempos.map((t) => Array.from({ length: N_GRADOS }, (_, g) => Math.sin(1.3 * t + g) + 0.05 * rnd()))
+    // Un grado de libertad que apenas se ve (σ = 1 rad en cada frame): lo dictan vecinos lejanos.
+    const info = tiempos.map(() => {
+      const I = isotropa(0.05)
+      I[5 * N_GRADOS + 5] = 1
+      return I
+    })
+    const base = { tiempos, posturas, informacion: info, errores: tiempos.map(() => 1), fs: FPS, unidad: 1 }
+    const entera = suavizarPosturas({ ...base, ventana: 100_000 })
+    const troceada = suavizarPosturas(base)
+    let peor = 0
+    for (let k = 0; k < n; k++) for (let g = 0; g < N_GRADOS; g++) peor = Math.max(peor, Math.abs(entera[k]![g]! - troceada[k]![g]!))
+    expect(peor).toBeLessThan(2e-3) // 0,1°
   })
 
   it('las sentadillas con ruido de 2°: más cerca de la verdad que sin suavizar; lo que no se ve lo ponen sus vecinos', () => {

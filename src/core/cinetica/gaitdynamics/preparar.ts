@@ -18,8 +18,8 @@
  *
  * Las coordenadas de OpenSim salen de la geometría, no de igualar nombres: el giro de cada segmento respecto a su padre en
  * los ejes de OpenSim y su descomposición Z–X–Y (los ejes de las articulaciones del modelo de ejemplo del repositorio:
- * flexión alrededor de z, abducción-aducción de x, rotación de y; en ese modelo la cadera izquierda usa los mismos ejes que
- * la derecha). Rodilla y tobillo, nuestros ángulos (flexión +, flexión dorsal +: los rangos del modelo lo confirman). La
+ * flexión alrededor de z, abducción-aducción de x, rotación de y; la cadera izquierda usa los mismos ejes que la derecha
+ * con coeficiente −1 en la abducción-aducción y la rotación). Rodilla y tobillo, nuestros ángulos (flexión +, flexión dorsal +: los rangos del modelo lo confirman). La
  * subastragalina no la tenemos: va como columna que falta (a 0 ya normalizada, como hace GaitDynamics con lo que falta).
  */
 import type { Lado } from '../../articulaciones/catalogo'
@@ -210,7 +210,11 @@ export function coordenadasOsim(q: readonly number[], m: Medidas): number[] {
   poner(J3.pelvis, aZxy(P))
   poner(['pelvis_tx', 'pelvis_ty', 'pelvis_tz'], [q[0]!, q[2]!, -q[1]!])
   poner(J3.hip_r, aZxy(multiplicar(Pt, aOsim(o.muslo.der))))
-  poner(J3.hip_l, aZxy(multiplicar(Pt, aOsim(o.muslo.izq))))
+  // En el modelo, la abducción-aducción y la rotación de la cadera izquierda tienen los ejes de la derecha pero coeficiente
+  // −1 (`<coefficients> -1 0` en su CustomJoint): la coordenada es el giro geométrico cambiado de signo (así la aducción y
+  // la rotación interna son + en las dos piernas).
+  const [fl, ab, ro] = aZxy(multiplicar(Pt, aOsim(o.muslo.izq)))
+  poner(J3.hip_l, [fl, -ab, -ro])
   poner(J3.lumbar, aZxy(multiplicar(Pt, aOsim(o.tronco))))
   r[io('knee_angle_r')] = q[indiceGrado('rodillaDer')]!
   r[io('knee_angle_l')] = q[indiceGrado('rodillaIzq')]!
@@ -311,6 +315,9 @@ export function entradasDeCoordenadas(q: readonly (readonly number[])[], altura:
 
 // ---- Toda la toma ----
 
+/** Lo más que puede cambiar el rumbo de la pelvis dentro de un trozo que se alinea de una vez (GaitDynamics: 45°). */
+export const RUMBO_MAX = Math.PI / 4
+
 /** Paso de las ventanas (muestras): se solapan la mitad y en cada muestra se promedia lo que dan. */
 export const PASO_VENTANA = VENTANA / 2
 
@@ -351,14 +358,34 @@ export function prepararToma(tiempos: readonly number[], posturas: readonly (rea
     }
     let j = i
     while (j + 1 < tiempos.length && posturas[j + 1] && tiempos[j + 1]! - tiempos[j]! <= pasoMax) j++
+    // GaitDynamics no alinea un ensayo cuyo rumbo cambia más de 45° (lo da por no fiable): aquí el tramo se parte en trozos
+    // con el rumbo dentro de 45° (una ida y una vuelta van por separado) y se prepara cada uno.
+    const todas = posturas.slice(i, j + 1).map((q) => {
+      const e = enMetros(q!, medidas, metrosPorUnidad)
+      return coordenadasOsim(e.q, e.m)
+    })
+    const rumbo = desenrollar(todas.map((c) => c[io('pelvis_rotation')]!))
+    let a = 0
+    while (a < todas.length) {
+      let b = a
+      let lo = rumbo[a]!
+      let hi = rumbo[a]!
+      while (b + 1 < todas.length && Math.max(hi, rumbo[b + 1]!) - Math.min(lo, rumbo[b + 1]!) <= RUMBO_MAX) {
+        b++
+        lo = Math.min(lo, rumbo[b]!)
+        hi = Math.max(hi, rumbo[b]!)
+      }
+      prepararTrozo(i + a, i + b, todas.slice(a, b + 1))
+      a = b + 1
+    }
+    i = j + 1
+  }
+
+  function prepararTrozo(i: number, j: number, coords: number[][]) {
     const t0 = tiempos[i]!
     const n = Math.floor((tiempos[j]! - t0) * FS_MODELO) + 1
     if (n >= VENTANA) {
       const ts = tiempos.slice(i, j + 1)
-      const coords = posturas.slice(i, j + 1).map((q) => {
-        const e = enMetros(q!, medidas, metrosPorUnidad)
-        return coordenadasOsim(e.q, e.m)
-      })
       // Cada coordenada, desenrollada (las de giro) y llevada a la rejilla de 100 Hz con una spline.
       const rejilla = Float64Array.from({ length: n }, (_, k) => t0 + k / FS_MODELO)
       const columnas = OSIM.map((c, k) => {
@@ -374,7 +401,6 @@ export function prepararToma(tiempos: readonly number[], posturas: readonly (rea
       for (const s of inicios) lotes.push(entradas.subarray(s * ENTRADA.length, (s + VENTANA) * ENTRADA.length))
       tramos.push({ i0: i, i1: j, rejilla, alineacion, inicios })
     }
-    i = j + 1
   }
   const lote = new Float32Array(lotes.length * VENTANA * ENTRADA.length)
   lotes.forEach((l, k) => lote.set(l, k * VENTANA * ENTRADA.length))
@@ -441,13 +467,14 @@ export function decodificar(
       ;(['der', 'izq'] as const).forEach((l, p) => {
         const F = mezcla(porMuestra[a]![p]!.F, porMuestra[b]![p]!.F)
         const talon = cuerpo.puntos.talon[l]
-        // Un pie en el aire no recibe nada (su momento sale de la inercia de la pierna).
+        // Un pie en el aire no apoya (null: sin fuerza ni centro de presiones; su momento sale de la inercia de la pierna).
         if (!(F.z >= FUERZA_APOYO_GD)) {
-          pie[l] = { F: vec3(0, 0, 0), cop: vec3(talon.x, talon.y, suelo), libre: 0 }
+          pie[l] = null
           return
         }
         const c = mezcla(porMuestra[a]![p]!.c, porMuestra[b]![p]!.c)
-        pie[l] = { F, cop: vec3(talon.x + c.x, talon.y + c.y, suelo), libre: 0 }
+        // El momento libre de cada pie no lo da la red: sin valor.
+        pie[l] = { F, cop: vec3(talon.x + c.x, talon.y + c.y, suelo), libre: NaN }
       })
       r[i] = pie
     }

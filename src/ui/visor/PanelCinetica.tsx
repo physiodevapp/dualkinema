@@ -95,13 +95,15 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
       ev.preventDefault()
       if (workerGd.current !== w) return
       setEstadoGd({ fase: 'error', mensaje: ev.message || 'no se ha podido cargar el modelo. Recarga la página.' })
+      w.terminate()
       workerGd.current = null
     }
     w.postMessage({ tipo: 'inferir', lote: prep.lote, ventanas: prep.ventanas } satisfies AlWorkerGaitDynamics, [prep.lote.buffer])
   }
+  const activa = cinetica !== null && cinetica !== undefined
   const resultado = useMemo(
     () =>
-      cinetica && esqueleto && metros
+      activa && esqueleto && metros
         ? cineticaDeLaToma({
             tiempos: esqueleto.tiempos,
             posturas: esqueleto.suavizadas ?? esqueleto.posturas,
@@ -115,7 +117,8 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
             ...(piesGd ? { piesExternos: piesGd } : {}),
           })
         : null,
-    [cinetica, esqueleto, metros, suelo, fs, corteHz, modo, reparto, piesGd],
+    // Sin `cinetica` entera: cambiar la masa (solo multiplica lo que se enseña) no recalcula la toma.
+    [activa, esqueleto, metros, suelo, fs, corteHz, modo, reparto, piesGd],
   )
   const peso = useMemo(() => (resultado ? repartoPeso(resultado) : null), [resultado])
   const pico = useMemo(() => (resultado ? picos(resultado, componente) : null), [resultado, componente])
@@ -268,7 +271,11 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
             )}
             {estadoGd.fase === 'error' && <p className="text-acento">No se ha podido: {estadoGd.mensaje}</p>}
             {!piesGd && estadoGd.fase !== 'calculando' && <p>Mientras no se calcule, se reparte por la palanca.</p>}
-            {piesGd && <p data-testid="gaitdynamics-listo">Con las fuerzas de GaitDynamics.</p>}
+            {piesGd && (
+              <p data-testid="gaitdynamics-listo">
+                Con las fuerzas de GaitDynamics.{modo === 'cuasiestatica' && ' Sus fuerzas incluyen la aceleración del cuerpo: los momentos casan mejor con el modo dinámico.'}
+              </p>
+            )}
           </div>
         )}
       </div>

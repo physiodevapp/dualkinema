@@ -232,6 +232,12 @@ export interface EntradaCinetica {
 
 /** Las partes del peso del pie izquierdo que se prueban en el reparto por mínimo esfuerzo (y luego se afina). */
 const PASOS_ESFUERZO = 20
+/**
+ * Lo más que el reparto por mínimo esfuerzo puede apartarse de la palanca, medido en lo que se mueve el centro de presiones
+ * de cada pie a lo largo de la recta entre los dos (m): media anchura de un pie. Más allá, el centro de presiones de un pie
+ * caería fuera de él (lo vio la revisión del cierre: bajaba los momentos con un desplazamiento que no es físico).
+ */
+export const DESVIO_COP_MAX_M = 0.04
 
 // Canales por frame: 7 segmentos × (centro de masas 3 + R 9), la R de la pelvis (9) y 6 puntos por lado (36).
 const N_SEG = 7
@@ -363,7 +369,8 @@ export function cineticaDeLaToma(e: EntradaCinetica): ResultadoCinetica {
       /** Newton–Euler de una pierna de abajo arriba con la reacción de su pie (null: sin fuerza). */
       const pierna = (l: Lado, rp: ReaccionPie | null) => {
         const Fg = rp ? rp.F : vec3(0, 0, 0)
-        const Mg = rp ? vec3(0, 0, rp.libre) : vec3(0, 0, 0)
+        // Sin momento libre conocido (GaitDynamics no lo da), 0: es pequeño y casi solo afecta a lo transversal.
+        const Mg = rp && Number.isFinite(rp.libre) ? vec3(0, 0, rp.libre) : vec3(0, 0, 0)
         const rg = rp ? rp.cop : punto3('tobillo', l)
         const p = porLado[l]
         const tob = punto3('tobillo', l)
@@ -382,7 +389,7 @@ export function cineticaDeLaToma(e: EntradaCinetica): ResultadoCinetica {
         reparto = { der: externos.der, izq: externos.izq }
         const Ft = LADOS.reduce((acc, l) => (reparto[l] ? mas(acc, reparto[l]!.F) : acc), vec3(0, 0, 0))
         fuerza[idx] = Ft
-        libre[idx] = 0
+        libre[idx] = NaN
         enElAire = !(Ft.z >= FUERZA_MINIMA_APOYO)
         const conCop = LADOS.filter((l) => reparto[l] && reparto[l]!.F.z > 0 && finito(reparto[l]!.cop))
         const fz = conCop.reduce((a, l) => a + reparto[l]!.F.z, 0)
@@ -403,15 +410,22 @@ export function cineticaDeLaToma(e: EntradaCinetica): ResultadoCinetica {
             }
             return c
           }
-          const cs = Array.from({ length: PASOS_ESFUERZO + 1 }, (_, k) => coste(k / PASOS_ESFUERZO))
+          // Solo cerca de la palanca: que el centro de presiones de cada pie no salga de él (`DESVIO_COP_MAX_M`).
+          const lp = reparto.izq.F.z / r.F.z
+          const largo = Math.hypot(apoyos.izq!.x - apoyos.der!.x, apoyos.izq!.y - apoyos.der!.y)
+          const margen = largo > 1e-6 ? DESVIO_COP_MAX_M / largo : 0
+          const lo = Math.max(0, lp - margen)
+          const hi = Math.min(1, lp + margen)
+          const enRejilla = (k: number) => lo + ((hi - lo) * k) / PASOS_ESFUERZO
+          const cs = Array.from({ length: PASOS_ESFUERZO + 1 }, (_, k) => coste(enRejilla(k)))
           const k = cs.indexOf(Math.min(...cs))
-          let lambda = k / PASOS_ESFUERZO
+          let lambda = enRejilla(k)
           if (k > 0 && k < PASOS_ESFUERZO) {
             const [c0, c1, c2] = [cs[k - 1]!, cs[k]!, cs[k + 1]!]
             const den = c0 - 2 * c1 + c2
-            if (den > 0) lambda = (k + (0.5 * (c0 - c2)) / den) / PASOS_ESFUERZO
+            if (den > 0) lambda = enRejilla(k + (0.5 * (c0 - c2)) / den)
           }
-          reparto = repartir(r.F, r.cop, r.libre, apoyos, Math.min(1, Math.max(0, lambda)))
+          reparto = repartir(r.F, r.cop, r.libre, apoyos, Math.min(hi, Math.max(lo, lambda)))
         }
       }
       // En el aire (fuerza vertical total por debajo del 20 % del peso), ningún pie recibe nada y los momentos salen de la
