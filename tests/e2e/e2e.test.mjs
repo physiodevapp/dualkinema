@@ -5985,6 +5985,16 @@ describe('calibrar en 3D con la persona sintética (fase 6, paso 3)', () => {
     await c.getByTestId('modo-dinamico').check()
     const fz = numero((await c.getByTestId('fuerza-cursor').innerText()).match(/-?[\d,]+/)[0])
     assert.ok(fz > 60 && fz < 140, `fuerza vertical ${fz} % del peso`)
+    // El reparto por mínimo esfuerzo: los dos pies siguen sumando el total.
+    await c.getByTestId('selector-reparto').selectOption('esfuerzo')
+    const [d2, i2] = (await c.getByTestId('reparto-cursor').innerText()).match(/-?[\d,]+/g).map(numero)
+    assert.ok(Math.abs(d2 + i2 - 100) <= 1, `${d2} + ${i2}`)
+    // GaitDynamics de verdad (la red en ONNX, en el worker): termina y da una fuerza vertical.
+    await c.getByTestId('selector-reparto').selectOption('gaitdynamics')
+    await c.getByRole('button', { name: 'Calcular con GaitDynamics' }).click()
+    await c.getByTestId('gaitdynamics-listo').waitFor({ timeout: 120000 })
+    assert.match(await c.getByTestId('fuerza-cursor').innerText(), /^\d+ % del peso/)
+    await c.getByTestId('selector-reparto').selectOption('palanca')
     // El CSV: una fila por frame, con los momentos de las dos piernas.
     const descarga = p.waitForEvent('download')
     await c.getByTestId('descargar-csv').click()

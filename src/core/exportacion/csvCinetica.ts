@@ -19,7 +19,15 @@ export interface DatosCsvCinetica {
   readonly afinado?: boolean
   /** La masa de la persona (kg), si se escribió. */
   readonly masa?: number | null
+  /** Cómo se repartió el peso entre los pies en el doble apoyo. */
+  readonly reparto?: 'palanca' | 'esfuerzo' | 'gaitdynamics'
 }
+
+const REPARTO_TEXTO = {
+  palanca: 'con los dos apoyando, por la palanca entre sus apoyos: estimado (la cinemática sola no lo determina)',
+  esfuerzo: 'con los dos apoyando, el reparto que pide menos momento a las articulaciones de las piernas: estimado',
+  gaitdynamics: 'la fuerza de cada pie de GaitDynamics (red entrenada con la marcha y la carrera; experimental)',
+} as const
 
 const LADOS: readonly Lado[] = ['der', 'izq']
 
@@ -44,7 +52,7 @@ export function construirCsvCinetica(d: DatosCsvCinetica, formato: FormatoCsv = 
     ['segmentos', 'Dempster adaptado por Winter (2009): cabeza, brazos y tronco en un bloque'],
     ['unidades', 'por kilo de masa corporal: fuerzas en N/kg (entre 9,81: pesos corporales), momentos en N·m/kg, potencias en W/kg'],
     ['momentos', 'internos netos (del segmento proximal sobre el distal); sagital + extensor (cadera y rodilla) y + flexor plantar (tobillo); frontal + abductor (cadera y rodilla)'],
-    ['reparto entre los pies', 'con los dos apoyando, por la palanca entre sus apoyos: estimado (la cinemática sola no lo determina)'],
+    ['reparto entre los pies', REPARTO_TEXTO[d.reparto ?? 'palanca']],
     ['aviso', 'estimación sin plataforma de fuerzas: no vale para impactos ni para el doble apoyo de la marcha'],
     ...ARTICULACIONES_CINETICA.map((a): [string, string] => [`pico sagital ${a} (N·m/kg)`, `derecha ${n(p[a].der, 3)}, izquierda ${n(p[a].izq, 3)}`]),
     ['celdas vacías', 'sin valor (sin esqueleto ajustado, bordes de cada tramo, sin apoyo reconocible); nunca 0'],

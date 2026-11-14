@@ -301,3 +301,40 @@ describe('cinética: ruido (D5 y D7 de docs/plan-fase-11.md)', () => {
     expect(Math.abs(media(rodilla(ruido)) - media(v))).toBeLessThan(0.15)
   })
 })
+
+describe('cinética: otros repartos entre los pies (D9 y D13)', () => {
+  const costeTotal = (r: ReturnType<typeof cineticaDeLaToma>, k: number) =>
+    (['der', 'izq'] as const).reduce((c, l) => c + (['cadera', 'rodilla', 'tobillo'] as const).reduce((d, a) => {
+      const m = r.articulaciones[l][a].momento[k]!
+      return d + m.x * m.x + m.y * m.y + m.z * m.z
+    }, 0), 0)
+
+  it('mínimo esfuerzo: conserva el total, reparte a medias una postura simétrica y nunca pide más que la palanca', () => {
+    const sim = cineticaDeLaToma({ ...toma(30, 2, () => posturaEn(7.5, H)), modo: 'cuasiestatica', reparto: 'esfuerzo' })
+    const k = 30
+    const suma = mas(sim.pies.der.fuerza[k]!, sim.pies.izq.fuerza[k]!)
+    cerca(suma, sim.fuerza[k]!, 1e-9)
+    // La sentadilla de la persona sintética lleva el tronco algo ladeado: casi a medias.
+    expect(Math.abs(sim.pies.der.fuerza[k]!.z / G - 0.5)).toBeLessThan(0.1)
+    // Una postura asimétrica: una rodilla doblada y la cadera de ese lado separada.
+    const q = de({ rodillaDer: 0.6, caderaFlexDer: 0.3, tobilloDorsalDer: 0.3, caderaAbdIzq: 8 * deg, pelvisY: 0.02 })
+    const palanca = cineticaDeLaToma({ ...toma(30, 2, () => q), modo: 'cuasiestatica' })
+    const esfuerzo = cineticaDeLaToma({ ...toma(30, 2, () => q), modo: 'cuasiestatica', reparto: 'esfuerzo' })
+    if (palanca.pies.der.apoyo[k] && palanca.pies.izq.apoyo[k]) expect(costeTotal(esfuerzo, k)).toBeLessThanOrEqual(costeTotal(palanca, k) + 1e-9)
+    cerca(mas(esfuerzo.pies.der.fuerza[k]!, esfuerzo.pies.izq.fuerza[k]!), esfuerzo.fuerza[k]!, 1e-9)
+  })
+
+  it('con las fuerzas de cada pie dadas (GaitDynamics), mandan: la total es su suma y los momentos salen de ellas', () => {
+    const q = de({})
+    const c = cuerpoDePostura(q, M)
+    const talonI = c.puntos.talon.izq
+    const externo = { der: { F: vec3(0, 0, 0), cop: vec3(0, 0, 0), libre: 0 }, izq: { F: vec3(0.5, 0, G), cop: vec3(talonI.x + 0.05, talonI.y, 0), libre: 0 } }
+    const e = toma(30, 2, () => q)
+    const r = cineticaDeLaToma({ ...e, modo: 'cuasiestatica', piesExternos: e.tiempos.map(() => externo) })
+    const k = 30
+    cerca(r.fuerza[k]!, vec3(0.5, 0, G), 1e-9)
+    expect(r.pies.der.apoyo[k]).toBe(false)
+    expect(r.pies.izq.apoyo[k]).toBe(true)
+    cerca(r.articulaciones.izq.cadera.momento[k]!, momentoEstatico(c, 'izq', 'cadera', externo.izq.F, externo.izq.cop, 0), 1e-9)
+  })
+})

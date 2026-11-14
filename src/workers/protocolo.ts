@@ -145,6 +145,20 @@ export type DelWorkerEsqueleto =
   | { readonly tipo: 'hecho'; readonly resultado: ResultadoEsqueleto | null; readonly ms: number }
   | { readonly tipo: 'error'; readonly mensaje: string }
 
+/** GaitDynamics (fase 11, paso 4; `workers/gaitdynamics.worker.ts`): las ventanas ya preparadas, en un lote. */
+export interface AlWorkerGaitDynamics {
+  readonly tipo: 'inferir'
+  /** ventanas × 150 × 51 (`core/cinetica/gaitdynamics/preparar.ts`). */
+  readonly lote: Float32Array
+  readonly ventanas: number
+}
+
+export type DelWorkerGaitDynamics =
+  | { readonly tipo: 'progreso'; readonly fraccion: number }
+  /** ventanas × 150 × 12, normalizado (lo deshace `decodificar`). */
+  | { readonly tipo: 'hecho'; readonly salida: Float32Array; readonly ms: number }
+  | { readonly tipo: 'error'; readonly mensaje: string }
+
 /** Comprobar el encuadre de la vista previa (fase 6, asistente de colocación; `workers/encuadre.worker.ts`). */
 export type AlWorkerEncuadre = { readonly tipo: 'imagen'; readonly imagen: ImageBitmap }
 export type DelWorkerEncuadre =

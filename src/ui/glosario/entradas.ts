@@ -291,6 +291,15 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'reparto-pies',
+    titulo: 'Reparto del peso entre los pies',
+    texto: [
+      'Con un solo pie en el suelo, toda la fuerza va a ese pie. Con los dos, el movimiento dice cuánto empuja el suelo en total, pero no cuánto cada pie: hay infinitas maneras de repartirlo que dan el mismo movimiento. Hay que suponer algo, y la app ofrece tres maneras.',
+      'Palanca (por defecto): cada pie lleva más cuanto más cerca está de la vertical del centro de presiones total, como en una balanza. Mínimo esfuerzo: el reparto que pide menos momento a las seis articulaciones de las piernas (lo que haría un cuerpo que ahorra trabajo); en posturas simétricas da lo mismo que la palanca, y en las asimétricas puede diferir. Las dos conservan la fuerza y el momento totales.',
+      'GaitDynamics (experimental): una red de Stanford entrenada con la marcha y la carrera de cientos de personas con plataformas de fuerza (licencia libre) da la fuerza de cada pie a partir de la cinemática, también en el doble apoyo de la marcha. Corre en el propio móvil (no sale nada). Solo vale para andar o correr, necesita tramos de 1,5 s seguidos y está entrenada con marcadores de laboratorio, no con vídeo: su error con nuestra cinemática está por medir.',
+    ],
+  },
+  {
     id: 'momento-interno',
     titulo: 'Momento articular interno',
     texto: [
