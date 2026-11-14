@@ -34,13 +34,21 @@ export interface AjustesCinetica {
   readonly modo: 'cuasiestatica' | 'dinamica'
   /** Corte del filtro en el modo dinámico (uno de `CORTES_DINAMICA_HZ`). */
   readonly corteHz: number
+  /** La masa de la persona (kg), opcional (D8): con ella, también en N y N·m. */
+  readonly masa?: number
 }
+
+/** La masa que se admite (kg). */
+export const MASA_MIN = 15
+export const MASA_MAX = 250
 
 /** La cinética guardada, si se puede leer; si no, null (no se está mirando). */
 export function leerCinetica(v: unknown): AjustesCinetica | null {
   if (!esObjeto(v) || (v.modo !== 'cuasiestatica' && v.modo !== 'dinamica')) return null
   if (typeof v.corteHz !== 'number' || !(CORTES_DINAMICA_HZ as readonly number[]).includes(v.corteHz)) return null
-  return { modo: v.modo, corteHz: v.corteHz }
+  // Una masa ilegible se descarta sola.
+  const masa = esNumero(v.masa) && v.masa >= MASA_MIN && v.masa <= MASA_MAX ? v.masa : null
+  return { modo: v.modo, corteHz: v.corteHz, ...(masa !== null ? { masa } : {}) }
 }
 
 /** El esqueleto empaquetado en arrays tipados (IndexedDB los guarda tal cual). */
@@ -59,6 +67,8 @@ export interface EsqueletoGuardado {
   readonly ids: readonly IdMarcador[]
   /** En cuántas vistas se vio cada punto en cada frame (ids.length por frame); 255 = no consta. */
   readonly vistas: Uint8Array
+  /** Las posturas suavizadas de toda la toma (fase 11, D12), como `posturas`; opcional (los guardados de antes no las tienen). */
+  readonly suavizadas?: Float64Array
 }
 
 const NO_CONSTA = 255
@@ -108,12 +118,22 @@ export function huellaTrayectorias3D(tr: Trayectorias3D): string {
   return `${hex(h1)}${hex(h2)}`
 }
 
+const aPlano = (qs: readonly (readonly number[] | null)[], n: number): Float64Array => {
+  const r = new Float64Array(n * N_GRADOS).fill(Number.NaN)
+  qs.forEach((q, i) => {
+    if (q) for (let g = 0; g < N_GRADOS; g++) r[i * N_GRADOS + g] = q[g] ?? Number.NaN
+  })
+  return r
+}
+const dePlano = (a: Float64Array, n: number): (number[] | null)[] =>
+  Array.from({ length: n }, (_, i) => {
+    const q = [...a.subarray(i * N_GRADOS, (i + 1) * N_GRADOS)]
+    return q.every(Number.isFinite) ? q : null
+  })
+
 export function empaquetarEsqueleto(r: ResultadoEsqueleto, huella: string): EsqueletoGuardado {
   const n = r.tiempos.length
-  const posturas = new Float64Array(n * N_GRADOS).fill(Number.NaN)
-  r.posturas.forEach((q, i) => {
-    if (q) for (let g = 0; g < N_GRADOS; g++) posturas[i * N_GRADOS + g] = q[g] ?? Number.NaN
-  })
+  const posturas = aPlano(r.posturas, n)
   const ids = [...new Set(r.vistas.flatMap((v) => Object.keys(v)))].sort()
   const vistas = new Uint8Array(n * ids.length).fill(NO_CONSTA)
   r.vistas.forEach((v, i) => ids.forEach((id, k) => {
@@ -130,6 +150,7 @@ export function empaquetarEsqueleto(r: ResultadoEsqueleto, huella: string): Esqu
     rotacion: Uint8Array.from(r.rotacionVisible, (x) => (x.der ? 1 : 0) | (x.izq ? 2 : 0)),
     ids,
     vistas,
+    ...(r.suavizadas ? { suavizadas: aPlano(r.suavizadas, n) } : {}),
   }
 }
 
@@ -152,10 +173,7 @@ export function desempaquetarEsqueleto(g: unknown): { resultado: ResultadoEsquel
     tiempos: [...tiempos],
     medidas,
     asimetria: asimetria as ResultadoEsqueleto['asimetria'],
-    posturas: Array.from({ length: n }, (_, i) => {
-      const q = [...posturas.subarray(i * N_GRADOS, (i + 1) * N_GRADOS)]
-      return q.every(Number.isFinite) ? q : null
-    }),
+    posturas: dePlano(posturas, n),
     errores: [...errores],
     rotacionVisible: [...rotacion].map((b): Record<Lado, boolean> => ({ der: (b & 1) !== 0, izq: (b & 2) !== 0 })),
     vistas: Array.from({ length: n }, (_, i) => {
@@ -166,6 +184,8 @@ export function desempaquetarEsqueleto(g: unknown): { resultado: ResultadoEsquel
       })
       return v
     }),
+    // Las suavizadas, si están y se pueden leer (si no, la cinética pide volver a ajustar).
+    ...(g.suavizadas instanceof Float64Array && g.suavizadas.length === n * N_GRADOS ? { suavizadas: dePlano(g.suavizadas, n) } : {}),
   }
   return { resultado, huella: g.huella }
 }
@@ -188,4 +208,4 @@ export function leerAjustes3D(v: unknown): Ajustes3D | null {
 }
 
 /** Bytes de los arrays del esqueleto (para lo que ocupa la sesión). */
-export const bytesEsqueleto = (g: EsqueletoGuardado): number => g.tiempos.byteLength + g.posturas.byteLength + g.errores.byteLength + g.rotacion.byteLength + g.vistas.byteLength
+export const bytesEsqueleto = (g: EsqueletoGuardado): number => g.tiempos.byteLength + g.posturas.byteLength + g.errores.byteLength + g.rotacion.byteLength + g.vistas.byteLength + (g.suavizadas?.byteLength ?? 0)

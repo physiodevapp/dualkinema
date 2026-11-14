@@ -278,7 +278,16 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     titulo: 'Cinética: cuasiestático y dinámico',
     texto: [
       'Cuasiestático (por defecto): sin aceleraciones. La fuerza del suelo es el peso, cae bajo el centro de masas, y los momentos son los que hacen falta para sostener cada postura. Solo usa posiciones, así que el ruido del vídeo apenas le afecta: es el adecuado para movimientos lentos (sentadilla, levantarse de la silla, zancada, apoyo a una pierna). En una sentadilla lenta se parece mucho al dinámico.',
-      'Dinámico: con las aceleraciones de cada segmento. Derivar dos veces la posición multiplica el ruido: con el de un vídeo, la fuerza vertical se va un 20 % del peso o más con el filtro de siempre (6 Hz). Por eso tiene su propio filtro, bajo (2 Hz por defecto, de 1 a 4), que se come lo rápido: vale para movimientos lentos o moderados. Si la fuerza vertical oscila sin que la persona se mueva, es ruido.',
+      'Dinámico: con las aceleraciones de cada segmento. Derivar dos veces la posición multiplica el ruido, así que la cinética usa el esqueleto afinado en toda la toma (ver «Toma afinada») y su propio filtro (4 Hz por defecto; de 1 a 6). Con la persona sintética y el ruido de un detector, la fuerza vertical de unas sentadillas sale a un 2 % del peso de la verdad. Sirve para movimientos lentos o moderados; si la fuerza vertical oscila sin que la persona se mueva, es ruido: baja el filtro.',
+    ],
+  },
+  {
+    id: 'toma-afinada',
+    titulo: 'Toma afinada (esqueleto suavizado en toda la toma)',
+    texto: [
+      'Al ajustar el esqueleto, cada frame se ajusta por su cuenta, y lo que el detector se equivoca de un frame al siguiente hace temblar el esqueleto. Para los ángulos no importa mucho (se filtran), pero la cinética deriva dos veces la posición y ese temblor se convierte en fuerzas que no existen.',
+      'Por eso, al acabar el ajuste, la app busca la trayectoria de toda la toma que mejor casa con todos los frames a la vez y que se mueve con suavidad, pesando cada articulación por lo bien que la ven las dos cámaras en cada momento: lo que se ve bien apenas cambia; lo que se ve mal o no se ve (la rotación de la cadera con la rodilla recta, un punto tapado un momento) lo completan los frames de alrededor. Nunca a través de un hueco.',
+      'Esta trayectoria afinada solo la usa la cinética: los ángulos del esqueleto siguen siendo los del ajuste frame a frame con el filtro de la sesión. En movimientos rápidos (la marcha) suaviza un poco los picos. Un esqueleto ajustado antes del 14-11-2026 no la tiene: hay que volver a ajustarlo.',
     ],
   },
   {

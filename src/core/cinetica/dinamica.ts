@@ -52,8 +52,8 @@ export const FUERZA_MINIMA_APOYO = 0.2 * G
  */
 export const RECORTE_BORDE_S = 0.15
 /** Los cortes que se ofrecen en el modo dinámico (Hz) y el de partida (D5 de docs/plan-fase-11.md). */
-export const CORTES_DINAMICA_HZ = [1, 2, 3, 4] as const
-export const CORTE_DINAMICA_HZ = 2
+export const CORTES_DINAMICA_HZ = [1, 2, 3, 4, 6] as const
+export const CORTE_DINAMICA_HZ = 4
 /** Percentil de la altura de los pies con el que se estima el suelo si no viene de la calibración. */
 const PERCENTIL_SUELO = 0.05
 

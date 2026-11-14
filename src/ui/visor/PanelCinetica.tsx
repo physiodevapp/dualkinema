@@ -3,6 +3,7 @@ import type { Lado } from '../../core/articulaciones/catalogo'
 import { cineticaDeLaToma, CORTE_DINAMICA_HZ, CORTES_DINAMICA_HZ, G, type IdArticulacionCinetica } from '../../core/cinetica/dinamica'
 import { ARTICULACIONES_CINETICA, media, picos, repartoPeso, type Componente } from '../../core/cinetica/resumen'
 import { construirCsvCinetica } from '../../core/exportacion/csvCinetica'
+import { MASA_MAX, MASA_MIN } from '../../core/persistencia/esqueleto'
 import { frameVisibleEnComun } from '../../core/tiempo/comun'
 import { InfoGlosario } from '../glosario/Glosario'
 import { fmt } from './formato'
@@ -47,12 +48,14 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
   const suelo = calibracion.suelo !== null ? 0 : null
   const modo = cinetica?.modo ?? 'cuasiestatica'
   const corteHz = modo === 'dinamica' ? (cinetica?.corteHz ?? CORTE_DINAMICA_HZ) : ajustes.corteHz
+  // Las posturas suavizadas de toda la toma (D12): sin ellas (un esqueleto guardado antes), las del ajuste frame a frame.
+  const afinado = !!esqueleto?.suavizadas
   const resultado = useMemo(
     () =>
       cinetica && esqueleto && metros
         ? cineticaDeLaToma({
             tiempos: esqueleto.tiempos,
-            posturas: esqueleto.posturas,
+            posturas: esqueleto.suavizadas ?? esqueleto.posturas,
             medidas: esqueleto.medidas,
             metrosPorUnidad: metros,
             suelo,
@@ -99,9 +102,11 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
   const enCursor = (v: readonly number[]) => (indice === null ? NaN : (v[indice] ?? NaN))
   const comZ = indice === null ? NaN : (resultado.com[indice]?.z ?? NaN) - resultado.suelo
   const fz = indice === null ? NaN : (resultado.fuerza[indice]?.z ?? NaN)
+  const masa = cinetica.masa ?? null
+  const conMasa = (v: number, unidad: string, d: number) => (masa !== null && Number.isFinite(v) ? ` (${num(v * masa, d)} ${unidad})` : '')
   const generar = (formato: Parameters<typeof construirCsvCinetica>[1]) => ({
     nombre: 'dualkinema_cinetica.csv',
-    texto: construirCsvCinetica({ exportado: new Date().toISOString(), resultado, modo, corteHz }, formato),
+    texto: construirCsvCinetica({ exportado: new Date().toISOString(), resultado, modo, corteHz, afinado, masa }, formato),
   })
 
   return (
@@ -144,7 +149,41 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
         )}
         <InfoGlosario id="cinetica-modo" tema="el modo cuasiestático y el dinámico" className="-my-1.5" />
       </fieldset>
-      {modo === 'dinamica' && <p className="text-xs text-acento">Con las aceleraciones del vídeo: solo para movimientos lentos o moderados, y con el filtro bajo. Mira la fuerza vertical: si oscila sin motivo, es ruido.</p>}
+      {modo === 'dinamica' && (
+        <p className="text-xs text-acento">
+          Con las aceleraciones del vídeo: para movimientos lentos o moderados. Mira la fuerza vertical: si oscila sin que la persona se mueva, es ruido; baja el filtro.
+        </p>
+      )}
+      <p className="text-xs text-texto-2" data-testid="afinado-cinetica">
+        {afinado ? (
+          <>
+            Con la toma afinada: el esqueleto suavizado en toda la toma, pesando lo que mejor ven las cámaras. <InfoGlosario id="toma-afinada" tema="el suavizado de toda la toma" className="-my-1.5" />
+          </>
+        ) : (
+          <span className="text-acento">Este esqueleto se ajustó antes de afinar la toma: vuelve a ajustarlo para que la cinética dinámica tenga menos ruido.</span>
+        )}
+      </p>
+      <label className="flex items-center gap-2 text-xs text-texto-2">
+        Masa (kg, opcional)
+        <input
+          type="number"
+          inputMode="decimal"
+          min={MASA_MIN}
+          max={MASA_MAX}
+          step="0.5"
+          defaultValue={cinetica.masa ?? ''}
+          onChange={(e) => {
+            const v = Number(e.target.value.replace(',', '.'))
+            const vale = e.target.value !== '' && v >= MASA_MIN && v <= MASA_MAX
+            const { masa: _m, ...sin } = cinetica
+            void _m
+            setCinetica(vale ? { ...sin, masa: v } : sin)
+          }}
+          className="w-24 rounded-md border border-borde bg-fondo px-2 py-1 font-mono text-sm text-texto"
+          data-testid="masa-cinetica"
+        />
+        <span>con ella, también en N y N·m</span>
+      </label>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <select value={art} onChange={(e) => setArt(e.target.value as IdArticulacionCinetica)} className="rounded-md border border-borde bg-fondo px-2 py-1" data-testid="articulacion-cinetica" aria-label="Articulación">
           {ARTICULACIONES_CINETICA.map((a) => (
@@ -170,7 +209,9 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
         {LADOS.map((l) => (
           <div key={l} className="contents">
             <dt className="text-texto-2">{l === 'der' ? 'Derecha' : 'Izquierda'}</dt>
-            <dd data-testid={`momento-${l}`}>{num(enCursor(serieDe(l)), 2)} N·m/kg</dd>
+            <dd data-testid={`momento-${l}`}>
+              {num(enCursor(serieDe(l)), 2)} N·m/kg{conMasa(enCursor(serieDe(l)), 'N·m', 0)}
+            </dd>
           </div>
         ))}
         <dt className="text-texto-2">+ es</dt>
@@ -180,7 +221,9 @@ export default function PanelCinetica({ t3, instante, desde, hasta, onBuscar, aj
           der. {num(enCursor(reparto.der), 0)} % · izq. {num(enCursor(reparto.izq), 0)} %
         </dd>
         <dt className="text-texto-2">Fuerza vertical</dt>
-        <dd data-testid="fuerza-cursor">{num((100 * fz) / G, 0)} % del peso</dd>
+        <dd data-testid="fuerza-cursor">
+          {num((100 * fz) / G, 0)} % del peso{conMasa(fz, 'N', 0)}
+        </dd>
         <dt className="text-texto-2">Centro de masas</dt>
         <dd data-testid="com-cursor">{num(comZ * 100, 0)} cm del suelo</dd>
       </dl>

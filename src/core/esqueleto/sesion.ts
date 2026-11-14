@@ -14,6 +14,7 @@ import { posicionEn, type VistaParaEmparejar } from '../tresd/correspondencias'
 import type { Trayectorias3D } from '../tresd/puntos3d'
 import { ajustarFrame, arranqueDe, medidasDeLaToma, RODILLA_ROTACION_VISIBLE, type Observaciones } from './ajuste'
 import { indiceGrado, type Grado, type Medidas } from './modelo'
+import { suavizarPosturas } from './suavizado'
 import { idPose } from '../pose/puntos'
 
 /** Del marco del laboratorio (el de las trayectorias 3D) al mundo de la calibración: lo contrario de `enMarco`. */
@@ -41,6 +42,11 @@ export interface ResultadoEsqueleto {
   readonly rotacionVisible: readonly Readonly<Record<Lado, boolean>>[]
   /** En cuántas vistas se vio cada punto en cada frame (un ángulo sin sus puntos a la vista no tiene valor). */
   readonly vistas: readonly Readonly<Record<IdMarcador, number>>[]
+  /**
+   * Las posturas suavizadas en toda la toma (fase 11, D12: `suavizado.ts`), para la cinética. Opcional: un esqueleto
+   * guardado antes del 14-11 no las tiene (hay que volver a ajustarlo).
+   */
+  readonly suavizadas?: readonly (readonly number[] | null)[]
 }
 
 /** Lo que ve una vista en el instante común `tc` (B interpolada sin cruzar huecos). */
@@ -66,6 +72,7 @@ export function ajustarSesion(
   tr: Trayectorias3D,
   ids: readonly IdMarcador[],
   progreso: (fraccion: number) => boolean = () => true,
+  aceleracion?: { readonly angular: number; readonly lineal: number },
 ): ResultadoEsqueleto | null {
   const frames3d = tr.tiempos.map((_, i) => new Map<IdMarcador, Vec3 | undefined>(ids.map((id) => {
     const p = tr.series.get(id)?.[i]
@@ -81,6 +88,7 @@ export function ajustarSesion(
   const errores: number[] = []
   const rotacionVisible: Record<Lado, boolean>[] = []
   const vistas: Readonly<Record<IdMarcador, number>>[] = []
+  const informacion: (Float64Array | null)[] = []
   let anterior: number[] | null = null
   let tAnterior = NaN
   const paso = a.paso
@@ -95,17 +103,20 @@ export function ajustarSesion(
       errores.push(NaN)
       rotacionVisible.push({ der: false, izq: false })
       vistas.push({})
+      informacion.push(null)
       continue
     }
-    const r = ajustarFrame({ camaras, aMundo, medidas: m.medidas, observaciones: [observacionesEn(a, tc, ids), observacionesEn(b, tc, ids)], anterior, arranque, unidad })
+    const r = ajustarFrame({ camaras, aMundo, medidas: m.medidas, observaciones: [observacionesEn(a, tc, ids), observacionesEn(b, tc, ids)], anterior, arranque, unidad }, { conInformacion: true })
     if (!r) {
       posturas.push(null)
       errores.push(NaN)
       rotacionVisible.push({ der: false, izq: false })
       vistas.push({})
+      informacion.push(null)
       anterior = null
       continue
     }
+    informacion.push(r.informacion ?? null)
     posturas.push(r.q)
     errores.push(r.error)
     rotacionVisible.push({ ...r.rotacionVisible })
@@ -118,8 +129,10 @@ export function ajustarSesion(
     errores.push(NaN)
     rotacionVisible.push({ der: false, izq: false })
     vistas.push({})
+    informacion.push(null)
   }
-  return { tiempos: tr.tiempos, medidas: m.medidas, asimetria: m.asimetria, posturas, errores, rotacionVisible, vistas }
+  const suavizadas = suavizarPosturas({ tiempos: tr.tiempos, posturas, informacion, errores, fs: 1 / paso, unidad, ...(aceleracion ? { aceleracion } : {}) })
+  return { tiempos: tr.tiempos, medidas: m.medidas, asimetria: m.asimetria, posturas, errores, rotacionVisible, vistas, suavizadas }
 }
 
 export interface ArticulacionEsqueleto {
