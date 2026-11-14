@@ -191,7 +191,8 @@ Además: el núcleo es TypeScript puro con tests de valor conocido en cada pieza
 1. **Con la toma B1 simplificada** (la de la validación final): sentadillas lentas, levantarse de una silla y apoyo monopodal; comprobar que los momentos tienen la forma y el orden de magnitud de la literatura (sentadilla: extensor de la rodilla de ~1 N·m/kg abajo) y que el reparto entre los pies sale ~50 % de pie quieto.
 2. **Dos básculas de baño** bajo los pies (barato): el reparto del peso en posturas quietas y asimétricas, frente a la regla de la palanca.
 3. **Plataforma de fuerzas**, si el usuario tiene acceso a una (universidad o laboratorio): sentadillas y levantarse de la silla grabados a la vez; es la validación de verdad de la fuerza vertical y, con la cinemática del laboratorio, de los momentos.
-4. **OpenCap**: comparar las mismas tomas exige iPhones (OpenCap solo funciona con iOS): solo si se consiguen prestados.
+4. **GaitDynamics con marcha de verdad**: la toma T6 de `docs/guia-validacion.md` (un pasillo de 2 × 4 m, los dos móviles en las esquinas de la misma pared larga): fuerza de cada pie con dos jorobas de ~1,1–1,2 veces el peso, suma alrededor del peso y apoyo de ~60 % del ciclo.
+5. **OpenCap**: comparar las mismas tomas exige iPhones (OpenCap solo funciona con iOS): solo si se consiguen prestados.
 
 ## Riesgos
 
