@@ -265,6 +265,32 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'cinetica',
+    titulo: 'Cinética estimada (sin plataforma de fuerzas)',
+    texto: [
+      'Con el esqueleto ajustado y la escala en metros, la app estima las fuerzas que explican el movimiento: el centro de masas, la fuerza del suelo, qué parte del peso lleva cada pie y los momentos de cadera, rodilla y tobillo de las dos piernas. Es dinámica inversa: las masas de cada segmento salen de tablas (Dempster adaptado por Winter; cabeza, brazos y tronco van como un bloque) y las ecuaciones del movimiento de cada segmento dan lo que tiene que hacer cada articulación. Todo va por kilo de masa corporal (N/kg, N·m/kg, W/kg): no hace falta pesar a la persona para comparar lados, repeticiones o sesiones.',
+      'Sin plataforma, con los dos pies en el suelo no se puede saber cuánto empuja cada uno: se reparte por la palanca entre los dos apoyos (el pie que queda más cerca de la vertical del centro de masas lleva más). Un pie apoya si su talón o su punta están a menos de 5 cm del suelo.',
+      'Qué no da: fuerzas de cada músculo ni dentro de la articulación, momentos de rotación, la fuerza de cada pie en el doble apoyo de la marcha ni los picos de un impacto (pisar, saltar, correr: pasan en milésimas y el vídeo va a 30 fotogramas por segundo). Las primeras y últimas 0,15 s de cada tramo sin huecos no tienen valor (la aceleración se tuerce en los bordes). Con la persona de pie, el centro de masas de la tabla queda al 58 % de la estatura (la referencia habitual es 55–57 %).',
+    ],
+  },
+  {
+    id: 'cinetica-modo',
+    titulo: 'Cinética: cuasiestático y dinámico',
+    texto: [
+      'Cuasiestático (por defecto): sin aceleraciones. La fuerza del suelo es el peso, cae bajo el centro de masas, y los momentos son los que hacen falta para sostener cada postura. Solo usa posiciones, así que el ruido del vídeo apenas le afecta: es el adecuado para movimientos lentos (sentadilla, levantarse de la silla, zancada, apoyo a una pierna). En una sentadilla lenta se parece mucho al dinámico.',
+      'Dinámico: con las aceleraciones de cada segmento. Derivar dos veces la posición multiplica el ruido: con el de un vídeo, la fuerza vertical se va un 20 % del peso o más con el filtro de siempre (6 Hz). Por eso tiene su propio filtro, bajo (2 Hz por defecto, de 1 a 4), que se come lo rápido: vale para movimientos lentos o moderados. Si la fuerza vertical oscila sin que la persona se mueva, es ruido.',
+    ],
+  },
+  {
+    id: 'momento-interno',
+    titulo: 'Momento articular interno',
+    texto: [
+      'Es el giro neto que hacen los músculos, ligamentos y el contacto de una articulación sobre el segmento de debajo (en la rodilla, sobre la pierna), en N·m por kilo de masa corporal. Es «neto»: si los flexores y los extensores tiran a la vez, solo se ve la diferencia.',
+      'Sagital: en cadera y rodilla, + extensor (en la sentadilla, la rodilla extensora sostiene el peso al bajar); en el tobillo, + flexor plantar. Frontal: en cadera y rodilla, + abductor (el que impide que la pelvis caiga del otro lado en apoyo a una pierna o que la rodilla se vaya hacia dentro; en la rodilla equivale al momento aductor externo, KAM, de la marcha).',
+      'La potencia (en el CSV) es el momento por la velocidad de giro de la articulación: + la articulación genera energía (el músculo se acorta), − la absorbe (frena).',
+    ],
+  },
+  {
     id: 'encuadre',
     titulo: 'Comprobar el encuadre',
     texto: [

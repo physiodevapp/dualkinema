@@ -11,7 +11,7 @@ import type { Calibracion3D } from '../../core/tresd/calibracion3d'
 import { aLaboratorio, filtrar3D, soloPuntos, triangularSesion } from '../../core/tresd/puntos3d'
 import { ARTICULACIONES_ESQUELETO, serieEsqueleto, type ResultadoEsqueleto } from '../../core/esqueleto/sesion'
 import { puntosDePostura } from '../../core/esqueleto/modelo'
-import { desempaquetarEsqueleto, empaquetarEsqueleto, huellaTrayectorias3D, type Ajustes3D, type EsqueletoGuardado } from '../../core/persistencia/esqueleto'
+import { desempaquetarEsqueleto, empaquetarEsqueleto, huellaTrayectorias3D, type Ajustes3D, type AjustesCinetica, type EsqueletoGuardado } from '../../core/persistencia/esqueleto'
 import type { AlWorkerEsqueleto, DelWorkerEsqueleto } from '../../workers/protocolo'
 import type { VistaViva } from './vistas'
 
@@ -54,6 +54,8 @@ export function useAngulos3D({
   const [ceros, setCeros] = useState<Readonly<Record<string, TramoEstatico>>>(guardado.tresd?.ceros ?? {})
   // La marcha en 3D (null hasta «Buscar los ciclos»).
   const [marcha, setMarchaEstado] = useState<MarchaGuardada | null>(guardado.tresd?.marcha ?? null)
+  // La cinética (fase 11; null mientras no se mira).
+  const [cinetica, setCineticaEstado] = useState<AjustesCinetica | null>(guardado.tresd?.cinetica ?? null)
   // Mientras se sigue o se detecta en una vista, sus trayectorias cambian con cada lote: no se rehace el 3D de toda la toma
   // cada vez (se rehace al acabar).
   const ocupado = !!a && !!b && (a.siguiendo || a.detectando || b.siguiendo || b.detectando)
@@ -168,11 +170,15 @@ export function useAngulos3D({
     [ajuste],
   )
   const aGuardar = useMemo(
-    () => ({ tresd: { fuente, articulacion: elegida, ceros, ...(marcha ? { marcha } : {}) } satisfies Ajustes3D, esqueleto: empaquetado }),
-    [fuente, elegida, ceros, marcha, empaquetado],
+    () => ({ tresd: { fuente, articulacion: elegida, ceros, ...(marcha ? { marcha } : {}), ...(cinetica ? { cinetica } : {}) } satisfies Ajustes3D, esqueleto: empaquetado }),
+    [fuente, elegida, ceros, marcha, cinetica, empaquetado],
   )
   const setMarcha = (m: MarchaGuardada | null) => {
     setMarchaEstado(m)
+    avisar()
+  }
+  const setCinetica = (c: AjustesCinetica | null) => {
+    setCineticaEstado(c)
     avisar()
   }
 
@@ -222,6 +228,8 @@ export function useAngulos3D({
     fs,
     marcha,
     setMarcha,
+    cinetica,
+    setCinetica,
   }
 }
 
