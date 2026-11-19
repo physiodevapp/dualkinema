@@ -2,7 +2,7 @@
 
 Para validar con tus vídeos lo que quedó «pendiente de validar con vídeos» en las fases 5 a 11. Pensada para una habitación de **unos 2 × 2 m**. **No hace falta mandarme los vídeos**: basta con los informes, los CSV y las capturas que pide cada toma (lo que se analiza se queda en el móvil).
 
-Son **cuatro sesiones de grabación** (T1 a T4) con **una sola colocación de los móviles** y una toma de cervical (T5). En total, unos 20–30 minutos con la preparación. Si tienes acceso a un espacio más largo (unos **2 × 4 m**: un pasillo, un garaje, un aula), la toma **T6** (opcional) añade la marcha de verdad en 3D y GaitDynamics. Si algo no sale, apúntalo y sigue: cada toma vale por sí sola.
+Son **cuatro sesiones de grabación** (T1 a T4) con **una sola colocación de los móviles**, una toma de cervical (T5) y, antes de grabar, una comprobación del asistente de colocación (T0, sin grabar). En total, unos 20–30 minutos con la preparación. Si tienes acceso a un espacio más largo (unos **2 × 4 m**: un pasillo, un garaje, un aula), la toma **T6** (opcional) añade la marcha de verdad en 3D y GaitDynamics. Si algo no sale, apúntalo y sigue: cada toma vale por sí sola.
 
 ## 1. El truco del espacio: la esquina
 
@@ -42,6 +42,20 @@ Los dos móviles **en vertical**, con la **lente a ~1 m del suelo** (sobre una s
 5. Empareja los dos móviles («Grabar con dos móviles») y comprueba que el reloj común da **± pocos ms**.
 
 ## 3. Las tomas
+
+### T0 · El asistente de colocación, sin grabar (fase 6)
+
+**Valida:** la altura de cada cámara por el horizonte, la distancia entre los móviles por el pitido y el ángulo entre ellos visto desde la persona, frente a la cinta.
+
+- **Montaje:** el de T2 (flancos), con los dos móviles emparejados en la sala. En **cada** móvil, escribe la **estatura** de la persona en «Estatura de la persona (cm)».
+- **Pasos:**
+  1. La persona en su sitio, de pie y derecha. Pulsa «Comprobar que se me ve entero» (o el botón del mando). Cuando los dos te vean entero, apunta lo que dice cada móvil: **«lente a … m del suelo · a … m de la persona»**.
+  2. Mide con la cinta, en cada móvil: la **altura de la lente** sobre el suelo y la **distancia en el suelo** de la lente a los pies de la persona.
+  3. En silencio, sin auriculares y con el volumen alto, pulsa **«Medir la distancia entre los móviles (pitido)»** tres veces (una desde el mando, si lo tienes). Apunta las tres.
+  4. Mide con la cinta la **distancia entre los dos móviles** (de micrófono a micrófono, abajo de cada móvil).
+  5. Apunta el **ángulo entre los móviles** que da la app.
+  6. Repite el paso 3 con los móviles a otra distancia (por ejemplo, los de T6 a 4 m) si puedes.
+- **Mándame:** una tabla con lo de la app y lo de la cinta (altura de cada lente, distancia de cada uno a la persona, distancia entre móviles ×3, ángulo), y la estatura que escribiste. Si algo sale «No se ha podido medir», copia el motivo.
 
 ### T1 · Frente y perfil, sin marcadores (fases 5, 8 y 9)
 

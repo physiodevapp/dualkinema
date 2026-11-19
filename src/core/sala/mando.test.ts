@@ -14,6 +14,8 @@ const estado = (cambios: Partial<EstadoMovil> = {}): EstadoMovil => ({
   encuadre: null,
   pideEncuadre: false,
   encuadreFallo: false,
+  altura: null,
+  distancia: null,
   reloj: 2,
   primero: null,
   rechazo: null,

@@ -41,7 +41,7 @@ export interface Sala {
   /** La estimación del reloj del otro en este instante (no la que se muestra, que se refresca cada segundo). */
   readonly relojAhora: () => EstimacionReloj | null
   readonly derivaAhora: () => Deriva | null
-  /** Oye los mensajes de la grabación (programar, confirmar, parar, cancelar). Devuelve cómo dejar de oír. */
+  /** Oye los mensajes de la grabación (programar, confirmar, parar, cancelar) y de la distancia por el pitido. Devuelve cómo dejar de oír. */
   readonly escuchar: (oyente: (m: Mensaje) => void) => () => void
   /** Hay un mando (ordenador) en la sala. */
   readonly hayMando: boolean
@@ -54,7 +54,7 @@ export interface Sala {
 /** Un id aleatorio para presentarse al mando (cambia en cada sala y al recargar). */
 const idMovil = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('')
 
-const DE_GRABACION = new Set<Mensaje['tipo']>(['programar', 'confirmar', 'parar', 'cancelar'])
+const DE_GRABACION = new Set<Mensaje['tipo']>(['programar', 'confirmar', 'parar', 'cancelar', 'distancia', 'distanciaOida'])
 
 const ESTADO_CADA_MS = 2000
 const RELOJ_CADA_MS = 1000

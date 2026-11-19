@@ -4894,6 +4894,52 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     })
   })
 
+  it('la altura de cada cámara por el horizonte, con la estatura escrita, mientras se comprueba el encuadre (asistente de colocación)', async () => {
+    // El detector falso de la prueba anterior: los ojos a 0,1 de la imagen y los tobillos a 0,1 + 0,8·27/32. Sin acelerómetro
+    // (cabeceo 0), la altura sale de la estatura, de dónde caen y de la focal de un móvil típico (65° en el lado mayor).
+    for (const p of [a, b]) await p.evaluate(() => (window.__pies = 0.9))
+    // A conserva la inclinación que le dio la prueba anterior (15° hacia abajo); B no tiene acelerómetro (0°).
+    const esperada = async (p) => {
+      const [w, h, cabeceo] = await p.evaluate(() => {
+        const v = document.querySelector('video')
+        return [v.videoWidth, v.videoHeight, Number(document.querySelector('[data-testid=inclinacion-este]')?.dataset.cabeceo ?? 0)]
+      })
+      const f = Math.max(w, h) / 2 / Math.tan((65 * Math.PI) / 360) / h
+      const th = (cabeceo * Math.PI) / 180
+      const tan = (y) => Math.tan(-(th + Math.atan((y - 0.5) / f)))
+      const H = 1.75
+      const tO = tan(0.1)
+      const tT = tan(0.1 + (0.8 * 27) / 32)
+      const d = (0.936 * H - 0.039 * H) / (tO - tT)
+      return { altura: 0.936 * H - d * tO, distancia: d }
+    }
+    await a.getByTestId('estatura-sala').fill('175')
+    await b.getByTestId('estatura-sala').fill('175')
+    await a.getByTestId('comprobar-encuadre').click()
+    try {
+      const este = a.getByTestId('altura-este')
+      await este.waitFor({ timeout: 10000 })
+      const e = await esperada(a)
+      assert.ok(Math.abs(Number(await este.getAttribute('data-altura')) - e.altura) <= 0.01, `altura ${await este.getAttribute('data-altura')}, esperada ${e.altura}`)
+      assert.ok(Math.abs(Number(await este.getAttribute('data-distancia')) - e.distancia) <= 0.1, `distancia (a 10 cm) ${await este.getAttribute('data-distancia')}, esperada ${e.distancia}`)
+      assert.match(await este.innerText(), /Esta cámara: lente a [\d,]+ m del suelo [✓✗] · a [\d,]+ m de la persona/)
+      // B también la calcula (lo pidió A) y A la ve como la de «su cámara».
+      await a.getByTestId('altura-otro').filter({ hasText: /Su cámara: lente a [\d,]+ m del suelo/ }).waitFor({ timeout: 10000 })
+      const eb = await esperada(b)
+      const alturaB = Number(await a.getByTestId('altura-otro').getAttribute('data-altura'))
+      // B la manda redondeada al centímetro y con su propia imagen: un poco más de margen.
+      assert.ok(Math.abs(alturaB - eb.altura) <= 0.02, `altura de B ${alturaB}, esperada ${eb.altura}`)
+      // Una estatura imposible: no se calcula y se pide.
+      await a.getByTestId('estatura-sala').fill('17')
+      await a.getByTestId('altura-este').waitFor({ state: 'detached', timeout: 10000 })
+      await a.getByText('Escribe la estatura para saber a qué altura está la cámara.').waitFor()
+      await a.getByTestId('estatura-sala').fill('175')
+    } finally {
+      await a.getByTestId('comprobar-encuadre').click()
+      await b.getByTestId('encuadre-este').waitFor({ state: 'detached', timeout: 10000 })
+    }
+  })
+
   it('el mando pide comprobar el encuadre: lo hace un móvil (y se lo pide al otro) y el mando ve lo de los dos', async () => {
     const m = await abrirApp(navA, { consulta: `?sala=${codigo}&mando&senal=${URL_RELE}` })
     try {
@@ -4926,6 +4972,94 @@ describe('grabar con dos móviles: emparejar (fase 4, paso 4b)', () => {
     await a.getByTestId('enlace-mando').waitFor({ timeout: 10000 })
     assert.equal(await a.getByTestId('conexion').getAttribute('data-conexion'), 'emparejado')
     assert.match(await a.getByTestId('url-mando').textContent(), new RegExp(`\\?sala=${codigo}&mando$`))
+  })
+
+  it('la distancia entre los móviles por el pitido, antes de grabar: desde un móvil y desde el mando (asistente de colocación)', async () => {
+    // El micrófono falso no oye los altavoces: lo que «oye» cada móvil (su MediaStreamTrackProcessor de audio) se sustituye
+    // por la secuencia que él mismo emite (la de la app), colocada donde caería con los móviles a 2 m, en trozos de 10 ms
+    // con su marca de tiempo y a su ritmo. Cada uno empieza a escuchar ~1,5 s antes del inicio acordado; el que mide pita a
+    // 0,5 s del inicio y el otro a 2,5 s.
+    const D = 2
+    const vuelo = D / 343
+    const oido = (o) => {
+      const crear = AudioContext.prototype.createBuffer
+      AudioContext.prototype.createBuffer = function (...args) {
+        const b = crear.apply(this, args)
+        // La secuencia que emite la app (menos de un segundo, un canal).
+        if (args[0] === 1 && args[1] < args[2]) window.__secuencia = b
+        return b
+      }
+      const Original = window.MediaStreamTrackProcessor
+      window.MediaStreamTrackProcessor = function ({ track }) {
+        if (track.kind !== 'audio') return new Original({ track })
+        const sr = window.__secuencia.sampleRate
+        const sec = window.__secuencia.getChannelData(0)
+        const d = new Float32Array(Math.round(sr * 7))
+        const poner = (t, amp) => {
+          const i0 = Math.round(t * sr)
+          for (let k = 0; k < sec.length; k++) d[i0 + k] += amp * sec[k]
+        }
+        const pide = window.__distanciaPide
+        poner(pide ? o.primero : o.segundo, 1)
+        if (!window.__soloElPropio) poner(pide ? o.segundo + o.vuelo : o.primero + o.vuelo, 0.1)
+        // Ruido blanco débil (un tono en la banda del pitido se le parecería, por bajo que sonase: el parecido no depende del volumen).
+        let semilla = 7
+        for (let i = 0; i < d.length; i++) {
+          semilla = (semilla * 1103515245 + 12345) % 2147483648
+          d[i] += 0.005 * (semilla / 1073741824 - 1)
+        }
+        const n = Math.round(sr / 100)
+        const t0 = performance.now()
+        let k = 0
+        this.readable = new ReadableStream({
+          async pull(c) {
+            const fin = t0 + (k + 1) * 10
+            await new Promise((r) => setTimeout(r, Math.max(0, fin - performance.now())))
+            const trozo = d.slice(k * n, (k + 1) * n)
+            const t = (t0 + k * 10) * 1000
+            k++
+            c.enqueue({ timestamp: t, numberOfFrames: trozo.length, sampleRate: sr, copyTo: (dest) => dest.set(trozo), close() {} })
+          },
+        })
+      }
+    }
+    for (const p of [a, b]) await p.evaluate(oido, { primero: 2.0, segundo: 4.0, vuelo })
+    await a.evaluate(() => (window.__distanciaPide = true))
+    await b.evaluate(() => (window.__distanciaPide = false))
+    // Con el encuadre comprobándose (y la estatura escrita en los dos), cada uno sabe a qué distancia está de la persona: con
+    // la de los dos móviles sale el ángulo entre ellos visto desde la persona.
+    await a.getByTestId('comprobar-encuadre').click()
+    await a.getByTestId('altura-este').waitFor({ timeout: 10000 })
+    await a.getByTestId('altura-otro').waitFor({ timeout: 10000 })
+    await a.getByTestId('medir-distancia').click()
+    await a.getByTestId('distancia-resultado').filter({ hasText: 'Midiendo' }).waitFor({ timeout: 5000 })
+    for (const p of [a, b]) {
+      const r = p.getByTestId('distancia-resultado')
+      await p.waitForFunction(() => document.querySelector('[data-testid=distancia-resultado]')?.dataset.midiendo !== 'true', null, { timeout: 20000 })
+      assert.ok(Math.abs(Number(await r.getAttribute('data-metros')) - D) < 0.01, `${await r.getAttribute('data-metros')} m: ${await r.innerText()}`)
+      assert.match(await r.innerText(), /Distancia entre los móviles: 2,00 m \(por el pitido\)/)
+    }
+    const [da, db] = await Promise.all(['altura-este', 'altura-otro'].map(async (t) => Number(await a.getByTestId(t).getAttribute('data-distancia'))))
+    const grados = (Math.acos((da * da + db * db - D * D) / (2 * da * db)) * 180) / Math.PI
+    const angulo = a.getByTestId('angulo-moviles')
+    await angulo.waitFor({ timeout: 10000 })
+    assert.ok(Math.abs(Number(await angulo.getAttribute('data-grados')) - grados) < 1, `${await angulo.getAttribute('data-grados')}°, esperado ${grados}°`)
+    assert.match(await angulo.innerText(), /Ángulo entre los móviles, visto desde la persona: \d+°/)
+    await a.getByTestId('comprobar-encuadre').click()
+    await b.getByTestId('encuadre-este').waitFor({ state: 'detached', timeout: 10000 })
+    // Desde el mando: se lo ordena al Móvil 1, que pide al otro, y el mando ve el resultado.
+    const m = await abrirApp(navA, { consulta: `?sala=${codigo}&mando&senal=${URL_RELE}` })
+    try {
+      await m.waitForFunction(() => document.querySelectorAll('[data-testid=mando-movil]').length === 2, null, { timeout: 20000 })
+      await m.getByTestId('mando-distancia-resultado').filter({ hasText: '2,00 m' }).waitFor({ timeout: 10000 })
+      // Ahora B no oye el pitido de A: B lo dice, A también, y el mando.
+      await b.evaluate(() => (window.__soloElPropio = true))
+      await m.getByTestId('mando-distancia').click()
+      await m.getByTestId('mando-distancia-resultado').filter({ hasText: 'No se ha podido medir' }).waitFor({ timeout: 25000 })
+      await a.getByTestId('distancia-resultado').filter({ hasText: 'No se ha podido medir' }).waitFor({ timeout: 5000 })
+    } finally {
+      await m.close()
+    }
   })
 
   it('un tercer móvil no entra: «la sala está llena»', async () => {

@@ -1,3 +1,4 @@
+import { FALLOS_DISTANCIA, leerResultadoDistancia, type FalloDistancia, type ResultadoDistancia } from '../grabacion/distancia'
 import { leerEncuadre, type Encuadre } from '../grabacion/encuadre'
 import type { OrientacionVista } from '../geometria/canonico'
 import { leerSucesos, type Suceso } from './sucesos'
@@ -53,6 +54,13 @@ export interface EstadoMovil {
   readonly pideEncuadre: boolean
   /** No puede comprobar el encuadre (su detector no carga): el otro y el mando lo dicen en vez de «mirando…». */
   readonly encuadreFallo: boolean
+  /**
+   * La altura de su cámara sobre el suelo y su distancia a la persona (m), por el horizonte (`core/grabacion/altura.ts`),
+   * mientras comprueba el encuadre con la estatura escrita. null si no se sabe (o el móvil es anterior).
+   */
+  readonly altura: { readonly altura: number; readonly distancia: number } | null
+  /** La última medida de la distancia entre los móviles por el pitido (`core/grabacion/distancia.ts`); null si no hay. */
+  readonly distancia: ResultadoDistancia | null
   /** La cota de su reloj común con el otro (ms), para el mando; null si aún no está medido (o el móvil es anterior). */
   readonly reloj: number | null
   /**
@@ -82,6 +90,8 @@ export const soloEstado = (m: EstadoMovil): EstadoMovil => ({
   encuadre: m.encuadre,
   pideEncuadre: m.pideEncuadre,
   encuadreFallo: m.encuadreFallo,
+  altura: m.altura,
+  distancia: m.distancia,
   reloj: m.reloj,
   primero: m.primero,
   rechazo: m.rechazo,
@@ -96,6 +106,8 @@ export type Orden =
   | { readonly orden: 'parar' }
   /** Empezar o dejar de comprobar el encuadre (por voz, en ese móvil; pide al otro que compruebe también). */
   | { readonly orden: 'encuadre'; readonly activo: boolean }
+  /** Medir la distancia entre los dos móviles por el pitido (lo pide ese móvil al otro). */
+  | { readonly orden: 'distancia' }
 
 /** Cuenta atrás que puede pedir el mando (s). */
 export const CUENTA_ATRAS_MANDO = { min: 3, max: 30 } as const
@@ -115,6 +127,11 @@ export type Mensaje =
   | { readonly tipo: 'parar'; readonly grabacion: string; readonly fin: number }
   | { readonly tipo: 'cancelar'; readonly grabacion: string; readonly motivo: MotivoCancelar }
   | { readonly tipo: 'adios' }
+  /** Medir la distancia por el pitido (`core/grabacion/distancia.ts`): escuchar desde `inicio` (reloj de quien envía). */
+  | { readonly tipo: 'distancia'; readonly medida: string; readonly inicio: number }
+  /** Lo que oyó quien contesta: el tiempo entre su pitido y el del otro (s) con su calidad, o por qué no pudo. */
+  | { readonly tipo: 'distanciaOida'; readonly medida: string; readonly dif: number; readonly calidad: number }
+  | { readonly tipo: 'distanciaOida'; readonly medida: string; readonly fallo: FalloDistancia }
 
 const MOTIVOS: readonly MotivoCancelar[] = ['usuario', 'sin-camara', 'sin-vista', 'sin-reloj', 'sin-espacio', 'tarde', 'ocupado', 'version', 'fallo']
 
@@ -157,6 +174,10 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
   const encuadre = leerEncuadre(o.encuadre)
   const pideEncuadre = o.pideEncuadre === true
   const encuadreFallo = o.encuadreFallo === true
+  // Añadidos con la altura y la distancia del asistente de colocación, igual de opcionales.
+  const a = o.altura as Record<string, unknown> | null | undefined
+  const altura = a && typeof a === 'object' && finito(a.altura) && finito(a.distancia) && a.altura >= 0 && a.altura <= 3 && a.distancia > 0 && a.distancia <= 20 ? { altura: a.altura, distancia: a.distancia } : null
+  const distancia = leerResultadoDistancia(o.distancia)
   // Añadido con el mando, igual de opcional.
   const reloj = finito(o.reloj) && o.reloj >= 0 && o.reloj < 60_000 ? o.reloj : null
   const primero = typeof o.primero === 'boolean' ? o.primero : null
@@ -166,7 +187,7 @@ function leerEstado(o: Record<string, unknown>): EstadoMovil | null {
       ? { motivo: r.motivo as MotivoRechazo, n: r.n as number }
       : null
   const sucesos = leerSucesos(o.sucesos)
-  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, encuadreFallo, reloj, primero, rechazo, sucesos }
+  return { camara, libreMB, bateria, grabando: o.grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, encuadreFallo, altura, distancia, reloj, primero, rechazo, sucesos }
 }
 
 /** Un mensaje recibido; null si no se entiende (roto, demasiado grande, de un tipo desconocido o con campos inválidos). */
@@ -196,6 +217,7 @@ export function leerMensaje(texto: string): Mensaje | null {
     case 'orden': {
       if (!esIdMovil(o.para)) return null
       if (o.orden === 'parar') return { tipo: 'orden', para: o.para, orden: 'parar' }
+      if (o.orden === 'distancia') return { tipo: 'orden', para: o.para, orden: 'distancia' }
       if (o.orden === 'encuadre') return typeof o.activo === 'boolean' ? { tipo: 'orden', para: o.para, orden: 'encuadre', activo: o.activo } : null
       if (o.orden === 'programar') {
         const duracion = o.duracion === null ? null : finito(o.duracion) && o.duracion > 0 && o.duracion <= DURACION_MAXIMA_PROGRAMADA_S ? o.duracion : undefined
@@ -218,6 +240,12 @@ export function leerMensaje(texto: string): Mensaje | null {
         : null
     case 'adios':
       return { tipo: 'adios' }
+    case 'distancia':
+      return esId(o.medida) && finito(o.inicio) ? { tipo: 'distancia', medida: o.medida, inicio: o.inicio } : null
+    case 'distanciaOida':
+      if (!esId(o.medida)) return null
+      if (FALLOS_DISTANCIA.includes(o.fallo as FalloDistancia)) return { tipo: 'distanciaOida', medida: o.medida, fallo: o.fallo as FalloDistancia }
+      return finito(o.dif) && Math.abs(o.dif) < 10 && finito(o.calidad) && o.calidad >= 1 ? { tipo: 'distanciaOida', medida: o.medida, dif: o.dif, calidad: o.calidad } : null
     default:
       return null
   }

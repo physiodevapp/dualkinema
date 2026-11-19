@@ -255,6 +255,22 @@ export const ENTRADAS: readonly EntradaGlosario[] = [
     ],
   },
   {
+    id: 'altura-camara',
+    titulo: 'Altura de la cámara (por el horizonte)',
+    texto: [
+      'Mientras se comprueba el encuadre, con la estatura de la persona escrita en la sala, cada móvil calcula a qué altura del suelo está su lente y a qué distancia está de la persona. Con la persona de pie, el horizonte de la cámara (la horizontal que pasa por la lente, que se sabe por el acelerómetro) le corta el cuerpo justo a la altura de la cámara; dónde caen los ojos y los tobillos en la imagen, y a qué altura están (93,6 % y 3,9 % de la estatura, según las proporciones de Drillis y Contini), lo dan.',
+      'Para el 3D y la marcha conviene la lente a 0,7–1,3 m del suelo (más o menos a la altura de la cadera). Es una estimación: 5 cm de error en la estatura mueven la altura unos 3 cm, y con la cámara muy inclinada, unos centímetros más (no se conoce la lente exacta de cada móvil). La persona tiene que estar de pie y derecha.',
+    ],
+  },
+  {
+    id: 'distancia-pitido',
+    titulo: 'Distancia entre los móviles por el pitido',
+    texto: [
+      '«Medir la distancia entre los móviles» hace que los dos piten uno tras otro (la misma secuencia de tres barridos de la grabación doble) mientras escuchan su micrófono unos segundos. Cada uno mide cuánto tiempo pasa entre su pitido y el del otro; con lo de los dos, el retraso de los relojes y de los altavoces se cancela y queda lo que tarda el sonido en ir de un móvil al otro (343 m/s): la distancia, al centímetro si se oyen bien.',
+      'Sirve para comprobar la colocación antes de grabar (y la cinta). Mejor en silencio, sin auriculares y con el volumen alto; si un móvil no ha pitado antes en la sala, hay que tocar su pantalla una vez (el navegador solo deja sonar tras un toque). Es la distancia entre los micrófonos de los dos móviles, que están a unos centímetros de la lente.',
+    ],
+  },
+  {
     id: 'esqueleto',
     titulo: 'Esqueleto ajustado',
     texto: [
