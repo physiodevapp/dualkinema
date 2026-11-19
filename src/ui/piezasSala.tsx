@@ -1,4 +1,6 @@
+import { anguloEntreMoviles, consejoAltura, consejoAngulo } from '../core/grabacion/altura'
 import { revisarInclinacion, type Inclinacion } from '../core/grabacion/colocacion'
+import { TEXTO_FALLO_DISTANCIA, type ResultadoDistancia } from '../core/grabacion/distancia'
 import { enteraEn, fraseEncuadre, type Encuadre } from '../core/grabacion/encuadre'
 import type { OrientacionVista } from '../core/geometria/canonico'
 import { InfoGlosario } from './glosario/Glosario'
@@ -55,6 +57,67 @@ export function TextoEncuadre({ encuadre, activo, fallo = false, testid, quien }
     <p className={`font-mono text-sm ${encuadre && !bien ? 'text-acento' : ''}`} data-testid={testid} data-entera={encuadre ? String(bien) : ''}>
       {quien}: {texto}
     </p>
+  )
+}
+
+const m = (x: number) => `${x.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`
+
+/**
+ * La altura de una cámara sobre el suelo y su distancia a la persona, por el horizonte (`core/grabacion/altura.ts`), con
+ * qué hacer si no está a la altura recomendada. Nada si no se sabe.
+ */
+export function TextoAltura({ altura, quien, testid }: { altura: { readonly altura: number; readonly distancia: number } | null; quien: string; testid: string }) {
+  if (!altura) return null
+  const consejo = consejoAltura(altura.altura)
+  return (
+    <div className="flex flex-col gap-1" data-testid={testid} data-altura={altura.altura} data-distancia={altura.distancia}>
+      <p className="flex items-center gap-1 font-mono text-xs text-texto-2">
+        {quien}: lente a {m(altura.altura)} del suelo {consejo ? '✗' : '✓'} · a {m(altura.distancia)} de la persona
+        <InfoGlosario id="altura-camara" tema="la altura de la cámara" className="-my-1.5" />
+      </p>
+      {consejo && <Aviso testid={`${testid}-aviso`}>{quien === 'Esta cámara' ? consejo : `${quien}: ${consejo.charAt(0).toLowerCase()}${consejo.slice(1)}`}</Aviso>}
+    </div>
+  )
+}
+
+/** La distancia entre los móviles por el pitido, o por qué no ha salido. Nada si no se ha medido. */
+export function TextoDistancia({ resultado, midiendo = false, testid }: { resultado: ResultadoDistancia | null; midiendo?: boolean; testid: string }) {
+  if (midiendo)
+    return (
+      <p className="font-mono text-sm" role="status" data-testid={testid} data-midiendo="true">
+        Midiendo: silencio unos segundos…
+      </p>
+    )
+  if (!resultado) return null
+  if ('fallo' in resultado)
+    return (
+      <p className="text-sm text-acento" role="status" data-testid={testid} data-fallo={resultado.fallo}>
+        No se ha podido medir: {TEXTO_FALLO_DISTANCIA[resultado.fallo]}.
+      </p>
+    )
+  return (
+    <p className="flex items-center gap-1 font-mono text-sm" role="status" data-testid={testid} data-metros={resultado.metros}>
+      Distancia entre los móviles: {m(resultado.metros)} (por el pitido)
+      <InfoGlosario id="distancia-pitido" tema="la distancia por el pitido" className="-my-1.5" />
+    </p>
+  )
+}
+
+/**
+ * El ángulo entre los dos móviles visto desde la persona, con la distancia de cada uno a ella (por el horizonte) y la de
+ * los dos entre sí (por el pitido). Nada si falta alguna.
+ */
+export function TextoAngulo({ a, b, entre, testid }: { a: number | null; b: number | null; entre: ResultadoDistancia | null; testid: string }) {
+  const g = a !== null && b !== null && entre && 'metros' in entre ? anguloEntreMoviles(a, b, entre.metros) : null
+  if (g === null) return null
+  const consejo = consejoAngulo(g)
+  return (
+    <div className="flex flex-col gap-1" data-testid={testid} data-grados={g}>
+      <p className="font-mono text-sm">
+        Ángulo entre los móviles, visto desde la persona: {Math.round(g)}° {consejo ? '✗' : '✓'}
+      </p>
+      {consejo && <Aviso testid={`${testid}-aviso`}>{consejo}</Aviso>}
+    </div>
   )
 }
 

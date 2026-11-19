@@ -23,6 +23,10 @@ import { GUIONES, guionPorId, numeroGrabacion, siguienteGuion, type GuionVoz } f
 import { anunciar, callar, HAY_VOZ } from '../sala/voz'
 import { enteraEn, fraseEncuadre, type Encuadre } from '../core/grabacion/encuadre'
 import { useEncuadre } from './useEncuadre'
+import { alturaCamara, medianaAltura, type AlturaCamara } from '../core/grabacion/altura'
+import { estaturaEnMetros } from '../core/tresd/escala'
+import { useDistancia } from '../sala/useDistancia'
+import type { ResultadoDistancia } from '../core/grabacion/distancia'
 import { CUENTAS_ATRAS_S, DURACIONES_S, enFlancos, vistasCompatibles } from '../core/sala/doble'
 import type { EstadoMovil, MotivoRechazo } from '../core/sala/protocolo'
 import { TEXTO_RECHAZO } from '../core/sala/mando'
@@ -36,7 +40,7 @@ import { ahora } from '../sala/config'
 import { useGrabacionDoble, type GrabacionDoble } from '../sala/useGrabacionDoble'
 import { useSala, type Conexion, type Sala } from '../sala/useSala'
 import { InfoGlosario } from './glosario/Glosario'
-import { Aviso, Colocacion, idDeVista, TextoEncuadre, textoVista, VISTAS } from './piezasSala'
+import { Aviso, Colocacion, idDeVista, TextoAltura, TextoAngulo, TextoDistancia, TextoEncuadre, textoVista, VISTAS } from './piezasSala'
 import { useCamara } from './useCamara'
 import { useCodificador } from './useCodificador'
 import { useMicroExterno } from './useMicroExterno'
@@ -89,6 +93,8 @@ function useMiEstado(
   encuadre: Encuadre | null,
   pideEncuadre: boolean,
   encuadreFallo: boolean,
+  altura: AlturaCamara | null,
+  distancia: ResultadoDistancia | null,
   rechazo: EstadoMovil['rechazo'],
   sucesos: EstadoMovil['sucesos'],
 ): EstadoMovil {
@@ -120,17 +126,22 @@ function useMiEstado(
       encuadre,
       pideEncuadre,
       encuadreFallo,
+      altura,
+      distancia,
       // La cota del reloj la pone la sala al mandarlo.
       reloj: null,
       primero: null,
       rechazo,
       sucesos,
     }
-  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, encuadreFallo, rechazo, sucesos])
+  }, [flujo, libreMB, bateria, grabando, codificador, microExterno, fpsGrabacion, inclinacion, encuadre, pideEncuadre, encuadreFallo, altura, distancia, rechazo, sucesos])
 }
 
 
 
+
+/** La estatura escrita en la sala (cm), recordada en este móvil. */
+const CLAVE_ESTATURA = 'dualkinema.estatura'
 
 const formatoReloj = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000))
@@ -468,14 +479,35 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   // mientras se graba (el detector competiría con el codificador).
   const [comprobarEncuadre, setComprobarEncuadre] = useState(false)
   const [pideOtro, setPideOtro] = useState(false)
-  const { encuadre: miEncuadre, error: errorEncuadre } = useEncuadre(video, (comprobarEncuadre || pideOtro) && !!flujo && !enMarcha)
+  const { encuadre: miEncuadre, error: errorEncuadre, muestras } = useEncuadre(video, (comprobarEncuadre || pideOtro) && !!flujo && !enMarcha)
+  // La altura de la cámara por el horizonte, mientras se comprueba el encuadre, con la estatura escrita aquí (se recuerda
+  // en el móvil; no sale de él más que redondeada a la altura de la cámara).
+  const [textoEstatura, setTextoEstatura] = useState(() => {
+    try {
+      return localStorage.getItem(CLAVE_ESTATURA) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const estatura = estaturaEnMetros(textoEstatura.trim() === '' ? null : Number(textoEstatura.replace(',', '.')))
+  const cabeceoCrudo = incCruda?.cabeceo ?? 0
+  const alturaCruda = useMemo(
+    () => (estatura ? medianaAltura(muestras.map((x) => alturaCamara(x.puntos, x.ancho, x.alto, cabeceoCrudo, estatura))) : null),
+    [muestras, cabeceoCrudo, estatura],
+  )
+  // Al otro, al centímetro: el objeto solo cambia cuando cambia lo que se manda.
+  const alturaCm = alturaCruda ? Math.round(alturaCruda.altura * 100) : null
+  const distanciaCm = alturaCruda ? Math.round(alturaCruda.distancia * 10) * 10 : null
+  const miAltura = useMemo(() => (alturaCm === null || distanciaCm === null ? null : { altura: alturaCm / 100, distancia: distanciaCm / 100 }), [alturaCm, distanciaCm])
   // La última orden del mando que no se pudo hacer: se le cuenta (con su motivo) y se dice aquí.
   const [rechazo, setRechazo] = useState<EstadoMovil['rechazo']>(null)
   const [verRechazo, setVerRechazo] = useState(false)
   // Lo que pasa al grabar, para el registro del mando.
   const [sucesos, setSucesos] = useState<readonly Suceso[]>([])
   const alSuceso = useCallback((s: SucesoNuevo) => setSucesos((l) => anotarSuceso(l, s)), [])
-  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre, errorEncuadre !== null, rechazo, sucesos)
+  // La distancia entre los móviles por el pitido (la última medida, de los dos).
+  const [miDistancia, setMiDistancia] = useState<ResultadoDistancia | null>(null)
+  const miEstado = useMiEstado(flujo, grabando, codificador, microExterno !== null, prevision?.fps ?? null, miInclinacion, miEncuadre, comprobarEncuadre, errorEncuadre !== null, miAltura, miDistancia, rechazo, sucesos)
   const sala: Sala = useSala(codigo, vista, miEstado)
   const pideAhora = sala.conexion === 'emparejado' && !!sala.otro?.estado?.pideEncuadre
   if (pideAhora !== pideOtro) setPideOtro(pideAhora)
@@ -485,6 +517,8 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
   // Al empezar otra grabación, el aviso de la orden que no se pudo hacer ya no vale.
   if (ocupado && verRechazo) setVerRechazo(false)
   if (enMarcha !== ocupado) setEnMarcha(ocupado)
+  const distancia = useDistancia(sala, flujo, audio, ocupado)
+  if (distancia.resultado !== miDistancia) setMiDistancia(distancia.resultado)
 
   useEffect(() => {
     if (video.current) video.current.srcObject = flujo
@@ -532,9 +566,10 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
           : ocupado
             ? 'ocupado'
             : null
-  const ordenes = useRef({ doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre, motivoRechazo })
+  const medirDistancia = distancia.medir
+  const ordenes = useRef({ doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre, motivoRechazo, medirDistancia })
   useEffect(() => {
-    ordenes.current = { doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre, motivoRechazo }
+    ordenes.current = { doble, puedeGrabar, ocupado, comprobarEncuadre, alternarEncuadre, motivoRechazo, medirDistancia }
   })
   const { escucharOrdenes } = sala
   useEffect(
@@ -552,7 +587,8 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
           }
         } else if (o.orden === 'parar') {
           if (a.ocupado) a.doble.parar()
-        } else if (o.activo !== a.comprobarEncuadre) a.alternarEncuadre()
+        } else if (o.orden === 'distancia') a.medirDistancia()
+        else if (o.activo !== a.comprobarEncuadre) a.alternarEncuadre()
       }),
     [escucharOrdenes],
   )
@@ -648,6 +684,28 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
           </p>
           <TextoEncuadre encuadre={miEncuadre} activo={comprobarEncuadre || pideOtro} testid="encuadre-este" quien="Esta cámara" />
           {errorEncuadre && <p className="text-sm text-acento">No se puede comprobar: {errorEncuadre}</p>}
+          <label className="flex flex-wrap items-center gap-2 text-sm text-texto-2">
+            Estatura de la persona (cm), para la altura de la cámara:
+            <input
+              type="number"
+              inputMode="numeric"
+              min={100}
+              max={250}
+              value={textoEstatura}
+              onChange={(e) => {
+                setTextoEstatura(e.target.value)
+                try {
+                  localStorage.setItem(CLAVE_ESTATURA, e.target.value)
+                } catch {
+                  /* sin almacenamiento: solo esta vez */
+                }
+              }}
+              className="w-24 rounded-md border border-borde bg-fondo px-2 py-1.5 font-mono text-texto"
+              data-testid="estatura-sala"
+            />
+          </label>
+          {(comprobarEncuadre || pideOtro) && !estatura && <p className="text-xs text-texto-2">Escribe la estatura para saber a qué altura está la cámara.</p>}
+          <TextoAltura altura={(comprobarEncuadre || pideOtro) ? miAltura : null} quien="Esta cámara" testid="altura-este" />
         </div>
       </div>
 
@@ -672,6 +730,24 @@ function EnSala({ codigo, alSalir, alAbrirDoble }: { codigo: string; alSalir: ()
           )}
           <Colocacion inclinacion={otro?.estado?.inclinacion ?? null} testid="inclinacion-otro" otro />
           <TextoEncuadre encuadre={otro?.estado?.encuadre ?? null} activo={comprobarEncuadre || !!otro?.estado?.pideEncuadre} fallo={!!otro?.estado?.encuadreFallo} testid="encuadre-otro" quien="Su cámara" />
+          <TextoAltura altura={otro?.estado?.altura ?? null} quien="Su cámara" testid="altura-otro" />
+          <div className="flex flex-col gap-2 rounded-md border border-borde p-3" data-testid="distancia">
+            <button
+              type="button"
+              onClick={distancia.medir}
+              disabled={distancia.midiendo || ocupado || reloj === null || !flujo}
+              className={`${boton} text-sm`}
+              data-testid="medir-distancia"
+            >
+              Medir la distancia entre los móviles (pitido)
+            </button>
+            <p className="text-xs text-texto-2">
+              Los dos pitan uno tras otro y se oyen: sale la distancia entre ellos, para comprobar la colocación (y la cinta). En silencio, sin
+              auriculares y con el volumen alto.
+            </p>
+            <TextoDistancia resultado={distancia.resultado} midiendo={distancia.midiendo} testid="distancia-resultado" />
+            <TextoAngulo a={miAltura?.distancia ?? null} b={otro?.estado?.altura?.distancia ?? null} entre={distancia.midiendo ? null : distancia.resultado} testid="angulo-moviles" />
+          </div>
           {otro?.estado?.microExterno && (
             <Aviso testid="aviso-micro-otro">El otro móvil tiene unos auriculares o un micrófono externo conectados: que los desconecte, o no se oirá su pitido.</Aviso>
           )}

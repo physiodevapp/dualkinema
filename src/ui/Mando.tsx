@@ -7,7 +7,7 @@ import { esImportante, textoSuceso, type EntradaRegistro } from '../core/sala/su
 import type { EstadoCanal } from '../sala/canal'
 import { useMando } from '../sala/useMando'
 import { InfoGlosario } from './glosario/Glosario'
-import { Aviso, Colocacion, TextoEncuadre, textoVista } from './piezasSala'
+import { Aviso, Colocacion, TextoAltura, TextoAngulo, TextoDistancia, TextoEncuadre, textoVista } from './piezasSala'
 
 /*
  * El mando (un ordenador que maneja la grabación con dos móviles): los dos móviles quedan colocados y la persona en su
@@ -50,6 +50,7 @@ function TarjetaMovil({ m, n, encuadreActivo }: { m: MovilEnMando; n: number; en
       {e?.microExterno && <Aviso testid="mando-aviso-micro">Tiene unos auriculares o un micrófono externo conectados: que se desconecten, o no se oirá su pitido.</Aviso>}
       <Colocacion inclinacion={e?.inclinacion ?? null} testid={`mando-inclinacion-${n}`} quien={quien} />
       <TextoEncuadre encuadre={e?.encuadre ?? null} activo={encuadreActivo} fallo={!!e?.encuadreFallo} testid={`mando-encuadre-${n}`} quien={quien} />
+      <TextoAltura altura={e?.altura ?? null} quien={quien} testid={`mando-altura-${n}`} />
     </div>
   )
 }
@@ -152,6 +153,22 @@ export default function Mando({ codigo, alSalir }: { codigo: string; alSalir: ()
         >
           {encuadreActivo ? 'Dejar de comprobar el encuadre' : 'Comprobar que se ve a la persona entera (lo dice un móvil en voz alta)'}
         </button>
+        <button
+          type="button"
+          onClick={() => primero && ordenar(primero.id, { orden: 'distancia' })}
+          disabled={!conectado || !primero || moviles.length < 2 || graba}
+          className={boton}
+          data-testid="mando-distancia"
+        >
+          Medir la distancia entre los móviles (pitan uno tras otro)
+        </button>
+        <TextoDistancia resultado={primero?.estado?.distancia ?? null} testid="mando-distancia-resultado" />
+        <TextoAngulo
+          a={moviles[0]?.estado?.altura?.distancia ?? null}
+          b={moviles[1]?.estado?.altura?.distancia ?? null}
+          entre={primero?.estado?.distancia ?? null}
+          testid="mando-angulo-moviles"
+        />
 
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1 text-sm text-texto-2">
