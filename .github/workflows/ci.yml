@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   comprobar:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,7 +27,7 @@ jobs:
 
   # Si un PR solo cambia documentación (docs/ o archivos .md), las e2e no hacen falta: se saltan (en `main`, siempre).
   cambios:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       codigo: ${{ steps.mira.outputs.codigo }}
     steps:
@@ -48,7 +48,7 @@ jobs:
     # (tests/e2e/). Corren en paralelo a «comprobar».
     needs: cambios
     if: needs.cambios.outputs.codigo == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # La batería pasó de 15 min en el runner con las pruebas de grabar de la fase 4 (en local, 7 min).
     timeout-minutes: 30
     steps:
